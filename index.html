@@ -13,7 +13,7 @@
   --gold:#f0a500;--gold2:#ffd166;--blue:#2196f3;--green:#00c896;
   --red:#ff4d6d;--orange:#ff8c42;--text:#e2eaf5;--muted:#6b84a3;--radius:14px;
 }
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+,::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{font-family:'Noto Sans Devanagari',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 .screen{display:none;min-height:100vh;flex-direction:column;}
 .screen.active{display:flex;}
@@ -212,28 +212,9 @@ body{font-family:'Noto Sans Devanagari',sans-serif;background:var(--bg);color:va
 
 <!-- LOGIN -->
 <div id="login-screen" class="screen active">
-    <!-- MPPKVVCL Style Logo -->
-  <svg width="110" height="110" viewBox="0 0 200 200" style="margin-bottom:6px;">
-    <!-- Outer rotated square (blue border) -->
-    <rect x="30" y="30" width="140" height="140" rx="6"
-          fill="none" stroke="#3a1fa8" stroke-width="14"
-          transform="rotate(45 100 100)"/>
-    <!-- Middle rotated square (light blue fill) -->
-    <rect x="48" y="48" width="104" height="104" rx="4"
-          fill="#7ec8e3" stroke="#7ec8e3" stroke-width="2"
-          transform="rotate(45 100 100)"/>
-    <!-- Inner rotated square (white fill) -->
-    <rect x="62" y="62" width="76" height="76" rx="3"
-          fill="white" stroke="white" stroke-width="2"
-          transform="rotate(45 100 100)"/>
-    <!-- Lightning bolt (red) -->
-    <polygon points="115,52 88,105 104,105 85,148 128,90 110,90"
-             fill="#e8001c"/>
-  </svg>
-  <div class="login-title">म.प्र. पू. क्षे. विद्युत वितरण क. लि.</div>
-  <div style="font-family:'Baloo 2',cursive;font-size:15px;font-weight:700;color:#f0a500;margin-bottom:2px;letter-spacing:1px;">विद्युद् ब्रह्मोति</div>
-  <div class="login-sub">आदेगांव • वसूली प्रबंधन प्रणाली</div>
-  <div style="font-family:'Noto Sans Devanagari',sans-serif;font-size:13px;font-weight:600;color:#e2eaf5;margin-bottom:6px;text-align:center;">आदेगांव बिजली वितरण केन्द्र व्रत-सिवनी</div>
+  <div class="login-emblem">⚡</div>
+  <div class="login-title">आदेगांव बिजली वितरण केंद्र</div>
+  <div class="login-sub">वसूली प्रबंधन प्रणाली • Cloud Sync</div>
   <div class="login-card">
     <label class="f-label">भूमिका चुनें</label>
     <div class="role-cards">
@@ -253,7 +234,7 @@ body{font-family:'Noto Sans Devanagari',sans-serif;background:var(--bg);color:va
       <label class="f-label">Supervisor पासवर्ड</label>
       <div class="pw-wrap" style="margin-bottom:14px;">
         <input type="password" class="f-input" id="sup-pw" placeholder="पासवर्ड डालें" style="margin-bottom:0;">
-        <button class="pw-eye" onclick="togglePw()">👁</button>
+        <button class="pw-eye" onclick="togglePw()">👁️</button>
       </div>
     </div>
 
@@ -291,10 +272,7 @@ body{font-family:'Noto Sans Devanagari',sans-serif;background:var(--bg);color:va
         <span style="font-size:10px;color:var(--muted);margin-left:2px;">✕</span>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
-      <button class="back-btn" id="back-btn" onclick="goBack()" style="display:none;">◀ वापस</button>
-      <div class="hq-scroll" id="hq-tabs" style="flex:1;"></div>
-    </div>
+    <div class="hq-scroll" id="hq-tabs"></div>
   </div>
   <div class="main-scroll">
     <div class="summary" id="summary"></div>
@@ -322,10 +300,7 @@ body{font-family:'Noto Sans Devanagari',sans-serif;background:var(--bg);color:va
 <div class="moverlay" id="up-overlay" onclick="closeUpOutside(event)">
   <div class="msheet">
     <div class="mhandle"></div>
-    <div class="msheet-hdr">
-      <button class="back-btn" onclick="closeUpModal()">◀ वापस</button>
-      <div class="mtitle">📤 लिस्ट अपलोड करें</div>
-    </div>
+    <div class="mtitle">📤 लिस्ट अपलोड करें</div>
     <div class="up-info-box">
       <b>जरूरी columns:</b> Consumer No, Consumer Name, Net Bill<br>
       <b>optional:</b> Mobile No, Address, Remark, Tariff, Load, Unit, Last Paid, Last PayDate 1<br>
@@ -387,10 +362,7 @@ body{font-family:'Noto Sans Devanagari',sans-serif;background:var(--bg);color:va
 <div class="moverlay" id="rmk-overlay" onclick="closeRmkOutside(event)">
   <div class="msheet">
     <div class="mhandle"></div>
-    <div class="msheet-hdr">
-      <button class="back-btn" onclick="closeRmkModal()">◀ वापस</button>
-      <div class="mtitle">✏️ रिमार्क व स्थिति अपडेट</div>
-    </div>
+    <div class="mtitle">✏️ रिमार्क व स्थिति अपडेट</div>
     <input type="hidden" id="rmk-idx">
     <div class="rmk-info">
       <div class="rmk-name" id="rmk-name"></div>
@@ -438,7 +410,7 @@ let memCache={}; // in-memory cache
 // ══════════════════════════════════════
 // STORAGE — Cloud via window.storage
 // ══════════════════════════════════════
-function skey(hq,cat){return `vasuli-${hq}-${cat}`;}
+function skey(hq,cat){return vasuli-${hq}-${cat};}
 
 async function gdata(hq,cat){
   const k=skey(hq,cat);
@@ -497,7 +469,7 @@ async function doLogin(){
   showLoader('डेटा लोड हो रहा है...');
   await renderAll();
   hideLoader();
-  toast(`स्वागत है ${name}! 🙏`,'ok');
+  toast(स्वागत है ${name}! 🙏,'ok');
 }
 
 function doLogout(){
@@ -535,23 +507,6 @@ function buildUI(){
   buildHQTabs(); buildCatTabs(); buildActionBtns();
 }
 
-let navHistory=[];
-function goBack(){
-  if(navHistory.length===0)return;
-  const prev=navHistory.pop();
-  activeHQ=prev.hq; activeCat=prev.cat; activeFilter=prev.filter;
-  buildHQTabs(); buildCatTabs();
-  renderAll();
-  updateBackBtn();
-}
-function pushNav(){
-  navHistory.push({hq:activeHQ,cat:activeCat,filter:activeFilter});
-  updateBackBtn();
-}
-function updateBackBtn(){
-  const b=document.getElementById('back-btn');
-  if(b)b.style.display=navHistory.length>0?'flex':'none';
-}
 function buildHQTabs(){
   const c=document.getElementById('hq-tabs'); c.innerHTML='';
   const hqs=CU.role==='supervisor'?HQS:[CU.hq];
@@ -559,7 +514,7 @@ function buildHQTabs(){
     const b=document.createElement('button');
     b.className='hq-tab'+(hq===activeHQ?' active':'');
     b.textContent=hq;
-    b.onclick=async()=>{pushNav();activeHQ=hq;buildHQTabs();showLoader();await renderAll();hideLoader();};
+    b.onclick=async()=>{activeHQ=hq;buildHQTabs();showLoader();await renderAll();hideLoader();};
     c.appendChild(b);
   });
 }
@@ -568,9 +523,9 @@ function buildCatTabs(){
   const c=document.getElementById('cat-tabs'); c.innerHTML='';
   CATS.forEach((cat,i)=>{
     const b=document.createElement('button');
-    b.className='cat-tab'+(cat===activeCat?` active c${i}`:` c${i}`);
+    b.className='cat-tab'+(cat===activeCat?` active c${i}: c${i}`);
     b.dataset.cat=cat; b.textContent=CAT_ICONS[i]+' '+cat;
-    b.onclick=async()=>{pushNav();activeCat=cat;activeFilter='all';buildCatTabs();showLoader();await renderAll();hideLoader();};
+    b.onclick=async()=>{activeCat=cat;activeFilter='all';buildCatTabs();showLoader();await renderAll();hideLoader();};
     c.appendChild(b);
   });
 }
@@ -599,7 +554,7 @@ async function renderAll(){
   buildHQTabs(); buildCatTabs();
   await renderSummary();
   await renderList();
-  document.getElementById('list-title').textContent=`${activeHQ} › ${activeCat}`;
+  document.getElementById('list-title').textContent=${activeHQ} › ${activeCat};
 }
 
 async function renderSummary(){
@@ -651,21 +606,21 @@ async function renderList(){
       </div>
       <div class="cc-amt">₹${Number(x.amount).toLocaleString('hi-IN')} <span>बकाया</span></div>
       <div class="cc-chips">
-        ${x.acc?`<span class="chip chip-acc">📄 ${x.acc}</span>`:''}
-        ${x.phone?`<span class="chip chip-ph">📞 ${x.phone}</span>`:''}
-        ${x.addr?`<span class="chip chip-addr">📍 ${x.addr}</span>`:''}
+        ${x.acc?<span class="chip chip-acc">📄 ${x.acc}</span>:''}
+        ${x.phone?<span class="chip chip-ph">📞 ${x.phone}</span>:''}
+        ${x.addr?<span class="chip chip-addr">📍 ${x.addr}</span>:''}
       </div>
       <div class="cc-bot">
         <span class="sbadge ${isPaid?'sb-paid':'sb-pending'}">${isPaid?'✅ वसूल':'⏳ बाकी'}</span>
         <div class="act-btns">
           <button class="abtn abtn-rmk" onclick="openRmkModal(${oi})">✏️ रिमार्क</button>
-          ${!isPaid?`<button class="abtn abtn-pay" onclick="markPaid(${oi})">✓ वसूल</button>`:''}
+          ${!isPaid?<button class="abtn abtn-pay" onclick="markPaid(${oi})">✓ वसूल</button>:''}
         </div>
       </div>
-      ${x.paydate?`<div class="cc-paydate">💰 भुगतान: ${x.paydate}</div>`:''}
-      ${x.extra?`<div class="cc-extra">📋 ${x.extra}</div>`:''}
-      ${x.remarks?`<div class="cc-rem">💬 ${x.remarks}</div>`:''}
-      ${x.updatedBy?`<div class="cc-updby">🔄 ${x.updatedBy} • ${x.updatedAt||''}</div>`:''}
+      ${x.paydate?<div class="cc-paydate">💰 भुगतान: ${x.paydate}</div>:''}
+      ${x.extra?<div class="cc-extra">📋 ${x.extra}</div>:''}
+      ${x.remarks?<div class="cc-rem">💬 ${x.remarks}</div>:''}
+      ${x.updatedBy?<div class="cc-updby">🔄 ${x.updatedBy} • ${x.updatedAt||''}</div>:''}
     </div>`;
   }).join('');
 }
@@ -683,7 +638,7 @@ async function markPaid(idx){
 }
 
 async function clearList(){
-  if(!confirm(`${activeHQ} › ${activeCat} की पूरी लिस्ट हटाएं?`))return;
+  if(!confirm(${activeHQ} › ${activeCat} की पूरी लिस्ट हटाएं?))return;
   showLoader('हटाया जा रहा है...');
   await deldata(activeHQ,activeCat);
   await renderAll(); hideLoader();
@@ -813,16 +768,16 @@ function processRows(rows){
   document.getElementById('up-preview').style.display='block';
   const wb=document.getElementById('up-warn');
   const warns=[];
-  if(errors.length)warns.push(`⚠️ ${errors.length} rows skip (Row: ${errors.slice(0,5).join(',')}${errors.length>5?'...':''})`);
+  if(errors.length)warns.push(⚠️ ${errors.length} rows skip (Row: ${errors.slice(0,5).join(',')}${errors.length>5?'...':''}));
   if(rows.length>50)warns.push('⚠️ केवल पहले 50 रिकॉर्ड');
   wb.style.display=warns.length?'block':'none';
   wb.textContent=warns.join(' | ');
-  document.getElementById('prev-title').textContent=`पूर्वावलोकन (${parsedRows.length} रिकॉर्ड)`;
+  document.getElementById('prev-title').textContent=पूर्वावलोकन (${parsedRows.length} रिकॉर्ड);
   document.getElementById('prev-rows').innerHTML=parsedRows.slice(0,6).map((r,i)=>
-    `<div class="prev-row"><span class="pr-name">${i+1}. ${r.name}</span><span class="pr-acc">${r.acc}</span><span class="pr-amt">₹${Number(r.amount).toLocaleString('hi-IN')}</span></div>`
-  ).join('')+(parsedRows.length>6?`<div style="font-size:10px;color:var(--muted);text-align:center;padding:5px 0;">...और ${parsedRows.length-6} रिकॉर्ड</div>`:'');
+    <div class="prev-row"><span class="pr-name">${i+1}. ${r.name}</span><span class="pr-acc">${r.acc}</span><span class="pr-amt">₹${Number(r.amount).toLocaleString('hi-IN')}</span></div>
+  ).join('')+(parsedRows.length>6?<div style="font-size:10px;color:var(--muted);text-align:center;padding:5px 0;">...और ${parsedRows.length-6} रिकॉर्ड</div>:'');
   document.getElementById('uz-ico').textContent=parsedRows.length?'✅':'❌';
-  document.getElementById('uz-t').textContent=`${parsedRows.length} valid रिकॉर्ड मिले`;
+  document.getElementById('uz-t').textContent=${parsedRows.length} valid रिकॉर्ड मिले;
   if(parsedRows.length>0){document.getElementById('btn-up-ok').disabled=false;document.getElementById('btn-up-ok').style.opacity='1';}
 }
 async function confirmUpload(){
@@ -839,12 +794,12 @@ async function confirmUpload(){
     parsedRows.forEach(r=>{if(!merged.find(e=>e.acc===r.acc))merged.push(r);});
     final=merged.slice(0,50);
   }
-  showLoader(`${hq} › ${cat} में अपलोड हो रहा है...`);
+  showLoader(${hq} › ${cat} में अपलोड हो रहा है...);
   await sdata(hq,cat,final);
   activeHQ=hq; activeCat=cat;
   buildUI(); await renderAll(); hideLoader();
   closeUpModal();
-  toast(`✅ ${final.length} रिकॉर्ड ${hq} › ${cat} में अपलोड!`,'ok');
+  toast(✅ ${final.length} रिकॉर्ड ${hq} › ${cat} में अपलोड!,'ok');
 }
 
 function dlTemplate(){
