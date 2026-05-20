@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>वसूली ट्रैकर | आदेगांव DC</title>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -50,6 +49,8 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .hdr-icon{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--gold),#c47a00);display:flex;align-items:center;justify-content:center;font-size:17px;}
 .hdr-title{font-family:"Baloo 2",cursive;font-size:14px;font-weight:800;color:var(--gold2);}
 .hdr-sub{font-size:10px;color:var(--muted);}
+.hdr-right{display:flex;align-items:center;gap:5px;}
+.hbtn{border:none;border-radius:8px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;}
 .user-pill{display:flex;align-items:center;gap:5px;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:4px 9px 4px 4px;cursor:pointer;}
 .udot{width:24px;height:24px;border-radius:50%;font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:700;}
 .udot.sup{background:linear-gradient(135deg,var(--gold),#c47a00);color:#000;}
@@ -169,11 +170,11 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 <body>
 <div class="loading-overlay" id="loader">
   <div class="spinner"></div>
-  <div class="loading-text" id="loader-text">Firebase से जुड़ रहे हैं...</div>
+  <div class="loading-text" id="loader-text">लोड हो रहा है...</div>
 </div>
 
 <div id="login-screen" class="screen">
-  <img class="login-logo" src="https://upload.wikimedia.org/wikipedia/en/5/5b/Madhya_Pradesh_Poorv_Kshetra_Vidyut_Vitran_Company_logo.png" alt="logo" onerror="this.outerHTML='<div style=\'font-size:60px;margin-bottom:10px\'>⚡</div>'">
+  <img class="login-logo" src="https://upload.wikimedia.org/wikipedia/en/5/5b/Madhya_Pradesh_Poorv_Kshetra_Vidyut_Vitran_Company_logo.png" alt="logo" onerror="this.outerHTML='<div style=\'font-size:60px;margin-bottom:10px\'>&#9889;</div>'">
   <div class="login-title">आदेगांव DC वसूली ट्रैकर</div>
   <div class="login-sub">मध्यप्रदेश पूर्व क्षेत्र विद्युत वितरण कं. लि.</div>
   <div class="login-card">
@@ -216,23 +217,27 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 <div id="app-screen" class="screen">
   <div class="sync-bar">
     <div class="sdot" id="sdot"></div>
-    <span class="stxt" id="stxt">Firebase Live Sync ✓</span>
+    <span class="stxt" id="stxt">Live Sync</span>
     <span class="stime" id="stime"></span>
   </div>
   <div class="app-header">
     <div class="hdr1">
       <div class="hdr-left">
-        <button class="back-btn" id="back-btn" onclick="goBack()">←</button>
-        <div class="hdr-icon">⚡</div>
+        <button class="back-btn" id="back-btn" onclick="goBack()">&#8592;</button>
+        <div class="hdr-icon">&#9889;</div>
         <div>
           <div class="hdr-title">वसूली ट्रैकर</div>
           <div class="hdr-sub" id="hdr-sub">आदेगांव DC</div>
         </div>
       </div>
-      <div class="user-pill" onclick="doLogout()">
-        <div class="udot" id="udot">J</div>
-        <span class="uname" id="uname-disp">User</span>
-        <span style="font-size:10px;color:var(--muted);margin-left:2px;">✕</span>
+      <div class="hdr-right">
+        <button class="hbtn" style="background:#c62828;color:#fff;" onclick="downloadPDF()">📄 PDF</button>
+        <button class="hbtn" style="background:#2e7d32;color:#fff;" onclick="downloadExcel()">📊 Excel</button>
+        <div class="user-pill" onclick="doLogout()">
+          <div class="udot" id="udot">J</div>
+          <span class="uname" id="uname-disp">User</span>
+          <span style="font-size:10px;color:var(--muted);margin-left:2px;">&#x2715;</span>
+        </div>
       </div>
     </div>
     <div class="hq-scroll" id="hq-tabs"></div>
@@ -259,14 +264,15 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
   </div>
 </div>
 
+<!-- UPLOAD MODAL -->
 <div class="moverlay" id="up-overlay" onclick="closeUpOutside(event)">
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">📤 लिस्ट अपलोड करें</div>
     <div class="up-info-box">
-      <b>📱 Mobile से:</b> Files app → Excel/CSV select करें<br>
-      <b>जरूरी columns:</b> Consumer No, Consumer Name, Net Bill<br>
-      <b>Optional:</b> Mobile No, Address, Remark
+      <b>💻 Computer:</b> Click करें या Drag &amp; Drop<br>
+      <b>📱 Mobile:</b> Files/Downloads से select करें<br>
+      <b>जरूरी:</b> Consumer No, Consumer Name, Net Bill
     </div>
     <button class="tmpl-btn" onclick="dlTemplate()">⬇️ Template CSV डाउनलोड करें</button>
     <div class="up-sel2">
@@ -292,9 +298,9 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
     <div class="upload-zone" id="up-zone" onclick="document.getElementById('file-input').click()" ondragover="dOver(event)" ondragleave="dLeave()" ondrop="dDrop(event)">
       <div class="uz-icon" id="uz-ico">📂</div>
       <div class="uz-t" id="uz-t">CSV या Excel फ़ाइल चुनें</div>
-      <div class="uz-s">📱 Mobile: Files app से select करें</div>
+      <div class="uz-s">💻 Drag &amp; Drop | 📱 Files app से select करें</div>
     </div>
-    <input type="file" id="file-input" accept=".csv,.xlsx,.xls" onchange="handleFile(this.files[0])">
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls,*/*" onchange="handleFile(this.files[0])">
     <div id="up-preview" style="display:none;">
       <div class="warn-box" id="up-warn" style="display:none;"></div>
       <div class="preview-box">
@@ -309,6 +315,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
   </div>
 </div>
 
+<!-- REMARK MODAL -->
 <div class="moverlay" id="rmk-overlay" onclick="closeRmkOutside(event)">
   <div class="msheet">
     <div class="mhandle"></div>
@@ -342,75 +349,107 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 <div class="toast" id="toast"></div>
 
 <script>
-var HQS=["आदेगांव","पिंडरई","जोबा","पाटन","बीबी","मादी"];
-var CATS=["घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल"];
-var CICO=["🏠","🏪","🌾","🏛️","🏭"];
-var SUP_PW="bijli@2025";
-var CU=null,activeHQ="",activeCat="घरेलू",activeFilter="all";
-var upMode="replace",parsedRows=[],selectedRole="",rmkStatus="pending";
-var fdb = null;
+var HQS = ["आदेगांव","पिंडरई","जोबा","पाटन","बीबी","मादी"];
+var CATS = ["घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल"];
+var CICO = ["🏠","🏪","🌾","🏛️","🏭"];
+var SUP_PW = "bijli@2025";
+var CU = null, activeHQ = "", activeCat = "घरेलू", activeFilter = "all";
+var upMode = "replace", parsedRows = [], selectedRole = "", rmkStatus = "pending";
+var pollTimer = null;
 var FB = "https://adegaon-dc-top-50-default-rtdb.firebaseio.com";
-var CACHE = {}; // local memory cache
+var CACHE = {};
 
-function cacheKey(hq,cat){return hq+"_"+cat;}
-function cacheGet(hq,cat){return CACHE[cacheKey(hq,cat)]||[];}
-function cacheSet(hq,cat,data){CACHE[cacheKey(hq,cat)]=data;}
+function cKey(hq,cat){return hq+"_"+cat;}
+function cGet(hq,cat){return CACHE[cKey(hq,cat)]||[];}
+function cSet(hq,cat,d){CACHE[cKey(hq,cat)]=d;}
 
 function fbPath(hq,cat){return hq.replace(/\s/g,"_")+"/"+cat.replace(/\s/g,"_");}
 
 function fbGet(hq,cat,cb){
-  // पहले cache से तुरंत दिखाओ
-  var cached = cacheGet(hq,cat);
+  var cached = cGet(hq,cat);
   if(cached.length) cb(cached);
-  // फिर Firebase से fresh data लो
   fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
     .then(function(r){return r.json();})
     .then(function(d){
-      var data = !d ? [] : Array.isArray(d) ? d : Object.values(d).filter(Boolean);
-      cacheSet(hq,cat,data);
+      var data = !d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
+      cSet(hq,cat,data);
       cb(data);
       setSyncStatus(true);
-    }).catch(function(){
+    })
+    .catch(function(){
       if(!cached.length) cb([]);
       setSyncStatus(false);
     });
 }
 
 function fbSet(hq,cat,arr,cb){
-  cacheSet(hq,cat,arr); // cache तुरंत update
-  renderSummaryWith(arr); renderListWith(arr); // UI तुरंत दिखाओ
+  cSet(hq,cat,arr);
   fetch(FB+"/"+fbPath(hq,cat)+".json",{
     method:"PUT",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify(arr)
-  }).then(function(r){
-    if(!r.ok)throw new Error("HTTP "+r.status);
-    updTime();setSyncStatus(true);if(cb)cb(true);
-  }).catch(function(e){toast("❌ "+e.message,"err");if(cb)cb(false);});
+  })
+  .then(function(r){
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    updTime(); setSyncStatus(true);
+    if(cb) cb(true);
+  })
+  .catch(function(e){
+    toast("❌ "+e.message,"err");
+    if(cb) cb(false);
+  });
 }
 
 function fbDel(hq,cat,cb){
+  cSet(hq,cat,[]);
   fetch(FB+"/"+fbPath(hq,cat)+".json",{method:"DELETE"})
-    .then(function(){if(cb)cb();}).catch(function(){if(cb)cb();});
+    .then(function(){if(cb)cb();})
+    .catch(function(){if(cb)cb();});
 }
 
-var pollTimer=null;
 function startListen(hq,cat){
-  if(pollTimer)clearInterval(pollTimer);
-  pollTimer=setInterval(function(){
-    fbGet(hq,cat,function(data){
-      renderSummaryWith(data);renderListWith(data);setSyncStatus(true);updTime();
-    });
-  },6000);
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(function(){
+    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
+      .then(function(r){return r.json();})
+      .then(function(d){
+        var data = !d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
+        cSet(hq,cat,data);
+        renderSummaryWith(data);
+        renderListWith(data);
+        setSyncStatus(true); updTime();
+      }).catch(function(){setSyncStatus(false);});
+  },8000);
 }
 
+function showLoader(t){document.getElementById("loader-text").textContent=t||"लोड हो रहा है...";document.getElementById("loader").classList.remove("hidden");}
+function hideLoader(){document.getElementById("loader").classList.add("hidden");}
+function toast(msg,type){
+  var t=document.getElementById("toast");
+  t.textContent=msg; t.className="toast show "+(type||"");
+  clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove("show");},3500);
+}
+function setSyncStatus(ok){
+  var d=document.getElementById("sdot"),t=document.getElementById("stxt");
+  if(!d)return;
+  d.className=ok?"sdot":"sdot off";
+  t.className=ok?"stxt":"stxt off";
+  t.textContent=ok?"Live Sync ✓":"ऑफलाइन";
+}
+function updTime(){
+  var now=new Date(),el=document.getElementById("stime");
+  if(el) el.textContent=now.getHours()+":"+String(now.getMinutes()).padStart(2,"0");
+}
+window.addEventListener("online",function(){setSyncStatus(true);});
+window.addEventListener("offline",function(){setSyncStatus(false);});
 
 function updateBackBtn(){
-  var bb=document.getElementById("back-btn");if(!bb)return;
-  var show=activeCat!=="घरेलू"||activeFilter!=="all"||
+  var bb=document.getElementById("back-btn");
+  if(!bb)return;
+  var show = activeCat!=="घरेलू"||activeFilter!=="all"||
     document.getElementById("rmk-overlay").classList.contains("open")||
     document.getElementById("up-overlay").classList.contains("open");
-  if(show)bb.classList.add("show");else bb.classList.remove("show");
+  if(show) bb.classList.add("show"); else bb.classList.remove("show");
 }
 
 function goBack(){
@@ -420,9 +459,14 @@ function goBack(){
     activeFilter="all";
     document.querySelectorAll(".filter-btn").forEach(function(b){b.className="filter-btn";});
     document.querySelector("[data-f='all']").className="filter-btn active-all";
-    updateBackBtn();return;
+    fbGet(activeHQ,activeCat,function(d){renderListWith(d);}); updateBackBtn(); return;
   }
-  if(activeCat!=="घरेलू"){activeCat="घरेलू";activeFilter="all";buildCatTabs();startListen(activeHQ,activeCat);updateBackBtn();}
+  if(activeCat!=="घरेलू"){
+    activeCat="घरेलू"; activeFilter="all";
+    buildCatTabs(); startListen(activeHQ,activeCat);
+    fbGet(activeHQ,activeCat,function(d){renderSummaryWith(d);renderListWith(d);});
+    updateBackBtn();
+  }
 }
 
 function selectRole(r){
@@ -435,33 +479,33 @@ function selectRole(r){
 function togglePw(){var i=document.getElementById("sup-pw");i.type=i.type==="password"?"text":"password";}
 
 function doLogin(){
-  var role=selectedRole,name=document.getElementById("uname-inp").value.trim();
+  var role=selectedRole, name=document.getElementById("uname-inp").value.trim();
   if(!role){toast("भूमिका चुनें","err");return;}
   if(!name){toast("अपना नाम लिखें","err");return;}
   if(role==="supervisor"){
     if(document.getElementById("sup-pw").value!==SUP_PW){toast("❌ गलत पासवर्ड!","err");return;}
     CU={role:role,name:name,hq:HQS[0]};
-  }else{
+  } else {
     var hq=document.getElementById("hq-sel").value;
     if(!hq){toast("HQ चुनें","err");return;}
     CU={role:role,name:name,hq:hq};
   }
-  activeHQ=CU.hq;activeCat="घरेलू";activeFilter="all";
+  activeHQ=CU.hq; activeCat="घरेलू"; activeFilter="all";
   document.getElementById("login-screen").classList.remove("active");
   document.getElementById("app-screen").classList.add("active");
   buildUI();
   showLoader("डेटा लोड हो रहा है...");
   fbGet(activeHQ,activeCat,function(data){
-    renderSummaryWith(data);renderListWith(data);
+    renderSummaryWith(data); renderListWith(data);
     startListen(activeHQ,activeCat);
-    hideLoader();toast("स्वागत है "+name+"! 🙏","ok");
+    hideLoader(); toast("स्वागत है "+name+"! 🙏","ok");
   });
 }
 
 function doLogout(){
   if(!confirm("लॉगआउट करना चाहते हैं?"))return;
-  if(activeRef){activeRef.off();activeRef=null;}
-  CU=null;selectedRole="";
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+  CU=null; selectedRole="";
   document.getElementById("app-screen").classList.remove("active");
   document.getElementById("login-screen").classList.add("active");
   document.getElementById("uname-inp").value="";
@@ -479,22 +523,22 @@ function buildUI(){
   dot.className="udot "+(CU.role==="supervisor"?"sup":"lin");
   document.getElementById("uname-disp").textContent=CU.name;
   document.getElementById("hdr-sub").textContent=CU.role==="supervisor"?"JE | सभी HQ":"Lineman | "+CU.hq;
-  buildHQTabs();buildCatTabs();buildActionBtns();
+  buildHQTabs(); buildCatTabs(); buildActionBtns();
 }
 
 function buildHQTabs(){
-  var c=document.getElementById("hq-tabs");c.innerHTML="";
+  var c=document.getElementById("hq-tabs"); c.innerHTML="";
   var hqs=CU.role==="supervisor"?HQS:[CU.hq];
   hqs.forEach(function(hq){
     var b=document.createElement("button");
     b.className="hq-tab"+(hq===activeHQ?" active":"");
     b.textContent=hq;
     b.onclick=function(){
-      activeHQ=hq;activeFilter="all";buildHQTabs();
+      activeHQ=hq; activeFilter="all"; buildHQTabs();
       showLoader();
       fbGet(activeHQ,activeCat,function(data){
-        renderSummaryWith(data);renderListWith(data);
-        startListen(activeHQ,activeCat);hideLoader();
+        renderSummaryWith(data); renderListWith(data);
+        startListen(activeHQ,activeCat); hideLoader();
       });
     };
     c.appendChild(b);
@@ -502,40 +546,45 @@ function buildHQTabs(){
 }
 
 function buildCatTabs(){
-  var c=document.getElementById("cat-tabs");c.innerHTML="";
+  var c=document.getElementById("cat-tabs"); c.innerHTML="";
   CATS.forEach(function(cat,i){
     var b=document.createElement("button");
     b.className="cat-tab"+(cat===activeCat?" active c"+i:" c"+i);
     b.onclick=function(){
-      activeCat=cat;activeFilter="all";
+      activeCat=cat; activeFilter="all";
       document.querySelectorAll(".filter-btn").forEach(function(x){x.className="filter-btn";});
       document.querySelector("[data-f='all']").className="filter-btn active-all";
       buildCatTabs();
       showLoader();
       fbGet(activeHQ,activeCat,function(data){
-        renderSummaryWith(data);renderListWith(data);
-        startListen(activeHQ,activeCat);hideLoader();updateBackBtn();
+        renderSummaryWith(data); renderListWith(data);
+        startListen(activeHQ,activeCat); hideLoader(); updateBackBtn();
       });
     };
-    b.textContent=CICO[i]+" "+cat;c.appendChild(b);
+    b.textContent=CICO[i]+" "+cat;
+    c.appendChild(b);
   });
 }
 
 function buildActionBtns(){
-  var c=document.getElementById("action-btns");c.innerHTML="";
+  var c=document.getElementById("action-btns"); c.innerHTML="";
   var b1=document.createElement("button");
-  b1.className="tbtn tbtn-blue";b1.innerHTML="📤 अपलोड";b1.onclick=openUpModal;
+  b1.className="tbtn tbtn-blue"; b1.innerHTML="📤 अपलोड"; b1.onclick=openUpModal;
   c.appendChild(b1);
   if(CU.role==="supervisor"){
     var b2=document.createElement("button");
-    b2.className="tbtn tbtn-red";b2.innerHTML="🗑️ हटाएं";b2.onclick=clearList;
+    b2.className="tbtn tbtn-red"; b2.innerHTML="🗑️ हटाएं"; b2.onclick=clearList;
     c.appendChild(b2);
   }
 }
 
 function renderSummaryWith(data){
   var tot=0,paid=0,pend=0,pendAmt=0;
-  data.forEach(function(c){tot++;if(c.status==="paid")paid++;else{pend++;pendAmt+=Number(c.amount)||0;}});
+  data.forEach(function(c){
+    tot++;
+    if(c.status==="paid") paid++;
+    else{pend++; pendAmt+=Number(c.amount)||0;}
+  });
   var fmt=function(a){return a>=100000?"₹"+(a/100000).toFixed(1)+"L":a>=1000?"₹"+(a/1000).toFixed(1)+"K":"₹"+a;};
   document.getElementById("summary").innerHTML=
     "<div class='sbox'><div class='snum'>"+tot+"</div><div class='slbl'>"+activeCat+"</div></div>"+
@@ -568,7 +617,7 @@ function renderListWith(data){
     return;
   }
   c.innerHTML=filtered.map(function(x){
-    var oi=data.indexOf(x),isPaid=x.status==="paid";
+    var oi=data.indexOf(x), isPaid=x.status==="paid";
     return "<div class='con-card "+(isPaid?"paid":"pending")+"'>"+
       "<div class='cc-top'><div class='cc-name'>"+x.name+"</div><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
       "<div class='cc-amt'>₹"+Number(x.amount).toLocaleString("hi-IN")+" <span>बकाया</span></div>"+
@@ -590,33 +639,38 @@ function renderListWith(data){
 }
 
 function markPaid(idx){
-  fbGet(activeHQ,activeCat,function(d){
-    d[idx].status="paid";d[idx].paydate=new Date().toLocaleDateString("hi-IN");
-    d[idx].updatedBy=CU.name;d[idx].updatedAt=new Date().toLocaleString("hi-IN");
-    showLoader("save हो रहा है...");
-    fbSet(activeHQ,activeCat,d,function(ok){hideLoader();if(ok)toast("✅ वसूली दर्ज!","ok");});
-  });
+  var d=cGet(activeHQ,activeCat);
+  if(!d[idx])return;
+  d[idx].status="paid";
+  d[idx].paydate=new Date().toLocaleDateString("hi-IN");
+  d[idx].updatedBy=CU.name;
+  d[idx].updatedAt=new Date().toLocaleString("hi-IN");
+  cSet(activeHQ,activeCat,d);
+  renderSummaryWith(d); renderListWith(d);
+  toast("✅ वसूली दर्ज!","ok");
+  fbSet(activeHQ,activeCat,d,null);
 }
 
 function clearList(){
   if(!confirm(activeHQ+" › "+activeCat+" की लिस्ट हटाएं?"))return;
-  showLoader("हटाया जा रहा है...");
-  fbDel(activeHQ,activeCat,function(){hideLoader();toast("🗑️ लिस्ट हटाई गई","inf");});
+  cSet(activeHQ,activeCat,[]);
+  renderSummaryWith([]); renderListWith([]);
+  toast("🗑️ लिस्ट हटाई गई","inf");
+  fbDel(activeHQ,activeCat,null);
 }
 
 function openRmkModal(idx){
-  fbGet(activeHQ,activeCat,function(d){
-    var x=d[idx];
-    document.getElementById("rmk-key").value=idx;
-    document.getElementById("rmk-name").textContent=x.name;
-    document.getElementById("rmk-amt").textContent="₹"+Number(x.amount).toLocaleString("hi-IN")+" बकाया";
-    document.getElementById("rmk-acc").textContent="Consumer No: "+x.acc;
-    document.getElementById("rmk-text").value=x.remarks||"";
-    document.getElementById("rmk-paydate").value=x.paydate||"";
-    setRmkStatus(x.status||"pending");
-    document.getElementById("rmk-overlay").classList.add("open");
-    updateBackBtn();
-  });
+  var d=cGet(activeHQ,activeCat);
+  var x=d[idx]; if(!x)return;
+  document.getElementById("rmk-key").value=idx;
+  document.getElementById("rmk-name").textContent=x.name;
+  document.getElementById("rmk-amt").textContent="₹"+Number(x.amount).toLocaleString("hi-IN")+" बकाया";
+  document.getElementById("rmk-acc").textContent="Consumer No: "+x.acc;
+  document.getElementById("rmk-text").value=x.remarks||"";
+  document.getElementById("rmk-paydate").value=x.paydate||"";
+  setRmkStatus(x.status||"pending");
+  document.getElementById("rmk-overlay").classList.add("open");
+  updateBackBtn();
 }
 function closeRmkModal(){document.getElementById("rmk-overlay").classList.remove("open");updateBackBtn();}
 function closeRmkOutside(e){if(e.target===document.getElementById("rmk-overlay"))closeRmkModal();}
@@ -628,20 +682,26 @@ function setRmkStatus(s){
 }
 function saveRmk(){
   var idx=parseInt(document.getElementById("rmk-key").value);
-  fbGet(activeHQ,activeCat,function(d){
-    d[idx].status=rmkStatus;
-    d[idx].remarks=document.getElementById("rmk-text").value.trim();
-    if(rmkStatus==="paid")d[idx].paydate=document.getElementById("rmk-paydate").value||new Date().toLocaleDateString("hi-IN");
-    d[idx].updatedBy=CU.name;d[idx].updatedAt=new Date().toLocaleString("hi-IN");
-    showLoader("save हो रहा है...");
-    fbSet(activeHQ,activeCat,d,function(ok){closeRmkModal();hideLoader();if(ok)toast("✅ रिमार्क सेव!","ok");});
-  });
+  var d=cGet(activeHQ,activeCat);
+  if(!d[idx])return;
+  d[idx].status=rmkStatus;
+  d[idx].remarks=document.getElementById("rmk-text").value.trim();
+  if(rmkStatus==="paid") d[idx].paydate=document.getElementById("rmk-paydate").value||new Date().toLocaleDateString("hi-IN");
+  d[idx].updatedBy=CU.name;
+  d[idx].updatedAt=new Date().toLocaleString("hi-IN");
+  cSet(activeHQ,activeCat,d);
+  closeRmkModal();
+  renderSummaryWith(d); renderListWith(d);
+  toast("✅ रिमार्क सेव!","ok");
+  fbSet(activeHQ,activeCat,d,null);
 }
 
 function openUpModal(){
-  var sel=document.getElementById("up-hq");sel.innerHTML="";
+  var sel=document.getElementById("up-hq"); sel.innerHTML="";
   var hqs=CU.role==="supervisor"?HQS:[CU.hq];
-  hqs.forEach(function(hq){var o=document.createElement("option");o.value=hq;o.textContent=hq;sel.appendChild(o);});
+  hqs.forEach(function(hq){
+    var o=document.createElement("option"); o.value=hq; o.textContent=hq; sel.appendChild(o);
+  });
   sel.value=activeHQ;
   document.getElementById("up-cat").value=activeCat;
   parsedRows=[];
@@ -671,38 +731,45 @@ function handleFile(f){
   document.getElementById("uz-ico").textContent="⏳";
   document.getElementById("uz-t").textContent=f.name;
   var n=f.name.toLowerCase();
-  if(n.endsWith(".csv")){
-    Papa.parse(f,{header:true,skipEmptyLines:true,complete:function(r){processRows(r.data);},error:function(){toast("CSV त्रुटि","err");}});
-  }else if(n.endsWith(".xlsx")||n.endsWith(".xls")){
+  if(n.endsWith(".xlsx")||n.endsWith(".xls")){
     var rd=new FileReader();
     rd.onload=function(e){
-      try{var wb=XLSX.read(e.target.result,{type:"array"});processRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""}));}
-      catch(ex){toast("Excel त्रुटि","err");}
+      try{
+        var wb=XLSX.read(e.target.result,{type:"array"});
+        processRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:"",raw:false}));
+      }catch(ex){toast("Excel त्रुटि: "+ex.message,"err");}
     };
     rd.readAsArrayBuffer(f);
-  }else{
-    Papa.parse(f,{header:true,skipEmptyLines:true,complete:function(r){if(r.data.length)processRows(r.data);else toast("Format सही नहीं","err");},error:function(){toast("Format सही नहीं","err");}});
+  } else {
+    var rd2=new FileReader();
+    rd2.onload=function(e){
+      var result=Papa.parse(e.target.result,{header:true,skipEmptyLines:true});
+      if(result.data&&result.data.length) processRows(result.data);
+      else toast("CSV में data नहीं मिला","err");
+    };
+    rd2.readAsText(f,"UTF-8");
   }
 }
 
 function processRows(rows){
   var valid=[],errors=[];
   rows.forEach(function(r,i){
-    var k={};Object.keys(r).forEach(function(h){k[h.trim().toLowerCase().replace(/[\s_]/g,"")]=r[h];});
-    var name=(k["consumername"]||k["name"]||k["नाम"]||"").toString().trim();
-    var acc=(k["consumerno"]||k["acc"]||k["accountno"]||k["ivrs"]||"").toString().trim();
-    var rawAmt=(k["netbill"]||k["amount"]||k["dues"]||k["arrear"]||k["balance"]||k["bill"]||"").toString().replace(/,/g,"").replace(/[₹\s]/g,"").trim();
-    var phone=(k["mobileno"]||k["mobile"]||k["phone"]||"").toString().trim();
-    var addr=(k["address"]||k["addr"]||"").toString().trim();
-    var rem=(k["remark"]||k["remarks"]||"").toString().trim();
-    if(!name||!acc||!rawAmt||isNaN(rawAmt)||Number(rawAmt)<0){errors.push(i+2);}
-    else{valid.push({name:name,acc:acc,amount:rawAmt,phone:phone,addr:addr,remarks:rem,status:"pending",uploadedBy:CU.name,uploadedAt:new Date().toLocaleString("hi-IN")});}
+    var k={};
+    Object.keys(r).forEach(function(h){k[h.trim().toLowerCase().replace(/[\s_]/g,"")]=String(r[h]).trim();});
+    var name=(k["consumername"]||k["name"]||k["cname"]||k["नाम"]||"").toString().trim();
+    var acc=(k["consumernumber"]||k["consumerno"]||k["acc"]||k["accountno"]||k["ivrs"]||k["no"]||"").toString().trim();
+    var rawAmt=(k["netbill"]||k["netamt"]||k["amount"]||k["dues"]||k["arrear"]||k["balance"]||k["bill"]||k["netamount"]||"").toString().replace(/,/g,"").replace(/[₹\s]/g,"").trim();
+    var phone=(k["mobileno"]||k["mobile"]||k["phone"]||k["mob"]||k["mobilenumber"]||"").toString().trim();
+    var addr=(k["address"]||k["addr"]||k["add"]||"").toString().trim();
+    var rem=(k["remark"]||k["remarks"]||k["note"]||"").toString().trim();
+    if(!name||!acc||!rawAmt||isNaN(rawAmt)||Number(rawAmt)<0) errors.push(i+2);
+    else valid.push({name:name,acc:acc,amount:rawAmt,phone:phone,addr:addr,remarks:rem,status:"pending",uploadedBy:CU.name,uploadedAt:new Date().toLocaleString("hi-IN")});
   });
   parsedRows=valid.slice(0,200);
   document.getElementById("up-preview").style.display="block";
   var wb=document.getElementById("up-warn");
   wb.style.display=errors.length?"block":"none";
-  wb.textContent=errors.length?"⚠️ "+errors.length+" rows skip":"";
+  wb.textContent=errors.length?"⚠️ "+errors.length+" rows skip (name/acc/amount नहीं मिला)":"";
   document.getElementById("prev-title").textContent="पूर्वावलोकन ("+parsedRows.length+" records)";
   document.getElementById("prev-rows").innerHTML=parsedRows.slice(0,5).map(function(r,i){
     return "<div class='prev-row'><span class='pr-name'>"+(i+1)+". "+r.name+"</span><span class='pr-acc'>"+r.acc+"</span><span class='pr-amt'>₹"+Number(r.amount).toLocaleString("hi-IN")+"</span></div>";
@@ -718,60 +785,100 @@ function confirmUpload(){
   if(!hq){toast("HQ चुनें","err");return;}
   if(!cat){toast("Category चुनें","err");return;}
   if(!parsedRows.length){toast("कोई valid डेटा नहीं","err");return;}
-
   var doSave=function(arr){
-    // Cache में तुरंत save — UI फौरन update
-    cacheSet(hq,cat,arr);
+    cSet(hq,cat,arr);
     activeHQ=hq; activeCat=cat;
     buildUI();
-    renderSummaryWith(arr);
-    renderListWith(arr);
+    renderSummaryWith(arr); renderListWith(arr);
     startListen(activeHQ,activeCat);
     closeUpModal();
     toast("✅ "+arr.length+" records अपलोड! 🔥","ok");
-    // Background में Firebase पर save
-    fetch(FB+"/"+fbPath(hq,cat)+".json",{
-      method:"PUT",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(arr)
-    }).then(function(r){
-      if(!r.ok)throw new Error("HTTP "+r.status);
-      updTime(); setSyncStatus(true);
-    }).catch(function(e){
-      toast("⚠️ Firebase sync pending: "+e.message,"inf");
-    });
+    fbSet(hq,cat,arr,null);
   };
-
   if(upMode==="replace"){
     doSave(parsedRows);
   } else {
-    var ex=cacheGet(hq,cat);
+    var ex=cGet(hq,cat);
     var merged=ex.slice();
     parsedRows.forEach(function(r){
-      if(!merged.find(function(e){return e.acc===r.acc;}))merged.push(r);
+      if(!merged.find(function(e){return e.acc===r.acc;})) merged.push(r);
     });
     doSave(merged);
   }
+}
+
+function downloadExcel(){
+  var data=cGet(activeHQ,activeCat);
+  if(!data.length){toast("कोई data नहीं","err");return;}
+  var rows=[["क्र.","नाम","Consumer No","बकाया राशि","Mobile No","पता","स्थिति","भुगतान तिथि","रिमार्क","अपडेट by"]];
+  data.forEach(function(x,i){
+    rows.push([i+1,x.name||"",x.acc||"",Number(x.amount)||0,x.phone||"",x.addr||"",x.status==="paid"?"वसूल":"बाकी",x.paydate||"",x.remarks||"",x.updatedBy||""]);
+  });
+  var ws=XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"]=[{wch:4},{wch:20},{wch:14},{wch:12},{wch:13},{wch:18},{wch:8},{wch:13},{wch:25},{wch:14}];
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,activeHQ+"_"+activeCat);
+  var fname=activeHQ+"_"+activeCat+"_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx";
+  XLSX.writeFile(wb,fname);
+  toast("📊 Excel download!","ok");
+}
+
+function downloadPDF(){
+  var data=cGet(activeHQ,activeCat);
+  if(!data.length){toast("कोई data नहीं","err");return;}
+  var paid=data.filter(function(x){return x.status==="paid";});
+  var pending=data.filter(function(x){return x.status!=="paid";});
+  var pendAmt=pending.reduce(function(s,x){return s+(Number(x.amount)||0);},0);
+  var paidAmt=paid.reduce(function(s,x){return s+(Number(x.amount)||0);},0);
+  var rows=data.map(function(x,i){
+    var isPaid=x.status==="paid";
+    return "<tr style='border-bottom:1px solid #ddd;background:"+(i%2===0?"#fff":"#f9f9f9")+";'>"+
+      "<td style='padding:5px;text-align:center;'>"+( i+1)+"</td>"+
+      "<td style='padding:5px;font-weight:600;'>"+x.name+"</td>"+
+      "<td style='padding:5px;color:#1565c0;'>"+x.acc+"</td>"+
+      "<td style='padding:5px;text-align:right;font-weight:700;'>₹"+Number(x.amount).toLocaleString("hi-IN")+"</td>"+
+      "<td style='padding:5px;'>"+( x.phone||"-")+"</td>"+
+      "<td style='padding:5px;text-align:center;font-weight:700;color:"+(isPaid?"#2e7d32":"#c62828")+"'>"+
+        (isPaid?"✓ वसूल":"✗ बाकी")+(x.paydate?"<br><small>"+x.paydate+"</small>":"")+
+      "</td>"+
+      "<td style='padding:5px;background:"+(x.remarks?"#fff8e1":"")+"'>"+( x.remarks||"-")+"</td>"+
+      "<td style='padding:5px;font-size:10px;color:#666;'>"+( x.updatedBy||"-")+"</td>"+
+    "</tr>";
+  }).join("");
+  var html="<!DOCTYPE html><html><head><meta charset='UTF-8'>"+
+    "<style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px;}h2{color:#1a237e;}"+
+    ".info{display:flex;gap:15px;flex-wrap:wrap;background:#f5f5f5;padding:10px;border-radius:6px;margin:10px 0;}"+
+    ".ib{text-align:center;}.ib b{font-size:16px;display:block;}"+
+    "table{width:100%;border-collapse:collapse;}th{background:#1a237e;color:#fff;padding:6px;}"+
+    "@media print{.no-print{display:none}}</style></head><body>"+
+    "<h2>⚡ आदेगांव DC वसूली रिपोर्ट</h2>"+
+    "<p>HQ: <b>"+activeHQ+"</b> | Category: <b>"+activeCat+"</b> | दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+CU.name+"</p>"+
+    "<div class='info'>"+
+      "<div class='ib'><b>"+data.length+"</b>कुल</div>"+
+      "<div class='ib'><b style='color:green'>"+paid.length+"</b>वसूल</div>"+
+      "<div class='ib'><b style='color:red'>"+pending.length+"</b>बाकी</div>"+
+      "<div class='ib'><b style='color:green'>₹"+paidAmt.toLocaleString("hi-IN")+"</b>वसूल राशि</div>"+
+      "<div class='ib'><b style='color:red'>₹"+pendAmt.toLocaleString("hi-IN")+"</b>बाकी राशि</div>"+
+    "</div>"+
+    "<button class='no-print' onclick='window.print()' style='margin-bottom:10px;padding:8px 16px;background:#1a237e;color:#fff;border:none;border-radius:5px;cursor:pointer;'>🖨️ Print / PDF Save</button>"+
+    "<table><thead><tr>"+
+      "<th>#</th><th>नाम</th><th>Consumer No</th><th>बकाया</th><th>Mobile</th><th>स्थिति</th><th>रिमार्क</th><th>अपडेट by</th>"+
+    "</tr></thead><tbody>"+rows+"</tbody></table>"+
+    "</body></html>";
+  var w=window.open("","_blank");
+  if(w){w.document.write(html);w.document.close();setTimeout(function(){w.print();},600);}
+  else toast("Popup block है, allow करें","inf");
 }
 
 function dlTemplate(){
   var s="Consumer No,Consumer Name,Net Bill,Mobile No,Address,Remark\n1234567890,राम लाल,5400,9876543210,आदेगांव,\n9876543210,श्याम सुंदर,12500,8765432109,मादी,बाद में आएंगे\n";
   var a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([s],{type:"text/csv;charset=utf-8;"}));
-  a.download="vasuli_template.csv";a.click();
+  a.download="vasuli_template.csv"; a.click();
   toast("📥 Template डाउनलोड...","inf");
 }
 
-// ── INIT — No SDK needed ──
-function showLoader(t){document.getElementById("loader-text").textContent=t||"लोड हो रहा है...";document.getElementById("loader").classList.remove("hidden");}
-function hideLoader(){document.getElementById("loader").classList.add("hidden");}
-function toast(msg,type){var t=document.getElementById("toast");t.textContent=msg;t.className="toast show "+(type||"");clearTimeout(t._t);t._t=setTimeout(function(){t.classList.remove("show");},3500);}
-function setSyncStatus(ok){var d=document.getElementById("sdot"),t=document.getElementById("stxt");if(!d)return;d.className=ok?"sdot":"sdot off";t.className=ok?"stxt":"stxt off";t.textContent=ok?"Live Sync ✓":"ऑफलाइन";}
-function updTime(){var now=new Date(),el=document.getElementById("stime");if(el)el.textContent=now.getHours()+":"+String(now.getMinutes()).padStart(2,"0");}
-window.addEventListener("online",function(){setSyncStatus(true);});
-window.addEventListener("offline",function(){setSyncStatus(false);});
-
-// Test connection then show app
+// INIT
 fetch(FB+"/.json?shallow=true&t="+Date.now())
   .then(function(){setSyncStatus(true);})
   .catch(function(){setSyncStatus(false);})
