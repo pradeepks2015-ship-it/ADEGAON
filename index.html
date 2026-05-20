@@ -14,7 +14,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .screen{display:none;min-height:100vh;flex-direction:column;}
 .screen.active{display:flex;}
 #login-screen{align-items:center;justify-content:center;padding:20px;background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(240,165,0,.07) 0%,transparent 70%);}
-.login-emblem{font-size:52px;margin-bottom:10px;}
+.login-logo{width:90px;height:90px;object-fit:contain;margin-bottom:10px;}
 .login-title{font-family:"Baloo 2",cursive;font-size:20px;font-weight:800;color:var(--gold2);text-align:center;line-height:1.2;margin-bottom:3px;}
 .login-sub{font-size:11px;color:var(--muted);text-align:center;margin-bottom:22px;}
 .login-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;width:100%;max-width:360px;}
@@ -35,9 +35,8 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .pw-wrap .f-input{margin-bottom:0;padding-right:40px;}
 .pw-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:16px;border:none;background:none;}
 .sync-bar{background:#0a1f0a;border-bottom:1px solid #1a3a1a;padding:5px 14px;display:flex;align-items:center;gap:7px;font-size:11px;}
-.sync-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-.sync-dot.online{background:var(--green);animation:pulse 2s infinite;}
-.sync-dot.offline{background:var(--red);}
+.sync-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--green);animation:pulse 2s infinite;}
+.sync-dot.offline{background:var(--red);animation:none;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
 @keyframes sp{to{transform:rotate(360deg);}}
 .sync-txt{color:var(--green);}
@@ -46,7 +45,8 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .app-header{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 14px;position:sticky;top:0;z-index:100;}
 .hdr1{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
 .hdr-left{display:flex;align-items:center;gap:6px;}
-.back-btn{background:none;border:none;color:var(--gold);font-size:22px;cursor:pointer;padding:0 4px;line-height:1;display:none;}
+.back-btn{background:none;border:none;color:var(--gold);font-size:24px;cursor:pointer;padding:0 4px;line-height:1;visibility:hidden;opacity:0;transition:opacity .2s;}
+.back-btn.show{visibility:visible;opacity:1;}
 .hdr-icon{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--gold),#c47a00);display:flex;align-items:center;justify-content:center;font-size:17px;}
 .hdr-title{font-family:"Baloo 2",cursive;font-size:14px;font-weight:800;color:var(--gold2);line-height:1.1;}
 .hdr-sub{font-size:10px;color:var(--muted);}
@@ -132,7 +132,6 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .fg{margin-bottom:12px;}
 .fg label{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;display:block;}
 .fi,.fs,.fta{width:100%;background:var(--card);border:1px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);font-family:"Noto Sans Devanagari",sans-serif;font-size:13px;outline:none;appearance:none;}
-.fi:focus,.fs:focus,.fta:focus{border-color:var(--gold);}
 .fta{resize:none;height:80px;}
 .stoggle{display:flex;gap:7px;}
 .topt{flex:1;padding:9px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:"Noto Sans Devanagari",sans-serif;font-size:12px;font-weight:600;text-align:center;}
@@ -142,8 +141,8 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .mfooter{display:flex;gap:8px;margin-top:16px;}
 .btn-cancel{flex:1;padding:12px;border-radius:11px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:"Noto Sans Devanagari",sans-serif;font-size:13px;font-weight:600;}
 .btn-save{flex:2;padding:12px;border-radius:11px;border:none;background:linear-gradient(135deg,var(--gold),#c47a00);color:#0a0e1a;cursor:pointer;font-family:"Baloo 2",cursive;font-size:14px;font-weight:800;}
-.btn-blue{background:linear-gradient(135deg,var(--blue),#0d47a1);color:#fff;}
-.up-info-box{background:rgba(33,150,243,.08);border:1px solid rgba(33,150,243,.2);border-radius:10px;padding:11px 13px;margin-bottom:12px;font-size:11px;color:#90caf9;line-height:1.6;}
+.btn-green{background:linear-gradient(135deg,#00c896,#007a5e);color:#fff;}
+.up-info-box{background:rgba(33,150,243,.08);border:1px solid rgba(33,150,243,.2);border-radius:10px;padding:11px 13px;margin-bottom:12px;font-size:11px;color:#90caf9;line-height:1.7;}
 .up-sel2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
 .upload-zone{border:2px dashed var(--border);border-radius:12px;padding:22px 16px;text-align:center;cursor:pointer;background:var(--card);margin-bottom:12px;transition:border-color .2s;}
 .upload-zone:hover,.upload-zone.drag{border-color:var(--blue);}
@@ -171,13 +170,14 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 <body>
 <div class="loading-overlay" id="loader">
   <div class="spinner"></div>
-  <div class="loading-text" id="loader-text">Firebase से जुड़ रहे हैं...</div>
+  <div class="loading-text" id="loader-text">लोड हो रहा है...</div>
 </div>
 
 <div id="login-screen" class="screen">
-  <div class="login-emblem">⚡</div>
+  <img class="login-logo" src="https://i.imgur.com/8Q2Q2Qx.png" alt="logo"
+    onerror="this.outerHTML='<div style=\'font-size:60px;margin-bottom:10px\'>⚡</div>'">
   <div class="login-title">आदेगांव DC वसूली ट्रैकर</div>
-  <div class="login-sub">🏛️ मध्यप्रदेश पूर्व क्षेत्र विद्युत वितरण कंपनी</div>
+  <div class="login-sub">मध्यप्रदेश पूर्व क्षेत्र विद्युत वितरण कं. लि.</div>
   <div class="login-card">
     <label class="f-label">भूमिका चुनें</label>
     <div class="role-cards">
@@ -217,8 +217,8 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 
 <div id="app-screen" class="screen">
   <div class="sync-bar">
-    <div class="sync-dot online" id="sync-dot"></div>
-    <span class="sync-txt" id="sync-txt">Firebase से जुड़ा है</span>
+    <div class="sync-dot" id="sync-dot"></div>
+    <span class="sync-txt" id="sync-txt">जुड़ रहे हैं...</span>
     <span class="sync-time" id="sync-time"></span>
   </div>
   <div class="app-header">
@@ -266,16 +266,23 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
     <div class="mhandle"></div>
     <div class="mtitle">📤 लिस्ट अपलोड करें</div>
     <div class="up-info-box">
+      <b>📱 Mobile से:</b> Files app → Excel/CSV select करें<br>
       <b>जरूरी columns:</b> Consumer No, Consumer Name, Net Bill<br>
       <b>Optional:</b> Mobile No, Address, Remark
     </div>
     <button class="tmpl-btn" onclick="dlTemplate()">⬇️ Template CSV डाउनलोड करें</button>
     <div class="up-sel2">
       <div class="fg" style="margin:0;"><label>HQ *</label>
-        <div class="sel-wrap" style="margin:0;"><select class="fs" id="up-hq"><option value="">-- HQ --</option><option>आदेगांव</option><option>पिंडरई</option><option>जोबा</option><option>पाटन</option><option>बीबी</option><option>मादी</option></select></div>
+        <div class="sel-wrap" style="margin:0;"><select class="fs" id="up-hq"></select></div>
       </div>
       <div class="fg" style="margin:0;"><label>Category *</label>
-        <div class="sel-wrap" style="margin:0;"><select class="fs" id="up-cat"><option value="">-- Cat --</option><option>घरेलू</option><option>व्यवसाय</option><option>कृषि</option><option>गवर्नमेंट</option><option>इंडस्ट्रियल</option></select></div>
+        <div class="sel-wrap" style="margin:0;">
+          <select class="fs" id="up-cat">
+            <option value="">-- चुनें --</option>
+            <option>घरेलू</option><option>व्यवसाय</option><option>कृषि</option>
+            <option>गवर्नमेंट</option><option>इंडस्ट्रियल</option>
+          </select>
+        </div>
       </div>
     </div>
     <div class="fg"><label>मोड</label>
@@ -286,17 +293,20 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
     </div>
     <div class="upload-zone" id="up-zone" onclick="document.getElementById('file-input').click()" ondragover="dOver(event)" ondragleave="dLeave()" ondrop="dDrop(event)">
       <div class="uz-icon" id="uz-ico">📂</div>
-      <div class="uz-t" id="uz-t">CSV या Excel चुनें</div>
-      <div class="uz-s" id="uz-s">Tap करें</div>
+      <div class="uz-t" id="uz-t">CSV या Excel फ़ाइल चुनें</div>
+      <div class="uz-s" id="uz-s">📱 Mobile: Files app से select करें</div>
     </div>
-    <input type="file" id="file-input" accept=".csv,.xlsx,.xls" onchange="handleFile(this.files[0])">
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onchange="handleFile(this.files[0])">
     <div id="up-preview" style="display:none;">
       <div class="warn-box" id="up-warn" style="display:none;"></div>
-      <div class="preview-box"><div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:6px;" id="prev-title">Preview</div><div id="prev-rows"></div></div>
+      <div class="preview-box">
+        <div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:6px;" id="prev-title">पूर्वावलोकन</div>
+        <div id="prev-rows"></div>
+      </div>
     </div>
     <div class="mfooter">
-      <button class="btn-cancel" onclick="closeUpModal()">रद्द</button>
-      <button class="btn-save btn-blue" id="btn-up-ok" onclick="confirmUpload()" disabled style="opacity:.5;">📤 Save</button>
+      <button class="btn-cancel" onclick="closeUpModal()">रद्द करें</button>
+      <button class="btn-save btn-green" id="btn-up-ok" onclick="confirmUpload()" disabled style="opacity:.5;">📤 अपलोड करें</button>
     </div>
   </div>
 </div>
@@ -313,15 +323,20 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
     </div>
     <div class="fg"><label>स्थिति</label>
       <div class="stoggle">
-        <button class="topt sel-pending" id="rs-pending" onclick="setRmkStatus('pending')">⏳ बाकी</button>
-        <button class="topt" id="rs-paid" onclick="setRmkStatus('paid')">✅ वसूल</button>
+        <button class="topt sel-pending" id="rs-pending" onclick="setRmkStatus('pending')">⏳ बाकी है</button>
+        <button class="topt" id="rs-paid" onclick="setRmkStatus('paid')">✅ वसूल हुआ</button>
       </div>
     </div>
-    <div class="fg" id="rmk-paydate-grp" style="display:none;"><label>भुगतान तिथि</label><input type="date" class="fi" id="rmk-paydate"></div>
-    <div class="fg"><label>रिमार्क</label><textarea class="fta" id="rmk-text" placeholder="टिप्पणी लिखें..."></textarea></div>
+    <div class="fg" id="rmk-paydate-grp" style="display:none;">
+      <label>भुगतान तिथि</label>
+      <input type="date" class="fi" id="rmk-paydate">
+    </div>
+    <div class="fg"><label>रिमार्क / टिप्पणी</label>
+      <textarea class="fta" id="rmk-text" placeholder="जैसे: घर पर नहीं मिले..."></textarea>
+    </div>
     <div class="mfooter">
-      <button class="btn-cancel" onclick="closeRmkModal()">रद्द</button>
-      <button class="btn-save" onclick="saveRmk()">💾 Save</button>
+      <button class="btn-cancel" onclick="closeRmkModal()">रद्द करें</button>
+      <button class="btn-save" onclick="saveRmk()">💾 सेव करें</button>
     </div>
   </div>
 </div>
@@ -329,113 +344,65 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 <div class="toast" id="toast"></div>
 
 <script>
-var HQS = ["आदेगांव","पिंडरई","जोबा","पाटन","बीबी","मादी"];
-var CATS = ["घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल"];
-var CICO = ["🏠","🏪","🌾","🏛️","🏭"];
-var SUP_PW = "bijli@2025";
-var CU = null, activeHQ = "", activeCat = "घरेलू", activeFilter = "all";
-var upMode = "replace", parsedRows = [], selectedRole = "", rmkStatus = "pending";
-var activeListener = null, db = null;
+// ══════════════════════════════════════
+// Firebase REST API — No SDK needed!
+// ══════════════════════════════════════
+var FB_URL = "https://adegaon-dc-top-50-default-rtdb.firebaseio.com";
 
-function showLoader(t) { document.getElementById("loader-text").textContent = t || "लोड हो रहा है..."; document.getElementById("loader").classList.remove("hidden"); }
-function hideLoader() { document.getElementById("loader").classList.add("hidden"); }
-function toast(msg, type) { var t = document.getElementById("toast"); t.textContent = msg; t.className = "toast show " + (type || ""); clearTimeout(t._t); t._t = setTimeout(function() { t.classList.remove("show"); }, 3000); }
 
-function updateBackBtn() {
-  var bb = document.getElementById("back-btn");
-  if (!bb) return;
-  var rmkOpen = document.getElementById("rmk-overlay").classList.contains("open");
-  var upOpen = document.getElementById("up-overlay").classList.contains("open");
-  var notDefault = activeCat !== "घरेलू" || activeFilter !== "all";
-  bb.style.display = (rmkOpen || upOpen || notDefault) ? "inline-block" : "none";
+function fbPath(hq, cat) {
+  return hq.replace(/\s/g,"_") + "/" + cat.replace(/\s/g,"_");
 }
-
-function goBack() {
-  var rmkOpen = document.getElementById("rmk-overlay").classList.contains("open");
-  var upOpen = document.getElementById("up-overlay").classList.contains("open");
-  if (rmkOpen) { closeRmkModal(); updateBackBtn(); return; }
-  if (upOpen) { closeUpModal(); updateBackBtn(); return; }
-  if (activeFilter !== "all") {
-    activeFilter = "all";
-    document.querySelectorAll(".filter-btn").forEach(function(b) { b.className = "filter-btn"; });
-    document.querySelector("[data-f='all']").className = "filter-btn active-all";
-    renderListWith2(); updateBackBtn(); return;
-  }
-  if (activeCat !== "घरेलू") {
-    activeCat = "घरेलू";
-    showLoader();
-    renderAll(function() { startListener(); hideLoader(); });
-    return;
-  }
-}
-
-function initApp() {
-  hideLoader();
-  document.getElementById("login-screen").classList.add("active");
-}
-
-function loadFirebase() {
-  var s1 = document.createElement("script");
-  s1.src = "https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js";
-  s1.onload = function() {
-    var s2 = document.createElement("script");
-    s2.src = "https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js";
-    s2.onload = function() {
-      try {
-        if (!firebase.apps.length) {
-          firebase.initializeApp({
-            apiKey: "AIzaSyAPFZ2wqPYVMyvU4WqYrKUinVERBkVqdmY",
-            authDomain: "adegaon-dc-top-50.firebaseapp.com",
-            databaseURL: "https://adegaon-dc-top-50-default-rtdb.firebaseio.com",
-            projectId: "adegaon-dc-top-50",
-            storageBucket: "adegaon-dc-top-50.firebasestorage.app",
-            messagingSenderId: "265994697235",
-            appId: "1:265994697235:web:6158cdf1200bd86c201de6"
-          });
-        }
-        db = firebase.database();
-      } catch(e) { console.error(e); }
-      initApp();
-    };
-    s2.onerror = function() { initApp(); };
-    document.head.appendChild(s2);
-  };
-  s1.onerror = function() { initApp(); };
-  document.head.appendChild(s1);
-}
-
-window.addEventListener("load", function() { loadFirebase(); });
-
-function fbPath(hq, cat) { return hq.replace(/\s/g,"_") + "/" + cat.replace(/\s/g,"_"); }
 
 function fbGet(hq, cat, cb) {
-  if (!db) { cb([]); return; }
-  db.ref(fbPath(hq,cat)).once("value").then(function(snap) {
-    if (snap.exists()) { var v = snap.val(); cb(Array.isArray(v) ? v : Object.values(v)); }
-    else { cb([]); }
-  }).catch(function() { cb([]); });
+  fetch(FB_URL + "/" + fbPath(hq,cat) + ".json")
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data) { cb([]); return; }
+      cb(Array.isArray(data) ? data : Object.values(data));
+    })
+    .catch(function(e) { console.error("fbGet error",e); cb([]); });
 }
 
 function fbSet(hq, cat, arr, cb) {
-  if (!db) { if(cb) cb(); return; }
-  db.ref(fbPath(hq,cat)).set(arr).then(function() { updSyncTime(); if(cb) cb(); }).catch(function() { if(cb) cb(); });
+  fetch(FB_URL + "/" + fbPath(hq,cat) + ".json", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(arr)
+  })
+  .then(function(r) {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    updSyncTime();
+    setSyncStatus("online");
+    if (cb) cb(true);
+  })
+  .catch(function(e) {
+    toast("❌ Save error: " + e.message, "err");
+    if (cb) cb(false);
+  });
 }
 
 function fbDel(hq, cat, cb) {
-  if (!db) { if(cb) cb(); return; }
-  db.ref(fbPath(hq,cat)).remove().then(function() { if(cb) cb(); }).catch(function() { if(cb) cb(); });
+  fetch(FB_URL + "/" + fbPath(hq,cat) + ".json", { method: "DELETE" })
+    .then(function() { if(cb) cb(); })
+    .catch(function() { if(cb) cb(); });
 }
 
-function listenPath(hq, cat, cb) {
-  if (!db) return;
-  if (activeListener) { activeListener.off(); activeListener = null; }
-  var r = db.ref(fbPath(hq,cat));
-  r.on("value", function(snap) {
-    var v = snap.exists() ? (Array.isArray(snap.val()) ? snap.val() : Object.values(snap.val())) : [];
-    cb(v); updSyncTime();
-  });
-  activeListener = r;
+// Live polling — हर 5 seconds में auto refresh
+var pollTimer = null;
+function startPoll(hq, cat) {
+  stopPoll();
+  pollTimer = setInterval(function() {
+    if (document.getElementById("app-screen").classList.contains("active")) {
+      fbGet(hq, cat, function(data) {
+        renderSummaryWith(data);
+        renderListWith(data);
+        setSyncStatus("online");
+      });
+    }
+  }, 5000);
 }
+function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
 function updSyncTime() {
   var now = new Date();
@@ -443,60 +410,108 @@ function updSyncTime() {
   if (el) el.textContent = "अपडेट: " + now.getHours() + ":" + String(now.getMinutes()).padStart(2,"0");
 }
 
-window.addEventListener("online", function() { setSyncStatus("online"); });
-window.addEventListener("offline", function() { setSyncStatus("offline"); });
-
 function setSyncStatus(s) {
   var dot = document.getElementById("sync-dot");
   var txt = document.getElementById("sync-txt");
   if (!dot) return;
-  dot.className = "sync-dot " + s;
-  txt.className = "sync-txt" + (s === "offline" ? " off" : "");
-  txt.textContent = s === "online" ? "Firebase से जुड़ा है" : "ऑफलाइन";
+  if (s === "online") {
+    dot.className = "sync-dot";
+    txt.className = "sync-txt";
+    txt.textContent = "Live Sync चालू ✓";
+  } else {
+    dot.className = "sync-dot offline";
+    txt.className = "sync-txt off";
+    txt.textContent = "ऑफलाइन";
+  }
 }
 
+window.addEventListener("online", function() { setSyncStatus("online"); });
+window.addEventListener("offline", function() { setSyncStatus("offline"); });
+
+// ══════════════════════════════════════
+// App Variables
+// ══════════════════════════════════════
+var HQS = ["आदेगांव","पिंडरई","जोबा","पाटन","बीबी","मादी"];
+var CATS = ["घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल"];
+var CICO = ["🏠","🏪","🌾","🏛️","🏭"];
+var SUP_PW = "bijli@2025";
+var CU = null, activeHQ = "", activeCat = "घरेलू", activeFilter = "all";
+var upMode = "replace", parsedRows = [], selectedRole = "", rmkStatus = "pending";
+
+function showLoader(t) { document.getElementById("loader-text").textContent = t||"लोड हो रहा है..."; document.getElementById("loader").classList.remove("hidden"); }
+function hideLoader() { document.getElementById("loader").classList.add("hidden"); }
+function toast(msg, type) {
+  var t = document.getElementById("toast");
+  t.textContent = msg; t.className = "toast show " + (type||"");
+  clearTimeout(t._t); t._t = setTimeout(function() { t.classList.remove("show"); }, 3500);
+}
+
+// ══════════════════════════════════════
+// Back Button
+// ══════════════════════════════════════
+function updateBackBtn() {
+  var bb = document.getElementById("back-btn");
+  if (!bb) return;
+  var rmkOpen = document.getElementById("rmk-overlay").classList.contains("open");
+  var upOpen = document.getElementById("up-overlay").classList.contains("open");
+  var notDefault = activeCat !== "घरेलू" || activeFilter !== "all";
+  if (rmkOpen || upOpen || notDefault) bb.classList.add("show");
+  else bb.classList.remove("show");
+}
+
+function goBack() {
+  if (document.getElementById("rmk-overlay").classList.contains("open")) { closeRmkModal(); return; }
+  if (document.getElementById("up-overlay").classList.contains("open")) { closeUpModal(); return; }
+  if (activeFilter !== "all") {
+    activeFilter = "all";
+    document.querySelectorAll(".filter-btn").forEach(function(b) { b.className = "filter-btn"; });
+    document.querySelector("[data-f='all']").className = "filter-btn active-all";
+    renderListWith2(); updateBackBtn(); return;
+  }
+  if (activeCat !== "घरेलू") {
+    activeCat = "घरेलू"; activeFilter = "all";
+    showLoader(); renderAll(function() { startPoll(activeHQ, activeCat); hideLoader(); updateBackBtn(); });
+  }
+}
+
+// ══════════════════════════════════════
+// Login
+// ══════════════════════════════════════
 function selectRole(r) {
   selectedRole = r;
-  document.getElementById("rc-sup").classList.toggle("selected", r === "supervisor");
-  document.getElementById("rc-lin").classList.toggle("selected", r === "lineman");
-  document.getElementById("sup-fields").style.display = r === "supervisor" ? "block" : "none";
-  document.getElementById("lin-fields").style.display = r === "lineman" ? "block" : "none";
+  document.getElementById("rc-sup").classList.toggle("selected", r==="supervisor");
+  document.getElementById("rc-lin").classList.toggle("selected", r==="lineman");
+  document.getElementById("sup-fields").style.display = r==="supervisor" ? "block" : "none";
+  document.getElementById("lin-fields").style.display = r==="lineman" ? "block" : "none";
 }
-
-function togglePw() {
-  var i = document.getElementById("sup-pw");
-  i.type = i.type === "password" ? "text" : "password";
-}
+function togglePw() { var i = document.getElementById("sup-pw"); i.type = i.type==="password" ? "text" : "password"; }
 
 function doLogin() {
-  var role = selectedRole;
-  var name = document.getElementById("uname-inp").value.trim();
-  if (!role) { toast("भूमिका चुनें", "err"); return; }
-  if (!name) { toast("अपना नाम लिखें", "err"); return; }
+  var role = selectedRole, name = document.getElementById("uname-inp").value.trim();
+  if (!role) { toast("भूमिका चुनें","err"); return; }
+  if (!name) { toast("अपना नाम लिखें","err"); return; }
   if (role === "supervisor") {
-    if (document.getElementById("sup-pw").value !== SUP_PW) { toast("❌ गलत पासवर्ड!", "err"); return; }
-    CU = { role: role, name: name, hq: HQS[0] };
+    if (document.getElementById("sup-pw").value !== SUP_PW) { toast("❌ गलत पासवर्ड!","err"); return; }
+    CU = { role:role, name:name, hq:HQS[0] };
   } else {
     var hq = document.getElementById("hq-sel").value;
-    if (!hq) { toast("HQ चुनें", "err"); return; }
-    CU = { role: role, name: name, hq: hq };
+    if (!hq) { toast("HQ चुनें","err"); return; }
+    CU = { role:role, name:name, hq:hq };
   }
   activeHQ = CU.hq; activeCat = "घरेलू"; activeFilter = "all";
   document.getElementById("login-screen").classList.remove("active");
   document.getElementById("app-screen").classList.add("active");
   buildUI();
   showLoader("डेटा लोड हो रहा है...");
-  renderAll(function() { startListener(); hideLoader(); toast("स्वागत है " + name + "! 🙏", "ok"); });
+  renderAll(function() { startPoll(activeHQ, activeCat); hideLoader(); toast("स्वागत है " + name + "! 🙏","ok"); });
 }
 
 function doLogout() {
   if (!confirm("लॉगआउट करना चाहते हैं?")) return;
-  if (activeListener) { activeListener.off(); activeListener = null; }
-  CU = null; selectedRole = "";
+  stopPoll(); CU = null; selectedRole = "";
   document.getElementById("app-screen").classList.remove("active");
   document.getElementById("login-screen").classList.add("active");
-  document.getElementById("uname-inp").value = "";
-  document.getElementById("sup-pw").value = "";
+  ["uname-inp","sup-pw"].forEach(function(id) { document.getElementById(id).value = ""; });
   document.getElementById("hq-sel").value = "";
   document.getElementById("rc-sup").classList.remove("selected");
   document.getElementById("rc-lin").classList.remove("selected");
@@ -504,27 +519,29 @@ function doLogout() {
   document.getElementById("lin-fields").style.display = "none";
 }
 
-function startListener() {
-  listenPath(activeHQ, activeCat, function() { renderSummaryWith2(); renderListWith2(); });
-}
-
+// ══════════════════════════════════════
+// Build UI
+// ══════════════════════════════════════
 function buildUI() {
   var dot = document.getElementById("udot");
   dot.textContent = CU.name[0].toUpperCase();
-  dot.className = "udot " + (CU.role === "supervisor" ? "sup" : "lin");
+  dot.className = "udot " + (CU.role==="supervisor" ? "sup" : "lin");
   document.getElementById("uname-disp").textContent = CU.name;
-  document.getElementById("hdr-sub").textContent = CU.role === "supervisor" ? "JE | सभी HQ" : "Lineman | " + CU.hq;
+  document.getElementById("hdr-sub").textContent = CU.role==="supervisor" ? "JE | सभी HQ" : "Lineman | " + CU.hq;
   buildHQTabs(); buildCatTabs(); buildActionBtns();
 }
 
 function buildHQTabs() {
   var c = document.getElementById("hq-tabs"); c.innerHTML = "";
-  var hqs = CU.role === "supervisor" ? HQS : [CU.hq];
+  var hqs = CU.role==="supervisor" ? HQS : [CU.hq];
   hqs.forEach(function(hq) {
     var b = document.createElement("button");
-    b.className = "hq-tab" + (hq === activeHQ ? " active" : "");
+    b.className = "hq-tab" + (hq===activeHQ ? " active" : "");
     b.textContent = hq;
-    b.onclick = function() { activeHQ = hq; buildHQTabs(); showLoader(); renderAll(function() { startListener(); hideLoader(); }); };
+    b.onclick = function() {
+      activeHQ = hq; buildHQTabs(); showLoader();
+      renderAll(function() { startPoll(activeHQ, activeCat); hideLoader(); });
+    };
     c.appendChild(b);
   });
 }
@@ -533,8 +550,11 @@ function buildCatTabs() {
   var c = document.getElementById("cat-tabs"); c.innerHTML = "";
   CATS.forEach(function(cat, i) {
     var b = document.createElement("button");
-    b.className = "cat-tab" + (cat === activeCat ? " active c" + i : " c" + i);
-    b.onclick = function() { activeCat = cat; activeFilter = "all"; buildCatTabs(); showLoader(); renderAll(function() { startListener(); hideLoader(); updateBackBtn(); }); };
+    b.className = "cat-tab" + (cat===activeCat ? " active c"+i : " c"+i);
+    b.onclick = function() {
+      activeCat = cat; activeFilter = "all"; buildCatTabs(); showLoader();
+      renderAll(function() { startPoll(activeHQ, activeCat); hideLoader(); updateBackBtn(); });
+    };
     b.textContent = CICO[i] + " " + cat;
     c.appendChild(b);
   });
@@ -542,19 +562,26 @@ function buildCatTabs() {
 
 function buildActionBtns() {
   var c = document.getElementById("action-btns"); c.innerHTML = "";
+  var b1 = document.createElement("button");
+  b1.className = "tbtn tbtn-blue"; b1.innerHTML = "📤 अपलोड"; b1.onclick = openUpModal;
+  c.appendChild(b1);
   if (CU.role === "supervisor") {
-    var b1 = document.createElement("button"); b1.className = "tbtn tbtn-blue"; b1.innerHTML = "📤 अपलोड"; b1.onclick = openUpModal;
-    var b2 = document.createElement("button"); b2.className = "tbtn tbtn-red"; b2.innerHTML = "🗑️ हटाएं"; b2.onclick = clearList;
-    c.appendChild(b1); c.appendChild(b2);
+    var b2 = document.createElement("button");
+    b2.className = "tbtn tbtn-red"; b2.innerHTML = "🗑️ हटाएं"; b2.onclick = clearList;
+    c.appendChild(b2);
   }
 }
 
+// ══════════════════════════════════════
+// Render
+// ══════════════════════════════════════
 function renderAll(cb) {
   buildHQTabs(); buildCatTabs();
   document.getElementById("list-title").textContent = activeHQ + " › " + activeCat;
-  fbGet(activeHQ, activeCat, function(data) { renderSummaryWith(data); renderListWith(data); if(cb) cb(); });
+  fbGet(activeHQ, activeCat, function(data) {
+    renderSummaryWith(data); renderListWith(data); if(cb) cb();
+  });
 }
-
 function renderSummaryWith2() { fbGet(activeHQ, activeCat, function(d) { renderSummaryWith(d); }); }
 function renderListWith2() { fbGet(activeHQ, activeCat, function(d) { renderListWith(d); }); }
 
@@ -573,24 +600,25 @@ function setFilter(btn) {
   activeFilter = btn.dataset.f;
   document.querySelectorAll(".filter-btn").forEach(function(b) { b.className = "filter-btn"; });
   btn.className = "filter-btn active-" + activeFilter;
-  updateBackBtn();
-  renderListWith2();
+  updateBackBtn(); renderListWith2();
 }
-
 function renderList() { renderListWith2(); }
 
 function renderListWith(data) {
-  var q = (document.getElementById("search-inp").value || "").toLowerCase().trim();
+  var q = (document.getElementById("search-inp").value||"").toLowerCase().trim();
   var c = document.getElementById("con-list");
   var filtered = data.filter(function(x) {
-    return (!q || (x.name||"").toLowerCase().includes(q) || (x.acc||"").toLowerCase().includes(q)) && (activeFilter==="all" || x.status===activeFilter);
+    return (!q||(x.name||"").toLowerCase().includes(q)||(x.acc||"").toLowerCase().includes(q)) &&
+           (activeFilter==="all"||x.status===activeFilter);
   });
   if (!filtered.length) {
-    c.innerHTML = "<div class='empty'><div class='empty-ico'>"+(q?"🔍":"📋")+"</div><div class='empty-t'>"+(q?"कोई परिणाम नहीं":"सूची खाली है")+"</div><div class='empty-s'>"+(CU.role==="supervisor"?"📤 अपलोड करें":"JE से अपलोड करवाएं")+"</div></div>";
+    c.innerHTML = "<div class='empty'><div class='empty-ico'>"+(q?"🔍":"📋")+"</div>"+
+      "<div class='empty-t'>"+(q?"कोई परिणाम नहीं":"सूची खाली है")+"</div>"+
+      "<div class='empty-s'>📤 अपलोड बटन से लिस्ट डालें</div></div>";
     return;
   }
   c.innerHTML = filtered.map(function(x) {
-    var oi = data.indexOf(x); var isPaid = x.status === "paid";
+    var oi = data.indexOf(x), isPaid = x.status==="paid";
     return "<div class='con-card "+(isPaid?"paid":"pending")+"'>"+
       "<div class='cc-top'><div class='cc-name'>"+x.name+"</div><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
       "<div class='cc-amt'>₹"+Number(x.amount).toLocaleString("hi-IN")+" <span>बकाया</span></div>"+
@@ -600,10 +628,11 @@ function renderListWith(data) {
         (x.addr?"<span class='chip chip-addr'>📍 "+x.addr+"</span>":"")+
       "</div>"+
       "<div class='cc-bot'><span class='sbadge "+(isPaid?"sb-paid":"sb-pending")+"'>"+(isPaid?"✅ वसूल":"⏳ बाकी")+"</span>"+
-      "<div class='act-btns'><button class='abtn abtn-rmk' onclick='openRmkModal("+oi+")'>✏️ रिमार्क</button>"+
-      (!isPaid?"<button class='abtn abtn-pay' onclick='markPaid("+oi+")'>✓ वसूल</button>":"")+
+      "<div class='act-btns'>"+
+        "<button class='abtn abtn-rmk' onclick='openRmkModal("+oi+")'>✏️ रिमार्क</button>"+
+        (!isPaid?"<button class='abtn abtn-pay' onclick='markPaid("+oi+")'>✓ वसूल</button>":"")+
       "</div></div>"+
-      (x.paydate?"<div class='cc-paydate'>💰 "+x.paydate+"</div>":"")+
+      (x.paydate?"<div class='cc-paydate'>💰 भुगतान: "+x.paydate+"</div>":"")+
       (x.remarks?"<div class='cc-rem'>💬 "+x.remarks+"</div>":"")+
       (x.updatedBy?"<div class='cc-updby'>🔄 "+x.updatedBy+"</div>":"")+
     "</div>";
@@ -615,16 +644,23 @@ function markPaid(idx) {
     d[idx].status = "paid"; d[idx].paydate = new Date().toLocaleDateString("hi-IN");
     d[idx].updatedBy = CU.name; d[idx].updatedAt = new Date().toLocaleString("hi-IN");
     showLoader("save हो रहा है...");
-    fbSet(activeHQ, activeCat, d, function() { renderAll(function() { hideLoader(); toast("✅ वसूली दर्ज!", "ok"); }); });
+    fbSet(activeHQ, activeCat, d, function(ok) {
+      renderAll(function() { hideLoader(); if(ok) toast("✅ वसूली दर्ज!","ok"); });
+    });
   });
 }
 
 function clearList() {
   if (!confirm(activeHQ + " › " + activeCat + " की लिस्ट हटाएं?")) return;
   showLoader("हटाया जा रहा है...");
-  fbDel(activeHQ, activeCat, function() { renderAll(function() { hideLoader(); toast("🗑️ हटाई गई", "inf"); }); });
+  fbDel(activeHQ, activeCat, function() {
+    renderAll(function() { hideLoader(); toast("🗑️ लिस्ट हटाई गई","inf"); });
+  });
 }
 
+// ══════════════════════════════════════
+// Remark Modal
+// ══════════════════════════════════════
 function openRmkModal(idx) {
   fbGet(activeHQ, activeCat, function(d) {
     var x = d[idx];
@@ -632,38 +668,52 @@ function openRmkModal(idx) {
     document.getElementById("rmk-name").textContent = x.name;
     document.getElementById("rmk-amt").textContent = "₹" + Number(x.amount).toLocaleString("hi-IN") + " बकाया";
     document.getElementById("rmk-acc").textContent = "Consumer No: " + x.acc;
-    document.getElementById("rmk-text").value = x.remarks || "";
-    document.getElementById("rmk-paydate").value = x.paydate || "";
-    setRmkStatus(x.status || "pending");
+    document.getElementById("rmk-text").value = x.remarks||"";
+    document.getElementById("rmk-paydate").value = x.paydate||"";
+    setRmkStatus(x.status||"pending");
     document.getElementById("rmk-overlay").classList.add("open");
     updateBackBtn();
   });
 }
 function closeRmkModal() { document.getElementById("rmk-overlay").classList.remove("open"); updateBackBtn(); }
-function closeRmkOutside(e) { if (e.target === document.getElementById("rmk-overlay")) closeRmkModal(); }
+function closeRmkOutside(e) { if (e.target===document.getElementById("rmk-overlay")) closeRmkModal(); }
 function setRmkStatus(s) {
   rmkStatus = s;
-  document.getElementById("rs-pending").className = "topt" + (s==="pending" ? " sel-pending" : "");
-  document.getElementById("rs-paid").className = "topt" + (s==="paid" ? " sel-paid" : "");
+  document.getElementById("rs-pending").className = "topt" + (s==="pending"?" sel-pending":"");
+  document.getElementById("rs-paid").className = "topt" + (s==="paid"?" sel-paid":"");
   document.getElementById("rmk-paydate-grp").style.display = s==="paid" ? "block" : "none";
 }
 function saveRmk() {
   var idx = parseInt(document.getElementById("rmk-key").value);
   fbGet(activeHQ, activeCat, function(d) {
-    d[idx].status = rmkStatus; d[idx].remarks = document.getElementById("rmk-text").value.trim();
+    d[idx].status = rmkStatus;
+    d[idx].remarks = document.getElementById("rmk-text").value.trim();
     if (rmkStatus==="paid") d[idx].paydate = document.getElementById("rmk-paydate").value || new Date().toLocaleDateString("hi-IN");
     d[idx].updatedBy = CU.name; d[idx].updatedAt = new Date().toLocaleString("hi-IN");
     showLoader("save हो रहा है...");
-    fbSet(activeHQ, activeCat, d, function() { closeRmkModal(); renderAll(function() { hideLoader(); toast("✅ रिमार्क सेव!", "ok"); }); });
+    fbSet(activeHQ, activeCat, d, function(ok) {
+      closeRmkModal();
+      renderAll(function() { hideLoader(); if(ok) toast("✅ रिमार्क सेव!","ok"); });
+    });
   });
 }
 
+// ══════════════════════════════════════
+// Upload Modal
+// ══════════════════════════════════════
 function openUpModal() {
-  document.getElementById("up-hq").value = activeHQ;
+  var sel = document.getElementById("up-hq");
+  sel.innerHTML = "";
+  var hqs = CU.role==="supervisor" ? HQS : [CU.hq];
+  hqs.forEach(function(hq) {
+    var o = document.createElement("option"); o.value = hq; o.textContent = hq; sel.appendChild(o);
+  });
+  sel.value = activeHQ;
   document.getElementById("up-cat").value = activeCat;
   parsedRows = [];
   document.getElementById("uz-ico").textContent = "📂";
-  document.getElementById("uz-t").textContent = "CSV या Excel चुनें";
+  document.getElementById("uz-t").textContent = "CSV या Excel फ़ाइल चुनें";
+  document.getElementById("uz-s").textContent = "📱 Mobile: Files app से select करें";
   document.getElementById("file-input").value = "";
   document.getElementById("up-preview").style.display = "none";
   document.getElementById("btn-up-ok").disabled = true;
@@ -673,80 +723,196 @@ function openUpModal() {
   updateBackBtn();
 }
 function closeUpModal() { document.getElementById("up-overlay").classList.remove("open"); updateBackBtn(); }
-function closeUpOutside(e) { if (e.target === document.getElementById("up-overlay")) closeUpModal(); }
+function closeUpOutside(e) { if (e.target===document.getElementById("up-overlay")) closeUpModal(); }
 function setUpMode(m) {
   upMode = m;
-  document.getElementById("mode-rep").className = "topt" + (m==="replace" ? " sel-pending" : "");
-  document.getElementById("mode-mrg").className = "topt" + (m==="merge" ? " sel-blue" : "");
+  document.getElementById("mode-rep").className = "topt" + (m==="replace"?" sel-pending":"");
+  document.getElementById("mode-mrg").className = "topt" + (m==="merge"?" sel-blue":"");
 }
 function dOver(e) { e.preventDefault(); document.getElementById("up-zone").classList.add("drag"); }
 function dLeave() { document.getElementById("up-zone").classList.remove("drag"); }
 function dDrop(e) { e.preventDefault(); dLeave(); handleFile(e.dataTransfer.files[0]); }
+
 function handleFile(f) {
   if (!f) return;
   document.getElementById("uz-ico").textContent = "⏳";
   document.getElementById("uz-t").textContent = f.name;
   var n = f.name.toLowerCase();
-  if (n.endsWith(".csv")) {
-    Papa.parse(f, { header:true, skipEmptyLines:true, complete: function(r) { processRows(r.data); }, error: function() { toast("CSV त्रुटि","err"); } });
-  } else if (n.endsWith(".xlsx") || n.endsWith(".xls")) {
+  if (n.endsWith(".csv") || f.type === "text/csv" || f.type === "text/plain") {
+    Papa.parse(f, { header:true, skipEmptyLines:true,
+      complete: function(r) { processRows(r.data); },
+      error: function() { toast("CSV त्रुटि","err"); }
+    });
+  } else if (n.endsWith(".xlsx") || n.endsWith(".xls") ||
+             f.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
     var rd = new FileReader();
-    rd.onload = function(e) { try { var wb = XLSX.read(e.target.result,{type:"array"}); processRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""})); } catch(ex) { toast("Excel त्रुटि","err"); } };
+    rd.onload = function(e) {
+      try {
+        var wb = XLSX.read(e.target.result, {type:"array"});
+        processRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:""}));
+      } catch(ex) { toast("Excel त्रुटि: " + ex.message,"err"); }
+    };
     rd.readAsArrayBuffer(f);
-  } else { toast("CSV या Excel चुनें","err"); }
+  } else {
+    // Try CSV for unknown types
+    Papa.parse(f, { header:true, skipEmptyLines:true,
+      complete: function(r) { if(r.data.length) processRows(r.data); else toast("फ़ाइल format सही नहीं","err"); },
+      error: function() { toast("फ़ाइल format सही नहीं","err"); }
+    });
+  }
 }
+
 function processRows(rows) {
   var valid=[], errors=[];
   rows.forEach(function(r,i) {
     var k = {};
     Object.keys(r).forEach(function(h) { k[h.trim().toLowerCase().replace(/[\s_]/g,"")] = r[h]; });
-    var name = (k["consumername"]||k["name"]||k["नाम"]||"").toString().trim();
-    var acc = (k["consumerno"]||k["acc"]||k["accountno"]||k["ivrs"]||"").toString().trim();
-    var rawAmt = (k["netbill"]||k["amount"]||k["dues"]||k["arrear"]||k["balance"]||"").toString().replace(/,/g,"").replace(/[₹\s]/g,"").trim();
-    var phone = (k["mobileno"]||k["mobile"]||k["phone"]||"").toString().trim();
-    var addr = (k["address"]||k["addr"]||"").toString().trim();
-    var rem = (k["remark"]||k["remarks"]||"").toString().trim();
+    var name = (k["consumername"]||k["name"]||k["नाम"]||k["cname"]||"").toString().trim();
+    var acc  = (k["consumerno"]||k["acc"]||k["accountno"]||k["ivrs"]||k["cno"]||"").toString().trim();
+    var rawAmt = (k["netbill"]||k["amount"]||k["dues"]||k["arrear"]||k["balance"]||k["bill"]||"").toString().replace(/,/g,"").replace(/[₹\s]/g,"").trim();
+    var phone = (k["mobileno"]||k["mobile"]||k["phone"]||k["mo"]||"").toString().trim();
+    var addr  = (k["address"]||k["addr"]||k["add"]||"").toString().trim();
+    var rem   = (k["remark"]||k["remarks"]||k["note"]||"").toString().trim();
     if (!name||!acc||!rawAmt||isNaN(rawAmt)||Number(rawAmt)<0) { errors.push(i+2); }
-    else { valid.push({name:name,acc:acc,amount:rawAmt,phone:phone,addr:addr,remarks:rem,status:"pending",uploadedBy:CU.name,uploadedAt:new Date().toLocaleString("hi-IN")}); }
+    else {
+      valid.push({
+        name:name, acc:acc, amount:rawAmt, phone:phone, addr:addr, remarks:rem,
+        status:"pending", uploadedBy:CU.name, uploadedAt:new Date().toLocaleString("hi-IN")
+      });
+    }
   });
   parsedRows = valid.slice(0,200);
   document.getElementById("up-preview").style.display = "block";
   var wb = document.getElementById("up-warn");
   wb.style.display = errors.length ? "block" : "none";
-  wb.textContent = errors.length ? "⚠️ " + errors.length + " rows skip" : "";
-  document.getElementById("prev-title").textContent = "Preview (" + parsedRows.length + " records)";
+  wb.textContent = errors.length ? "⚠️ "+errors.length+" rows skip (name/acc/amount missing)" : "";
+  document.getElementById("prev-title").textContent = "पूर्वावलोकन (" + parsedRows.length + " records)";
   document.getElementById("prev-rows").innerHTML = parsedRows.slice(0,5).map(function(r,i) {
-    return "<div class='prev-row'><span class='pr-name'>"+(i+1)+". "+r.name+"</span><span class='pr-acc'>"+r.acc+"</span><span class='pr-amt'>₹"+Number(r.amount).toLocaleString("hi-IN")+"</span></div>";
+    return "<div class='prev-row'><span class='pr-name'>"+(i+1)+". "+r.name+"</span>"+
+           "<span class='pr-acc'>"+r.acc+"</span>"+
+           "<span class='pr-amt'>₹"+Number(r.amount).toLocaleString("hi-IN")+"</span></div>";
   }).join("");
   document.getElementById("uz-ico").textContent = parsedRows.length ? "✅" : "❌";
-  document.getElementById("uz-t").textContent = parsedRows.length + " records";
-  if (parsedRows.length) { document.getElementById("btn-up-ok").disabled = false; document.getElementById("btn-up-ok").style.opacity = "1"; }
+  document.getElementById("uz-t").textContent = parsedRows.length + " valid records मिले";
+  if (parsedRows.length) {
+    document.getElementById("btn-up-ok").disabled = false;
+    document.getElementById("btn-up-ok").style.opacity = "1";
+  }
 }
+
 function confirmUpload() {
-  var hq = document.getElementById("up-hq").value;
+  var hq  = document.getElementById("up-hq").value;
   var cat = document.getElementById("up-cat").value;
-  if (!hq) { toast("HQ चुनें","err"); return; }
+  if (!hq)  { toast("HQ चुनें","err"); return; }
   if (!cat) { toast("Category चुनें","err"); return; }
-  if (!parsedRows.length) { toast("डेटा नहीं","err"); return; }
+  if (!parsedRows.length) { toast("कोई valid डेटा नहीं","err"); return; }
+
+  showLoader("Firebase पर अपलोड हो रहा है...");
+
+  var doSave = function(arr) {
+    fetch(FB_URL + "/" + fbPath(hq,cat) + ".json", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(arr)
+    }).then(function(r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      updSyncTime(); setSyncStatus("online");
+      activeHQ = hq; activeCat = cat;
+      buildUI();
+      renderAll(function() {
+        startPoll(activeHQ, activeCat);
+        hideLoader(); closeUpModal();
+        toast("✅ " + arr.length + " records अपलोड! सभी को दिखेगा 🔥","ok");
+      });
+    }).catch(function(e) {
+      hideLoader();
+      toast("❌ Upload failed: " + e.message,"err");
+    });
+  };
+
   if (upMode === "replace") {
-    showLoader("Save हो रहा है...");
-    fbSet(hq, cat, parsedRows, function() { activeHQ=hq; activeCat=cat; buildUI(); renderAll(function() { startListener(); hideLoader(); closeUpModal(); toast("✅ "+parsedRows.length+" records सेव! 🔥","ok"); }); });
+    doSave(parsedRows);
   } else {
     fbGet(hq, cat, function(ex) {
       var merged = ex.slice();
-      parsedRows.forEach(function(r) { if (!merged.find(function(e) { return e.acc===r.acc; })) merged.push(r); });
-      showLoader("Save हो रहा है...");
-      fbSet(hq, cat, merged, function() { activeHQ=hq; activeCat=cat; buildUI(); renderAll(function() { startListener(); hideLoader(); closeUpModal(); toast("✅ "+merged.length+" records सेव! 🔥","ok"); }); });
+      parsedRows.forEach(function(r) {
+        if (!merged.find(function(e) { return e.acc===r.acc; })) merged.push(r);
+      });
+      doSave(merged);
     });
   }
 }
+
 function dlTemplate() {
-  var s = "Consumer No,Consumer Name,Net Bill,Mobile No,Address,Remark\n1234567890,राम लाल,5400,9876543210,आदेगांव,\n";
+  var s = "Consumer No,Consumer Name,Net Bill,Mobile No,Address,Remark\n" +
+          "1234567890,राम लाल,5400,9876543210,आदेगांव,\n" +
+          "9876543210,श्याम सुंदर,12500,8765432109,मादी,बाद में आएंगे\n";
   var a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([s],{type:"text/csv;charset=utf-8;"}));
   a.download = "vasuli_template.csv"; a.click();
   toast("📥 Template डाउनलोड...","inf");
 }
+
+// ── Start — Load Firebase SDK then show app ──
+(function() {
+  var s1 = document.createElement("script");
+  s1.src = "https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js";
+  s1.onload = function() {
+    var s2 = document.createElement("script");
+    s2.src = "https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js";
+    s2.onload = function() {
+      try {
+        firebase.initializeApp({
+          apiKey: "AIzaSyAPFZ2wqPYVMyvU4WqYrKUinVERBkVqdmY",
+          authDomain: "adegaon-dc-top-50.firebaseapp.com",
+          databaseURL: "https://adegaon-dc-top-50-default-rtdb.firebaseio.com",
+          projectId: "adegaon-dc-top-50",
+          storageBucket: "adegaon-dc-top-50.firebasestorage.app",
+          messagingSenderId: "265994697235",
+          appId: "1:265994697235:web:6158cdf1200bd86c201de6"
+        });
+        // Override REST functions with SDK
+        var fdb = firebase.database();
+        fbGet = function(hq, cat, cb) {
+          fdb.ref(fbPath(hq,cat)).once("value").then(function(snap) {
+            if (!snap.exists()) { cb([]); return; }
+            var v = snap.val();
+            cb(Array.isArray(v) ? v : Object.values(v));
+          }).catch(function(e) { console.error("fbGet",e); cb([]); });
+        };
+        fbSet = function(hq, cat, arr, cb) {
+          fdb.ref(fbPath(hq,cat)).set(arr).then(function() {
+            updSyncTime(); setSyncStatus("online"); if(cb) cb(true);
+          }).catch(function(e) { toast("❌ "+e.message,"err"); if(cb) cb(false); });
+        };
+        fbDel = function(hq, cat, cb) {
+          fdb.ref(fbPath(hq,cat)).remove().then(function() { if(cb) cb(); }).catch(function() { if(cb) cb(); });
+        };
+        startPoll = function(hq, cat) {
+          stopPoll();
+          fdb.ref(fbPath(hq,cat)).on("value", function(snap) {
+            if (!snap.exists()) { renderSummaryWith([]); renderListWith([]); return; }
+            var v = snap.val();
+            var data = Array.isArray(v) ? v : Object.values(v);
+            renderSummaryWith(data); renderListWith(data); setSyncStatus("online"); updSyncTime();
+          });
+          pollTimer = true;
+        };
+        stopPoll = function() {
+          if (pollTimer && pollTimer !== true) clearInterval(pollTimer);
+          pollTimer = null;
+        };
+        setSyncStatus("online");
+      } catch(e) { console.error("SDK init error:", e); }
+      hideLoader();
+      document.getElementById("login-screen").classList.add("active");
+    };
+    s2.onerror = function() { hideLoader(); document.getElementById("login-screen").classList.add("active"); };
+    document.head.appendChild(s2);
+  };
+  s1.onerror = function() { hideLoader(); document.getElementById("login-screen").classList.add("active"); };
+  document.head.appendChild(s1);
+})();
 </script>
 </body>
 </html>
