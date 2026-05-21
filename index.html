@@ -622,7 +622,7 @@ function renderListWith(data){
       "<div class='cc-top'><div class='cc-name'>"+x.name+"</div><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
       "<div class='cc-amt'>₹"+Number(x.amount).toLocaleString("hi-IN")+" <span>बकाया</span></div>"+
       "<div class='cc-chips'>"+
-        (x.acc?"<span class='chip chip-acc'>📄 "+x.acc+"</span>":"")+
+        (x.acc?"<span class='chip chip-acc' onclick=\"window.open('https://billing.mpez.co.in','_blank')\" style='cursor:pointer;text-decoration:underline;' title='Online Bill Payment'>📄 "+x.acc+"</span>":"")+
         (x.phone?"<span class='chip chip-ph'>📞 "+x.phone+"</span>":"")+
         (x.addr?"<span class='chip chip-addr'>📍 "+x.addr+"</span>":"")+
       "</div>"+
