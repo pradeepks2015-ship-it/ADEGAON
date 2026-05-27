@@ -115,10 +115,15 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .abtn{padding:4px 10px;border-radius:7px;font-size:10px;font-weight:600;border:none;cursor:pointer;font-family:"Noto Sans Devanagari",sans-serif;}
 .abtn-pay{background:rgba(0,200,150,.2);color:var(--green);border:1px solid rgba(0,200,150,.3);}
 .abtn-rmk{background:rgba(255,140,66,.15);color:var(--orange);border:1px solid rgba(255,140,66,.25);}
-.cc-info{font-size:10px;margin-top:4px;padding-top:4px;border-top:1px solid var(--border);}
-.cc-rem{font-size:10px;color:var(--muted);font-style:italic;margin-top:3px;}
-.cc-paydate{font-size:10px;color:var(--green);margin-top:3px;}
+.cc-info{font-size:10px;margin-top:4px;padding-top:4px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+/* NEW: remarks list on card */
+.cc-rmk-list{margin-top:4px;padding-top:4px;border-top:1px solid var(--border);}
+.cc-rmk-item{font-size:10px;color:var(--muted);font-style:italic;padding:2px 0;display:flex;gap:4px;align-items:baseline;}
+.cc-rmk-item:not(:last-child){border-bottom:1px dashed rgba(30,48,80,.5);margin-bottom:2px;padding-bottom:2px;}
+.cc-rmk-by{font-size:9px;color:#2a4060;font-style:normal;white-space:nowrap;flex-shrink:0;}
 .cc-updby{font-size:9px;color:#2a4060;margin-top:2px;}
+.cc-paydate{font-size:10px;color:var(--green);}
+.cc-upload-info{font-size:9px;color:#2a4060;}
 .empty{text-align:center;padding:48px 20px;}
 .empty-ico{font-size:42px;margin-bottom:10px;}
 .empty-t{font-size:15px;font-weight:600;color:var(--muted);margin-bottom:5px;}
@@ -147,6 +152,16 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .btn-cancel{flex:1;padding:12px;border-radius:11px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:"Noto Sans Devanagari",sans-serif;font-size:13px;font-weight:600;}
 .btn-save{flex:2;padding:12px;border-radius:11px;border:none;background:linear-gradient(135deg,var(--gold),#c47a00);color:#0a0e1a;cursor:pointer;font-family:"Baloo 2",cursive;font-size:14px;font-weight:800;}
 .btn-green{background:linear-gradient(135deg,#00c896,#007a5e);color:#fff;}
+/* Upload counter box */
+.up-counter-box{background:rgba(33,150,243,.08);border:1px solid rgba(33,150,243,.2);border-radius:10px;padding:10px 13px;margin-bottom:10px;font-size:11px;}
+.up-counter-row{display:flex;gap:14px;flex-wrap:wrap;}
+.up-counter-item{display:flex;flex-direction:column;gap:1px;}
+.up-counter-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
+.up-counter-val{font-family:"Baloo 2",cursive;font-size:15px;font-weight:800;}
+.up-counter-val.exist{color:#64b5f6;}
+.up-counter-val.avail{color:var(--green);}
+.up-counter-val.file{color:var(--gold);}
+.up-counter-val.warn{color:var(--red);}
 .up-info-box{background:rgba(33,150,243,.08);border:1px solid rgba(33,150,243,.2);border-radius:10px;padding:11px 13px;margin-bottom:12px;font-size:11px;color:#90caf9;line-height:1.7;}
 .up-sel2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
 .upload-zone{border:2px dashed var(--border);border-radius:12px;padding:22px 16px;text-align:center;cursor:pointer;background:var(--card);margin-bottom:12px;}
@@ -161,10 +176,20 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .pr-acc{color:var(--muted);font-size:10px;}
 .pr-amt{color:var(--gold);text-align:right;}
 .warn-box{font-size:11px;color:var(--orange);background:rgba(255,140,66,.08);border:1px solid rgba(255,140,66,.2);border-radius:8px;padding:8px 11px;margin-bottom:10px;}
+.limit-warn-box{font-size:11px;color:var(--red);background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.2);border-radius:8px;padding:8px 11px;margin-bottom:10px;}
 .tmpl-btn{width:100%;padding:9px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:"Noto Sans Devanagari",sans-serif;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:10px;}
+/* Remark modal - history section */
 .rmk-info{background:var(--card);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
 .rmk-name{font-family:"Baloo 2",cursive;font-size:15px;font-weight:700;margin-bottom:3px;}
 .rmk-amt{font-size:13px;color:var(--gold);font-weight:700;}
+.prev-rmk-section{margin-bottom:12px;}
+.prev-rmk-hdr{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.prev-rmk-hdr span{background:rgba(255,140,66,.2);color:var(--orange);border-radius:10px;padding:1px 7px;font-size:10px;}
+.prev-rmk-list{background:var(--card);border:1px solid var(--border);border-radius:9px;max-height:120px;overflow-y:auto;}
+.prev-rmk-item{padding:7px 10px;border-bottom:1px solid var(--border);font-size:11px;}
+.prev-rmk-item:last-child{border-bottom:none;}
+.prev-rmk-text{color:var(--text);margin-bottom:2px;}
+.prev-rmk-meta{font-size:9px;color:var(--muted);}
 .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--card);border:1px solid var(--border);border-radius:11px;padding:11px 18px;font-size:12px;font-weight:600;color:var(--text);z-index:999;white-space:nowrap;box-shadow:0 8px 28px rgba(0,0,0,.4);transition:transform .3s,opacity .3s;opacity:0;}
 .toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
 .toast.ok{border-color:var(--green);color:var(--green);}
@@ -286,11 +311,11 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
     <button class="tmpl-btn" onclick="dlTemplate()">&#11015; Template CSV डाउनलोड करें</button>
     <div class="up-sel2">
       <div class="fg" style="margin:0;"><label>HQ *</label>
-        <div class="sel-wrap" style="margin:0;"><select class="fs" id="up-hq"></select></div>
+        <div class="sel-wrap" style="margin:0;"><select class="fs" id="up-hq" onchange="updateUpCounter()"></select></div>
       </div>
       <div class="fg" style="margin:0;"><label>Category *</label>
         <div class="sel-wrap" style="margin:0;">
-          <select class="fs" id="up-cat">
+          <select class="fs" id="up-cat" onchange="updateUpCounter()">
             <option value="">-- चुनें --</option>
             <option>घरेलू</option><option>व्यवसाय</option><option>कृषि</option>
             <option>गवर्नमेंट</option><option>इंडस्ट्रियल</option>
@@ -298,10 +323,19 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
         </div>
       </div>
     </div>
+    <!-- COUNTER BOX -->
+    <div class="up-counter-box" id="up-counter-box">
+      <div class="up-counter-row" id="up-counter-row">
+        <div class="up-counter-item"><div class="up-counter-label">मौजूद</div><div class="up-counter-val exist" id="cnt-exist">0</div></div>
+        <div class="up-counter-item"><div class="up-counter-label">बाकी जगह (500 limit)</div><div class="up-counter-val avail" id="cnt-avail">500</div></div>
+        <div class="up-counter-item" id="cnt-file-wrap" style="display:none;"><div class="up-counter-label">इस फाइल में</div><div class="up-counter-val file" id="cnt-file">0</div></div>
+      </div>
+      <div id="cnt-limit-warn" class="limit-warn-box" style="display:none;margin-top:8px;margin-bottom:0;">⛔ लिमिट भरी है — Replace mode use करें</div>
+    </div>
     <div class="fg"><label>मोड</label>
       <div class="stoggle">
-        <button class="topt sel-pending" id="mode-rep" onclick="setUpMode('replace')">&#128260; Replace</button>
-        <button class="topt" id="mode-mrg" onclick="setUpMode('merge')">&#10133; Merge</button>
+        <button class="topt" id="mode-rep" onclick="setUpMode('replace')">&#128260; Replace</button>
+        <button class="topt sel-blue" id="mode-mrg" onclick="setUpMode('merge')">&#10133; Merge</button>
       </div>
     </div>
     <div class="upload-zone" id="up-zone" onclick="document.getElementById('file-input').click()" ondragover="dOver(event)" ondragleave="dLeave()" ondrop="dDrop(event)">
@@ -335,6 +369,11 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
       <div class="rmk-amt" id="rmk-amt"></div>
       <div style="font-size:10px;color:var(--muted);margin-top:2px;" id="rmk-acc"></div>
     </div>
+    <!-- PREVIOUS REMARKS HISTORY -->
+    <div class="prev-rmk-section" id="prev-rmk-section" style="display:none;">
+      <div class="prev-rmk-hdr">पिछले रिमार्क <span id="prev-rmk-count">0</span></div>
+      <div class="prev-rmk-list" id="prev-rmk-list"></div>
+    </div>
     <div class="fg"><label>स्थिति</label>
       <div class="stoggle">
         <button class="topt sel-pending" id="rs-pending" onclick="setRmkStatus('pending')">&#9203; बाकी है</button>
@@ -345,7 +384,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
       <label>भुगतान तिथि</label>
       <input type="date" class="fi" id="rmk-paydate">
     </div>
-    <div class="fg"><label>रिमार्क / टिप्पणी</label>
+    <div class="fg"><label>नया रिमार्क / टिप्पणी</label>
       <textarea class="fta" id="rmk-text" placeholder="जैसे: घर पर नहीं मिले..."></textarea>
     </div>
     <div class="mfooter">
@@ -362,8 +401,9 @@ var HQS = ["आदेगांव","पिंडरई","जोबा","पा�
 var CATS = ["घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल"];
 var CICO = ["🏠","🏪","🌾","🏛️","🏭"];
 var SUP_PW = "bijli@2025";
+var MAX_RECORDS = 500;
 var CU = null, activeHQ = "", activeCat = "घरेलू", activeFilter = "all";
-var upMode = "replace", parsedRows = [], selectedRole = "", rmkStatus = "pending";
+var upMode = "merge", parsedRows = [], selectedRole = "", rmkStatus = "pending";
 var pollTimer = null;
 var FB = "https://adegaon-dc-top-50-default-rtdb.firebaseio.com";
 var CACHE = {};
@@ -381,6 +421,8 @@ function fbGet(hq,cat,cb){
     .then(function(r){return r.json();})
     .then(function(d){
       var data=!d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
+      // migrate old single-string remarks to array
+      data = data.map(migrateRemarks);
       cSet(hq,cat,data);
       cb(data);
       setSyncStatus(true);
@@ -413,6 +455,22 @@ function fbDel(hq,cat,cb){
     .then(function(){if(cb)cb();}).catch(function(){if(cb)cb();});
 }
 
+// Migrate old single-string remarks to array format
+function migrateRemarks(x){
+  if(!x) return x;
+  if(!x.remarksArr){
+    x.remarksArr = [];
+    if(x.remarks && x.remarks.trim()){
+      x.remarksArr.push({
+        text: x.remarks.trim(),
+        by: x.updatedBy || x.uploadedBy || "—",
+        at: x.updatedAt || x.uploadedAt || ""
+      });
+    }
+  }
+  return x;
+}
+
 function startListen(hq,cat){
   if(pollTimer) clearInterval(pollTimer);
   pollTimer=setInterval(function(){
@@ -420,6 +478,7 @@ function startListen(hq,cat){
       .then(function(r){return r.json();})
       .then(function(d){
         var data=!d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
+        data = data.map(migrateRemarks);
         cSet(hq,cat,data);
         renderSummaryWith(data);
         renderListWith(data);
@@ -450,10 +509,15 @@ function updTime(){
   if(el) el.textContent=now.getHours()+":"+String(now.getMinutes()).padStart(2,"0");
 }
 
+// Format date+time for display
+function fmtDateTime(dt){
+  if(!dt) return "";
+  return dt;
+}
+
 window.addEventListener("online",function(){setSyncStatus(true);});
 window.addEventListener("offline",function(){setSyncStatus(false);});
 
-// Logout menu
 function toggleUserMenu(e){
   e.stopPropagation();
   var m=document.getElementById("logout-menu");
@@ -640,41 +704,79 @@ function renderListWith(data){
   }
   c.innerHTML=filtered.map(function(x){
     var oi=data.indexOf(x),isPaid=x.status==="paid";
+    var remarksArr=x.remarksArr||[];
+
+    // Build remarks HTML for card — newest first, all shown
+    var rmkHtml="";
+    if(remarksArr.length){
+      rmkHtml="<div class='cc-rmk-list'>";
+      var sorted=remarksArr.slice().reverse();
+      sorted.forEach(function(r){
+        rmkHtml+="<div class='cc-rmk-item'>"+
+          "<span>💬 "+escHtml(r.text)+"</span>"+
+          "<span class='cc-rmk-by'>— "+escHtml(r.by)+(r.at?" • "+r.at:"")+"</span>"+
+        "</div>";
+      });
+      rmkHtml+="</div>";
+    }
+
+    // Upload / update info
+    var uploadInfo="";
+    if(x.updatedBy&&x.updatedAt){
+      uploadInfo="<span class='cc-upload-info'>🔄 अपडेट: "+escHtml(x.updatedBy)+" • "+escHtml(x.updatedAt)+"</span>";
+    } else if(x.uploadedBy&&x.uploadedAt){
+      uploadInfo="<span class='cc-upload-info'>📤 अपलोड: "+escHtml(x.uploadedBy)+" • "+escHtml(x.uploadedAt)+"</span>";
+    }
+
+    // Previous payment info
+    var prevPayInfo="";
+    if(x.lastPaidAmt&&x.lastPaidAmt!="0"){
+      prevPayInfo="<span style='color:#7986cb;'>📅 पिछला भुगतान: ₹"+Number(x.lastPaidAmt).toLocaleString("hi-IN")+(x.lastPayDate?" ("+escHtml(x.lastPayDate)+")":"")+"</span>";
+    }
+    var payDateInfo="";
+    if(x.paydate){
+      payDateInfo="<span class='cc-paydate'>💰 वसूल: "+escHtml(x.paydate)+"</span>";
+    }
+
     return "<div class='con-card "+(isPaid?"paid":"pending")+"'>"+
-      "<div class='cc-top'><div class='cc-name'>"+x.name+"</div><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
+      "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+"</div><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
       "<div class='cc-amt'>₹"+Number(x.amount).toLocaleString("hi-IN")+" <span>बकाया</span></div>"+
       "<div class='cc-chips'>"+
-        (x.acc?"<span class='chip chip-acc' onclick=\"window.open('https://billing.mpez.co.in','_blank')\">📄 "+x.acc+"</span>":"")+
-        (x.phone?"<span class='chip chip-ph'>📞 "+x.phone+"</span>":"")+
-        (x.addr?"<span class='chip chip-addr'>📍 "+x.addr+"</span>":"")+
+        (x.acc?"<span class='chip chip-acc' onclick=\"window.open('https://billing.mpez.co.in','_blank')\">📄 "+escHtml(x.acc)+"</span>":"")+
+        (x.phone?"<span class='chip chip-ph'>📞 "+escHtml(x.phone)+"</span>":"")+
+        (x.addr?"<span class='chip chip-addr'>📍 "+escHtml(x.addr)+"</span>":"")+
       "</div>"+
       "<div class='cc-extra'>"+
-        (x.tariff?"<span style='font-size:10px;padding:2px 7px;border-radius:12px;background:rgba(255,152,0,.12);color:#ffb74d;'>⚡ "+x.tariff+"</span>":"")+
-        (x.load?"<span style='font-size:10px;padding:2px 7px;border-radius:12px;background:rgba(33,150,243,.1);color:#64b5f6;'>🔌 "+x.load+"</span>":"")+
-        (x.unit?"<span style='font-size:10px;padding:2px 7px;border-radius:12px;background:rgba(0,200,150,.08);color:#4db6ac;'>📊 "+x.unit+"</span>":"")+
+        (x.tariff?"<span style='font-size:10px;padding:2px 7px;border-radius:12px;background:rgba(255,152,0,.12);color:#ffb74d;'>⚡ "+escHtml(x.tariff)+"</span>":"")+
+        (x.load?"<span style='font-size:10px;padding:2px 7px;border-radius:12px;background:rgba(33,150,243,.1);color:#64b5f6;'>🔌 "+escHtml(x.load)+"</span>":"")+
+        (x.unit?"<span style='font-size:10px;padding:2px 7px;border-radius:12px;background:rgba(0,200,150,.08);color:#4db6ac;'>📊 "+escHtml(x.unit)+"</span>":"")+
       "</div>"+
       "<div class='cc-bot'><span class='sbadge "+(isPaid?"sb-paid":"sb-pending")+"'>"+(isPaid?"✅ वसूल":"⏳ बाकी")+"</span>"+
       "<div class='act-btns'>"+
         "<button class='abtn abtn-rmk' onclick='openRmkModal("+oi+")'>✏️ रिमार्क</button>"+
         (!isPaid?"<button class='abtn abtn-pay' onclick='markPaid("+oi+")'>✓ वसूल</button>":"")+
       "</div></div>"+
-      "<div class='cc-info'>"+
-        (x.lastPaidAmt&&x.lastPaidAmt!="0"?"<span style='color:#7986cb;'>📅 पिछला भुगतान: ₹"+Number(x.lastPaidAmt).toLocaleString("hi-IN")+(x.lastPayDate?" ("+x.lastPayDate+")":"")+"</span>":"")+
-        (x.paydate?"<span style='color:var(--green);margin-left:8px;'>💰 वसूल: "+x.paydate+"</span>":"")+
-      "</div>"+
-      (x.remarks?"<div class='cc-rem'>💬 "+x.remarks+"</div>":"")+
-      (x.updatedBy?"<div class='cc-updby'>🔄 "+x.updatedBy+"</div>":"")+(x.uploadedAt?"<div class='cc-updby' style='color:#4a6080;'>📤 अपलोड: "+x.uploadedAt+"</div>":"")+
+      "<div class='cc-info'>"+prevPayInfo+payDateInfo+uploadInfo+"</div>"+
+      rmkHtml+
     "</div>";
   }).join("");
+}
+
+function escHtml(s){
+  if(!s) return "";
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
 function markPaid(idx){
   var d=cGet(activeHQ,activeCat);
   if(!d[idx])return;
+  var now=new Date();
+  var dateStr=now.toLocaleDateString("hi-IN");
+  var dtStr=now.toLocaleString("hi-IN");
   d[idx].status="paid";
-  d[idx].paydate=new Date().toLocaleDateString("hi-IN");
+  d[idx].paydate=dateStr;
   d[idx].updatedBy=CU.name;
-  d[idx].updatedAt=new Date().toLocaleString("hi-IN");
+  d[idx].updatedAt=dtStr;
   cSet(activeHQ,activeCat,d);
   renderSummaryWith(d); renderListWith(d);
   toast("✅ वसूली दर्ज!","ok");
@@ -692,13 +794,33 @@ function clearList(){
 function openRmkModal(idx){
   var d=cGet(activeHQ,activeCat);
   var x=d[idx]; if(!x)return;
+  x=migrateRemarks(x);
   document.getElementById("rmk-key").value=idx;
   document.getElementById("rmk-name").textContent=x.name;
   document.getElementById("rmk-amt").textContent="₹"+Number(x.amount).toLocaleString("hi-IN")+" बकाया";
   document.getElementById("rmk-acc").textContent="Consumer No: "+x.acc;
-  document.getElementById("rmk-text").value=x.remarks||"";
+  // New remark textarea always empty
+  document.getElementById("rmk-text").value="";
   document.getElementById("rmk-paydate").value=x.paydate||"";
   setRmkStatus(x.status||"pending");
+  // Show previous remarks
+  var arr=x.remarksArr||[];
+  var sec=document.getElementById("prev-rmk-section");
+  var lst=document.getElementById("prev-rmk-list");
+  var cnt=document.getElementById("prev-rmk-count");
+  if(arr.length){
+    cnt.textContent=arr.length;
+    var html=arr.slice().reverse().map(function(r){
+      return "<div class='prev-rmk-item'>"+
+        "<div class='prev-rmk-text'>💬 "+escHtml(r.text)+"</div>"+
+        "<div class='prev-rmk-meta'>— "+escHtml(r.by)+(r.at?" • "+r.at:"")+"</div>"+
+      "</div>";
+    }).join("");
+    lst.innerHTML=html;
+    sec.style.display="block";
+  } else {
+    sec.style.display="none";
+  }
   document.getElementById("rmk-overlay").classList.add("open");
 }
 function closeRmkModal(){document.getElementById("rmk-overlay").classList.remove("open");}
@@ -713,16 +835,53 @@ function saveRmk(){
   var idx=parseInt(document.getElementById("rmk-key").value);
   var d=cGet(activeHQ,activeCat);
   if(!d[idx])return;
+  d[idx]=migrateRemarks(d[idx]);
+  var now=new Date();
+  var dtStr=now.toLocaleString("hi-IN");
   d[idx].status=rmkStatus;
-  d[idx].remarks=document.getElementById("rmk-text").value.trim();
-  if(rmkStatus==="paid") d[idx].paydate=document.getElementById("rmk-paydate").value||new Date().toLocaleDateString("hi-IN");
+  if(rmkStatus==="paid") d[idx].paydate=document.getElementById("rmk-paydate").value||now.toLocaleDateString("hi-IN");
+  var newText=document.getElementById("rmk-text").value.trim();
+  if(newText){
+    if(!d[idx].remarksArr) d[idx].remarksArr=[];
+    d[idx].remarksArr.push({text:newText,by:CU.name,at:dtStr});
+    // Keep backward-compat field as latest remark text
+    d[idx].remarks=newText;
+  }
   d[idx].updatedBy=CU.name;
-  d[idx].updatedAt=new Date().toLocaleString("hi-IN");
+  d[idx].updatedAt=dtStr;
   cSet(activeHQ,activeCat,d);
   closeRmkModal();
   renderSummaryWith(d); renderListWith(d);
-  toast("✅ रिमार्क सेव!","ok");
+  var total=(d[idx].remarksArr||[]).length;
+  toast("✅ रिमार्क सेव! (कुल "+total+")","ok");
   fbSet(activeHQ,activeCat,d,null);
+}
+
+// ─── UPLOAD MODAL ────────────────────────────────────────────
+function updateUpCounter(){
+  var hq=document.getElementById("up-hq").value;
+  var cat=document.getElementById("up-cat").value;
+  var exist=0;
+  if(hq&&cat) exist=cGet(hq,cat).length;
+  var avail=Math.max(0,MAX_RECORDS-exist);
+  document.getElementById("cnt-exist").textContent=exist;
+  document.getElementById("cnt-avail").textContent=avail;
+  // file count if already parsed
+  var fileWrap=document.getElementById("cnt-file-wrap");
+  if(parsedRows.length){
+    fileWrap.style.display="block";
+    document.getElementById("cnt-file").textContent=parsedRows.length;
+  } else {
+    fileWrap.style.display="none";
+  }
+  // limit warning
+  var lw=document.getElementById("cnt-limit-warn");
+  lw.style.display=(exist>=MAX_RECORDS)?"block":"none";
+  // disable upload if limit full and merge mode
+  if(exist>=MAX_RECORDS && upMode==="merge"){
+    document.getElementById("btn-up-ok").disabled=true;
+    document.getElementById("btn-up-ok").style.opacity=".5";
+  }
 }
 
 function openUpModal(){
@@ -738,7 +897,8 @@ function openUpModal(){
   document.getElementById("up-preview").style.display="none";
   document.getElementById("btn-up-ok").disabled=true;
   document.getElementById("btn-up-ok").style.opacity=".5";
-  setUpMode("replace");
+  setUpMode("merge"); // DEFAULT: merge
+  updateUpCounter();
   document.getElementById("up-overlay").classList.add("open");
 }
 function closeUpModal(){document.getElementById("up-overlay").classList.remove("open");}
@@ -747,6 +907,7 @@ function setUpMode(m){
   upMode=m;
   document.getElementById("mode-rep").className="topt"+(m==="replace"?" sel-pending":"");
   document.getElementById("mode-mrg").className="topt"+(m==="merge"?" sel-blue":"");
+  updateUpCounter();
 }
 function dOver(e){e.preventDefault();document.getElementById("up-zone").classList.add("drag");}
 function dLeave(){document.getElementById("up-zone").classList.remove("drag");}
@@ -779,6 +940,8 @@ function handleFile(f){
 
 function processRows(rows){
   var valid=[],errors=[];
+  var now=new Date();
+  var dtStr=now.toLocaleString("hi-IN");
   rows.forEach(function(r,i){
     var k={};
     Object.keys(r).forEach(function(h){
@@ -797,20 +960,36 @@ function processRows(rows){
     var lastPayDate=(k["lastpaymentdate"]||k["lastpaydate"]||k["lastdate"]||"").trim();
     var lastPaidAmt=(k["lastpaidamt"]||k["lastpaid"]||k["lastamt"]||k["lastpaidamount"]||"").replace(/,/g,"").replace(/[₹\s]/g,"").trim();
     if(!name||!acc||!rawAmt||isNaN(rawAmt)||Number(rawAmt)<0) errors.push(i+2);
-    else valid.push({name:name,acc:acc,amount:rawAmt,phone:phone,addr:addr,remarks:rem,tariff:tariff,load:load,unit:unit,lastPayDate:lastPayDate,lastPaidAmt:lastPaidAmt,status:"pending",uploadedBy:CU.name,uploadedAt:new Date().toLocaleString("hi-IN")});
+    else {
+      var entry={name:name,acc:acc,amount:rawAmt,phone:phone,addr:addr,remarks:rem,
+        tariff:tariff,load:load,unit:unit,lastPayDate:lastPayDate,lastPaidAmt:lastPaidAmt,
+        status:"pending",uploadedBy:CU.name,uploadedAt:dtStr,remarksArr:[]};
+      if(rem) entry.remarksArr.push({text:rem,by:CU.name,at:dtStr});
+      valid.push(entry);
+    }
   });
-  parsedRows=valid.slice(0,200);
+  parsedRows=valid.slice(0,MAX_RECORDS);
   document.getElementById("up-preview").style.display="block";
-  var wb=document.getElementById("up-warn");
-  wb.style.display=errors.length?"block":"none";
-  wb.textContent=errors.length?"⚠️ "+errors.length+" rows skip":"";
+  var wb2=document.getElementById("up-warn");
+  wb2.style.display=errors.length?"block":"none";
+  wb2.textContent=errors.length?"⚠️ "+errors.length+" rows skip (invalid data)":"";
   document.getElementById("prev-title").textContent="पूर्वावलोकन ("+parsedRows.length+" records)";
   document.getElementById("prev-rows").innerHTML=parsedRows.slice(0,5).map(function(r,i){
-    return "<div class='prev-row'><span class='pr-name'>"+(i+1)+". "+r.name+"</span><span class='pr-acc'>"+r.acc+"</span><span class='pr-amt'>₹"+Number(r.amount).toLocaleString("hi-IN")+"</span></div>";
+    return "<div class='prev-row'><span class='pr-name'>"+(i+1)+". "+escHtml(r.name)+"</span><span class='pr-acc'>"+escHtml(r.acc)+"</span><span class='pr-amt'>₹"+Number(r.amount).toLocaleString("hi-IN")+"</span></div>";
   }).join("");
   document.getElementById("uz-ico").textContent=parsedRows.length?"✅":"❌";
   document.getElementById("uz-t").textContent=parsedRows.length+" valid records";
-  if(parsedRows.length){document.getElementById("btn-up-ok").disabled=false;document.getElementById("btn-up-ok").style.opacity="1";}
+  // Update counter with file info
+  document.getElementById("cnt-file-wrap").style.display="block";
+  document.getElementById("cnt-file").textContent=parsedRows.length;
+  updateUpCounter();
+  // Enable button only if there's space or replace mode
+  var hq=document.getElementById("up-hq").value;
+  var cat=document.getElementById("up-cat").value;
+  var exist=hq&&cat?cGet(hq,cat).length:0;
+  var canUpload=parsedRows.length>0&&(upMode==="replace"||(upMode==="merge"&&exist<MAX_RECORDS));
+  document.getElementById("btn-up-ok").disabled=!canUpload;
+  document.getElementById("btn-up-ok").style.opacity=canUpload?"1":".5";
 }
 
 function confirmUpload(){
@@ -819,35 +998,45 @@ function confirmUpload(){
   if(!hq){toast("HQ चुनें","err");return;}
   if(!cat){toast("Category चुनें","err");return;}
   if(!parsedRows.length){toast("कोई valid डेटा नहीं","err");return;}
-  var doSave=function(arr){
+  var doSave=function(arr,added,dupes){
     cSet(hq,cat,arr);
     activeHQ=hq; activeCat=cat;
     buildUI();
     renderSummaryWith(arr); renderListWith(arr);
     startListen(activeHQ,activeCat);
     closeUpModal();
-    toast("✅ "+arr.length+" records अपलोड! 🔥","ok");
+    var msg="✅ "+added+" नए जोड़े";
+    if(dupes>0) msg+=" | "+dupes+" duplicate skip";
+    msg+=" | कुल: "+arr.length+"/"+MAX_RECORDS+" 🔥";
+    toast(msg,"ok");
     fbSet(hq,cat,arr,null);
   };
   if(upMode==="replace"){
-    doSave(parsedRows);
+    doSave(parsedRows,parsedRows.length,0);
   } else {
     var ex=cGet(hq,cat);
+    var avail=MAX_RECORDS-ex.length;
+    if(avail<=0){toast("⛔ लिमिट भरी है — Replace mode use करें","err");return;}
     var merged=ex.slice();
-    parsedRows.forEach(function(r){if(!merged.find(function(e){return e.acc===r.acc;}))merged.push(r);});
-    doSave(merged);
+    var added=0,dupes=0;
+    parsedRows.forEach(function(r){
+      if(merged.find(function(e){return e.acc===r.acc;})){dupes++;}
+      else if(merged.length<MAX_RECORDS){merged.push(r);added++;}
+    });
+    doSave(merged,added,dupes);
   }
 }
 
 function downloadExcel(){
   var data=cGet(activeHQ,activeCat);
   if(!data.length){toast("कोई data नहीं","err");return;}
-  var rows=[["क्र.","नाम","Consumer No","बकाया","Tariff","Load","Unit","Mobile","पता","स्थिति","भुगतान तिथि","पिछला भुगतान","पिछला तिथि","रिमार्क","अपडेट by"]];
+  var rows=[["क्र.","नाम","Consumer No","बकाया","Tariff","Load","Unit","Mobile","पता","स्थिति","भुगतान तिथि","पिछला भुगतान","पिछला तिथि","रिमार्क (सभी)","अपडेट by"]];
   data.forEach(function(x,i){
-    rows.push([i+1,x.name||"",x.acc||"",Number(x.amount)||0,x.tariff||"",x.load||"",x.unit||"",x.phone||"",x.addr||"",x.status==="paid"?"वसूल":"बाकी",x.paydate||"",x.lastPaidAmt||"",x.lastPayDate||"",x.remarks||"",x.updatedBy||""]);
+    var allRmk=(x.remarksArr||[]).map(function(r){return r.text+" ("+r.by+")";}).join(" | ");
+    rows.push([i+1,x.name||"",x.acc||"",Number(x.amount)||0,x.tariff||"",x.load||"",x.unit||"",x.phone||"",x.addr||"",x.status==="paid"?"वसूल":"बाकी",x.paydate||"",x.lastPaidAmt||"",x.lastPayDate||"",allRmk,x.updatedBy||""]);
   });
   var ws=XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"]=[{wch:4},{wch:20},{wch:14},{wch:10},{wch:8},{wch:8},{wch:6},{wch:13},{wch:18},{wch:8},{wch:13},{wch:12},{wch:13},{wch:25},{wch:14}];
+  ws["!cols"]=[{wch:4},{wch:20},{wch:14},{wch:10},{wch:8},{wch:8},{wch:6},{wch:13},{wch:18},{wch:8},{wch:13},{wch:12},{wch:13},{wch:35},{wch:14}];
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,activeHQ+"_"+activeCat);
   XLSX.writeFile(wb,activeHQ+"_"+activeCat+"_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx");
@@ -863,18 +1052,19 @@ function downloadPDF(){
   var paidAmt=paid.reduce(function(s,x){return s+(Number(x.amount)||0);},0);
   var rows=data.map(function(x,i){
     var isPaid=x.status==="paid";
+    var allRmk=(x.remarksArr||[]).map(function(r){return r.text+" <small>("+r.by+")</small>";}).join("<br>");
     return "<tr style='border-bottom:1px solid #ddd;background:"+(i%2===0?"#fff":"#f9f9f9")+";'>"+
       "<td style='padding:5px;text-align:center;'>"+(i+1)+"</td>"+
       "<td style='padding:5px;font-weight:600;'>"+x.name+"</td>"+
       "<td style='padding:5px;color:#1565c0;'>"+x.acc+"</td>"+
       "<td style='padding:5px;text-align:right;font-weight:700;'>₹"+Number(x.amount).toLocaleString("hi-IN")+"</td>"+
-      "<td style='padding:5px;'>"+( x.tariff||"-")+"</td>"+
-      "<td style='padding:5px;'>"+( x.load||"-")+"</td>"+
+      "<td style='padding:5px;'>"+(x.tariff||"-")+"</td>"+
+      "<td style='padding:5px;'>"+(x.load||"-")+"</td>"+
       "<td style='padding:5px;text-align:center;font-weight:700;color:"+(isPaid?"#2e7d32":"#c62828")+"'>"+
         (isPaid?"✓ वसूल":"✗ बाकी")+(x.paydate?"<br><small>"+x.paydate+"</small>":"")+
       "</td>"+
-      "<td style='padding:5px;background:"+(x.remarks?"#fff8e1":"")+"'>"+( x.remarks||"-")+"</td>"+
-      "<td style='padding:5px;font-size:10px;color:#555;'>"+( x.lastPaidAmt?"₹"+x.lastPaidAmt+(x.lastPayDate?"<br>"+x.lastPayDate:""):"-")+"</td>"+
+      "<td style='padding:5px;background:"+(allRmk?"#fff8e1":"")+"'>"+(allRmk||"-")+"</td>"+
+      "<td style='padding:5px;font-size:10px;color:#555;'>"+(x.lastPaidAmt?"₹"+x.lastPaidAmt+(x.lastPayDate?"<br>"+x.lastPayDate:""): "-")+"</td>"+
     "</tr>";
   }).join("");
   var html="<!DOCTYPE html><html><head><meta charset='UTF-8'>"+
