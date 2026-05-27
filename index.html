@@ -659,11 +659,11 @@ function renderListWith(data){
         (!isPaid?"<button class='abtn abtn-pay' onclick='markPaid("+oi+")'>✓ वसूल</button>":"")+
       "</div></div>"+
       "<div class='cc-info'>"+
-        (x.lastPaidAmt&&x.lastPaidAmt!="0"?"<span style='color:#7986cb;'>📅 पिछला: ₹"+Number(x.lastPaidAmt).toLocaleString("hi-IN")+(x.lastPayDate?" ("+x.lastPayDate+")":"")+"</span>":"")+
+        (x.lastPaidAmt&&x.lastPaidAmt!="0"?"<span style='color:#7986cb;'>📅 पिछला भुगतान: ₹"+Number(x.lastPaidAmt).toLocaleString("hi-IN")+(x.lastPayDate?" ("+x.lastPayDate+")":"")+"</span>":"")+
         (x.paydate?"<span style='color:var(--green);margin-left:8px;'>💰 वसूल: "+x.paydate+"</span>":"")+
       "</div>"+
       (x.remarks?"<div class='cc-rem'>💬 "+x.remarks+"</div>":"")+
-      (x.updatedBy?"<div class='cc-updby'>🔄 "+x.updatedBy+"</div>":"")+
+      (x.updatedBy?"<div class='cc-updby'>🔄 "+x.updatedBy+"</div>":"")+(x.uploadedAt?"<div class='cc-updby' style='color:#4a6080;'>📤 अपलोड: "+x.uploadedAt+"</div>":"")+
     "</div>";
   }).join("");
 }
