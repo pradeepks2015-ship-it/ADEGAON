@@ -943,8 +943,11 @@ function renderListWith(data){
 
     // Previous payment info
     var prevPayInfo="";
-    if(x.lastPaidAmt&&x.lastPaidAmt!="0"){
-      prevPayInfo="<span style='color:#7986cb;'>📅 पिछला भुगतान: ₹"+Number(x.lastPaidAmt).toLocaleString("hi-IN")+(x.lastPayDate?" ("+escHtml(x.lastPayDate)+")":"")+"</span>";
+    if(x.lastPaidAmt&&x.lastPaidAmt.toString().trim()!==""){
+      var lastAmtNum=Number(x.lastPaidAmt);
+      prevPayInfo="<span style='color:#7986cb;'>📅 पिछला भुगतान: ₹"+(isNaN(lastAmtNum)?x.lastPaidAmt:lastAmtNum.toLocaleString("hi-IN"))+(x.lastPayDate?" ("+escHtml(x.lastPayDate)+")":"")+"</span>";
+    } else if(x.lastPayDate&&x.lastPayDate.trim()){
+      prevPayInfo="<span style='color:#7986cb;'>📅 पिछला भुगतान तिथि: "+escHtml(x.lastPayDate)+"</span>";
     }
     var payDateInfo="";
     if(x.paydate){
@@ -1165,20 +1168,34 @@ function processRows(rows){
   rows.forEach(function(r,i){
     var k={};
     Object.keys(r).forEach(function(h){
-      var clean=h.toString().trim().toLowerCase().replace(/[^a-z0-9]/g,"");
+      // normalize: lowercase, trim, collapse spaces — keep all chars for fuzzyFind
+      var clean=h.toString().trim().toLowerCase();
       k[clean]=String(r[h]).trim();
     });
-    var name=(k["consumername"]||k["cname"]||k["name"]||"").trim();
-    var acc=(k["consumernumber"]||k["consumerno"]||k["accountno"]||k["ivrs"]||k["no"]||k["acc"]||"").trim();
-    var rawAmt=(k["netbill"]||k["netamt"]||k["netamount"]||k["amount"]||k["dues"]||k["arrear"]||k["balance"]||k["bill"]||"").replace(/,/g,"").replace(/[₹\s]/g,"").trim();
-    var phone=(k["mobileno"]||k["mobile"]||k["mobilenumber"]||k["phone"]||k["mob"]||"").trim();
-    var addr=(k["address"]||k["addr"]||k["adress"]||k["add"]||k["village"]||k["gram"]||"").trim();
-    var rem=(k["remark"]||k["remarks"]||k["note"]||"").trim();
-    var tariff=(k["tariff"]||k["tariffcode"]||k["tarrif"]||k["tarrifcode"]||"").trim();
-    var load=(k["load"]||k["sanctionedload"]||k["connectedload"]||"").trim();
-    var unit=(k["unit"]||k["units"]||k["consumption"]||"").trim();
-    var lastPayDate=(k["lastpaymentdate"]||k["lastpaydate"]||k["lastdate"]||"").trim();
-    var lastPaidAmt=(k["lastpaidamt"]||k["lastpaid"]||k["lastamt"]||k["lastpaidamount"]||"").replace(/,/g,"").replace(/[₹\s]/g,"").trim();
+    // Fuzzy column finder — removes spaces, special chars, lowercases, then finds best match
+    function fuzzyFind(k, patterns){
+      for(var pi=0;pi<patterns.length;pi++){
+        var p=patterns[pi].replace(/[^a-z0-9]/g,"");
+        for(var ki in k){if(ki.replace(/[^a-z0-9]/g,"")===p) return k[ki]||"";}
+      }
+      // partial match fallback
+      for(var pi2=0;pi2<patterns.length;pi2++){
+        var p2=patterns[pi2].replace(/[^a-z0-9]/g,"");
+        for(var ki2 in k){if(ki2.replace(/[^a-z0-9]/g,"").indexOf(p2)!==-1||p2.indexOf(ki2.replace(/[^a-z0-9]/g,""))!==-1) return k[ki2]||"";}
+      }
+      return "";
+    }
+    var name=fuzzyFind(k,["consumername","consumer name","cname","name","naam","नाम"]).trim();
+    var acc=fuzzyFind(k,["consumernumber","consumer number","consumerno","consumer no","accountno","account no","ivrs","ivrs no","acc","no","number"]).trim();
+    var rawAmt=fuzzyFind(k,["netbill","net bill","netamt","net amt","netamount","net amount","amount","dues","arrear","arrears","balance","bill","बकाया","देय राशि"]).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
+    var phone=fuzzyFind(k,["mobileno","mobile no","mobile","mobilenumber","mobile number","phone","mob","contact","contactno","contact no","phoneno","phone no"]).trim();
+    var addr=fuzzyFind(k,["address","addr","adress","add","village","gram","location","स्थान","पता","ग्राम"]).trim();
+    var rem=fuzzyFind(k,["remark","remarks","note","notes","comment","comments","टिप्पणी"]).trim();
+    var tariff=fuzzyFind(k,["tariff","tariffcode","tarrif","tarrifcode","tarifftype","tarifcode","टैरिफ"]).trim();
+    var load=fuzzyFind(k,["load","sanctionedload","sanctioned load","connectedload","connected load","loadkw","लोड"]).trim();
+    var unit=fuzzyFind(k,["unit","units","consumption","unitsconsumed","units consumed","यूनिट"]).trim();
+    var lastPayDate=fuzzyFind(k,["lastpaymentdate","last payment date","lastpaydate","last pay date","lastdate","last date","prevpaydate","prev pay date","previouspaymentdate","previous payment date","prevdate","prev date","paymentdate","payment date","piclatithe","पिछली तिथि","पिछला दिनांक"]).trim();
+    var lastPaidAmt=fuzzyFind(k,["lastpaidamt","last paid amt","lastpaid","last paid","lastamt","last amt","lastpaidamount","last paid amount","lastpaymentamt","last payment amt","lastpaymentamount","last payment amount","prevamt","prev amt","previousamt","previous amt","previouspaidamt","previous paid amt","prevpaid","prev paid","lastbill","last bill","previousbill","previous bill","पिछला भुगतान","पिछली राशि"]).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
     if(!name||!acc||!rawAmt||isNaN(rawAmt)||Number(rawAmt)<0) errors.push(i+2);
     else {
       var entry={name:name,acc:acc,amount:rawAmt,phone:phone,addr:addr,remarks:rem,
@@ -1492,7 +1509,9 @@ function downloadScPDF(){
 
 
 function dlTemplate(){
-  var s="Consumer No,Consumer Name,Net Bill,Mobile No,Address,Remark,Tariff,Load,Unit,Last Payment Date,Last Paid Amt\n1234567890,राम लाल,5400,9876543210,आदेगांव,,घरेलू,1KW,1.00KW,15/03/2025,2500\n";
+  var s="Consumer No,Consumer Name,Net Bill,Mobile No,Address,Remark,Tariff,Load,Unit,Last Payment Date,Last Paid Amt\n";
+  s+="1234567890,राम लाल,5400,9876543210,आदेगांव,,घरेलू,1KW,1.00KW,15/03/2025,2500\n";
+  s+="// नोट: Last Payment Date = पिछली भुगतान तिथि, Last Paid Amt = पिछला भुगतान राशि\n";
   var a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([s],{type:"text/csv;charset=utf-8;"}));
   a.download="vasuli_template.csv"; a.click();
