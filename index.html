@@ -1165,6 +1165,7 @@ function onCatChange(){
     hint.style.display="none";
   }
 }
+function closeUpModal(){document.getElementById("up-overlay").classList.remove("open");}
 function closeUpOutside(e){if(e.target===document.getElementById("up-overlay"))closeUpModal();}
 function setUpMode(m){
   upMode=m;
