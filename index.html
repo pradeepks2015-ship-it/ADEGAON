@@ -1143,6 +1143,10 @@ function openUpModal(){
 function onCatChange(){
   var cat=document.getElementById("up-cat").value;
   var hint=document.getElementById("cat-hint");
+  // कुल उपभोक्ता के लिए auto Replace mode
+  if(cat==="कुल उपभोक्ता"||cat===CATS[5]){
+    setUpMode("replace");
+  }
   if(!hint) return;
   if(cat==="कुल उपभोक्ता"){
     hint.style.display="block";
@@ -1284,12 +1288,8 @@ function processRows(rows){
   document.getElementById("cnt-file-wrap").style.display="block";
   document.getElementById("cnt-file").textContent=parsedRows.length;
   updateUpCounter();
-  // Enable button only if there's space or replace mode
-  var hq=document.getElementById("up-hq").value;
-  var cat=document.getElementById("up-cat").value;
-  var exist=hq&&cat?cGet(hq,cat).length:0;
-  var _maxR2=getMaxRecords(cat||activeCat);
-  var canUpload=parsedRows.length>0&&(upMode==="replace"||(upMode==="merge"&&exist<_maxR2));
+  // Enable button if any valid records found
+  var canUpload=parsedRows.length>0;
   document.getElementById("btn-up-ok").disabled=!canUpload;
   document.getElementById("btn-up-ok").style.opacity=canUpload?"1":".5";
 }
@@ -1320,7 +1320,13 @@ function confirmUpload(){
     var ex=cGet(hq,cat);
     var _maxR3=getMaxRecords(cat);
     var avail=_maxR3-ex.length;
-    if(avail<=0){toast("⛔ लिमिट भरी है — Replace mode use करें","err");return;}
+    if(avail<=0){
+      // Auto switch to replace
+      if(confirm("लिमिट भरी है। Replace mode में upload करें?\n(पुरानी list हट जाएगी)")){
+        doSave(parsedRows,parsedRows.length,0);
+      }
+      return;
+    }
     var merged=ex.slice();
     var added=0,dupes=0;
     parsedRows.forEach(function(r){
