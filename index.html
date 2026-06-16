@@ -74,10 +74,14 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .cat-scroll::-webkit-scrollbar{display:none;}
 .cat-tab{flex-shrink:0;padding:6px 12px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid var(--border);background:var(--card);color:var(--muted);cursor:pointer;font-family:"Noto Sans Devanagari",sans-serif;white-space:nowrap;}
 .cat-tab.active{color:#fff;border-color:transparent;}
-.cat-tab.active.c0{background:#1565c0;}.cat-tab.active.c1{background:#2e7d32;}
-.cat-tab.active.c2{background:#e65100;}.cat-tab.active.c3{background:#6a1b9a;}
-.cat-tab.active.c4{background:#b71c1c;}
-.cat-tab.active.c5{background:#00695c;}.cat-tab.active.c6{background:#4527a0;}.cat-tab.active.c7{background:#37474f;}
+.cat-tab.active.c0{background:#00695c;}
+.cat-tab.active.c1{background:#1565c0;}
+.cat-tab.active.c2{background:#2e7d32;}
+.cat-tab.active.c3{background:#e65100;}
+.cat-tab.active.c4{background:#6a1b9a;}
+.cat-tab.active.c5{background:#b71c1c;}
+.cat-tab.active.c6{background:#4527a0;}
+.cat-tab.active.c7{background:#37474f;}
 .list-hdr{display:flex;align-items:center;justify-content:space-between;padding:0 12px 8px;}
 .list-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
 .btn-row{display:flex;gap:5px;}
@@ -382,9 +386,10 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
         <div class="sel-wrap" style="margin:0;">
           <select class="fs" id="up-cat" onchange="updateUpCounter();onCatChange()">
             <option value="">-- चुनें --</option>
+            <option>कुल उपभोक्ता</option>
             <option>घरेलू</option><option>व्यवसाय</option><option>कृषि</option>
             <option>गवर्नमेंट</option><option>इंडस्ट्रियल</option>
-            <option>कुल उपभोक्ता</option><option id="up-cat-6">सूची-2</option><option id="up-cat-7">सूची-3</option>
+            <option id="up-cat-6">सूची-2</option><option id="up-cat-7">सूची-3</option>
           </select>
         </div>
       </div>
@@ -533,8 +538,8 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 
 <script>
 var HQS = ["आदेगांव","पिंडरई","जोबा","पाटन","बीबी","मढ़ी"];
-var CATS = ["घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","कुल उपभोक्ता","सूची-2","सूची-3"];
-var CICO = ["🏠","🏪","🌾","🏛️","🏭","👥","📋","📌"];
+var CATS = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
+var CICO = ["👥","🏠","🏪","🌾","🏛️","🏭","📋","📌"];
 var SUP_PW = "bijli@2025";
 var MAX_RECORDS = 500;
 // Per-category limits: "कुल उपभोक्ता"=2000, "सूची-2"/"सूची-3"=500, others=500
@@ -1144,7 +1149,7 @@ function onCatChange(){
   var cat=document.getElementById("up-cat").value;
   var hint=document.getElementById("cat-hint");
   // कुल उपभोक्ता के लिए auto Replace mode
-  if(cat==="कुल उपभोक्ता"||cat===CATS[5]){
+  if(cat==="कुल उपभोक्ता"||cat===CATS[0]){
     setUpMode("replace");
   }
   if(!hint) return;
@@ -1248,7 +1253,7 @@ function processRows(rows){
     var lastPaidAmt=fuzzyFind(k,["lastpaidamt","last paid amt","lastpaid","last paid","lastamt","last amt","lastpaidamount","last paid amount","lastpaymentamt","last payment amt","lastpaymentamount","last payment amount","prevamt","prev amt","previousamt","previous amt","previouspaidamt","previous paid amt","prevpaid","prev paid","lastbill","last bill","previousbill","previous bill","पिछला भुगतान","पिछली राशि"]).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
     // "कुल उपभोक्ता" में amount optional है
     var _upCat=document.getElementById("up-cat")?document.getElementById("up-cat").value:"";
-    var amtOptional=(_upCat==="कुल उपभोक्ता"||_upCat===CATS[5]);
+    var amtOptional=(_upCat==="कुल उपभोक्ता"||_upCat===CATS[0]);
 
     var cleanAmt=rawAmt;
     // amount साफ करें — कॉमा, रुपया चिह्न, spaces हटाएं
