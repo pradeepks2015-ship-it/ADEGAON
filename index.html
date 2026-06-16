@@ -1235,7 +1235,7 @@ function processRows(rows){
       k[clean]=String(r[h]).trim();
     });
     var name=fuzzyFind(k,["consumername","consumer name","cname","name","naam","नाम"]).trim();
-    var acc=fuzzyFind(k,["consumernumber","consumer number","consumerno","consumer no","accountno","account no","ivrs","ivrs no","acc","no","number"]).trim();
+    var acc=fuzzyFind(k,["consumernumber","consumer number","consumerno","consumer no","accountno","account no","ivrs","ivrs no","ivrsno","consumerid","consumer id","acc","conno","con no"]).trim();
     var rawAmt=fuzzyFind(k,["netbill","net bill","netamt","net amt","netamount","net amount","amount","dues","arrear","arrears","balance","bill","बकाया","देय राशि"]).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
     var phone=fuzzyFind(k,["mobileno","mobile no","mobile","mobilenumber","mobile number","phone","mob","contact","contactno","contact no","phoneno","phone no"]).trim();
     var addr=fuzzyFind(k,["address","addr","adress","add","village","gram","location","स्थान","पता","ग्राम"]).trim();
@@ -1243,7 +1243,7 @@ function processRows(rows){
     var tariff=fuzzyFind(k,["tariff","tariffcode","tarrif","tarrifcode","tarifftype","tarifcode","टैरिफ"]).trim();
     var load=fuzzyFind(k,["load","sanctionedload","sanctioned load","connectedload","connected load","loadkw","लोड"]).trim();
     var unit=fuzzyFind(k,["unit","units","consumption","unitsconsumed","units consumed","यूनिट"]).trim();
-    var lastPayDate=fuzzyFind(k,["lastpaymentdate","last payment date","lastpaydate","last pay date","lastdate","last date","prevpaydate","prev pay date","previouspaymentdate","previous payment date","prevdate","prev date","paymentdate","payment date","piclatithe","पिछली तिथि","पिछला दिनांक"]).trim();
+    var lastPayDate=fuzzyFind(k,["lastpaiddate","last paid date","lastpaymentdate","last payment date","lastpaydate","last pay date","lastdate","last date","prevpaydate","prev pay date","previouspaymentdate","previous payment date","prevdate","prev date","paymentdate","payment date","piclatithe","पिछली तिथि","पिछला दिनांक"]).trim();
     var lastPaidAmt=fuzzyFind(k,["lastpaidamt","last paid amt","lastpaid","last paid","lastamt","last amt","lastpaidamount","last paid amount","lastpaymentamt","last payment amt","lastpaymentamount","last payment amount","prevamt","prev amt","previousamt","previous amt","previouspaidamt","previous paid amt","prevpaid","prev paid","lastbill","last bill","previousbill","previous bill","पिछला भुगतान","पिछली राशि"]).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
     // "कुल उपभोक्ता" में amount optional है
     var _upCat=document.getElementById("up-cat")?document.getElementById("up-cat").value:"";
