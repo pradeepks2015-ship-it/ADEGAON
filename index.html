@@ -574,7 +574,9 @@ function cKey(hq,cat){return hq+"_"+cat;}
 function cGet(hq,cat){return CACHE[cKey(hq,cat)]||[];}
 function cSet(hq,cat,d){CACHE[cKey(hq,cat)]=d;}
 
-function fbPath(hq,cat){return hq.replace(/\s/g,"_")+"/"+cat.replace(/\s/g,"_");}
+function fbPath(hq,cat){
+  return hq.replace(/\s/g,"_").replace(/[.#$\[\]]/g,"_")+"/"+cat.replace(/\s/g,"_").replace(/[.#$\[\]]/g,"_");
+}
 
 function fbGet(hq,cat,cb){
   var cached=cGet(hq,cat);
@@ -597,6 +599,13 @@ function fbGet(hq,cat,cb){
 
 function fbSet(hq,cat,arr,cb){
   cSet(hq,cat,arr);
+  if(arr.length>200){
+    toast("⏳ "+arr.length+" records सेव हो रहे हैं...","inf");
+  }
+  _fbPut(hq,cat,arr,cb);
+}
+
+function _fbPut(hq,cat,arr,cb){
   fetch(FB+"/"+fbPath(hq,cat)+".json",{
     method:"PUT",
     headers:{"Content-Type":"application/json"},
@@ -606,7 +615,8 @@ function fbSet(hq,cat,arr,cb){
     updTime(); setSyncStatus(true);
     if(cb) cb(true);
   }).catch(function(e){
-    toast("Save error: "+e.message,"err");
+    toast("⚠️ Network error: "+e.message+" — Data cache में है, 5 sec में retry...","err");
+    setTimeout(function(){_fbPut(hq,cat,arr,null);},5000);
     if(cb) cb(false);
   });
 }
@@ -1299,7 +1309,8 @@ function confirmUpload(){
     if(dupes>0) msg+=" | "+dupes+" duplicate skip";
     msg+=" | कुल: "+arr.length+"/"+getMaxRecords(cat)+" 🔥";
     toast(msg,"ok");
-    fbSet(hq,cat,arr,null);
+    // Firebase save background में — UI पहले दिखाएं
+    setTimeout(function(){ fbSet(hq,cat,arr,null); }, 100);
   };
   if(upMode==="replace"){
     doSave(parsedRows,parsedRows.length,0);
