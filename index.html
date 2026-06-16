@@ -380,7 +380,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
       </div>
       <div class="fg" style="margin:0;"><label>Category *</label>
         <div class="sel-wrap" style="margin:0;">
-          <select class="fs" id="up-cat" onchange="updateUpCounter()">
+          <select class="fs" id="up-cat" onchange="updateUpCounter();onCatChange()">
             <option value="">-- चुनें --</option>
             <option>घरेलू</option><option>व्यवसाय</option><option>कृषि</option>
             <option>गवर्नमेंट</option><option>इंडस्ट्रियल</option>
@@ -390,6 +390,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
       </div>
     </div>
     <!-- COUNTER BOX -->
+    <div id="cat-hint" style="display:none;background:rgba(0,200,150,.08);border:1px solid rgba(0,200,150,.2);border-radius:9px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#4db6ac;"></div>
     <div class="up-counter-box" id="up-counter-box">
       <div class="up-counter-row" id="up-counter-row">
         <div class="up-counter-item"><div class="up-counter-label">मौजूद</div><div class="up-counter-val exist" id="cnt-exist">0</div></div>
@@ -1113,6 +1114,9 @@ function openUpModal(){
   hqs.forEach(function(hq){var o=document.createElement("option");o.value=hq;o.textContent=hq;sel.appendChild(o);});
   sel.value=activeHQ;
   document.getElementById("up-cat").value=activeCat;
+  var hint=document.getElementById("cat-hint");
+  if(hint) hint.style.display="none";
+  onCatChange();
   parsedRows=[];
   document.getElementById("uz-ico").textContent="📂";
   document.getElementById("uz-t").textContent="CSV या Excel फ़ाइल चुनें";
@@ -1124,7 +1128,27 @@ function openUpModal(){
   updateUpCounter();
   document.getElementById("up-overlay").classList.add("open");
 }
-function closeUpModal(){document.getElementById("up-overlay").classList.remove("open");}
+function onCatChange(){
+  var cat=document.getElementById("up-cat").value;
+  var hint=document.getElementById("cat-hint");
+  if(!hint) return;
+  if(cat==="कुल उपभोक्ता"){
+    hint.style.display="block";
+    hint.innerHTML="👥 <b>कुल उपभोक्ता</b> — अधिकतम <b>2000</b> records | <b>Net Bill/Amount optional</b> है<br>"+
+      "जरूरी columns: <b>Consumer No</b> और <b>Consumer Name</b> बस काफी है";
+  } else if(cat==="सूची-2"||cat===CATS[6]){
+    hint.style.display="block";
+    hint.innerHTML="📋 <b>"+escHtml(cat)+"</b> — अधिकतम <b>500</b> records | Consumer No, Name और Net Bill जरूरी";
+  } else if(cat==="सूची-3"||cat===CATS[7]){
+    hint.style.display="block";
+    hint.innerHTML="📌 <b>"+escHtml(cat)+"</b> — अधिकतम <b>500</b> records | Consumer No, Name और Net Bill जरूरी";
+  } else if(cat){
+    hint.style.display="block";
+    hint.innerHTML="📂 <b>"+escHtml(cat)+"</b> — अधिकतम <b>500</b> records | Consumer No, Name और Net Bill जरूरी";
+  } else {
+    hint.style.display="none";
+  }
+}
 function closeUpOutside(e){if(e.target===document.getElementById("up-overlay"))closeUpModal();}
 function setUpMode(m){
   upMode=m;
@@ -1161,6 +1185,28 @@ function handleFile(f){
   }
 }
 
+// Fuzzy column finder — case-insensitive, ignores spaces/symbols, partial match fallback
+function fuzzyFind(k, patterns){
+  // k = {normalized_header: value} where normalized = lowercase trimmed
+  // First pass: exact alphanumeric match
+  for(var pi=0;pi<patterns.length;pi++){
+    var pNorm=patterns[pi].toLowerCase().replace(/[^a-z0-9\u0900-\u097f]/g,"");
+    for(var ki in k){
+      var kNorm=ki.replace(/[^a-z0-9\u0900-\u097f]/g,"");
+      if(kNorm===pNorm) return k[ki]||"";
+    }
+  }
+  // Second pass: partial match
+  for(var pi2=0;pi2<patterns.length;pi2++){
+    var pNorm2=patterns[pi2].toLowerCase().replace(/[^a-z0-9\u0900-\u097f]/g,"");
+    for(var ki2 in k){
+      var kNorm2=ki2.replace(/[^a-z0-9\u0900-\u097f]/g,"");
+      if(kNorm2.length>2&&(kNorm2.indexOf(pNorm2)!==-1||pNorm2.indexOf(kNorm2)!==-1)) return k[ki2]||"";
+    }
+  }
+  return "";
+}
+
 function processRows(rows){
   var valid=[],errors=[];
   var now=new Date();
@@ -1172,19 +1218,6 @@ function processRows(rows){
       var clean=h.toString().trim().toLowerCase();
       k[clean]=String(r[h]).trim();
     });
-    // Fuzzy column finder — removes spaces, special chars, lowercases, then finds best match
-    function fuzzyFind(k, patterns){
-      for(var pi=0;pi<patterns.length;pi++){
-        var p=patterns[pi].replace(/[^a-z0-9]/g,"");
-        for(var ki in k){if(ki.replace(/[^a-z0-9]/g,"")===p) return k[ki]||"";}
-      }
-      // partial match fallback
-      for(var pi2=0;pi2<patterns.length;pi2++){
-        var p2=patterns[pi2].replace(/[^a-z0-9]/g,"");
-        for(var ki2 in k){if(ki2.replace(/[^a-z0-9]/g,"").indexOf(p2)!==-1||p2.indexOf(ki2.replace(/[^a-z0-9]/g,""))!==-1) return k[ki2]||"";}
-      }
-      return "";
-    }
     var name=fuzzyFind(k,["consumername","consumer name","cname","name","naam","नाम"]).trim();
     var acc=fuzzyFind(k,["consumernumber","consumer number","consumerno","consumer no","accountno","account no","ivrs","ivrs no","acc","no","number"]).trim();
     var rawAmt=fuzzyFind(k,["netbill","net bill","netamt","net amt","netamount","net amount","amount","dues","arrear","arrears","balance","bill","बकाया","देय राशि"]).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
@@ -1196,9 +1229,20 @@ function processRows(rows){
     var unit=fuzzyFind(k,["unit","units","consumption","unitsconsumed","units consumed","यूनिट"]).trim();
     var lastPayDate=fuzzyFind(k,["lastpaymentdate","last payment date","lastpaydate","last pay date","lastdate","last date","prevpaydate","prev pay date","previouspaymentdate","previous payment date","prevdate","prev date","paymentdate","payment date","piclatithe","पिछली तिथि","पिछला दिनांक"]).trim();
     var lastPaidAmt=fuzzyFind(k,["lastpaidamt","last paid amt","lastpaid","last paid","lastamt","last amt","lastpaidamount","last paid amount","lastpaymentamt","last payment amt","lastpaymentamount","last payment amount","prevamt","prev amt","previousamt","previous amt","previouspaidamt","previous paid amt","prevpaid","prev paid","lastbill","last bill","previousbill","previous bill","पिछला भुगतान","पिछली राशि"]).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
-    if(!name||!acc||!rawAmt||isNaN(rawAmt)||Number(rawAmt)<0) errors.push(i+2);
-    else {
-      var entry={name:name,acc:acc,amount:rawAmt,phone:phone,addr:addr,remarks:rem,
+    // "कुल उपभोक्ता" में amount optional है
+    var _upCat=document.getElementById("up-cat")?document.getElementById("up-cat").value:"";
+    var amtOptional=(_upCat==="कुल उपभोक्ता"||_upCat===CATS[5]);
+
+    var cleanAmt=rawAmt;
+    // amount साफ करें — कॉमा, रुपया चिह्न, spaces हटाएं
+    if(cleanAmt) cleanAmt=cleanAmt.replace(/,/g,"").replace(/[₹\s]/g,"").replace(/[^0-9.-]/g,"").trim();
+
+    var rowOk=name&&acc&&(amtOptional||(cleanAmt&&!isNaN(cleanAmt)&&Number(cleanAmt)>=0));
+    if(!rowOk){
+      errors.push({row:i+2, reason:!name?"नाम नहीं":!acc?"Consumer No नहीं":(!amtOptional&&!cleanAmt)?"राशि नहीं":"राशि गलत"});
+    } else {
+      var finalAmt=cleanAmt||"0";
+      var entry={name:name,acc:acc,amount:finalAmt,phone:phone,addr:addr,remarks:rem,
         tariff:tariff,load:load,unit:unit,lastPayDate:lastPayDate,lastPaidAmt:lastPaidAmt,
         status:"pending",uploadedBy:CU.name,uploadedAt:dtStr,remarksArr:[]};
       if(rem) entry.remarksArr.push({text:rem,by:CU.name,at:dtStr});
@@ -1209,8 +1253,15 @@ function processRows(rows){
   parsedRows=valid.slice(0,getMaxRecords(_cat));
   document.getElementById("up-preview").style.display="block";
   var wb2=document.getElementById("up-warn");
-  wb2.style.display=errors.length?"block":"none";
-  wb2.textContent=errors.length?"⚠️ "+errors.length+" rows skip (invalid data)":"";
+  if(errors.length){
+    wb2.style.display="block";
+    var errMsg="⚠️ "+errors.length+" rows skip — ";
+    var details=errors.slice(0,3).map(function(e){return "Row "+e.row+": "+e.reason;}).join(" | ");
+    wb2.textContent=errMsg+details+(errors.length>3?" ...और "+(errors.length-3)+" rows":"");
+  } else {
+    wb2.style.display="none";
+    wb2.textContent="";
+  }
   document.getElementById("prev-title").textContent="पूर्वावलोकन ("+parsedRows.length+" records)";
   document.getElementById("prev-rows").innerHTML=parsedRows.slice(0,5).map(function(r,i){
     return "<div class='prev-row'><span class='pr-name'>"+(i+1)+". "+escHtml(r.name)+"</span><span class='pr-acc'>"+escHtml(r.acc)+"</span><span class='pr-amt'>₹"+Number(r.amount).toLocaleString("hi-IN")+"</span></div>";
