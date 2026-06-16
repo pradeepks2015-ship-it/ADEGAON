@@ -988,7 +988,8 @@ function renderListWith(data){
       "<div class='cc-bot'><span class='sbadge "+(isPaid?"sb-paid":"sb-pending")+"'>"+(isPaid?"✅ वसूल":"⏳ बाकी")+"</span>"+
       "<div class='act-btns'>"+
         "<button class='abtn abtn-rmk' onclick='openRmkModal("+oi+")'>✏️ रिमार्क</button>"+
-        (!isPaid?"<button class='abtn abtn-pay' onclick='markPaid("+oi+")'>✓ वसूल</button>":"")+
+        (!isPaid?"<button class='abtn abtn-pay' onclick='markPaid("+oi+")'>✓ वसूल</button>":
+                 "<button class='abtn' style='background:rgba(255,77,109,.12);color:var(--red);border:1px solid rgba(255,77,109,.2);' onclick='markUnpaid("+oi+")' title=\"डबल-क्लिक से वापस बाकी करें\">↩ वापस बाकी</button>")+
       "</div></div>"+
       "<div class='cc-info'>"+prevPayInfo+payDateInfo+uploadInfo+"</div>"+
       rmkHtml+
@@ -1014,6 +1015,21 @@ function markPaid(idx){
   cSet(activeHQ,activeCat,d);
   renderSummaryWith(d); renderListWith(d);
   toast("✅ वसूली दर्ज!","ok");
+  fbSet(activeHQ,activeCat,d,null);
+}
+
+function markUnpaid(idx){
+  if(!confirm("क्या वाकई इस उपभोक्ता की वसूली वापस 'बाकी' करनी है?")) return;
+  var d=cGet(activeHQ,activeCat);
+  if(!d[idx])return;
+  var dtStr=new Date().toLocaleString("hi-IN");
+  d[idx].status="pending";
+  d[idx].paydate="";
+  d[idx].updatedBy=CU.name;
+  d[idx].updatedAt=dtStr;
+  cSet(activeHQ,activeCat,d);
+  renderSummaryWith(d); renderListWith(d);
+  toast("↩ वापस बाकी किया — "+d[idx].name,"inf");
   fbSet(activeHQ,activeCat,d,null);
 }
 
