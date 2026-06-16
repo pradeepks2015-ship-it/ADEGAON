@@ -1295,46 +1295,57 @@ function processRows(rows){
 }
 
 function confirmUpload(){
-  var hq=document.getElementById("up-hq").value;
-  var cat=document.getElementById("up-cat").value;
-  if(!hq){toast("HQ चुनें","err");return;}
-  if(!cat){toast("Category चुनें","err");return;}
-  if(!parsedRows.length){toast("कोई valid डेटा नहीं","err");return;}
-  var doSave=function(arr,added,dupes){
-    cSet(hq,cat,arr);
-    activeHQ=hq; activeCat=cat;
-    buildUI();
-    renderSummaryWith(arr); renderListWith(arr);
-    startListen(activeHQ,activeCat);
-    closeUpModal();
-    var msg="✅ "+added+" नए जोड़े";
-    if(dupes>0) msg+=" | "+dupes+" duplicate skip";
-    msg+=" | कुल: "+arr.length+"/"+getMaxRecords(cat)+" 🔥";
-    toast(msg,"ok");
-    // Firebase save background में — UI पहले दिखाएं
-    setTimeout(function(){ fbSet(hq,cat,arr,null); }, 100);
-  };
-  if(upMode==="replace"){
-    doSave(parsedRows,parsedRows.length,0);
-  } else {
-    var ex=cGet(hq,cat);
-    var _maxR3=getMaxRecords(cat);
-    var avail=_maxR3-ex.length;
-    if(avail<=0){
-      // Auto switch to replace
-      if(confirm("लिमिट भरी है। Replace mode में upload करें?\n(पुरानी list हट जाएगी)")){
-        doSave(parsedRows,parsedRows.length,0);
+  try{
+    var hq=document.getElementById("up-hq").value;
+    var cat=document.getElementById("up-cat").value;
+    if(!hq){toast("HQ चुनें","err");return;}
+    if(!cat){toast("Category चुनें","err");return;}
+    if(!parsedRows||!parsedRows.length){toast("कोई valid डेटा नहीं — पहले file select करें","err");return;}
+    
+    var arr=parsedRows.slice(); // always use all parsed rows
+    
+    if(upMode==="merge"){
+      var ex=cGet(hq,cat)||[];
+      var _maxR=getMaxRecords(cat);
+      if(ex.length>0){
+        var merged=ex.slice();
+        var added=0,dupes=0;
+        arr.forEach(function(r){
+          if(merged.find(function(e){return e.acc===r.acc;})){dupes++;}
+          else if(merged.length<_maxR){merged.push(r);added++;}
+        });
+        arr=merged;
+        var msg="✅ "+added+" नए जोड़े";
+        if(dupes>0) msg+=" | "+dupes+" duplicate skip";
+        msg+=" | कुल: "+arr.length+"/"+_maxR;
+        _doSave(hq,cat,arr); toast(msg,"ok"); return;
       }
-      return;
     }
-    var merged=ex.slice();
-    var added=0,dupes=0;
-    parsedRows.forEach(function(r){
-      if(merged.find(function(e){return e.acc===r.acc;})){dupes++;}
-      else if(merged.length<_maxR3){merged.push(r);added++;}
-    });
-    doSave(merged,added,dupes);
+    
+    // Replace mode या पहली बार
+    _doSave(hq,cat,arr);
+    toast("✅ "+arr.length+" records अपलोड! 🔥","ok");
+    
+  }catch(err){
+    toast("Error: "+err.message,"err");
+    console.error("confirmUpload error:",err);
   }
+}
+
+function _doSave(hq,cat,arr){
+  cSet(hq,cat,arr);
+  activeHQ=hq; activeCat=cat;
+  try{buildUI();}catch(e){}
+  renderSummaryWith(arr);
+  renderListWith(arr);
+  startListen(activeHQ,activeCat);
+  closeUpModal();
+  // Firebase background save
+  setTimeout(function(){
+    fbSet(hq,cat,arr,function(ok){
+      if(!ok) toast("⚠️ Firebase sync pending — data दिख रहा है","inf");
+    });
+  },200);
 }
 
 function downloadExcel(){
