@@ -566,7 +566,12 @@ function getCatName(hq, i){
 function rebuildCatsForHQ(hq){
   if(!hq) hq = activeHQ;
   CATS_DEFAULT.forEach(function(_,i){
-    CATS[i] = getCatName(hq, i);
+    // index 0,1,2,3 fixed — बाकी HQ-wise custom
+    if(i>=4){
+      CATS[i] = getCatName(hq, i);
+    } else {
+      CATS[i] = CATS_DEFAULT[i];
+    }
   });
 }
 
@@ -859,8 +864,8 @@ function buildCatTabs(){
     };
     b.textContent=CICO[i]+" "+cat;
     wrap.appendChild(b);
-    // Edit button — घरेलू(1), व्यवसाय(2), कृषि(3) को छोड़कर सब editable
-    if(i!==1&&i!==2&&i!==3){
+    // Edit button — घरेलू(1), व्यवसाय(2), कृषि(3), कुल उपभोक्ता(0) को छोड़कर सब editable
+    if(i!==0&&i!==1&&i!==2&&i!==3){
       var slotKey="cat"+i;
       var e2=document.createElement("button");
       e2.textContent="✏️";
