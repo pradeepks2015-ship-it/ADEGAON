@@ -550,24 +550,33 @@ function getMaxRecords(cat){
   return 500;
 }
 // Editable cat names stored here (keys are fixed slots 5,6,7)
+// HQ-wise custom cat names: {"आदेगांव":{"cat0":"नाम1","cat4":"नाम2"}, "पिंडरई":{...}}
 var CAT_NAMES = {};
+var CATS_DEFAULT = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
+
 function getCatKey(cat){ return cat; }
-function getCatDisplayName(i){
-  if(i===6) return CAT_NAMES["cat6"]||CATS[6];
-  if(i===7) return CAT_NAMES["cat7"]||CATS[7];
-  return CATS[i];
+
+// किसी HQ के लिए index i पर cat name
+function getCatName(hq, i){
+  if(!hq) hq = activeHQ;
+  return (CAT_NAMES[hq]&&CAT_NAMES[hq]["cat"+i]) ? CAT_NAMES[hq]["cat"+i] : CATS_DEFAULT[i];
 }
-// Save custom cat names to localStorage
+
+// activeHQ के लिए CATS array rebuild करें
+function rebuildCatsForHQ(hq){
+  if(!hq) hq = activeHQ;
+  CATS_DEFAULT.forEach(function(_,i){
+    CATS[i] = getCatName(hq, i);
+  });
+}
+
 function saveCatNames(){
-  try{localStorage.setItem("adegaon_cat_names",JSON.stringify(CAT_NAMES));}catch(e){}
+  try{localStorage.setItem("adegaon_cat_names_v2", JSON.stringify(CAT_NAMES));}catch(e){}
 }
 function loadCatNames(){
   try{
-    var s=localStorage.getItem("adegaon_cat_names");
+    var s=localStorage.getItem("adegaon_cat_names_v2");
     if(s) CAT_NAMES=JSON.parse(s);
-    [0,4,5,6,7].forEach(function(i){
-      if(CAT_NAMES["cat"+i]) CATS[i]=CAT_NAMES["cat"+i];
-    });
   }catch(e){}
 }
 var CU = null, activeHQ = "", activeCat = "घरेलू", activeFilter = "all";
@@ -727,6 +736,7 @@ function goBack(){
     var idx=HQS.indexOf(activeHQ);
     if(idx>0){
       activeHQ=HQS[idx-1];
+      rebuildCatsForHQ(activeHQ);
       buildHQTabs();
       fbGet(activeHQ,activeCat,function(d){renderSummaryWith(d);renderListWith(d);});
       startListen(activeHQ,activeCat);
@@ -767,7 +777,8 @@ function doLogin(){
     if(!hq){toast("HQ चुनें","err");return;}
     CU={role:role,name:name,hq:hq};
   }
-  activeHQ=CU.hq; activeCat="घरेलू"; activeFilter="all";
+  activeHQ=CU.hq; activeCat=CATS[0]; activeFilter="all";
+  rebuildCatsForHQ(activeHQ);
   document.getElementById("login-screen").classList.remove("active");
   document.getElementById("app-screen").classList.add("active");
   buildUI();
@@ -816,7 +827,9 @@ function buildHQTabs(){
     b.className="hq-tab"+(hq===activeHQ?" active":"");
     b.textContent=hq;
     b.onclick=function(){
-      activeHQ=hq; activeFilter="all"; buildHQTabs();
+      activeHQ=hq; activeFilter="all";
+      rebuildCatsForHQ(hq);
+      buildHQTabs();
       showLoader();
       fbGet(activeHQ,activeCat,function(data){
         renderSummaryWith(data); renderListWith(data);
@@ -864,26 +877,26 @@ function buildCatTabs(){
 
 function openEditCat(i, slotKey){
   var cur=CATS[i];
-  var newName=prompt("श्रेणी का नया नाम डालें:",cur);
+  var newName=prompt(activeHQ+" — श्रेणी का नया नाम डालें:",cur);
   if(!newName||!newName.trim()||newName.trim()===cur) return;
   newName=newName.trim();
   var oldCat=CATS[i];
-  // cache rename
-  var hqs=CU&&CU.role==="supervisor"?HQS:[CU?CU.hq:""];
-  hqs.forEach(function(hq){
-    var d=cGet(hq,oldCat);
-    if(d&&d.length){cSet(hq,newName,d);}
-    cSet(hq,oldCat,[]);
-  });
-  CATS[i]=newName;
-  CAT_NAMES[slotKey]=newName;
+  // cache rename — सिर्फ activeHQ के लिए
+  var d=cGet(activeHQ,oldCat);
+  if(d&&d.length){cSet(activeHQ,newName,d);}
+  cSet(activeHQ,oldCat,[]);
+  // HQ-wise CAT_NAMES save
+  if(!CAT_NAMES[activeHQ]) CAT_NAMES[activeHQ]={};
+  CAT_NAMES[activeHQ][slotKey]=newName;
   saveCatNames();
+  // rebuild CATS for this HQ
+  rebuildCatsForHQ(activeHQ);
   if(activeCat===oldCat) activeCat=newName;
-  // update upload dropdown option if exists
+  // upload dropdown update
   var optEl=document.getElementById("up-cat-"+i);
   if(optEl) optEl.textContent=newName;
   buildCatTabs();
-  toast("✅ नाम बदला: "+newName,"ok");
+  toast("✅ "+activeHQ+": नाम बदला → "+newName,"ok");
 }
 
 function buildActionBtns(){
@@ -1694,6 +1707,7 @@ function fallbackCopy(txt){
 // INIT
 function startApp(){
   loadCatNames();
+  rebuildCatsForHQ(HQS[0]);
   hideLoader();
   document.getElementById("login-screen").classList.add("active");
 }
