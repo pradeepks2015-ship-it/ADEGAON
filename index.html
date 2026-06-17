@@ -834,7 +834,9 @@ function buildHQTabs(){
     b.onclick=function(){
       activeHQ=hq; activeFilter="all";
       rebuildCatsForHQ(hq);
+      activeCat=CATS[0]; // reset to first cat of new HQ
       buildHQTabs();
+      buildCatTabs();
       showLoader();
       fbGet(activeHQ,activeCat,function(data){
         renderSummaryWith(data); renderListWith(data);
@@ -846,6 +848,7 @@ function buildHQTabs(){
 }
 
 function buildCatTabs(){
+  rebuildCatsForHQ(activeHQ); // हर बार current HQ के नाम लो
   var c=document.getElementById("cat-tabs"); c.innerHTML="";
   CATS.forEach(function(cat,i){
     var wrap=document.createElement("div");
