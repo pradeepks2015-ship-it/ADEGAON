@@ -550,63 +550,61 @@ function getMaxRecords(cat){
   return 500;
 }
 // Editable cat names stored here (keys are fixed slots 5,6,7)
-// HQ-wise custom cat names: {"आदेगांव":{"cat0":"नाम1","cat4":"नाम2"}, "पिंडरई":{...}}
-var CAT_NAMES = {};
+// ── CAT_NAMES System ─────────────────────────────────────────
+// Firebase path: /CAT_NAMES/{HQ_key}/{cat_index} = "नाम"
+// Non-editable: index 0,1,2,3 | Editable: 4,5,6,7
 var CATS_DEFAULT = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
+var CAT_NAMES = {}; // {HQ: {4:"नाम", 5:"नाम", 6:"नाम", 7:"नाम"}}
 
-function getCatKey(cat){ return cat; }
+function hqKey(hq){ return (hq||activeHQ).replace(/[\s.#$\[\]]/g,"_"); }
 
-// किसी HQ के लिए index i पर cat name
-function getCatName(hq, i){
-  if(!hq) hq = activeHQ;
-  return (CAT_NAMES[hq]&&CAT_NAMES[hq]["cat"+i]) ? CAT_NAMES[hq]["cat"+i] : CATS_DEFAULT[i];
+function getCatName(hq,i){
+  return (CAT_NAMES[hq]&&CAT_NAMES[hq][i]!=null) ? CAT_NAMES[hq][i] : CATS_DEFAULT[i];
 }
 
-// activeHQ के लिए CATS array rebuild करें
 function rebuildCatsForHQ(hq){
-  if(!hq) hq = activeHQ;
-  CATS_DEFAULT.forEach(function(_,i){
-    // index 0,1,2,3 fixed — बाकी HQ-wise custom
-    if(i>=4){
-      CATS[i] = getCatName(hq, i);
-    } else {
-      CATS[i] = CATS_DEFAULT[i];
-    }
-  });
+  if(!hq) hq=activeHQ;
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    CATS[i] = (i>=4) ? getCatName(hq,i) : CATS_DEFAULT[i];
+  }
 }
 
 function saveCatNames(){
-  try{localStorage.setItem("adegaon_cat_names_v2", JSON.stringify(CAT_NAMES));}catch(e){}
+  try{localStorage.setItem("dc_catnames3",JSON.stringify(CAT_NAMES));}catch(e){}
 }
-function mergeCatNamesFromFB(d){
-  if(!d) return;
-  Object.keys(d).forEach(function(hqKey){
-    var matchHQ=HQS.find(function(h){return h.replace(/\s/g,"_")===hqKey;})||hqKey.replace(/_/g," ");
-    if(!CAT_NAMES[matchHQ]) CAT_NAMES[matchHQ]={};
-    Object.keys(d[hqKey]).forEach(function(sk){
-      CAT_NAMES[matchHQ][sk]=d[hqKey][sk];
+
+function applyFBCatNames(d){
+  if(!d||typeof d!=="object") return false;
+  var changed=false;
+  Object.keys(d).forEach(function(hk){
+    var hq=HQS.find(function(h){return hqKey(h)===hk;})||hk;
+    if(!CAT_NAMES[hq]) CAT_NAMES[hq]={};
+    [4,5,6,7].forEach(function(i){
+      if(d[hk][i]!=null&&CAT_NAMES[hq][i]!==d[hk][i]){
+        CAT_NAMES[hq][i]=d[hk][i]; changed=true;
+      }
     });
   });
+  return changed;
 }
 
 function loadCatNames(){
-  // पहले localStorage से load करें
-  try{
-    var s=localStorage.getItem("adegaon_cat_names_v2");
-    if(s) CAT_NAMES=JSON.parse(s);
-  }catch(e){}
-  // Firebase से latest names fetch करें
+  try{var s=localStorage.getItem("dc_catnames3");if(s)CAT_NAMES=JSON.parse(s);}catch(e){}
+  fetchCatNamesFromFB(false);
+}
+
+function fetchCatNamesFromFB(showToast){
   fetch(FB+"/CAT_NAMES.json?t="+Date.now())
     .then(function(r){return r.json();})
     .then(function(d){
-      if(!d) return;
-      // merge Firebase data into CAT_NAMES
-      mergeCatNamesFromFB(d);
-      saveCatNames();
-      rebuildCatsForHQ(activeHQ);
-      // app screen active है तभी update करें
-      if(CU&&document.getElementById("app-screen").classList.contains("active")){
-        buildCatTabs();
+      var changed=applyFBCatNames(d);
+      if(changed){
+        saveCatNames();
+        if(activeHQ) rebuildCatsForHQ(activeHQ);
+        if(CU&&document.getElementById("app-screen").classList.contains("active")){
+          buildCatTabs();
+          if(showToast) toast("🔄 श्रेणी नाम अपडेट हुए","inf");
+        }
       }
     }).catch(function(){});
 }
@@ -722,24 +720,11 @@ function startListen(hq,cat){
         setSyncStatus(true); updTime();
       }).catch(function(){setSyncStatus(false);});
   },15000);
-  // हर 30 sec में CAT_NAMES Firebase से refresh — JE का बदला नाम Lineman को दिखे
+  // हर 8 sec में CAT_NAMES check — JE का बदला नाम तुरंत दिखे
   if(catNamesTimer) clearInterval(catNamesTimer);
   catNamesTimer=setInterval(function(){
-    fetch(FB+"/CAT_NAMES.json?t="+Date.now())
-      .then(function(r){return r.json();})
-      .then(function(d){
-        if(!d) return;
-        var before=JSON.stringify(CAT_NAMES[activeHQ]||{});
-        mergeCatNamesFromFB(d);
-        var after=JSON.stringify(CAT_NAMES[activeHQ]||{});
-        if(before!==after){
-          saveCatNames();
-          rebuildCatsForHQ(activeHQ);
-          buildCatTabs();
-          toast("🔄 श्रेणी नाम अपडेट हुए","inf");
-        }
-      }).catch(function(){});
-  },10000);
+    fetchCatNamesFromFB(true);
+  },8000);
 }
 
 function showLoader(t){document.getElementById("loader-text").textContent=t||"लोड हो रहा है...";document.getElementById("loader").classList.remove("hidden");}
@@ -956,29 +941,33 @@ function openEditCat(i, slotKey){
   if(!newName||!newName.trim()||newName.trim()===cur) return;
   newName=newName.trim();
   var oldCat=CATS[i];
-  // cache rename — सिर्फ activeHQ के लिए
+  // 1. Cache rename
   var d=cGet(activeHQ,oldCat);
-  if(d&&d.length){cSet(activeHQ,newName,d);}
+  if(d&&d.length) cSet(activeHQ,newName,d);
   cSet(activeHQ,oldCat,[]);
-  // HQ-wise CAT_NAMES save — locally
+  // 2. Local CAT_NAMES update
   if(!CAT_NAMES[activeHQ]) CAT_NAMES[activeHQ]={};
-  CAT_NAMES[activeHQ][slotKey]=newName;
+  CAT_NAMES[activeHQ][i]=newName;
   saveCatNames();
-  // Firebase पर save करें — सभी users को दिखे
-  fetch(FB+"/CAT_NAMES/"+activeHQ.replace(/\s/g,"_")+"/"+slotKey+".json",{
-    method:"PUT",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(newName)
-  }).then(function(r){
-    if(r.ok) toast("✅ "+activeHQ+": नाम बदला → "+newName+" (सभी को दिखेगा)","ok");
-    else toast("✅ नाम बदला (sync pending)","ok");
-  }).catch(function(){toast("✅ नाम बदला (offline)","ok");});
-  // rebuild CATS for this HQ
+  // 3. CATS rebuild + UI update immediately
   rebuildCatsForHQ(activeHQ);
   if(activeCat===oldCat) activeCat=newName;
-  var optEl=document.getElementById("up-cat-"+i);
-  if(optEl) optEl.textContent=newName;
   buildCatTabs();
+  // 4. Firebase save — single PUT for this HQ's all cat names
+  var hqData={};
+  [4,5,6,7].forEach(function(idx){
+    if(CAT_NAMES[activeHQ]&&CAT_NAMES[activeHQ][idx]!=null){
+      hqData[idx]=CAT_NAMES[activeHQ][idx];
+    }
+  });
+  fetch(FB+"/CAT_NAMES/"+hqKey(activeHQ)+".json",{
+    method:"PUT",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(hqData)
+  }).then(function(r){
+    if(r.ok) toast("✅ नाम बदला: "+newName+" (सभी को दिखेगा)","ok");
+    else toast("⚠️ नाम बदला पर sync नहीं हुआ","err");
+  }).catch(function(){toast("⚠️ offline — नाम locally बदला","inf");});
 }
 
 function buildActionBtns(){
