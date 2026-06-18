@@ -578,6 +578,17 @@ function rebuildCatsForHQ(hq){
 function saveCatNames(){
   try{localStorage.setItem("adegaon_cat_names_v2", JSON.stringify(CAT_NAMES));}catch(e){}
 }
+function mergeCatNamesFromFB(d){
+  if(!d) return;
+  Object.keys(d).forEach(function(hqKey){
+    var matchHQ=HQS.find(function(h){return h.replace(/\s/g,"_")===hqKey;})||hqKey.replace(/_/g," ");
+    if(!CAT_NAMES[matchHQ]) CAT_NAMES[matchHQ]={};
+    Object.keys(d[hqKey]).forEach(function(sk){
+      CAT_NAMES[matchHQ][sk]=d[hqKey][sk];
+    });
+  });
+}
+
 function loadCatNames(){
   // पहले localStorage से load करें
   try{
@@ -590,21 +601,16 @@ function loadCatNames(){
     .then(function(d){
       if(!d) return;
       // merge Firebase data into CAT_NAMES
-      Object.keys(d).forEach(function(hqKey){
-        var hqName=hqKey.replace(/_/g," ");
-        // find matching HQ
-        var matchHQ=HQS.find(function(h){return h.replace(/\s/g,"_")===hqKey;})||hqName;
-        if(!CAT_NAMES[matchHQ]) CAT_NAMES[matchHQ]={};
-        Object.keys(d[hqKey]).forEach(function(sk){
-          CAT_NAMES[matchHQ][sk]=d[hqKey][sk];
-        });
-      });
+      mergeCatNamesFromFB(d);
       saveCatNames();
       rebuildCatsForHQ(activeHQ);
-      if(document.getElementById("cat-tabs")) buildCatTabs();
+      // app screen active है तभी update करें
+      if(CU&&document.getElementById("app-screen").classList.contains("active")){
+        buildCatTabs();
+      }
     }).catch(function(){});
 }
-var CU = null, activeHQ = "", activeCat = "घरेलू", activeFilter = "all";
+var CU = null, activeHQ = "", activeCat = "", activeFilter = "all";
 var upMode = "merge", parsedRows = [], selectedRole = "", rmkStatus = "pending";
 var pollTimer = null;
 var FB = "https://adegaon-dc-top-50-default-rtdb.firebaseio.com";
@@ -723,18 +729,17 @@ function startListen(hq,cat){
       .then(function(r){return r.json();})
       .then(function(d){
         if(!d) return;
-        var changed=false;
-        Object.keys(d).forEach(function(hqKey){
-          var matchHQ=HQS.find(function(h){return h.replace(/\s/g,"_")===hqKey;})||hqKey.replace(/_/g," ");
-          if(!CAT_NAMES[matchHQ]) CAT_NAMES[matchHQ]={};
-          Object.keys(d[hqKey]).forEach(function(sk){
-            if(CAT_NAMES[matchHQ][sk]!==d[hqKey][sk]){changed=true;}
-            CAT_NAMES[matchHQ][sk]=d[hqKey][sk];
-          });
-        });
-        if(changed){saveCatNames();rebuildCatsForHQ(activeHQ);buildCatTabs();}
+        var before=JSON.stringify(CAT_NAMES[activeHQ]||{});
+        mergeCatNamesFromFB(d);
+        var after=JSON.stringify(CAT_NAMES[activeHQ]||{});
+        if(before!==after){
+          saveCatNames();
+          rebuildCatsForHQ(activeHQ);
+          buildCatTabs();
+          toast("🔄 श्रेणी नाम अपडेट हुए","inf");
+        }
       }).catch(function(){});
-  },60000);
+  },10000);
 }
 
 function showLoader(t){document.getElementById("loader-text").textContent=t||"लोड हो रहा है...";document.getElementById("loader").classList.remove("hidden");}
@@ -841,8 +846,9 @@ function doLogin(){
     if(!hq){toast("HQ चुनें","err");return;}
     CU={role:role,name:name,hq:hq};
   }
-  activeHQ=CU.hq; activeCat=CATS[0]; activeFilter="all";
+  activeHQ=CU.hq; activeFilter="all";
   rebuildCatsForHQ(activeHQ);
+  activeCat=CATS[0];
   document.getElementById("login-screen").classList.remove("active");
   document.getElementById("app-screen").classList.add("active");
   buildUI();
