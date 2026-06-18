@@ -1581,10 +1581,13 @@ function buildScOverview(hqs){
   var el=document.getElementById("sc-overview");
   var totPaid=0,totPend=0,totAmt=0,totCons=0;
   hqs.forEach(function(hq){
+    // कुल उपभोक्ता — सिर्फ CATS[0] से count लें
+    var consData=cGet(hq,CATS[0]);
+    totCons+=consData.length;
+    // paid/pending/amount — सभी categories से
     CATS.forEach(function(cat){
       var d=cGet(hq,cat);
       d.forEach(function(x){
-        totCons++;
         if(x.status==="paid"){totPaid++;totAmt+=Number(x.amount)||0;}
         else totPend++;
       });
