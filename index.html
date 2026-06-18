@@ -545,8 +545,7 @@ var MAX_RECORDS = 500;
 // Per-category limits: "कुल उपभोक्ता"=2000, "सूची-2"/"सूची-3"=500, others=500
 function getMaxRecords(cat){
   if(!cat) return MAX_RECORDS;
-  var key=getCatKey(cat);
-  if(key==="कुल उपभोक्ता") return 2000;
+  if(cat==="कुल उपभोक्ता") return 2000;
   return 500;
 }
 // Editable cat names stored here (keys are fixed slots 5,6,7)
@@ -1018,7 +1017,8 @@ function renderListWith(data){
       (qd.length>=4&&(x.phone||"").replace(/\D/g,"").includes(qd))||
       (x.phone||"").toLowerCase().includes(q)||
       (x.addr||"").toLowerCase().includes(q)||
-      (x.tariff||"").toLowerCase().includes(q);
+      (x.tariff||"").toLowerCase().includes(q)||
+      (x.father||"").toLowerCase().includes(q);
     return matchQ&&(activeFilter==="all"||x.status===activeFilter);
   });
   if(!filtered.length){
@@ -1052,11 +1052,11 @@ function renderListWith(data){
     }
     var payDateInfo=x.paydate?"<span class='cc-paydate'>💰 वसूल: "+escHtml(x.paydate)+"</span>":"";
     return "<div class='con-card "+(isPaid?"paid":"pending")+"'>"+
-      "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+"</div><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
+      "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+(x.father?" / "+escHtml(x.father):"")+"</div><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
       "<div class='cc-amt'>₹"+Number(x.amount).toLocaleString("hi-IN")+" <span>बकाया</span></div>"+
       "<div class='cc-chips'>"+
         (x.acc?"<span class='chip chip-acc' onclick=\"openAccModal('"+escHtml(x.acc)+"')\">📄 "+escHtml(x.acc)+"</span>":"")+
-        (x.phone?"<span class='chip chip-ph' style='cursor:pointer;' onclick=\"openPhModal('"+escHtml(x.name)+"','"+escHtml(x.phone)+"')\">📞 "+escHtml(x.phone)+"</span>":"")+
+                (x.phone?"<span class='chip chip-ph' style='cursor:pointer;' onclick=\"openPhModal('"+escHtml(x.name)+"','"+escHtml(x.phone)+"')\">📞 "+escHtml(x.phone)+"</span>":"")+
         (x.addr?"<span class='chip chip-addr'>📍 "+escHtml(x.addr)+"</span>":"")+
       "</div>"+
       "<div class='cc-extra'>"+
@@ -1127,7 +1127,7 @@ function openRmkModal(idx){
   document.getElementById("rmk-key").value=idx;
   document.getElementById("rmk-name").textContent=x.name;
   document.getElementById("rmk-amt").textContent="₹"+Number(x.amount).toLocaleString("hi-IN")+" बकाया";
-  document.getElementById("rmk-acc").textContent="Consumer No: "+x.acc;
+  document.getElementById("rmk-acc").textContent="Consumer No: "+x.acc+(x.father?" | पिता/पति: "+x.father:"");
   // New remark textarea always empty
   document.getElementById("rmk-text").value="";
   document.getElementById("rmk-paydate").value=x.paydate||"";
@@ -1345,6 +1345,7 @@ function processRows(rows){
     var load=fuzzyFind(k,["load","sanctionedload","sanctioned load","connectedload","connected load","loadkw","लोड"]).trim();
     var unit=fuzzyFind(k,["unit","units","consumption","unitsconsumed","units consumed","यूनिट"]).trim();
     var lastPayDate=fuzzyFind(k,["lastpaiddate","last paid date","lastpaymentdate","last payment date","lastpaydate","last pay date","lastdate","last date","prevpaydate","prev pay date","previouspaymentdate","previous payment date","prevdate","prev date","paymentdate","payment date","piclatithe","पिछली तिथि","पिछला दिनांक"]).trim();
+    var father=fuzzyFind(k,["fathername","father name","fname","pitaname","pita","fathernamme","fathrname","father","pitaji","f name","fathernam","पिता","पिता का नाम","पिताजी","guardian","guardianname","guardian name","husbandname","husband name","husband","fathersname","father's name","fath","pitanaam","pita naam","dadaname","dada name","fathername1","f_name","s/o","s.o","w/o","w.o","d/o","d.o","sonof","son of","wifeof","wife of","daughterof","daughter of","relation","relativename","relative name","paternalnm","fathernm","pitatype","पति","पिता/पति","पिताजी का नाम","अभिभावक","गार्जियन"]).trim();
     var lastPaidAmt=fuzzyFind(k,["lastpaidamt","last paid amt","lastpaid","last paid","lastamt","last amt","lastpaidamount","last paid amount","lastpaymentamt","last payment amt","lastpaymentamount","last payment amount","prevamt","prev amt","previousamt","previous amt","previouspaidamt","previous paid amt","prevpaid","prev paid","lastbill","last bill","previousbill","previous bill","पिछला भुगतान","पिछली राशि"]).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
     // "कुल उपभोक्ता" में amount optional है
     var _upCat=document.getElementById("up-cat")?document.getElementById("up-cat").value:"";
@@ -1359,7 +1360,7 @@ function processRows(rows){
       errors.push({row:i+2, reason:!name?"नाम नहीं":!acc?"Consumer No नहीं":(!amtOptional&&!cleanAmt)?"राशि नहीं":"राशि गलत"});
     } else {
       var finalAmt=cleanAmt||"0";
-      var entry={name:name,acc:acc,amount:finalAmt,phone:phone,addr:addr,remarks:rem,
+      var entry={name:name,acc:acc,amount:finalAmt,phone:phone,addr:addr,father:father,remarks:rem,
         tariff:tariff,load:load,unit:unit,lastPayDate:lastPayDate,lastPaidAmt:lastPaidAmt,
         status:"pending",uploadedBy:CU.name,uploadedAt:dtStr,remarksArr:[]};
       if(rem) entry.remarksArr.push({text:rem,by:CU.name,at:dtStr});
@@ -1381,7 +1382,7 @@ function processRows(rows){
   }
   document.getElementById("prev-title").textContent="पूर्वावलोकन ("+parsedRows.length+" records)";
   document.getElementById("prev-rows").innerHTML=parsedRows.slice(0,5).map(function(r,i){
-    return "<div class='prev-row'><span class='pr-name'>"+(i+1)+". "+escHtml(r.name)+"</span><span class='pr-acc'>"+escHtml(r.acc)+"</span><span class='pr-amt'>₹"+Number(r.amount).toLocaleString("hi-IN")+"</span></div>";
+    return "<div class='prev-row'><span class='pr-name'>"+(i+1)+". "+escHtml(r.name)+(r.father?" / "+escHtml(r.father):"")+"</span><span class='pr-acc'>"+escHtml(r.acc)+"</span><span class='pr-amt'>₹"+Number(r.amount).toLocaleString("hi-IN")+"</span></div>";
   }).join("");
   document.getElementById("uz-ico").textContent=parsedRows.length?"✅":"❌";
   document.getElementById("uz-t").textContent=parsedRows.length+" valid records";
@@ -1461,13 +1462,13 @@ function _doSave(hq,cat,arr){
 function downloadExcel(){
   var data=cGet(activeHQ,activeCat);
   if(!data.length){toast("कोई data नहीं","err");return;}
-  var rows=[["क्र.","नाम","Consumer No","बकाया","Tariff","Load","Unit","Mobile","पता","स्थिति","भुगतान तिथि","पिछला भुगतान","पिछला तिथि","रिमार्क (सभी)","अपडेट by"]];
+  var rows=[["क्र.","नाम","पिता/पति","Consumer No","बकाया","Tariff","Load","Unit","Mobile","पता","स्थिति","भुगतान तिथि","पिछला भुगतान","पिछला तिथि","रिमार्क (सभी)","अपडेट by"]];
   data.forEach(function(x,i){
     var allRmk=(x.remarksArr||[]).map(function(r){return r.text+" ("+r.by+")";}).join(" | ");
-    rows.push([i+1,x.name||"",x.acc||"",Number(x.amount)||0,x.tariff||"",x.load||"",x.unit||"",x.phone||"",x.addr||"",x.status==="paid"?"वसूल":"बाकी",x.paydate||"",x.lastPaidAmt||"",x.lastPayDate||"",allRmk,x.updatedBy||""]);
+    rows.push([i+1,x.name||"",x.father||"",x.acc||"",Number(x.amount)||0,x.tariff||"",x.load||"",x.unit||"",x.phone||"",x.addr||"",x.status==="paid"?"वसूल":"बाकी",x.paydate||"",x.lastPaidAmt||"",x.lastPayDate||"",allRmk,x.updatedBy||""]);
   });
   var ws=XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"]=[{wch:4},{wch:20},{wch:14},{wch:10},{wch:8},{wch:8},{wch:6},{wch:13},{wch:18},{wch:8},{wch:13},{wch:12},{wch:13},{wch:35},{wch:14}];
+  ws["!cols"]=[{wch:4},{wch:20},{wch:18},{wch:14},{wch:10},{wch:8},{wch:8},{wch:6},{wch:13},{wch:18},{wch:8},{wch:13},{wch:12},{wch:13},{wch:35},{wch:14}];
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,activeHQ+"_"+activeCat);
   XLSX.writeFile(wb,activeHQ+"_"+activeCat+"_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx");
@@ -1487,6 +1488,7 @@ function downloadPDF(){
     return "<tr style='border-bottom:1px solid #ddd;background:"+(i%2===0?"#fff":"#f9f9f9")+";'>"+
       "<td style='padding:5px;text-align:center;'>"+(i+1)+"</td>"+
       "<td style='padding:5px;font-weight:600;'>"+x.name+"</td>"+
+      "<td style='padding:5px;color:#555;'>"+(x.father||"-")+"</td>"+
       "<td style='padding:5px;color:#1565c0;'>"+x.acc+"</td>"+
       "<td style='padding:5px;color:#333;'>"+(x.phone||"-")+"</td>"+
       "<td style='padding:5px;text-align:right;font-weight:700;'>₹"+Number(x.amount).toLocaleString("hi-IN")+"</td>"+
@@ -1516,7 +1518,7 @@ function downloadPDF(){
     "</div>"+
     "<button class='np' onclick='window.print()' style='margin-bottom:8px;padding:6px 14px;background:#1a237e;color:#fff;border:none;border-radius:5px;cursor:pointer;'>Print / PDF Save</button>"+
     "<table><thead><tr>"+
-      "<th>#</th><th>नाम</th><th>Consumer No</th><th>Mobile</th><th>बकाया</th><th>Tariff</th><th>Load</th><th>स्थिति</th><th>रिमार्क</th><th>पिछला भुगतान</th>"+
+      "<th>#</th><th>नाम</th><th>पिता/पति</th><th>Consumer No</th><th>Mobile</th><th>बकाया</th><th>Tariff</th><th>Load</th><th>स्थिति</th><th>रिमार्क</th><th>पिछला भुगतान</th>"+
     "</tr></thead><tbody>"+rows+"</tbody></table></body></html>";
   var w=window.open("","_blank");
   if(w){w.document.write(html);w.document.close();setTimeout(function(){w.print();},600);}
@@ -1700,8 +1702,8 @@ function downloadScPDF(){
 
 
 function dlTemplate(){
-  var s="Consumer No,Consumer Name,Net Bill,Mobile No,Address,Remark,Tariff,Load,Unit,Last Payment Date,Last Paid Amt\n";
-  s+="1234567890,राम लाल,5400,9876543210,आदेगांव,,घरेलू,1KW,1.00KW,15/03/2025,2500\n";
+  var s="Consumer No,Consumer Name,Father Name,Net Bill,Mobile No,Address,Remark,Tariff,Load,Unit,Last Payment Date,Last Paid Amt\n";
+  s+="1234567890,राम लाल,श्याम लाल,5400,9876543210,आदेगांव,,घरेलू,1KW,1.00KW,15/03/2025,2500\n";
   s+="// नोट: Last Payment Date = पिछली भुगतान तिथि, Last Paid Amt = पिछला भुगतान राशि\n";
   var a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([s],{type:"text/csv;charset=utf-8;"}));
