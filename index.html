@@ -1573,7 +1573,7 @@ function buildScorecard(){
     tabsEl.appendChild(b);
   });
   // Build overview (all HQs summary from cache)
-  buildScOverview(hqs);
+  buildScOverview([scActiveHQ]);
   renderScBody();
 }
 
@@ -1622,7 +1622,7 @@ function renderScBody(){
       allLoaded++;
       if(allLoaded===CATS.length){
         renderScDateTable(combined);
-        buildScOverview(CU.role==="supervisor"?HQS:[CU.hq]);
+        buildScOverview([scActiveHQ]);
       }
     });
   });
