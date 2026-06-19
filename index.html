@@ -1579,20 +1579,27 @@ function buildScorecard(){
 
 function buildScOverview(hqs){
   var el=document.getElementById("sc-overview");
-  var totPaid=0,totPend=0,totAmt=0,totCons=0;
+  var totAmt=0,totCons=0;
+  var allPaidAccs={}; // hq+acc → true (unique paid consumer)
+  var allAccs={};     // hq+acc → true (unique total consumer from CATS[0])
   hqs.forEach(function(hq){
-    // कुल उपभोक्ता — सिर्फ CATS[0] से count लें
+    // कुल उपभोक्ता — सिर्फ CATS[0] से unique acc count
     var consData=cGet(hq,CATS[0]);
-    totCons+=consData.length;
-    // paid/pending/amount — सभी categories से
+    consData.forEach(function(x){ if(x.acc) allAccs[hq+"||"+x.acc]=true; else totCons++; });
+    // paid — सभी categories से unique acc
     CATS.forEach(function(cat){
       var d=cGet(hq,cat);
       d.forEach(function(x){
-        if(x.status==="paid"){totPaid++;totAmt+=Number(x.amount)||0;}
-        else totPend++;
+        if(x.status==="paid"){
+          var key=hq+"||"+(x.acc||Math.random());
+          if(!allPaidAccs[key]){ allPaidAccs[key]=true; totAmt+=Number(x.amount)||0; }
+        }
       });
     });
   });
+  totCons+=Object.keys(allAccs).length;
+  var totPaid=Object.keys(allPaidAccs).length;
+  var totPend=totCons-totPaid;
   var fmt=function(a){return a>=100000?"₹"+(a/100000).toFixed(1)+"L":a>=1000?"₹"+(a/1000).toFixed(1)+"K":"₹"+a;};
   el.innerHTML=
     "<div class='sc-ov-box'><div class='sc-ov-num'>"+totCons+"</div><div class='sc-ov-lbl'>कुल उपभोक्ता</div></div>"+
@@ -1623,15 +1630,20 @@ function renderScBody(){
 
 function renderScDateTable(data){
   var el=document.getElementById("sc-body");
-  // Group paid records by paydate
+  // Group paid records by paydate — unique acc only
   var byDate={};
+  var seenAcc={}; // track unique acc across all dates
   data.forEach(function(x){
     if(x.status==="paid"&&x.paydate){
       var dt=x.paydate.trim();
-      if(!byDate[dt]) byDate[dt]={count:0,amount:0,names:[]};
+      var accKey=x.acc||("__noAcc__"+x.name);
+      if(seenAcc[accKey]) return; // duplicate acc — skip
+      seenAcc[accKey]=true;
+      if(!byDate[dt]) byDate[dt]={count:0,amount:0,names:[],accs:[]};
       byDate[dt].count++;
       byDate[dt].amount+=Number(x.amount)||0;
-      byDate[dt].names.push(x.name);
+      byDate[dt].names.push(x.name||"");
+      if(x.acc) byDate[dt].accs.push(x.acc);
     }
   });
   var dates=Object.keys(byDate).sort(function(a,b){
@@ -1651,16 +1663,22 @@ function renderScDateTable(data){
       "<td style='text-align:center;color:var(--green);font-weight:700;'>"+d.count+"</td>"+
       "<td style='text-align:right;color:var(--gold);font-weight:700;'>₹"+d.amount.toLocaleString("hi-IN")+"</td>"+
       "<td style='color:var(--muted);font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+d.names.slice(0,3).join(", ")+(d.names.length>3?" +"+(d.names.length-3):"")+"</td>"+
+      "<td style='color:#64b5f6;font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+d.accs.slice(0,3).join(", ")+(d.accs.length>3?" +"+(d.accs.length-3):"")+"</td>"+
     "</tr>";
   }).join("");
+  // कुल उपभोक्ता CATS[0] से
+  var hqTotal=cGet(scActiveHQ,CATS[0]).length||0;
+  var pct=hqTotal?((totCount/hqTotal)*100).toFixed(1):"0.0";
   el.innerHTML=
+    "<div style='font-size:11px;color:var(--muted);margin-bottom:6px;'>📊 कुल उपभोक्ता: <b style=\'color:var(--fg)\'>"+(hqTotal||"-")+"</b> &nbsp;|&nbsp; वसूल: <b style=\'color:var(--green)\'>"+(totCount)+"</b> &nbsp;|&nbsp; बाकी: <b style=\'color:var(--red)\'>"+(hqTotal-totCount)+"</b> &nbsp;|&nbsp; प्रतिशत: <b style=\'color:var(--gold)\'>"+(pct)+"%</b></div>"+
     "<table class='sc-date-table'>"+
-      "<thead><tr><th>दिनांक</th><th style='text-align:center;'>संख्या</th><th style='text-align:right;'>राशि</th><th>उपभोक्ता</th></tr></thead>"+
+      "<thead><tr><th>दिनांक</th><th style='text-align:center;'>संख्या</th><th style='text-align:right;'>राशि</th><th>उपभोक्ता</th><th>Consumer No</th></tr></thead>"+
       "<tbody>"+rows+
         "<tr class='sc-total-row'>"+
-          "<td>🏆 कुल</td>"+
-          "<td style='text-align:center;'>"+totCount+"</td>"+
+          "<td>🏆 कुल ("+pct+"%)</td>"+
+          "<td style='text-align:center;'>"+totCount+" / "+hqTotal+"</td>"+
           "<td style='text-align:right;'>₹"+totAmt.toLocaleString("hi-IN")+"</td>"+
+          "<td></td>"+
           "<td></td>"+
         "</tr>"+
       "</tbody>"+
@@ -1674,12 +1692,19 @@ function downloadScPDF(){
   hqs.forEach(function(hq){
     var combined=[];
     CATS.forEach(function(cat){combined=combined.concat(cGet(hq,cat));});
+    var hqTotal=cGet(hq,CATS[0]).length||0;
     var byDate={};
+    var seenAccPDF={};
     combined.forEach(function(x){
       if(x.status==="paid"&&x.paydate){
+        var accKey=x.acc||("__noAcc__"+x.name);
+        if(seenAccPDF[accKey]) return;
+        seenAccPDF[accKey]=true;
         var dt=x.paydate.trim();
-        if(!byDate[dt]) byDate[dt]={count:0,amount:0};
+        if(!byDate[dt]) byDate[dt]={count:0,amount:0,names:[],accs:[]};
         byDate[dt].count++; byDate[dt].amount+=Number(x.amount)||0;
+        byDate[dt].names.push(x.name||'');
+        if(x.acc) byDate[dt].accs.push(x.acc);
       }
     });
     var dates=Object.keys(byDate).sort(function(a,b){return b.localeCompare(a);});
@@ -1687,12 +1712,13 @@ function downloadScPDF(){
     var totC=0,totA=0;
     var hqRows=dates.map(function(dt){
       var d=byDate[dt]; totC+=d.count; totA+=d.amount;
-      return "<tr><td>"+escHtml(dt)+"</td><td style='text-align:center;'>"+d.count+"</td><td style='text-align:right;font-weight:700;'>₹"+d.amount.toLocaleString("hi-IN")+"</td></tr>";
+      return "<tr><td>"+escHtml(dt)+"</td><td style='text-align:center;'>"+d.count+"</td><td style='text-align:right;font-weight:700;'>₹"+d.amount.toLocaleString("hi-IN")+"</td><td style='font-size:9px;color:#555;'>"+d.names.slice(0,3).join(", ")+(d.names.length>3?" +"+(d.names.length-3):"")+"</td><td style='font-size:9px;color:#1a237e;'>"+d.accs.slice(0,3).join(", ")+(d.accs.length>3?" +"+(d.accs.length-3):"")+"</td></tr>";
     }).join("");
-    hqRows+="<tr style='background:#e8f5e9;font-weight:700;'><td>कुल</td><td style='text-align:center;'>"+totC+"</td><td style='text-align:right;'>₹"+totA.toLocaleString("hi-IN")+"</td></tr>";
+    var pdfPct=hqTotal?((totC/hqTotal)*100).toFixed(1):"0.0";
+    hqRows+="<tr style='background:#e8f5e9;font-weight:700;'><td>कुल ("+pdfPct+"%)</td><td style='text-align:center;'>"+totC+" / "+hqTotal+"</td><td style='text-align:right;'>₹"+totA.toLocaleString("hi-IN")+"</td><td></td><td></td></tr>";
     rows+="<h3 style='color:#4a148c;margin-top:18px;'>📍 "+hq+"</h3>"+
       "<table style='width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px;'>"+
-      "<thead><tr style='background:#4a148c;color:#fff;'><th style='padding:5px;text-align:left;'>दिनांक</th><th style='padding:5px;text-align:center;'>संख्या</th><th style='padding:5px;text-align:right;'>राशि</th></tr></thead>"+
+      "<thead><tr style='background:#4a148c;color:#fff;'><th style='padding:5px;text-align:left;'>दिनांक</th><th style='padding:5px;text-align:center;'>संख्या</th><th style='padding:5px;text-align:right;'>राशि</th><th style='padding:5px;'>उपभोक्ता</th><th style='padding:5px;'>Consumer No</th></tr></thead>"+
       "<tbody>"+hqRows+"</tbody></table>";
   });
   var html="<!DOCTYPE html><html><head><meta charset='UTF-8'>"+
