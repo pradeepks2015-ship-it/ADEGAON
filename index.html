@@ -995,8 +995,13 @@ function renderSummaryWith(data){
 
 function setFilter(btn){
   activeFilter=btn.dataset.f;
+  _renderLimit=100;
   document.querySelectorAll(".filter-btn").forEach(function(b){b.className="filter-btn";});
   btn.className="filter-btn active-"+activeFilter;
+  // पहले cache से तुरंत दिखाएं
+  var cached=cGet(activeHQ,activeCat);
+  if(cached.length) renderListWith(cached);
+  // फिर network refresh
   fbGet(activeHQ,activeCat,function(d){renderListWith(d);});
 }
 var _searchTimer=null;
@@ -1022,9 +1027,16 @@ function renderListWith(data){
     return matchQ&&(activeFilter==="all"||x.status===activeFilter);
   });
   if(!filtered.length){
-    c.innerHTML="<div class='empty'><div class='empty-ico'>"+(q?"🔍":"📋")+"</div>"+
-      "<div class='empty-t'>"+(q?"कोई परिणाम नहीं":"सूची खाली है")+"</div>"+
-      "<div class='empty-s'>📤 अपलोड बटन से लिस्ट डालें</div></div>";
+    var emptyMsg="";
+    if(activeFilter==="paid") emptyMsg="अभी कोई वसूली दर्ज नहीं";
+    else if(activeFilter==="pending") emptyMsg="सभी वसूली हो चुकी है!";
+    else if(q) emptyMsg="कोई परिणाम नहीं";
+    else emptyMsg="सूची खाली है";
+    var emptyIco=activeFilter==="paid"?"✅":activeFilter==="pending"?"⏳":(q?"🔍":"📋");
+    var emptySub=(!q&&activeFilter==="all")?"📤 अपलोड बटन से लिस्ट डालें":"🔍 खोज या फ़िल्टर बदलें";
+    c.innerHTML="<div class='empty'><div class='empty-ico'>"+emptyIco+"</div>"+
+      "<div class='empty-t'>"+emptyMsg+"</div>"+
+      "<div class='empty-s'>"+emptySub+"</div></div>";
     return;
   }
   var toRender=filtered.slice(0,_renderLimit);
