@@ -275,6 +275,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
   <img class="login-logo" src="https://upload.wikimedia.org/wikipedia/en/5/5b/Madhya_Pradesh_Poorv_Kshetra_Vidyut_Vitran_Company_logo.png" alt="logo" onerror="this.outerHTML='<div style=\'font-size:60px;margin-bottom:10px\'>&#9889;</div>'">
   <div class="login-title">आदेगांव DC वसूली ट्रैकर</div>
   <div class="login-sub">मध्यप्रदेश पूर्व क्षेत्र विद्युत वितरण कं. लि.</div>
+  <div id="ver-badge" style="font-size:10px;font-weight:600;color:var(--gold);border:1px solid var(--border);background:var(--card);border-radius:12px;padding:3px 12px;margin:-14px 0 20px;"></div>
   <div class="login-card">
     <label class="f-label">भूमिका चुनें</label>
     <div class="role-cards">
@@ -541,6 +542,8 @@ var HQS = ["आदेगांव","पिंडरई","जोबा","पा�
 var CATS = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
 var CICO = ["👥","🏠","🏪","🌾","🏛️","🏭","📋","📌"];
 var SUP_PW = "bijli@2025";
+var APP_VER = "5.1"; // हर अपडेट पर यह नंबर बढ़ाएं
+document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 500;
 // Per-category limits: "कुल उपभोक्ता"=2000, "सूची-2"/"सूची-3"=500, others=500
 function getMaxRecords(cat){
@@ -1025,7 +1028,7 @@ function buildUI(){
   document.getElementById("uname-disp").textContent=CU.name;
   document.getElementById("hdr-sub").textContent=CU.role==="supervisor"?"JE | सभी HQ":"Lineman | "+CU.hq;
   var info=document.getElementById("user-info-menu");
-  if(info) info.textContent=(CU.role==="supervisor"?"👨‍💼 JE":"🔧 Lineman")+" | "+CU.hq+" | "+CU.name;
+  if(info) info.textContent=(CU.role==="supervisor"?"👨‍💼 JE":"🔧 Lineman")+" | "+CU.hq+" | "+CU.name+" | v"+APP_VER;
   buildHQTabs(); buildCatTabs(); buildActionBtns();
 }
 
