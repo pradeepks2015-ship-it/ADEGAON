@@ -28,6 +28,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .role-card{padding:14px 10px;border-radius:12px;border:2px solid var(--border);background:var(--surface);cursor:pointer;text-align:center;transition:all .2s;}
 .role-card.selected{border-color:var(--gold);background:rgba(240,165,0,.08);}
 .role-card-icon{font-size:26px;margin-bottom:5px;}
+.role-card-icon svg{width:56px;height:56px;display:block;margin:0 auto;}
 .role-card-title{font-size:12px;font-weight:700;color:var(--text);}
 .role-card-sub{font-size:10px;color:var(--muted);margin-top:2px;}
 .pw-wrap{position:relative;margin-bottom:14px;}
@@ -108,7 +109,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .cc-amt span{font-size:11px;color:var(--muted);font-weight:400;}
 .cc-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;}
 .chip{font-size:10px;padding:2px 7px;border-radius:12px;}
-.chip-acc{background:rgba(33,150,243,.12);color:#64b5f6;cursor:pointer;text-decoration:underline;}
+.chip-acc{background:#ffd166;color:#0a0e1a;cursor:pointer;font-size:14px;font-weight:800;letter-spacing:1px;padding:4px 10px;border-radius:8px;border:1px solid #f0a500;font-family:Consolas,"Courier New",monospace;}
 .chip-ph{background:rgba(0,200,150,.1);color:var(--green);}
 .chip-addr{background:rgba(255,255,255,.05);color:var(--muted);}
 .cc-extra{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;}
@@ -280,12 +281,12 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
     <label class="f-label">भूमिका चुनें</label>
     <div class="role-cards">
       <div class="role-card" id="rc-sup" onclick="selectRole('supervisor')">
-        <div class="role-card-icon">&#128084;</div>
+        <div class="role-card-icon"><svg viewBox="0 0 96 96" aria-hidden="true"><rect x="52" y="26" width="32" height="44" rx="4" fill="#f4f7fb" stroke="#2a4a76" stroke-width="3"/><rect x="60" y="21" width="16" height="9" rx="2.5" fill="#2a4a76"/><line x1="58" y1="40" x2="78" y2="40" stroke="#8fa6c4" stroke-width="3" stroke-linecap="round"/><line x1="58" y1="48" x2="78" y2="48" stroke="#8fa6c4" stroke-width="3" stroke-linecap="round"/><line x1="58" y1="56" x2="70" y2="56" stroke="#8fa6c4" stroke-width="3" stroke-linecap="round"/><path d="M60 63l4 4 9-9" fill="none" stroke="#00c896" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="30" cy="34" r="11" fill="#f7c8a0"/><path d="M17 33a13 13 0 0 1 26 0z" fill="#ffffff" stroke="#9fb2c9" stroke-width="1.6"/><rect x="15" y="30" width="30" height="4.5" rx="2.2" fill="#dfe4ea"/><path d="M14 76v-14a16 13 0 0 1 32 0v14z" fill="#2f7fe0"/><rect x="26" y="52" width="8" height="10" rx="2" fill="#fff" opacity=".9"/><path d="M42 58q8-2 12-8" fill="none" stroke="#2f7fe0" stroke-width="7" stroke-linecap="round"/><circle cx="55" cy="49" r="4" fill="#f7c8a0"/></svg></div>
         <div class="role-card-title">Junior Engineer</div>
         <div class="role-card-sub">कनिष्ठ अभियंता</div>
       </div>
       <div class="role-card" id="rc-lin" onclick="selectRole('lineman')">
-        <div class="role-card-icon">&#128295;</div>
+        <div class="role-card-icon"><svg viewBox="0 0 96 96" aria-hidden="true"><rect x="43" y="14" width="8" height="72" rx="2" fill="#8a5a2b"/><rect x="18" y="16" width="58" height="5" rx="2" fill="#6e451f"/><rect x="24" y="10" width="5" height="7" rx="2" fill="#2f7fe0"/><rect x="45.5" y="9" width="5" height="8" rx="2" fill="#2f7fe0"/><rect x="66" y="10" width="5" height="7" rx="2" fill="#2f7fe0"/><path d="M0 8Q26 14 26 10" fill="none" stroke="#9db2cc" stroke-width="1.8"/><path d="M26 10Q48 16 48 9 70 16 68 10" fill="none" stroke="#9db2cc" stroke-width="1.8"/><path d="M68 10Q86 14 96 8" fill="none" stroke="#9db2cc" stroke-width="1.8"/><rect x="37" y="34" width="7" height="3.4" rx="1.6" fill="#8fa6c4"/><rect x="50" y="44" width="7" height="3.4" rx="1.6" fill="#8fa6c4"/><rect x="37" y="54" width="7" height="3.4" rx="1.6" fill="#8fa6c4"/><rect x="50" y="64" width="7" height="3.4" rx="1.6" fill="#8fa6c4"/><ellipse cx="47" cy="42" rx="16" ry="6" fill="none" stroke="#f5b400" stroke-width="2.6" stroke-dasharray="5 4"/><circle cx="63" cy="26" r="7" fill="#f7c8a0"/><path d="M55 25.5a8 8 0 0 1 16 0z" fill="#f5b400"/><rect x="54" y="23.5" width="18" height="3" rx="1.5" fill="#e0a400"/><path d="M57 50v-12a8 7 0 0 1 14 0v12z" fill="#f56a00"/><path d="M56 38q-6 2-9-1" fill="none" stroke="#f56a00" stroke-width="5" stroke-linecap="round"/><path d="M70 36q5-4 3-9" fill="none" stroke="#f56a00" stroke-width="5" stroke-linecap="round"/><path d="M59 50q-4 6-8 8M66 50q2 7-2 11" fill="none" stroke="#4a6a94" stroke-width="5.5" stroke-linecap="round"/><path d="M82 34l-7 11h5l-4 10 12-14h-6l6-7z" fill="#ffd000" stroke="#e0a400" stroke-width="1"/></svg></div>
         <div class="role-card-title">Lineman</div>
         <div class="role-card-sub">फील्ड कर्मचारी</div>
       </div>
@@ -540,20 +541,41 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 <div class="moverlay" id="hsc-overlay" onclick="if(event.target===this)closeHscModal()">
   <div class="msheet">
     <div class="mhandle"></div>
-    <div class="mtitle">&#128248; होम स्कोरकार्ड अपलोड</div>
-    <div class="up-info-box">Collection Status Summary का screenshot चुनें — app अपने आप आँकड़े पढ़ लेगा। गलत पढ़े तो नीचे सुधार लें, फिर प्रकाशित करें।</div>
-    <div class="upload-zone" onclick="document.getElementById('hsc-file').click()">
-      <div class="uz-icon" id="hsc-ico">&#128444;</div>
-      <div class="uz-t" id="hsc-t">Screenshot चुनें</div>
-      <div class="uz-s" id="hsc-status">JPG / PNG</div>
-    </div>
-    <input type="file" id="hsc-file" accept="image/*" style="display:none;" onchange="hscFile(this.files[0])">
+    <div class="mtitle">&#128421; होम पेज डिस्प्ले बोर्ड</div>
+    <div class="up-info-box">आँकड़े नीचे हाथ से भरें, फिर प्रकाशित करें — सबके होम पेज पर दिखेंगे।</div>
     <div class="fg"><label>As On (दिनांक)</label><input class="fi" id="hsc-ason" placeholder="16-07-2026"></div>
     <div class="up-sel2">
       <div class="fg"><label>इस वर्ष Paid Consumers</label><input class="fi" id="hsc-curpaid" inputmode="numeric"></div>
       <div class="fg"><label>इस वर्ष राशि (Lakh)</label><input class="fi" id="hsc-curamt" inputmode="decimal"></div>
       <div class="fg"><label>गत वर्ष Paid Consumers</label><input class="fi" id="hsc-lypaid" inputmode="numeric"></div>
       <div class="fg"><label>गत वर्ष राशि (Lakh)</label><input class="fi" id="hsc-lyamt" inputmode="decimal"></div>
+    </div>
+    <div class="up-info-box">📊 वसूली प्रगति कार्ड के आँकड़े (माह में एक बार भरें)</div>
+    <div class="up-sel2">
+      <div class="fg"><label>Power BI टारगेट (Lakh)</label><input class="fi" id="hsc-pbitgt" inputmode="decimal"></div>
+      <div class="fg"><label>टारगेट किस माह का (जैसे: जुलाई 2026)</label><input class="fi" id="hsc-pbimonth"></div>
+      <div class="fg"><label>कैश डिमांड — Current Month (Lakh)</label><input class="fi" id="hsc-cashdem" inputmode="decimal"></div>
+      <div class="fg"><label>गत वर्ष इसी माह पूरी वसूली (Lakh)</label><input class="fi" id="hsc-lyfull" inputmode="decimal"></div>
+      <div class="fg"><label>Growth लक्ष्य %</label><input class="fi" id="hsc-growth" inputmode="numeric" placeholder="25"></div>
+    </div>
+    <div class="up-info-box">⚡ CRPU बोर्ड के आँकड़े (FY — अप्रैल से अब तक cumulative)</div>
+    <div class="up-sel2">
+      <div class="fg"><label>Cumulative Collection (Lakh ₹)</label><input class="fi" id="hsc-cumcoll" inputmode="decimal"></div>
+      <div class="fg"><label>Cumulative Input (Lakh Units)</label><input class="fi" id="hsc-cuminput" inputmode="decimal"></div>
+      <div class="fg"><label>CRPU Target (₹/Unit)</label><input class="fi" id="hsc-crputgt" inputmode="decimal"></div>
+    </div>
+    <div class="up-info-box">📉 दक्षता बोर्ड — BE / CE / AT&amp;C (FY cumulative; Input Energy और Collection ऊपर CRPU वाले ही उपयोग होंगे)</div>
+    <div class="up-sel2">
+      <div class="fg"><label>Billed Units (Lakh Units)</label><input class="fi" id="hsc-bldunits" inputmode="decimal"></div>
+      <div class="fg"><label>Current Demand / Billed Amount (₹ Lakh)</label><input class="fi" id="hsc-curdem" inputmode="decimal"></div>
+      <div class="fg"><label>Billing Eff. Target %</label><input class="fi" id="hsc-betgt" inputmode="decimal"></div>
+      <div class="fg"><label>Collection Eff. Target %</label><input class="fi" id="hsc-cetgt" inputmode="decimal"></div>
+      <div class="fg"><label>AT&amp;C Loss Target % (खाली छोड़ें तो BE×CE से निकलेगा)</label><input class="fi" id="hsc-atctgt" inputmode="decimal"></div>
+    </div>
+    <div class="up-info-box">🖥 डिस्प्ले सेटिंग — कौन से बोर्ड होम पेज पर सबको दिखें</div>
+    <div style="display:flex;gap:20px;margin:2px 2px 12px;">
+      <label style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text);cursor:pointer;"><input type="checkbox" id="hsc-showcrpu" style="width:18px;height:18px;accent-color:var(--gold);"> ⚡ CRPU बोर्ड</label>
+      <label style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text);cursor:pointer;"><input type="checkbox" id="hsc-showeff" style="width:18px;height:18px;accent-color:var(--gold);"> 📉 दक्षता बोर्ड</label>
     </div>
     <div class="mfooter">
       <button class="btn-cancel" onclick="closeHscModal()">रद्द</button>
@@ -569,7 +591,7 @@ var HQS = ["आदेगांव","पिंडरई","जोबा","पा�
 var CATS = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
 var CICO = ["👥","🏠","🏪","🌾","🏛️","🏭","📋","📌"];
 var SUP_PW = "bijli@2025";
-var APP_VER = "5.7"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "6.7"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 500;
 // Per-category limits: "कुल उपभोक्ता"=2000, "सूची-2"/"सूची-3"=500, others=500
@@ -1200,7 +1222,7 @@ function buildActionBtns(){
     c.appendChild(b2);
     var b3=document.createElement("button");
     b3.className="tbtn"; b3.style.cssText="background:#6a1b9a;color:#fff;";
-    b3.innerHTML="📸 स्कोरकार्ड"; b3.onclick=openHscModal;
+    b3.innerHTML="🖥 होम पेज डिस्प्ले बोर्ड"; b3.onclick=openHscModal;
     c.appendChild(b3);
   }
 }
@@ -2137,6 +2159,9 @@ function hscFetch(){
     }).catch(function(){});
 }
 function fmtL(n){n=Number(n)||0;return n.toLocaleString("en-IN");}
+var BRD_COL={crpu:false,eff:false};
+try{var _bc=localStorage.getItem("dc_brdcol3");if(_bc)BRD_COL=JSON.parse(_bc);}catch(e){}
+function toggleBoard(k){BRD_COL[k]=!BRD_COL[k];try{localStorage.setItem("dc_brdcol3",JSON.stringify(BRD_COL));}catch(e){}renderHomeSc();}
 function renderHomeSc(){
   var el=document.getElementById("home-sc");
   if(!el)return;
@@ -2146,6 +2171,120 @@ function renderHomeSc(){
   var dp=cp-lp, da=ca-la;
   var dpPct=lp?((dp/lp)*100).toFixed(2):"0.00", daPct=la?((da/la)*100).toFixed(2):"0.00";
   var g="var(--green)",r="var(--red)";
+  var tgt=Number(HSC.pbiTgt)||0,cd2=Number(HSC.cashDem)||0,lyf=Number(HSC.lyFull)||0,gr=Number(HSC.growth)||25;
+  var proHtml="";
+  if(tgt>0||cd2>0){
+    proHtml+="<div style='margin-top:8px;'>";
+    [[tgt,"🎯 Power BI टारगेट"+(HSC.pbiMonth?" ("+escHtml(HSC.pbiMonth)+")":""),"#64b5f6"],[cd2,"🧾 कैश डिमांड (Current Month)","#4db6ac"]].forEach(function(it){
+      if(!it[0])return;
+      var p=(ca/it[0])*100;
+      proHtml+="<div style='margin-bottom:8px;'>"+
+        "<div style='display:flex;justify-content:space-between;align-items:baseline;font-size:10px;color:var(--muted);'><span>"+it[1]+" — &#8377;"+it[0]+" L</span><b style='font-size:14px;color:"+(p>=90?"var(--green)":(p>=60?"var(--gold2)":"var(--red)"))+";'>"+p.toFixed(1)+"%</b></div>"+
+        "<div style='height:8px;background:rgba(255,255,255,.07);border-radius:5px;overflow:hidden;margin-top:3px;'><div style='height:100%;width:"+Math.min(p,100).toFixed(1)+"%;background:"+it[2]+";border-radius:5px;'></div></div>"+
+      "</div>";
+    });
+    proHtml+="</div>";
+  }
+  var grHtml="";
+  if(lyf>0){
+    var gTgt=lyf*(1+gr/100),need=Math.max(0,gTgt-ca);
+    grHtml="<div style='background:rgba(240,165,0,.07);border:1px solid rgba(240,165,0,.25);border-radius:10px;padding:9px 10px;margin-top:8px;'>"+
+      "<div style='display:flex;justify-content:space-between;font-size:10px;color:var(--muted);'><span>गत वर्ष पूरा माह (आखिरी तारीख तक)</span><b style='color:var(--text);'>&#8377;"+lyf+" L</b></div>"+
+      "<div style='display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px;'><span>"+gr+"% Growth लक्ष्य</span><b style='color:var(--gold2);'>&#8377;"+gTgt.toFixed(2)+" L</b></div>"+
+      "<div style='text-align:center;margin-top:7px;background:rgba(240,165,0,.12);border-radius:8px;padding:7px;'>"+
+        (need>0?"<div style='font-family:\"Baloo 2\",cursive;font-size:18px;font-weight:800;color:var(--gold2);'>&#8377;"+need.toFixed(2)+" Lakh</div><div style='font-size:9px;color:var(--muted);'>"+gr+"% growth के लिए अभी और लाना है</div>"
+               :"<div style='font-family:\"Baloo 2\",cursive;font-size:16px;font-weight:800;color:var(--green);'>🎉 Growth लक्ष्य पूरा!</div>")+
+      "</div></div>";
+  }
+  var crpuHtml="";
+  var cc=Number(HSC.cumColl)||0,ci=Number(HSC.cumInput)||0,ct=Number(HSC.crpuTgt)||0;
+  var buC=Number(HSC.bldUnits)||0, crpuDen=buC>0?buC:ci, crpuDenLbl=buC>0?"÷ Billed Units":"÷ Input";
+  if(cc>0&&crpuDen>0&&HSC.showCrpu!=="0"){
+    var crpu=cc/crpuDen;
+    var ach=ct>0?(crpu/ct)*100:0;
+    var achClr=ach>=100?"var(--green)":(ach>=85?"var(--gold2)":"var(--red)");
+    var needColl=ct>0?Math.max(0,ct*crpuDen-cc):0;
+    var unitsCov=ct>0?cc/ct:0, unitGap=Math.max(0,crpuDen-unitsCov);
+    crpuHtml="<div style='background:rgba(121,134,203,.08);border:1px solid rgba(121,134,203,.3);border-radius:10px;padding:10px;margin-top:8px;'>"+
+      "<div onclick=\"toggleBoard('crpu')\" style='display:flex;justify-content:space-between;align-items:center;cursor:pointer;"+(BRD_COL.crpu?"":"margin-bottom:7px;")+"'>"+
+        "<div style='font-size:11px;font-weight:700;color:#9fa8da;'>⚡ CRPU बोर्ड</div>"+
+        "<div style='font-size:9px;color:var(--muted);'>FY 26-27 &bull; अप्रैल से अब तक <b style='color:#9fa8da;font-size:13px;'>"+(BRD_COL.crpu?"▸":"▾")+"</b></div>"+
+      "</div>"+(BRD_COL.crpu?"":
+      "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center;'>"+
+        "<div style='text-align:center;background:rgba(121,134,203,.12);border-radius:8px;padding:8px 4px;'>"+
+          "<div style='font-size:9px;color:var(--muted);'>CRPU (अब तक)</div>"+
+          "<div style='font-family:\"Baloo 2\",cursive;font-size:22px;font-weight:800;color:#9fa8da;'>&#8377;"+crpu.toFixed(2)+"</div>"+
+          "<div style='font-size:9px;color:var(--muted);'>प्रति यूनिट ("+crpuDenLbl+")</div>"+
+        "</div>"+
+        "<div style='text-align:center;'>"+
+          (ct>0?"<div style='font-size:9px;color:var(--muted);'>Target Projection</div>"+
+          "<div style='font-family:\"Baloo 2\",cursive;font-size:16px;font-weight:800;color:var(--text);'>&#8377;"+ct.toFixed(2)+"</div>"+
+          (crpu<ct?"<div style='font-family:\"Baloo 2\",cursive;font-size:15px;font-weight:800;color:var(--gold2);margin-top:2px;'>&#8377;"+needColl.toFixed(2)+" Lakh</div>"+
+                   "<div style='font-size:9px;color:var(--red);'>वसूली और चाहिए</div>"
+                  :"<div style='font-size:11px;font-weight:800;color:var(--green);margin-top:3px;'>✅ Target प्राप्त</div>")
+          :"<div style='font-size:10px;color:var(--muted);'>Target नहीं भरा गया</div>")+
+        "</div>"+
+      "</div>"+
+      "<div style='font-size:10px;color:var(--muted);margin-top:6px;background:rgba(255,209,102,.06);border:1px solid rgba(255,209,102,.18);border-radius:8px;padding:7px 9px;line-height:1.9;'>"+
+        "📐 CRPU = &#8377;"+cc+" L ÷ "+crpuDen+" L units = <b style='color:#9fa8da;'>&#8377;"+crpu.toFixed(2)+"/unit</b>"+
+        (ct>0&&crpu<ct?"<br>🎯 Target &#8377;"+ct.toFixed(2)+" × "+crpuDen+" L units = &#8377;"+(ct*crpuDen).toFixed(2)+" L → <b style='color:var(--gold2);'>&#8377;"+needColl.toFixed(2)+" Lakh और लाओ</b>":"")+
+      "</div>"+
+      "<div style='display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:7px;border-top:1px dashed rgba(121,134,203,.25);padding-top:5px;'>"+
+        "<span>Cum. Collection: <b style='color:var(--text);'>&#8377;"+cc+" L</b></span>"+
+        "<span>Cum. Input: <b style='color:var(--text);'>"+ci+" L Units</b></span>"+
+      "</div>")+
+    "</div>";
+  }
+  var effHtml="";
+  var bu=Number(HSC.bldUnits)||0,dem=Number(HSC.curDem)||0;
+  if(bu>0&&ci>0&&cc>0&&dem>0&&HSC.showEff!=="0"){
+    var be=bu/ci*100, ce=cc/dem*100, atc=100-(be*ce)/100;
+    var beT=Number(HSC.beTgt)||0, ceT=Number(HSC.ceTgt)||0;
+    var atcT=Number(HSC.atcTgt)||0;
+    if(!atcT&&beT>0&&ceT>0) atcT=100-(beT*ceT)/100;
+    var atcClr=(atcT>0&&atc<=atcT)?"var(--green)":"var(--red)";
+    function cell(lbl,val,tgtv,clr){
+      return "<div style='text-align:center;background:rgba(255,255,255,.04);border-radius:8px;padding:7px 3px;'>"+
+        "<div style='font-size:9px;color:var(--muted);'>"+lbl+"</div>"+
+        "<div style='font-family:\"Baloo 2\",cursive;font-size:17px;font-weight:800;color:"+clr+";'>"+val.toFixed(2)+"%</div>"+
+        (tgtv>0?"<div style='font-size:9px;color:var(--muted);'>Target: <b style='color:var(--text);'>"+tgtv.toFixed(2)+"%</b></div>":"")+
+      "</div>";
+    }
+    var needHtml="<div style='font-size:10px;color:var(--muted);margin-top:7px;background:rgba(255,209,102,.06);border:1px solid rgba(255,209,102,.18);border-radius:8px;padding:7px 9px;line-height:1.9;'>"+
+      "📐 AT&amp;C Loss = 100 − ("+be.toFixed(2)+" × "+ce.toFixed(2)+" ÷ 100) = <b style='color:#4db6ac;'>"+atc.toFixed(2)+"%</b>";
+    if(atcT>0&&atc>atcT){
+      var prod=(100-atcT)*100;
+      var beReq=ce>0?prod/ce:0, ceReq=be>0?prod/be:0;
+      var exBU=beReq>be?((beReq-be)/100*ci):0;
+      var exCol=ceReq>ce?((ceReq-ce)/100*dem):0;
+      needHtml+="<br>🎯 Target "+atcT.toFixed(2)+"% के लिए → <b style='color:var(--gold2);'>"+exBU.toFixed(2)+" L Units और बिलिंग</b> या <b style='color:var(--gold2);'>&#8377;"+exCol.toFixed(2)+" Lakh और वसूली</b>";
+    } else if(atcT>0){
+      needHtml+="<br>✅ <b style='color:var(--green);'>Target "+atcT.toFixed(2)+"% प्राप्त!</b>";
+    }
+    needHtml+="</div>";
+    effHtml="<div style='background:rgba(77,182,172,.06);border:1px solid rgba(77,182,172,.25);border-radius:10px;padding:10px;margin-top:8px;'>"+
+      "<div onclick=\"toggleBoard('eff')\" style='display:flex;justify-content:space-between;align-items:center;cursor:pointer;"+(BRD_COL.eff?"":"margin-bottom:7px;")+"'>"+
+        "<div style='font-size:11px;font-weight:700;color:#4db6ac;'>📉 दक्षता बोर्ड (BE / CE / AT&amp;C)</div>"+
+        "<div style='font-size:9px;color:var(--muted);'>FY cumulative <b style='color:#4db6ac;font-size:13px;'>"+(BRD_COL.eff?"▸":"▾")+"</b></div>"+
+      "</div>"+(BRD_COL.eff?"":
+      "<div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;'>"+
+        cell("Billing Eff.",be,beT,"#4db6ac")+
+        cell("Collection Eff.",ce,ceT,"#64b5f6")+
+        cell("AT&amp;C Loss",atc,atcT,atcClr)+
+      "</div>"+
+      needHtml+
+      "<div style='margin-top:8px;border-top:1px dashed rgba(77,182,172,.25);padding-top:7px;'>"+
+        "<div style='font-size:9.5px;color:var(--muted);margin-bottom:4px;'>🧮 खुद भरकर देखें — BE/CE बदलें, AT&amp;C तुरंत:</div>"+
+        "<div style='display:flex;gap:6px;align-items:center;justify-content:center;'>"+
+          "<input id='sim-be' inputmode='decimal' value='"+be.toFixed(2)+"' oninput='simAtc()' style='width:64px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--text);font-size:13px;font-weight:700;text-align:center;'>"+
+          "<span style='font-size:10px;color:var(--muted);'>BE% ×</span>"+
+          "<input id='sim-ce' inputmode='decimal' value='"+ce.toFixed(2)+"' oninput='simAtc()' style='width:64px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--text);font-size:13px;font-weight:700;text-align:center;'>"+
+          "<span style='font-size:10px;color:var(--muted);'>CE% →</span>"+
+          "<b id='sim-atc' style='font-family:\"Baloo 2\",cursive;font-size:16px;color:var(--gold2);'>"+atc.toFixed(2)+"%</b>"+
+        "</div>"+
+      "</div>")+
+    "</div>";
+  }
   el.innerHTML=
   "<div style='background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;'>"+
     "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;'>"+
@@ -2173,76 +2312,44 @@ function renderHomeSc(){
       "<div style='font-size:10px;color:var(--muted);'>उपभोक्ता अंतर<br><b style='font-size:14px;color:"+(dp>=0?g:r)+";'>"+(dp>=0?"+":"")+fmtL(dp)+" ("+(dp>=0?"+":"")+dpPct+"%)</b></div>"+
       "<div style='font-size:10px;color:var(--muted);text-align:right;'>राशि अंतर<br><b style='font-size:14px;color:"+(da>=0?g:r)+";'>"+(da>=0?"+&#8377;":"-&#8377;")+Math.abs(da).toFixed(2)+" L ("+(da>=0?"+":"")+daPct+"%)</b></div>"+
     "</div>"+
+    proHtml+grHtml+crpuHtml+effHtml+
     (HSC.updatedBy?"<div style='font-size:9px;color:#2a4060;margin-top:6px;text-align:right;'>&#128248; "+escHtml(HSC.updatedBy)+" &bull; "+escHtml(HSC.updatedAt||"")+"</div>":"")+
   "</div>";
 }
-function ensureTesseract(cb){
-  if(window.Tesseract){cb(true);return;}
-  if(!navigator.onLine){cb(false);return;}
-  var sc=document.createElement("script");
-  sc.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
-  sc.onload=function(){cb(true);};
-  sc.onerror=function(){cb(false);};
-  document.head.appendChild(sc);
+function simAtc(){
+  var b=parseFloat(document.getElementById("sim-be").value),c=parseFloat(document.getElementById("sim-ce").value);
+  var o=document.getElementById("sim-atc");
+  if(isNaN(b)||isNaN(c)){o.textContent="—";return;}
+  o.textContent=(100-(b*c)/100).toFixed(2)+"%";
 }
 function openHscModal(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE upload कर सकते हैं","err");return;}
-  ["hsc-ason","hsc-curpaid","hsc-curamt","hsc-lypaid","hsc-lyamt"].forEach(function(id){document.getElementById(id).value="";});
+  ["hsc-ason","hsc-curpaid","hsc-curamt","hsc-lypaid","hsc-lyamt","hsc-pbitgt","hsc-pbimonth","hsc-cashdem","hsc-lyfull","hsc-growth","hsc-cumcoll","hsc-cuminput","hsc-crputgt","hsc-bldunits","hsc-curdem","hsc-betgt","hsc-cetgt","hsc-atctgt"].forEach(function(id){document.getElementById(id).value="";});
+  document.getElementById("hsc-showcrpu").checked=!(HSC&&HSC.showCrpu==="0");
+  document.getElementById("hsc-showeff").checked=!(HSC&&HSC.showEff==="0");
   if(HSC){
     document.getElementById("hsc-ason").value=HSC.asOn||"";
     document.getElementById("hsc-curpaid").value=HSC.curPaid||"";
     document.getElementById("hsc-curamt").value=HSC.curAmt||"";
     document.getElementById("hsc-lypaid").value=HSC.lyPaid||"";
     document.getElementById("hsc-lyamt").value=HSC.lyAmt||"";
+    document.getElementById("hsc-pbitgt").value=HSC.pbiTgt||"";
+    document.getElementById("hsc-pbimonth").value=HSC.pbiMonth||"";
+    document.getElementById("hsc-cashdem").value=HSC.cashDem||"";
+    document.getElementById("hsc-lyfull").value=HSC.lyFull||"";
+    document.getElementById("hsc-growth").value=HSC.growth||"";
+    document.getElementById("hsc-cumcoll").value=HSC.cumColl||"";
+    document.getElementById("hsc-cuminput").value=HSC.cumInput||"";
+    document.getElementById("hsc-crputgt").value=HSC.crpuTgt||"";
+    document.getElementById("hsc-bldunits").value=HSC.bldUnits||"";
+    document.getElementById("hsc-curdem").value=HSC.curDem||"";
+    document.getElementById("hsc-betgt").value=HSC.beTgt||"";
+    document.getElementById("hsc-cetgt").value=HSC.ceTgt||"";
+    document.getElementById("hsc-atctgt").value=HSC.atcTgt||"";
   }
-  document.getElementById("hsc-ico").textContent="🖼";
-  document.getElementById("hsc-status").textContent="JPG / PNG";
-  document.getElementById("hsc-file").value="";
   document.getElementById("hsc-overlay").classList.add("open");
 }
 function closeHscModal(){document.getElementById("hsc-overlay").classList.remove("open");}
-function hscFile(f){
-  if(!f)return;
-  document.getElementById("hsc-ico").textContent="⏳";
-  document.getElementById("hsc-status").textContent="फोटो पढ़ी जा रही है... (15-30 सेकंड)";
-  ensureTesseract(function(ok){
-    if(!ok){
-      document.getElementById("hsc-ico").textContent="✍";
-      document.getElementById("hsc-status").textContent="OCR के लिए इन्टरनेट चाहिए — नीचे हाथ से भरें";
-      return;
-    }
-    Tesseract.recognize(f,"eng").then(function(res){
-      var t=(res&&res.data&&res.data.text)||"";
-      var p=parseScText(t);
-      if(p.asOn)document.getElementById("hsc-ason").value=p.asOn;
-      if(p.curPaid)document.getElementById("hsc-curpaid").value=p.curPaid;
-      if(p.curAmt)document.getElementById("hsc-curamt").value=p.curAmt;
-      if(p.lyPaid)document.getElementById("hsc-lypaid").value=p.lyPaid;
-      if(p.lyAmt)document.getElementById("hsc-lyamt").value=p.lyAmt;
-      var got=["asOn","curPaid","curAmt","lyPaid","lyAmt"].filter(function(k){return p[k];}).length;
-      document.getElementById("hsc-ico").textContent=got>=4?"✅":"⚠";
-      document.getElementById("hsc-status").textContent=got+"/5 आँकड़े पढ़े गए — जाँच कर सुधारें, फिर प्रकाशित करें";
-    }).catch(function(){
-      document.getElementById("hsc-ico").textContent="⚠";
-      document.getElementById("hsc-status").textContent="पढ़ नहीं पाया — नीचे हाथ से भरें";
-    });
-  });
-}
-function parseScText(t){
-  var out={};
-  var m=t.match(/(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})/);
-  if(m) out.asOn=m[0];
-  var paid=[],amt=[],mm;
-  var re=/Paid\s*Consumers?[^0-9]{0,40}([\d][\d,]{2,})/gi;
-  while((mm=re.exec(t))) paid.push(mm[1].replace(/,/g,""));
-  var re2=/Collection\s*Amount[^0-9]{0,40}(\d+(?:\.\d+)?)/gi;
-  while((mm=re2.exec(t))) amt.push(mm[1]);
-  if(paid[0])out.curPaid=paid[0];
-  if(paid[1])out.lyPaid=paid[1];
-  if(amt[0])out.curAmt=amt[0];
-  if(amt[1])out.lyAmt=amt[1];
-  return out;
-}
 function saveHsc(){
   var d={
     asOn:document.getElementById("hsc-ason").value.trim(),
@@ -2250,6 +2357,21 @@ function saveHsc(){
     curAmt:document.getElementById("hsc-curamt").value.replace(/,/g,"").trim(),
     lyPaid:document.getElementById("hsc-lypaid").value.replace(/,/g,"").trim(),
     lyAmt:document.getElementById("hsc-lyamt").value.replace(/,/g,"").trim(),
+    pbiTgt:document.getElementById("hsc-pbitgt").value.replace(/,/g,"").trim(),
+    pbiMonth:document.getElementById("hsc-pbimonth").value.trim(),
+    showCrpu:document.getElementById("hsc-showcrpu").checked?"1":"0",
+    showEff:document.getElementById("hsc-showeff").checked?"1":"0",
+    cashDem:document.getElementById("hsc-cashdem").value.replace(/,/g,"").trim(),
+    lyFull:document.getElementById("hsc-lyfull").value.replace(/,/g,"").trim(),
+    growth:document.getElementById("hsc-growth").value.replace(/,/g,"").trim()||"25",
+    cumColl:document.getElementById("hsc-cumcoll").value.replace(/,/g,"").trim(),
+    cumInput:document.getElementById("hsc-cuminput").value.replace(/,/g,"").trim(),
+    crpuTgt:document.getElementById("hsc-crputgt").value.replace(/,/g,"").trim(),
+    bldUnits:document.getElementById("hsc-bldunits").value.replace(/,/g,"").trim(),
+    curDem:document.getElementById("hsc-curdem").value.replace(/,/g,"").trim(),
+    beTgt:document.getElementById("hsc-betgt").value.replace(/,/g,"").trim(),
+    ceTgt:document.getElementById("hsc-cetgt").value.replace(/,/g,"").trim(),
+    atcTgt:document.getElementById("hsc-atctgt").value.replace(/,/g,"").trim(),
     updatedBy:CU?CU.name:"",updatedAt:new Date().toLocaleString("hi-IN")
   };
   if(!d.curPaid||!d.curAmt){toast("इस वर्ष के आँकड़े जरूरी हैं","err");return;}
@@ -2258,7 +2380,7 @@ function saveHsc(){
   renderHomeSc();
   closeHscModal();
   fetch(FB+"/HOME_SCORECARD.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)})
-    .then(function(r){toast(r.ok?"✅ स्कोरकार्ड प्रकाशित — सबके होम पेज पर दिखेगा":"⚠ save नहीं हुआ, दोबारा try करें",r.ok?"ok":"err");})
+    .then(function(r){toast(r.ok?"✅ डिस्प्ले बोर्ड प्रकाशित — सबके होम पेज पर दिखेगा":"⚠ save नहीं हुआ, दोबारा try करें",r.ok?"ok":"err");})
     .catch(function(){toast("📴 ऑफलाइन — नेट आने पर दोबारा 'प्रकाशित करें' दबाएँ","err");});
 }
 
