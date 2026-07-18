@@ -614,7 +614,7 @@ var HQS = ["आदेगांव","पिंडरई","जोबा","पा�
 var CATS = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
 var CICO = ["👥","🏠","🏪","🌾","🏛️","🏭","📋","📌"];
 var SUP_PW = "bijli@2025";
-var APP_VER = "7.0"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "7.1"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=2000, others=1000
@@ -2460,13 +2460,36 @@ function applyCashList(){
     }
   });
   var mCount=Object.keys(matched).length,noMatch=CASH_IVRS.length-mCount;
+  CASH_NOMATCH=CASH_IVRS.filter(function(x){return !matched[x];});
   document.getElementById("cash-result").innerHTML=
     "✅ <b style='color:var(--green);'>"+newly+"</b> नई वसूली दर्ज ("+tabsChanged+" tabs में)<br>"+
     (already?"ℹ "+already+" records पहले से वसूल थे<br>":"")+
-    (noMatch?"⚠ <b style='color:var(--gold2);'>"+noMatch+"</b> IVRS किसी list में नहीं मिले":"सभी IVRS match हो गए 🎉");
+    (noMatch?"⚠ <b style='color:var(--gold2);'>"+noMatch+"</b> IVRS किसी list में नहीं मिले<br><button class='mbtn' style='margin-top:8px;background:#37474f;color:#fff;font-size:13px;padding:9px 14px;' onclick='downloadNoMatch()'>⬇ नहीं मिले IVRS की Excel डाउनलोड करें</button>":"सभी IVRS match हो गए 🎉");
   btn.style.display="none";btn.disabled=false;btn.textContent="✔ सभी को वसूल करें";
   toast("✅ कैश लिस्ट लागू — "+newly+" वसूली दर्ज","ok");
   try{renderSummaryWith(cGet(activeHQ,activeCat)||[]);renderListWith(cGet(activeHQ,activeCat)||[]);}catch(e){}
+}
+var CASH_NOMATCH=null;
+function downloadNoMatch(){
+  if(!CASH_NOMATCH||!CASH_NOMATCH.length){toast("नहीं मिले IVRS की सूची खाली है","err");return;}
+  ensureXLSX(function(ok){
+    if(!ok){
+      var csv="IVRS No\n"+CASH_NOMATCH.join("\n");
+      var bl=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8;"});
+      var aEl=document.createElement("a");
+      aEl.href=URL.createObjectURL(bl);
+      aEl.download="NoMatch_IVRS_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".csv";
+      aEl.click();
+      return;
+    }
+    var rows=[["IVRS No"]];
+    CASH_NOMATCH.forEach(function(x){rows.push([x]);});
+    var ws=XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"]=[{wch:18}];
+    var wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"NoMatch");
+    XLSX.writeFile(wb,"NoMatch_IVRS_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx");
+  });
 }
 function openHscModal(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE upload कर सकते हैं","err");return;}
