@@ -614,13 +614,13 @@ var HQS = ["आदेगांव","पिंडरई","जोबा","पा�
 var CATS = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
 var CICO = ["👥","🏠","🏪","🌾","🏛️","🏭","📋","📌"];
 var SUP_PW = "bijli@2025";
-var APP_VER = "7.1"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "7.2"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
-// Per-category limits: "कुल उपभोक्ता"=2000, others=1000
+// Per-category limits: "कुल उपभोक्ता"=3500, others=1000
 function getMaxRecords(cat){
   if(!cat) return MAX_RECORDS;
-  if(cat==="कुल उपभोक्ता") return 2000;
+  if(cat==="कुल उपभोक्ता") return 3500;
   return 1000;
 }
 // Editable cat names stored here (keys are fixed slots 5,6,7)
@@ -1597,7 +1597,7 @@ function onCatChange(){
   if(!hint) return;
   if(cat==="कुल उपभोक्ता"){
     hint.style.display="block";
-    hint.innerHTML="👥 <b>कुल उपभोक्ता</b> — अधिकतम <b>2000</b> records | <b>Net Bill/Amount optional</b> है<br>"+
+    hint.innerHTML="👥 <b>कुल उपभोक्ता</b> — अधिकतम <b>3500</b> records | <b>Net Bill/Amount optional</b> है<br>"+
       "जरूरी columns: <b>Consumer No</b> और <b>Consumer Name</b> बस काफी है";
   } else if(cat==="सूची-2"||cat===CATS[6]){
     hint.style.display="block";
@@ -1715,7 +1715,7 @@ function processRows(rows){
     // amount साफ करें — कॉमा, रुपया चिह्न, spaces हटाएं
     if(cleanAmt) cleanAmt=cleanAmt.replace(/,/g,"").replace(/[₹\s]/g,"").replace(/[^0-9.-]/g,"").trim();
 
-    var rowOk=name&&acc&&(amtOptional||(cleanAmt&&!isNaN(cleanAmt)&&Number(cleanAmt)>=0));
+    var rowOk=name&&acc&&(amtOptional||(cleanAmt&&!isNaN(cleanAmt)));
     if(!rowOk){
       errors.push({row:i+2, reason:!name?"नाम नहीं":!acc?"Consumer No नहीं":(!amtOptional&&!cleanAmt)?"राशि नहीं":"राशि गलत"});
     } else {
@@ -1723,6 +1723,13 @@ function processRows(rows){
       var entry={name:name,acc:acc,amount:finalAmt,phone:phone,addr:addr,father:father,remarks:rem,
         tariff:tariff,load:load,unit:unit,lastPayDate:lastPayDate,lastPaidAmt:lastPaidAmt,
         status:"pending",uploadedBy:CU.name,uploadedAt:dtStr,ts:Date.now(),remarksArr:[]};
+      // बकाया 0 या minus हो तो अपने आप वसूल
+      if(cleanAmt!=="" && !isNaN(cleanAmt) && Number(cleanAmt)<=0){
+        entry.status="paid";
+        entry.paydate=new Date().toLocaleDateString("hi-IN");
+        entry.updatedBy=CU.name+" (बकाया ≤0 auto)";
+        entry.updatedAt=dtStr;
+      }
       if(rem) entry.remarksArr.push({text:rem,by:CU.name,at:dtStr});
       valid.push(entry);
     }
