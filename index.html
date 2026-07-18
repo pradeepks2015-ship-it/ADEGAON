@@ -537,6 +537,26 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
   </div>
 </div>
 
+<!-- CASH LIST UPLOAD (JE only) -->
+<div class="moverlay" id="cash-overlay" onclick="if(event.target===this)closeCashModal()">
+  <div class="msheet">
+    <div class="mhandle"></div>
+    <div class="mtitle">&#128181; कैश लिस्ट अपलोड</div>
+    <div class="up-info-box">जिन उपभोक्ताओं का बिल जमा हो गया, उनके IVRS नंबर की <b>single column</b> Excel/CSV फाइल चुनें — सभी HQ की हर tab में वे अपने आप <b>✅ वसूल</b> हो जाएँगे।</div>
+    <div class="upload-zone" onclick="document.getElementById('cash-file').click()">
+      <div class="uz-icon" id="cash-ico">&#128181;</div>
+      <div class="uz-t">फाइल चुनें</div>
+      <div class="uz-s" id="cash-status">Excel (.xlsx/.xls) या CSV</div>
+    </div>
+    <input type="file" id="cash-file" accept=".xlsx,.xls,.csv,.txt" style="display:none;" onchange="cashFile(this.files[0])">
+    <div id="cash-result" style="font-size:12px;color:var(--muted);line-height:1.8;margin:8px 2px;"></div>
+    <div class="mfooter">
+      <button class="mbtn mbtn-ghost" onclick="closeCashModal()">बंद करें</button>
+      <button class="mbtn mbtn-go" id="cash-apply" style="display:none;" onclick="applyCashList()">&#10004; सभी को वसूल करें</button>
+    </div>
+  </div>
+</div>
+
 <!-- HOME SCORECARD UPLOAD (JE only) -->
 <div class="moverlay" id="hsc-overlay" onclick="if(event.target===this)closeHscModal()">
   <div class="msheet">
@@ -594,7 +614,7 @@ var HQS = ["आदेगांव","पिंडरई","जोबा","पा�
 var CATS = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
 var CICO = ["👥","🏠","🏪","🌾","🏛️","🏭","📋","📌"];
 var SUP_PW = "bijli@2025";
-var APP_VER = "6.9"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "7.0"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=2000, others=1000
@@ -1227,6 +1247,10 @@ function buildActionBtns(){
     b3.className="tbtn"; b3.style.cssText="background:#6a1b9a;color:#fff;";
     b3.innerHTML="🖥 होम पेज डिस्प्ले बोर्ड"; b3.onclick=openHscModal;
     c.appendChild(b3);
+    var b4=document.createElement("button");
+    b4.className="tbtn"; b4.style.cssText="background:#1b5e20;color:#fff;";
+    b4.innerHTML="💵 कैश लिस्ट"; b4.onclick=openCashModal;
+    c.appendChild(b4);
   }
 }
 
@@ -2337,6 +2361,112 @@ function simAtc(){
   var o=document.getElementById("sim-atc");
   if(isNaN(b)||isNaN(c)){o.textContent="—";return;}
   o.textContent=(100-(b*c)/100).toFixed(2)+"%";
+}
+var CASH_IVRS=null;
+function openCashModal(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE upload कर सकते हैं","err");return;}
+  CASH_IVRS=null;
+  document.getElementById("cash-file").value="";
+  document.getElementById("cash-ico").textContent="💵";
+  document.getElementById("cash-status").textContent="Excel (.xlsx/.xls) या CSV";
+  document.getElementById("cash-result").innerHTML="";
+  document.getElementById("cash-apply").style.display="none";
+  document.getElementById("cash-overlay").classList.add("open");
+}
+function closeCashModal(){document.getElementById("cash-overlay").classList.remove("open");}
+function ensureXLSX(cb){
+  if(window.XLSX){cb(true);return;}
+  if(!navigator.onLine){cb(false);return;}
+  var sc=document.createElement("script");
+  sc.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+  sc.onload=function(){cb(true);};
+  sc.onerror=function(){cb(false);};
+  document.head.appendChild(sc);
+}
+function cashFile(f){
+  if(!f)return;
+  var st=document.getElementById("cash-status");
+  var name=(f.name||"").toLowerCase();
+  if(name.slice(-4)===".csv"||name.slice(-4)===".txt"){
+    var rd=new FileReader();
+    rd.onload=function(e){
+      var cells=String(e.target.result||"").split(/\r?\n/).map(function(l){return l.split(/[,;\t]/)[0];});
+      cashCollect(cells);
+    };
+    rd.onerror=function(){st.textContent="फाइल पढ़ नहीं पाया — दोबारा try करें";};
+    rd.readAsText(f);
+    return;
+  }
+  st.textContent="⏳ Excel पढ़ा जा रहा है...";
+  ensureXLSX(function(ok){
+    if(!ok){document.getElementById("cash-ico").textContent="⚠";st.textContent="Excel के लिए इन्टरनेट चाहिए — या CSV फाइल चुनें";return;}
+    var rd=new FileReader();
+    rd.onload=function(e){
+      try{
+        var wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
+        var ws=wb.Sheets[wb.SheetNames[0]];
+        var rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:""});
+        cashCollect(rows.map(function(r){return r&&r.length?r[0]:"";}));
+      }catch(err){document.getElementById("cash-ico").textContent="⚠";st.textContent="फाइल पढ़ नहीं पाया — single column Excel चुनें";}
+    };
+    rd.onerror=function(){st.textContent="फाइल पढ़ नहीं पाया — दोबारा try करें";};
+    rd.readAsArrayBuffer(f);
+  });
+}
+function cashCollect(cells){
+  var seen={},list=[];
+  cells.forEach(function(v){
+    var d=String(v==null?"":v).replace(/\D/g,"");
+    if(d.length>=4&&!seen[d]){seen[d]=1;list.push(d);}
+  });
+  CASH_IVRS=list;
+  var st=document.getElementById("cash-status");
+  if(!list.length){
+    document.getElementById("cash-ico").textContent="⚠";
+    st.textContent="कोई IVRS नंबर नहीं मिला — पहले column में नंबर होने चाहिए";
+    document.getElementById("cash-apply").style.display="none";
+    return;
+  }
+  document.getElementById("cash-ico").textContent="✅";
+  st.textContent=list.length+" IVRS मिले";
+  document.getElementById("cash-result").innerHTML="फाइल से <b style='color:var(--text);'>"+list.length+"</b> IVRS नंबर मिले (जैसे: "+escHtml(list.slice(0,3).join(", "))+(list.length>3?" ...":"")+")। नीचे बटन दबाते ही सभी tabs में वसूल mark होंगे।";
+  document.getElementById("cash-apply").style.display="";
+}
+function applyCashList(){
+  if(!CASH_IVRS||!CASH_IVRS.length)return;
+  var btn=document.getElementById("cash-apply");
+  btn.disabled=true;btn.textContent="⏳ mark हो रहा है...";
+  var ivrs={};CASH_IVRS.forEach(function(x){ivrs[x]=1;});
+  var now=new Date(),dateStr=now.toLocaleDateString("hi-IN"),dtStr=now.toLocaleString("hi-IN"),ts=Date.now();
+  var hqs=CU.role==="supervisor"?HQS:[CU.hq];
+  var matched={},newly=0,already=0,tabsChanged=0;
+  hqs.forEach(function(hq){
+    for(var i=0;i<CATS_DEFAULT.length;i++){
+      var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+      var d=cGet(hq,cat);
+      if(!d||!d.length)continue;
+      var changed=false;
+      d.forEach(function(x){
+        if(!x||!x.acc)return;
+        var acc=String(x.acc).replace(/\D/g,"");
+        if(!ivrs[acc])return;
+        matched[acc]=1;
+        if(x.status==="paid"){already++;return;}
+        x.status="paid";x.paydate=dateStr;
+        x.updatedBy=CU.name+" (कैश लिस्ट)";x.updatedAt=dtStr;x.ts=ts;
+        newly++;changed=true;
+      });
+      if(changed){fbSet(hq,cat,d,null);tabsChanged++;}
+    }
+  });
+  var mCount=Object.keys(matched).length,noMatch=CASH_IVRS.length-mCount;
+  document.getElementById("cash-result").innerHTML=
+    "✅ <b style='color:var(--green);'>"+newly+"</b> नई वसूली दर्ज ("+tabsChanged+" tabs में)<br>"+
+    (already?"ℹ "+already+" records पहले से वसूल थे<br>":"")+
+    (noMatch?"⚠ <b style='color:var(--gold2);'>"+noMatch+"</b> IVRS किसी list में नहीं मिले":"सभी IVRS match हो गए 🎉");
+  btn.style.display="none";btn.disabled=false;btn.textContent="✔ सभी को वसूल करें";
+  toast("✅ कैश लिस्ट लागू — "+newly+" वसूली दर्ज","ok");
+  try{renderSummaryWith(cGet(activeHQ,activeCat)||[]);renderListWith(cGet(activeHQ,activeCat)||[]);}catch(e){}
 }
 function openHscModal(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE upload कर सकते हैं","err");return;}
