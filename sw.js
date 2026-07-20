@@ -1,9 +1,20 @@
-var CACHE_NAME="adegaon-dc-v6";
+var CACHE_NAME="adegaon-dc-v7";
 var CDN=[
   "https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
   "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js",
-  "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"
+  "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js",
+  "./css/style.css",
+  "./js/config.js",
+  "./js/firebase.js",
+  "./js/storage.js",
+  "./js/database.js",
+  "./js/ui-core.js",
+  "./js/list.js",
+  "./js/upload.js",
+  "./js/reports.js",
+  "./js/home-scorecard.js",
+  "./js/main.js"
 ];
 self.addEventListener("install",function(e){
   e.waitUntil(

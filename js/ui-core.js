@@ -1,0 +1,281 @@
+function showLoader(t){document.getElementById("loader-text").textContent=t||"लोड हो रहा है...";document.getElementById("loader").classList.remove("hidden");}
+function hideLoader(){document.getElementById("loader").classList.add("hidden");}
+
+function toast(msg,type){
+  var t=document.getElementById("toast");
+  t.textContent=msg; t.className="toast show "+(type||"");
+  clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove("show");},3500);
+}
+
+function setSyncStatus(ok){
+  var d=document.getElementById("sdot"),t=document.getElementById("stxt");
+  if(!d)return;
+  var n=pendingCount();
+  d.className=ok?"sdot":"sdot off";
+  t.className=ok?"stxt":"stxt off";
+  if(ok) t.textContent=n?("🔄 "+n+" बदलाव sync हो रहे…"):"Live Sync ✓";
+  else t.textContent=n?("📴 ऑफलाइन • "+n+" बदलाव save — नेट पर sync होंगे"):"📴 ऑफलाइन — data device पर save है";
+}
+
+function updTime(){
+  var now=new Date(),el=document.getElementById("stime");
+  if(el) el.textContent=now.getHours()+":"+String(now.getMinutes()).padStart(2,"0");
+}
+
+// Format date+time for display
+function fmtDateTime(dt){
+  if(!dt) return "";
+  return dt;
+}
+
+window.addEventListener("online",function(){
+  setSyncStatus(true);
+  ensureLibs();
+  flushPending();
+  fetchCatNamesFromFB(false);
+  _prefetchRun=false; setTimeout(prefetchAll,3000);
+  hscFetch();
+  if(CU&&activeHQ&&activeCat&&!isPending(activeHQ,activeCat)){
+    fbGet(activeHQ,activeCat,function(d){renderSummaryWith(d);renderListWith(d);});
+  }
+});
+window.addEventListener("offline",function(){setSyncStatus(false);});
+// हर 20 sec — pending बदलाव हों और नेट हो तो sync करते रहो
+setInterval(function(){
+  var needCat=false;try{needCat=localStorage.getItem("dc_catpending3")==="1";}catch(e){}
+  if(navigator.onLine&&(pendingCount()>0||needCat))flushPending();
+},20000);
+
+function toggleUserMenu(e){
+  e.stopPropagation();
+  var m=document.getElementById("logout-menu");
+  m.classList.toggle("open");
+}
+document.addEventListener("click",function(){
+  var m=document.getElementById("logout-menu");
+  if(m) m.classList.remove("open");
+});
+
+function goBack(){
+  if(document.getElementById("rmk-overlay").classList.contains("open")){closeRmkModal();return;}
+  if(document.getElementById("up-overlay").classList.contains("open")){closeUpModal();return;}
+  if(activeFilter!=="all"){
+    activeFilter="all";
+    document.querySelectorAll(".filter-btn").forEach(function(b){b.className="filter-btn";});
+    document.querySelector("[data-f='all']").className="filter-btn active-all";
+    fbGet(activeHQ,activeCat,function(d){renderListWith(d);});
+    return;
+  }
+  if(activeCat!=="घरेलू"){
+    activeCat="घरेलू"; activeFilter="all";
+    buildCatTabs();
+    fbGet(activeHQ,activeCat,function(d){renderSummaryWith(d);renderListWith(d);});
+    startListen(activeHQ,activeCat);
+    return;
+  }
+  if(CU&&CU.role==="supervisor"){
+    var idx=HQS.indexOf(activeHQ);
+    if(idx>0){
+      activeHQ=HQS[idx-1];
+      rebuildCatsForHQ(activeHQ);
+      buildHQTabs();
+      fbGet(activeHQ,activeCat,function(d){renderSummaryWith(d);renderListWith(d);});
+      startListen(activeHQ,activeCat);
+      return;
+    }
+  }
+  // सबसे पीछे — login page पर जाएं (lineman के लिए, या supervisor पहले HQ पर)
+  goToLogin();
+}
+
+function goToLogin(){
+  // Go to login screen without clearing user data (stays logged in visually)
+  stopListen();
+  if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
+  document.getElementById("app-screen").classList.remove("active");
+  document.getElementById("login-screen").classList.add("active");
+  // Re-init on next login click — don't clear fields so user can re-enter easily
+}
+
+function selectRole(r){
+  selectedRole=r;
+  document.getElementById("rc-sup").classList.toggle("selected",r==="supervisor");
+  document.getElementById("rc-lin").classList.toggle("selected",r==="lineman");
+  document.getElementById("sup-fields").style.display=r==="supervisor"?"block":"none";
+  document.getElementById("lin-fields").style.display=r==="lineman"?"block":"none";
+}
+
+function togglePw(){var i=document.getElementById("sup-pw");i.type=i.type==="password"?"text":"password";}
+
+function doLogin(){
+  var role=selectedRole,name=document.getElementById("uname-inp").value.trim();
+  if(!role){toast("भूमिका चुनें","err");return;}
+  if(!name){toast("अपना नाम लिखें","err");return;}
+  if(role==="supervisor"){
+    if(document.getElementById("sup-pw").value!==SUP_PW){toast("गलत पासवर्ड!","err");return;}
+    CU={role:role,name:name,hq:HQS[0]};
+  } else {
+    var hq=document.getElementById("hq-sel").value;
+    if(!hq){toast("HQ चुनें","err");return;}
+    CU={role:role,name:name,hq:hq};
+  }
+  activeHQ=CU.hq; activeFilter="all";
+  rebuildCatsForHQ(activeHQ);
+  activeCat=CATS[0];
+  document.getElementById("login-screen").classList.remove("active");
+  document.getElementById("app-screen").classList.add("active");
+  buildUI();
+  showLoader("डेटा लोड हो रहा है...");
+  fbGet(activeHQ,activeCat,function(data){
+    renderSummaryWith(data); renderListWith(data);
+    startListen(activeHQ,activeCat);
+    hideLoader(); toast("स्वागत है "+name+"!","ok");
+    setTimeout(prefetchAll,1500); // सभी लिस्ट offline के लिए download
+  });
+}
+
+function doLogout(askConfirm){
+  if(askConfirm===undefined) askConfirm=true;
+  if(askConfirm&&!confirm("लॉगआउट करना चाहते हैं?"))return;
+  stopListen();
+  if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
+  CU=null; selectedRole="";
+  document.getElementById("app-screen").classList.remove("active");
+  document.getElementById("login-screen").classList.add("active");
+  document.getElementById("uname-inp").value="";
+  document.getElementById("sup-pw").value="";
+  document.getElementById("hq-sel").value="";
+  document.getElementById("rc-sup").classList.remove("selected");
+  document.getElementById("rc-lin").classList.remove("selected");
+  document.getElementById("sup-fields").style.display="none";
+  document.getElementById("lin-fields").style.display="none";
+  var m=document.getElementById("logout-menu");
+  if(m) m.classList.remove("open");
+}
+
+function buildUI(){
+  var dot=document.getElementById("udot");
+  dot.textContent=CU.name[0].toUpperCase();
+  dot.className="udot "+(CU.role==="supervisor"?"sup":"lin");
+  document.getElementById("uname-disp").textContent=CU.name;
+  document.getElementById("hdr-sub").textContent=CU.role==="supervisor"?"JE | सभी HQ":"Lineman | "+CU.hq;
+  var info=document.getElementById("user-info-menu");
+  if(info) info.textContent=(CU.role==="supervisor"?"👨‍💼 JE":"🔧 Lineman")+" | "+CU.hq+" | "+CU.name+" | v"+APP_VER;
+  buildHQTabs(); buildCatTabs(); buildActionBtns();
+}
+
+function buildHQTabs(){
+  var c=document.getElementById("hq-tabs"); c.innerHTML="";
+  var hqs=CU.role==="supervisor"?HQS:[CU.hq];
+  hqs.forEach(function(hq){
+    var b=document.createElement("button");
+    b.className="hq-tab"+(hq===activeHQ?" active":"");
+    b.textContent=hq;
+    b.onclick=function(){
+      activeHQ=hq; activeFilter="all";
+      rebuildCatsForHQ(hq);
+      activeCat=CATS[0]; // reset to first cat of new HQ
+      buildHQTabs();
+      buildCatTabs();
+      showLoader();
+      fbGet(activeHQ,activeCat,function(data){
+        renderSummaryWith(data); renderListWith(data);
+        startListen(activeHQ,activeCat); hideLoader();
+      });
+    };
+    c.appendChild(b);
+  });
+}
+
+function buildCatTabs(){
+  rebuildCatsForHQ(activeHQ); // हर बार current HQ के नाम लो
+  var c=document.getElementById("cat-tabs"); c.innerHTML="";
+  CATS.forEach(function(cat,i){
+    var wrap=document.createElement("div");
+    wrap.style.cssText="display:flex;align-items:center;gap:3px;flex-shrink:0;";
+    var b=document.createElement("button");
+    b.className="cat-tab"+(cat===activeCat?" active c"+i:" c"+i);
+    b.onclick=function(){
+      activeCat=cat; activeFilter="all"; _renderLimit=100;
+      document.querySelectorAll(".filter-btn").forEach(function(x){x.className="filter-btn";});
+      document.querySelector("[data-f='all']").className="filter-btn active-all";
+      buildCatTabs(); showLoader();
+      fbGet(activeHQ,activeCat,function(data){
+        renderSummaryWith(data); renderListWith(data);
+        startListen(activeHQ,activeCat); hideLoader();
+      });
+    };
+    b.textContent=CICO[i]+" "+cat;
+    wrap.appendChild(b);
+    // Edit button — सिर्फ JE (supervisor) को, घरेलू/व्यवसाय/कृषि/कुल उपभोक्ता fixed
+    if(i!==0&&i!==1&&i!==2&&i!==3&&CU&&CU.role==="supervisor"){
+      var slotKey="cat"+i;
+      var e2=document.createElement("button");
+      e2.textContent="✏️";
+      e2.style.cssText="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;flex-shrink:0;";
+      e2.title="नाम बदलें";
+      (function(idx,sk){
+        e2.onclick=function(ev){ev.stopPropagation();openEditCat(idx,sk);};
+      })(i,slotKey);
+      wrap.appendChild(e2);
+    }
+    c.appendChild(wrap);
+  });
+}
+
+function openEditCat(i, slotKey){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE नाम बदल सकते हैं","err");return;}
+  var cur=CATS[i];
+  var newName=prompt(activeHQ+" — श्रेणी का नया नाम डालें:",cur);
+  if(!newName||!newName.trim()||newName.trim()===cur) return;
+  newName=newName.trim();
+  var oldCat=CATS[i];
+  // 1. Cache rename
+  var d=cGet(activeHQ,oldCat);
+  if(d&&d.length) cSet(activeHQ,newName,d);
+  cSet(activeHQ,oldCat,[]);
+  // 2. Local CAT_NAMES update
+  if(!CAT_NAMES[activeHQ]) CAT_NAMES[activeHQ]={};
+  CAT_NAMES[activeHQ][i]=newName;
+  saveCatNames();
+  // 3. CATS rebuild + UI update immediately
+  rebuildCatsForHQ(activeHQ);
+  if(activeCat===oldCat) activeCat=newName;
+  buildCatTabs();
+  // 4. Firebase save — single PUT for this HQ's all cat names
+  var hqData={};
+  [4,5,6,7].forEach(function(idx){
+    if(CAT_NAMES[activeHQ]&&CAT_NAMES[activeHQ][idx]!=null){
+      hqData[idx]=CAT_NAMES[activeHQ][idx];
+    }
+  });
+  fetch(FB+"/CAT_NAMES/"+hqKey(activeHQ)+".json",{
+    method:"PUT",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(hqData)
+  }).then(function(r){
+    if(r.ok) toast("✅ नाम बदला: "+newName+" (सभी को दिखेगा)","ok");
+    else toast("⚠️ नाम बदला पर sync नहीं हुआ","err");
+  }).catch(function(){try{localStorage.setItem("dc_catpending3","1");}catch(e){}toast("📴 ऑफलाइन — नाम save है, नेट आने पर सभी को दिखेगा","inf");});
+}
+
+function buildActionBtns(){
+  var c=document.getElementById("action-btns"); c.innerHTML="";
+  var b1=document.createElement("button");
+  b1.className="tbtn tbtn-blue"; b1.innerHTML="📤 अपलोड"; b1.onclick=openUpModal;
+  c.appendChild(b1);
+  if(CU.role==="supervisor"){
+    var b2=document.createElement("button");
+    b2.className="tbtn tbtn-red"; b2.innerHTML="🗑️ हटाएं"; b2.onclick=clearList;
+    c.appendChild(b2);
+    var b3=document.createElement("button");
+    b3.className="tbtn"; b3.style.cssText="background:#6a1b9a;color:#fff;";
+    b3.innerHTML="🖥 होम पेज डिस्प्ले बोर्ड"; b3.onclick=openHscModal;
+    c.appendChild(b3);
+    var b4=document.createElement("button");
+    b4.className="tbtn"; b4.style.cssText="background:#1b5e20;color:#fff;";
+    b4.innerHTML="💵 कैश लिस्ट"; b4.onclick=openCashModal;
+    c.appendChild(b4);
+  }
+}
+
