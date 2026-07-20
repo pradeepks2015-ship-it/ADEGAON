@@ -81,7 +81,7 @@ function flushPending(){
     if(it.type==="del"){
       fetch(FB+"/"+fbPath(it.hq,it.cat)+".json",{method:"DELETE"})
         .then(function(r){if(!r.ok)throw 0;clearPendingKey(k);setSyncStatus(true);fin(true);})
-        .catch(function(){setSyncStatus(false);fin(false);});
+        .catch(function(e){if(navigator.onLine)logErr("sync-del-fail",e,it.hq+"/"+it.cat);setSyncStatus(false);fin(false);});
       return;
     }
     // put — पहले server data लो, merge करो, फिर save — दोनों के बदलाव बचें
@@ -103,7 +103,7 @@ function flushPending(){
           fin(true);
         });
       })
-      .catch(function(){setSyncStatus(false);fin(false);});
+      .catch(function(e){if(navigator.onLine)logErr("sync-put-fail",e,it.hq+"/"+it.cat);setSyncStatus(false);fin(false);});
   });
   if(needCat){
     var reqs=Object.keys(CAT_NAMES).map(function(hq){
