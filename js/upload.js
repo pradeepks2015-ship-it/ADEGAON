@@ -117,7 +117,7 @@ function handleFile(f){
       try{
         var wb=XLSX.read(e.target.result,{type:"array"});
         processRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:"",raw:false}));
-      }catch(ex){toast("Excel त्रुटि: "+ex.message,"err");}
+      }catch(ex){logErr("excel-parse",ex,f.name);toast("Excel त्रुटि: "+ex.message,"err");}
     };
     rd.readAsArrayBuffer(f);
   } else {
@@ -295,6 +295,7 @@ function confirmUpload(){
     toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" पुरानी वसूली सुरक्षित":"")+" 🔥","ok");
     
   }catch(err){
+    logErr("upload-confirm",err,activeHQ+"/"+(document.getElementById("up-cat")?document.getElementById("up-cat").value:""));
     toast("Error: "+err.message,"err");
     console.error("confirmUpload error:",err);
   }

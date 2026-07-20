@@ -161,6 +161,8 @@ function buildUI(){
   document.getElementById("hdr-sub").textContent=CU.role==="supervisor"?"JE | सभी HQ":"Lineman | "+CU.hq;
   var info=document.getElementById("user-info-menu");
   if(info) info.textContent=(CU.role==="supervisor"?"👨‍💼 JE":"🔧 Lineman")+" | "+CU.hq+" | "+CU.name+" | v"+APP_VER;
+  var lm=document.getElementById("log-menu-item");
+  if(lm) lm.style.display=CU.role==="supervisor"?"flex":"none";
   buildHQTabs(); buildCatTabs(); buildActionBtns();
 }
 

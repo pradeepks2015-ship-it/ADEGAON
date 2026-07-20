@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v7";
+var CACHE_NAME="adegaon-dc-v8";
 var CDN=[
   "https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
@@ -6,6 +6,7 @@ var CDN=[
   "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js",
   "./css/style.css",
   "./js/config.js",
+  "./js/logger.js",
   "./js/firebase.js",
   "./js/storage.js",
   "./js/database.js",

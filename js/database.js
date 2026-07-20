@@ -62,6 +62,7 @@ function _fbPut(hq,cat,arr,cb){
     updTime(); setSyncStatus(true);
     if(cb) cb(true);
   }).catch(function(e){
+    if(navigator.onLine) logErr("save-fail",e,hq+"/"+cat); // ऑनलाइन होते हुए save fail — असली गड़बड़
     markPending(hq,cat,"put");
     setSyncStatus(false);
     toast("📴 ऑफलाइन — बदलाव device पर save है, नेट आते ही अपने आप sync होगा","inf");
@@ -81,7 +82,7 @@ function fbDel(hq,cat,cb){
   cSet(hq,cat,[]);
   fetch(FB+"/"+fbPath(hq,cat)+".json",{method:"DELETE"})
     .then(function(r){if(!r.ok)throw 0;clearPendingKey(cKey(hq,cat));if(cb)cb();})
-    .catch(function(){markPending(hq,cat,"del");toast("📴 ऑफलाइन — नेट आने पर लिस्ट सभी के लिए हटेगी","inf");if(cb)cb();});
+    .catch(function(e){if(navigator.onLine)logErr("delete-fail",e,hq+"/"+cat);markPending(hq,cat,"del");toast("📴 ऑफलाइन — नेट आने पर लिस्ट सभी के लिए हटेगी","inf");if(cb)cb();});
 }
 
 // Migrate old single-string remarks to array format
