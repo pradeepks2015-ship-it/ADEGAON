@@ -107,18 +107,62 @@ function selectRole(r){
 
 function togglePw(){var i=document.getElementById("sup-pw");i.type=i.type==="password"?"text":"password";}
 
+// ── JE पासवर्ड verify — असली जाँच Firebase Authentication करता है, code में पासवर्ड कहीं नहीं ──
+function _sha256(str){
+  if(!(window.crypto&&crypto.subtle&&window.TextEncoder)) return Promise.reject(new Error("no-crypto"));
+  return crypto.subtle.digest("SHA-256",new TextEncoder().encode(str)).then(function(buf){
+    return Array.prototype.map.call(new Uint8Array(buf),function(b){return ("0"+b.toString(16)).slice(-2);}).join("");
+  });
+}
+// online login सफल होने पर hash device पर save — ताकि बाद में offline भी JE login चले
+function _saveJEHash(pw){_sha256("dcje|"+pw).then(function(h){try{localStorage.setItem("dc_jeh",h);}catch(e){}}).catch(function(){});}
+function _checkJEHash(pw,cb){
+  var h=null; try{h=localStorage.getItem("dc_jeh");}catch(e){}
+  if(!h){cb(false,"पहली बार JE login के लिए इन्टरनेट ज़रूरी है");return;}
+  _sha256("dcje|"+pw).then(function(x){cb(x===h,x===h?null:"गलत पासवर्ड!");}).catch(function(){cb(false,"यह ब्राउज़र offline JE login support नहीं करता");});
+}
+function verifyJE(pw,cb){
+  if(!pw){cb(false,"पासवर्ड डालें");return;}
+  var fbAuthOk=false;
+  try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
+  if(navigator.onLine&&fbAuthOk){
+    showLoader("JE पासवर्ड जाँच रहे हैं...");
+    firebase.auth().signInWithEmailAndPassword(JE_EMAIL,pw)
+      .then(function(){hideLoader();_saveJEHash(pw);cb(true,null);})
+      .catch(function(e){
+        hideLoader();
+        if(e&&e.code==="auth/network-request-failed"){_checkJEHash(pw,cb);return;} // नेट बीच में टूटा — offline hash से
+        cb(false,"गलत पासवर्ड!");
+      });
+  } else {
+    _checkJEHash(pw,cb); // offline — पिछले online login के hash से
+  }
+}
+
 function doLogin(){
   var role=selectedRole,name=document.getElementById("uname-inp").value.trim();
   if(!role){toast("भूमिका चुनें","err");return;}
   if(!name){toast("अपना नाम लिखें","err");return;}
   if(role==="supervisor"){
-    if(document.getElementById("sup-pw").value!==SUP_PW){toast("गलत पासवर्ड!","err");return;}
-    CU={role:role,name:name,hq:HQS[0]};
-  } else {
-    var hq=document.getElementById("hq-sel").value;
-    if(!hq){toast("HQ चुनें","err");return;}
-    CU={role:role,name:name,hq:hq};
+    verifyJE(document.getElementById("sup-pw").value,function(ok,msg){
+      if(!ok){toast(msg||"गलत पासवर्ड!","err");return;}
+      CU={role:"supervisor",name:name,hq:HQS[0]};
+      _finishLogin(name);
+    });
+    return;
   }
+  var hq=document.getElementById("hq-sel").value;
+  if(!hq){toast("HQ चुनें","err");return;}
+  // lineman: अगर इस device पर JE का Firebase session बचा हो तो हटा दें (anonymous पर लौटें)
+  try{
+    var u=firebase.auth().currentUser;
+    if(u&&u.email) firebase.auth().signOut();
+  }catch(e){}
+  CU={role:"lineman",name:name,hq:hq};
+  _finishLogin(name);
+}
+
+function _finishLogin(name){
   activeHQ=CU.hq; activeFilter="all";
   rebuildCatsForHQ(activeHQ);
   activeCat=CATS[0];
@@ -137,6 +181,11 @@ function doLogin(){
 function doLogout(askConfirm){
   if(askConfirm===undefined) askConfirm=true;
   if(askConfirm&&!confirm("लॉगआउट करना चाहते हैं?"))return;
+  // JE था तो Firebase session भी हटाएं — अपने आप anonymous पर लौट जाएगा (firebase.js का onIdTokenChanged)
+  try{
+    var u=firebase.auth().currentUser;
+    if(u&&u.email) firebase.auth().signOut();
+  }catch(e){}
   stopListen();
   if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
   CU=null; selectedRole="";

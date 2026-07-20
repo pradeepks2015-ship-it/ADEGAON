@@ -1,8 +1,9 @@
 var HQS = ["आदेगांव","पिंडरई","जोबा","पाटन","बीबी","मढ़ी"];
 var CATS = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
 var CICO = ["👥","🏠","🏪","🌾","🏛️","🏭","📋","📌"];
-var SUP_PW = "bijli@2025";
-var APP_VER = "8.1"; // हर अपडेट पर यह नंबर बढ़ाएं
+// JE का पासवर्ड अब code में नहीं — Firebase Authentication से verify होता है (देखें ui-core.js: verifyJE)
+var JE_EMAIL = "pradeepks2015@gmail.com";
+var APP_VER = "8.2"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
