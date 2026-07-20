@@ -255,13 +255,46 @@ function cashCollect(cells){
   document.getElementById("cash-result").innerHTML="फाइल से <b style='color:var(--text);'>"+list.length+"</b> IVRS नंबर मिले (जैसे: "+escHtml(list.slice(0,3).join(", "))+(list.length>3?" ...":"")+")। नीचे बटन दबाते ही सभी tabs में वसूल mark होंगे।";
   document.getElementById("cash-apply").style.display="";
 }
+// apply से पहले सभी लिस्ट server से ताज़ा लाओ — cache अधूरा/पुराना हो तो भी कोई IVRS न छूटे
+function _cashRefreshAll(hqs,cb){
+  if(!navigator.onLine){cb();return;}
+  var jobs=[];
+  hqs.forEach(function(hq){
+    for(var i=0;i<CATS_DEFAULT.length;i++){
+      var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+      if(!isPending(hq,cat)) jobs.push({hq:hq,cat:cat}); // pending offline बदलाव हों तो overwrite मत करो
+    }
+  });
+  if(!jobs.length){cb();return;}
+  var done=0;
+  function fin(){done++;if(done>=jobs.length)cb();}
+  jobs.forEach(function(j){
+    fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
+      .then(function(r){return r.json();})
+      .then(function(d){
+        var data=!d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
+        data=data.map(migrateRemarks);
+        overlayOps(j.hq,j.cat,data);
+        cSet(j.hq,j.cat,data);
+        fin();
+      })
+      .catch(function(){fin();}); // fetch fail — उस tab के लिए cache से ही चलेगा
+  });
+}
+
 function applyCashList(){
   if(!CASH_IVRS||!CASH_IVRS.length)return;
   var btn=document.getElementById("cash-apply");
-  btn.disabled=true;btn.textContent="⏳ mark हो रहा है...";
+  btn.disabled=true;btn.textContent="⏳ लिस्ट ताज़ा हो रही हैं...";
+  var hqs=CU.role==="supervisor"?HQS:[CU.hq];
+  _cashRefreshAll(hqs,function(){_applyCashMatched(hqs);});
+}
+
+function _applyCashMatched(hqs){
+  var btn=document.getElementById("cash-apply");
+  btn.textContent="⏳ mark हो रहा है...";
   var ivrs={};CASH_IVRS.forEach(function(x){ivrs[x]=1;});
   var now=new Date(),dateStr=now.toLocaleDateString("hi-IN"),dtStr=now.toLocaleString("hi-IN"),ts=Date.now();
-  var hqs=CU.role==="supervisor"?HQS:[CU.hq];
   var matched={},newly=0,already=0,tabsChanged=0;
   hqs.forEach(function(hq){
     for(var i=0;i<CATS_DEFAULT.length;i++){
