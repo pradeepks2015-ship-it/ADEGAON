@@ -1,9 +1,10 @@
-:root{--bg:#070e1c;--surface:#0d1829;--card:#111f35;--border:#1e3050;--gold:#f0a500;--gold2:#ffd166;--blue:#2196f3;--green:#00c896;--red:#ff4d6d;--orange:#ff8c42;--text:#e2eaf5;--muted:#6b84a3;--radius:14px;}
+/* अर्जेंटीना (Albiceleste) थीम — आसमानी + सफेद + गहरा नेवी; --gold नाम पुराना है पर अब मुख्य आसमानी रंग रखता है */
+:root{--bg:#081625;--surface:#0d2136;--card:#12293f;--border:#1f4265;--gold:#6cb1e1;--gold2:#a9d6f5;--blue:#2196f3;--green:#00c896;--red:#ff4d6d;--orange:#ff8c42;--text:#eaf3fb;--muted:#7c96b4;--radius:14px;}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 .screen{display:none;min-height:100vh;flex-direction:column;}
 .screen.active{display:flex;}
-#login-screen{align-items:center;justify-content:center;padding:20px;background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(240,165,0,.07) 0%,transparent 70%);}
+#login-screen{align-items:center;justify-content:center;padding:20px;background:repeating-linear-gradient(90deg,rgba(117,170,219,.05) 0 48px,rgba(255,255,255,.02) 48px 96px),radial-gradient(ellipse 80% 60% at 50% 0%,rgba(117,170,219,.14) 0%,transparent 70%);}
 .login-logo{width:90px;height:90px;object-fit:contain;margin-bottom:10px;}
 .login-title{font-family:"Baloo 2",cursive;font-size:20px;font-weight:800;color:var(--gold2);text-align:center;line-height:1.2;margin-bottom:3px;}
 .login-sub{font-size:11px;color:var(--muted);text-align:center;margin-bottom:22px;}
@@ -13,10 +14,10 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .sel-wrap{position:relative;margin-bottom:14px;}
 .sel-wrap .f-select{margin-bottom:0;}
 .sel-wrap::after{content:"▾";position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;}
-.login-btn{width:100%;padding:13px;border-radius:12px;border:none;background:linear-gradient(135deg,var(--gold),#c47a00);color:#0a0e1a;font-family:"Baloo 2",cursive;font-size:16px;font-weight:800;cursor:pointer;margin-top:4px;}
+.login-btn{width:100%;padding:13px;border-radius:12px;border:none;background:linear-gradient(135deg,var(--gold),#2f74ad);color:#0a0e1a;font-family:"Baloo 2",cursive;font-size:16px;font-weight:800;cursor:pointer;margin-top:4px;}
 .role-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
 .role-card{padding:14px 10px;border-radius:12px;border:2px solid var(--border);background:var(--surface);cursor:pointer;text-align:center;transition:all .2s;}
-.role-card.selected{border-color:var(--gold);background:rgba(240,165,0,.08);}
+.role-card.selected{border-color:var(--gold);background:rgba(108,177,225,.10);}
 .role-card-icon{font-size:26px;margin-bottom:5px;}
 .role-card-icon svg{width:56px;height:56px;display:block;margin:0 auto;}
 .role-card-title{font-size:12px;font-weight:700;color:var(--text);}
@@ -50,7 +51,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .hdr1{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
 .hdr-left{display:flex;align-items:center;gap:6px;}
 .hdr-right{display:flex;align-items:center;gap:5px;}
-.hdr-icon{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--gold),#c47a00);display:flex;align-items:center;justify-content:center;font-size:17px;}
+.hdr-icon{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--gold),#2f74ad);display:flex;align-items:center;justify-content:center;font-size:17px;}
 .hdr-title{font-family:"Baloo 2",cursive;font-size:14px;font-weight:800;color:var(--gold2);}
 .hdr-sub{font-size:10px;color:var(--muted);}
 .hbtn{border:none;border-radius:8px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;}
@@ -61,7 +62,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .logout-item{padding:9px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--red);}
 .logout-item:hover{background:rgba(255,77,109,.1);}
 .udot{width:24px;height:24px;border-radius:50%;font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:700;}
-.udot.sup{background:linear-gradient(135deg,var(--gold),#c47a00);color:#000;}
+.udot.sup{background:linear-gradient(135deg,var(--gold),#2f74ad);color:#000;}
 .udot.lin{background:linear-gradient(135deg,var(--blue),#0d6efd);color:#fff;}
 .uname{font-size:11px;font-weight:600;}
 .hq-scroll{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;padding-bottom:1px;}
@@ -115,7 +116,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .cc-amt span{font-size:11px;color:var(--muted);font-weight:400;}
 .cc-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px;}
 .chip{font-size:10px;padding:2px 7px;border-radius:12px;}
-.chip-acc{background:#ffd166;color:#0a0e1a;cursor:pointer;font-size:14px;font-weight:800;letter-spacing:1px;padding:4px 10px;border-radius:8px;border:1px solid #f0a500;font-family:Consolas,"Courier New",monospace;}
+.chip-acc{background:#a9d6f5;color:#081625;cursor:pointer;font-size:14px;font-weight:800;letter-spacing:1px;padding:4px 10px;border-radius:8px;border:1px solid #6cb1e1;font-family:Consolas,"Courier New",monospace;}
 .chip-ph{background:rgba(0,200,150,.1);color:var(--green);}
 .chip-addr{background:rgba(255,255,255,.05);color:var(--muted);}
 .cc-extra{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;}
@@ -162,7 +163,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .topt.sel-blue{background:rgba(33,150,243,.15);border-color:var(--blue);color:var(--blue);}
 .mfooter{display:flex;gap:8px;margin-top:16px;}
 .btn-cancel{flex:1;padding:12px;border-radius:11px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:"Noto Sans Devanagari",sans-serif;font-size:13px;font-weight:600;}
-.btn-save{flex:2;padding:12px;border-radius:11px;border:none;background:linear-gradient(135deg,var(--gold),#c47a00);color:#0a0e1a;cursor:pointer;font-family:"Baloo 2",cursive;font-size:14px;font-weight:800;}
+.btn-save{flex:2;padding:12px;border-radius:11px;border:none;background:linear-gradient(135deg,var(--gold),#2f74ad);color:#0a0e1a;cursor:pointer;font-family:"Baloo 2",cursive;font-size:14px;font-weight:800;}
 .btn-green{background:linear-gradient(135deg,#00c896,#007a5e);color:#fff;}
 /* Upload counter box */
 .up-counter-box{background:rgba(33,150,243,.08);border:1px solid rgba(33,150,243,.2);border-radius:10px;padding:10px 13px;margin-bottom:10px;font-size:11px;}
@@ -256,11 +257,11 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .sc-hq-val.red{color:var(--red);}
 .sc-date-hdr{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px;margin-top:4px;}
 .sc-date-table{width:100%;border-collapse:collapse;font-size:11px;}
-.sc-date-table th{background:rgba(240,165,0,.12);color:var(--gold2);font-size:10px;padding:6px 8px;text-align:left;border-bottom:1px solid var(--border);}
+.sc-date-table th{background:rgba(108,177,225,.14);color:var(--gold2);font-size:10px;padding:6px 8px;text-align:left;border-bottom:1px solid var(--border);}
 .sc-date-table td{padding:7px 8px;border-bottom:1px solid rgba(30,48,80,.5);}
 .sc-date-table tr:last-child td{border-bottom:none;}
 .sc-date-table tr:hover td{background:rgba(255,255,255,.02);}
-.sc-total-row td{background:rgba(240,165,0,.06);font-weight:700;color:var(--gold2);}
+.sc-total-row td{background:rgba(108,177,225,.07);font-weight:700;color:var(--gold2);}
 .sc-tabs{display:flex;gap:5px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;}
 .sc-tabs::-webkit-scrollbar{display:none;}
 .sc-tab{flex-shrink:0;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:"Noto Sans Devanagari",sans-serif;}
