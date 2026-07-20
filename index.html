@@ -7,6 +7,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <style>
 :root{--bg:#070e1c;--surface:#0d1829;--card:#111f35;--border:#1e3050;--gold:#f0a500;--gold2:#ffd166;--blue:#2196f3;--green:#00c896;--red:#ff4d6d;--orange:#ff8c42;--text:#e2eaf5;--muted:#6b84a3;--radius:14px;}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
@@ -634,7 +636,7 @@ var HQS = ["आदेगांव","पिंडरई","जोबा","पा�
 var CATS = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
 var CICO = ["👥","🏠","🏪","🌾","🏛️","🏭","📋","📌"];
 var SUP_PW = "bijli@2025";
-var APP_VER = "7.8"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "7.9"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
@@ -707,6 +709,35 @@ var upMode = "merge", parsedRows = [], selectedRole = "", rmkStatus = "pending";
 var pollTimer = null;
 var FB = "https://adegaon-dc-top-50-default-rtdb.firebaseio.com";
 var CACHE = {};
+
+// ── FIREBASE AUTH: गुमनाम (anonymous) sign-in — बिना इसके अब DB access नहीं मिलेगा ──
+// (config secret नहीं है — असली सुरक्षा Firebase Security Rules से आती है, इसे छुपाने की ज़रूरत नहीं)
+var firebaseConfig = {
+  apiKey: "AIzaSyAPFZ2wqPYVMyvU4WqYrKUinVERBkVqdmY",
+  authDomain: "adegaon-dc-top-50.firebaseapp.com",
+  databaseURL: "https://adegaon-dc-top-50-default-rtdb.firebaseio.com",
+  projectId: "adegaon-dc-top-50",
+  storageBucket: "adegaon-dc-top-50.firebasestorage.app",
+  messagingSenderId: "265994697235",
+  appId: "1:265994697235:web:6158cdf1200bd86c201de6"
+};
+var ID_TOKEN = null;
+try{
+  firebase.initializeApp(firebaseConfig);
+  firebase.auth().onIdTokenChanged(function(u){
+    if(u){ u.getIdToken().then(function(t){ID_TOKEN=t;}); }
+    else { firebase.auth().signInAnonymously().catch(function(){setSyncStatus(false);}); }
+  });
+}catch(e){}
+
+// FB (Realtime Database) की हर fetch call में auth token अपने आप जुड़ जाए — कहीं और कोड बदलने की ज़रूरत नहीं
+var _rawFetch = window.fetch.bind(window);
+window.fetch = function(url, opts){
+  if(typeof url==="string" && url.indexOf(FB)===0 && ID_TOKEN){
+    url += (url.indexOf("?")>-1?"&":"?") + "auth=" + encodeURIComponent(ID_TOKEN);
+  }
+  return _rawFetch(url, opts);
+};
 
 // ── OFFLINE STORAGE: data device पर save रहता है, बिना नेट भी app पूरा चलता है ──
 var LS_PREFIX="dc_cache3_";
@@ -977,26 +1008,69 @@ function migrateRemarks(x){
 }
 
 var catNamesTimer = null;
+var liveSource = null; // real-time SSE stream (Firebase REST streaming)
+
+function stopListen(){
+  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+  if(liveSource){liveSource.close();liveSource=null;}
+}
+
 function startListen(hq,cat){
-  if(pollTimer) clearInterval(pollTimer);
-  pollTimer=setInterval(function(){
+  stopListen();
+
+  function applyIncoming(d){
+    var data=!d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
+    data = data.map(migrateRemarks);
+    overlayOps(hq,cat,data);
+    var prev=cGet(hq,cat);
+    var changed=JSON.stringify(data)!==JSON.stringify(prev);
+    cSet(hq,cat,data);
+    if(changed){ // सिर्फ बदला हो तभी re-render
+      renderSummaryWith(data);
+      renderListWith(data);
+    }
+    setSyncStatus(true); updTime();
+  }
+
+  function pollOnce(){
     if(isPending(hq,cat)){if(navigator.onLine)flushPending();return;}
     fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
       .then(function(r){return r.json();})
-      .then(function(d){
-        var data=!d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
-        data = data.map(migrateRemarks);
-        overlayOps(hq,cat,data);
-        var prev=cGet(hq,cat);
-        var changed=JSON.stringify(data)!==JSON.stringify(prev);
-        cSet(hq,cat,data);
-        if(changed){ // सिर्फ बदला हो तभी re-render
-          renderSummaryWith(data);
-          renderListWith(data);
+      .then(applyIncoming)
+      .catch(function(){setSyncStatus(false);});
+  }
+
+  function startPolling(){
+    if(pollTimer) return;
+    pollOnce();
+    pollTimer=setInterval(pollOnce,15000);
+  }
+
+  // असली real-time: Firebase REST streaming (Server-Sent Events) — बदलाव होते ही तुरंत मिलता है, हर 15 sec पूछने की ज़रूरत नहीं
+  if(typeof EventSource==="function"){
+    try{
+      var url=FB+"/"+fbPath(hq,cat)+".json"+(ID_TOKEN?("?auth="+encodeURIComponent(ID_TOKEN)):"");
+      var es=new EventSource(url);
+      liveSource=es;
+      es.addEventListener("put",function(){ if(!isPending(hq,cat)) pollOnce(); });
+      es.addEventListener("patch",function(){ if(!isPending(hq,cat)) pollOnce(); });
+      es.onopen=function(){setSyncStatus(true);};
+      es.onerror=function(){
+        setSyncStatus(false);
+        if(es.readyState===2){ // CLOSED — स्ट्रीम पूरी तरह टूट गई (जैसे auth fail), polling पर वापस जाओ
+          if(liveSource===es) liveSource=null;
+          startPolling();
         }
-        setSyncStatus(true); updTime();
-      }).catch(function(){setSyncStatus(false);});
-  },15000);
+        // वरना EventSource खुद reconnect करने की कोशिश करता रहेगा
+      };
+      pollOnce(); // पहला data तुरंत दिखाएं
+    }catch(e){
+      startPolling();
+    }
+  } else {
+    startPolling();
+  }
+
   // हर 8 sec में CAT_NAMES check — JE का बदला नाम तुरंत दिखे
   if(catNamesTimer) clearInterval(catNamesTimer);
   catNamesTimer=setInterval(function(){
@@ -1096,7 +1170,7 @@ function goBack(){
 
 function goToLogin(){
   // Go to login screen without clearing user data (stays logged in visually)
-  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+  stopListen();
   if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
   document.getElementById("app-screen").classList.remove("active");
   document.getElementById("login-screen").classList.add("active");
@@ -1143,7 +1217,7 @@ function doLogin(){
 function doLogout(askConfirm){
   if(askConfirm===undefined) askConfirm=true;
   if(askConfirm&&!confirm("लॉगआउट करना चाहते हैं?"))return;
-  if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+  stopListen();
   if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
   CU=null; selectedRole="";
   document.getElementById("app-screen").classList.remove("active");
