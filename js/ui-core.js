@@ -307,8 +307,12 @@ function openEditCat(i, slotKey){
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify(hqData)
   }).then(function(r){
-    if(r.ok) toast("✅ नाम बदला: "+newName+" (सभी को दिखेगा)","ok");
-    else toast("⚠️ नाम बदला पर sync नहीं हुआ","err");
+    if(r.ok){toast("✅ नाम बदला: "+newName+" (सभी को दिखेगा)","ok");return;}
+    logErr("catname-save",new Error("HTTP "+r.status));
+    if(r.status===401||r.status===403)
+      toast("🔐 नाम server पर नहीं गया — JE नेट चालू रखकर logout करके दोबारा login करें","err");
+    else
+      toast("⚠️ नाम बदला पर sync नहीं हुआ (HTTP "+r.status+")","err");
   }).catch(function(){try{localStorage.setItem("dc_catpending3","1");}catch(e){}toast("📴 ऑफलाइन — नाम save है, नेट आने पर सभी को दिखेगा","inf");});
 }
 

@@ -1,7 +1,18 @@
 // ─── HOME SCORECARD: JE फोटो upload करे, सबके होम (login) पेज पर दिखे ───
 var HSC=null;
 function hscLoadLocal(){try{var x=localStorage.getItem("dc_homesc3");if(x)HSC=JSON.parse(x);}catch(e){}}
+// publish fail हुआ हो तो flag — server का पुराना data local नए board को overwrite न करे
+var HSC_PENDING_KEY="dc_hscpending3";
+function _hscPending(){try{return localStorage.getItem(HSC_PENDING_KEY)==="1";}catch(e){return false;}}
+function _setHscPending(v){try{if(v)localStorage.setItem(HSC_PENDING_KEY,"1");else localStorage.removeItem(HSC_PENDING_KEY);}catch(e){}}
+function _hscRetryPublish(){
+  if(!HSC||!navigator.onLine)return;
+  fetch(FB+"/HOME_SCORECARD.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(HSC)})
+    .then(function(r){if(r.ok){_setHscPending(false);toast("✅ डिस्प्ले बोर्ड अब प्रकाशित हो गया","ok");}})
+    .catch(function(){});
+}
 function hscFetch(){
+  if(_hscPending()){_hscRetryPublish();return;} // local बोर्ड नया है — पहले उसे प्रकाशित करने की कोशिश
   fetch(FB+"/HOME_SCORECARD.json?t="+Date.now())
     .then(function(r){return r.json();})
     .then(function(d){
@@ -412,7 +423,15 @@ function saveHsc(){
   renderHomeSc();
   closeHscModal();
   fetch(FB+"/HOME_SCORECARD.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)})
-    .then(function(r){toast(r.ok?"✅ डिस्प्ले बोर्ड प्रकाशित — सबके होम पेज पर दिखेगा":"⚠ save नहीं हुआ, दोबारा try करें",r.ok?"ok":"err");})
-    .catch(function(){toast("📴 ऑफलाइन — नेट आने पर दोबारा 'प्रकाशित करें' दबाएँ","err");});
+    .then(function(r){
+      if(r.ok){_setHscPending(false);toast("✅ डिस्प्ले बोर्ड प्रकाशित — सबके होम पेज पर दिखेगा","ok");return;}
+      _setHscPending(true);
+      logErr("hsc-publish",new Error("HTTP "+r.status));
+      if(r.status===401||r.status===403)
+        toast("🔐 प्रकाशित नहीं हुआ — JE नेट चालू रखकर logout करके दोबारा login करें, फिर 'प्रकाशित करें' दबाएँ","err");
+      else
+        toast("⚠ save नहीं हुआ (HTTP "+r.status+") — दोबारा try करें","err");
+    })
+    .catch(function(){_setHscPending(true);toast("📴 ऑफलाइन — बोर्ड device पर save है, नेट आने पर app खोलते ही अपने आप प्रकाशित होगा","inf");});
 }
 
