@@ -5,10 +5,20 @@ function hscLoadLocal(){try{var x=localStorage.getItem("dc_homesc3");if(x)HSC=JS
 var HSC_PENDING_KEY="dc_hscpending3";
 function _hscPending(){try{return localStorage.getItem(HSC_PENDING_KEY)==="1";}catch(e){return false;}}
 function _setHscPending(v){try{if(v)localStorage.setItem(HSC_PENDING_KEY,"1");else localStorage.removeItem(HSC_PENDING_KEY);}catch(e){}}
+function _hscAdopt(d){
+  HSC=d;try{localStorage.setItem("dc_homesc3",JSON.stringify(d));}catch(e){}
+  _setHscPending(false);renderHomeSc();
+}
+// publish से पहले server से मिलान — हमेशा नया (बड़ा ts) जीतता है, पुराना device नए को कभी नहीं मिटा सकता
 function _hscRetryPublish(){
   if(!HSC||!navigator.onLine)return;
-  fetch(FB+"/HOME_SCORECARD.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(HSC)})
-    .then(function(r){if(r.ok){_setHscPending(false);toast("✅ डिस्प्ले बोर्ड अब प्रकाशित हो गया","ok");}})
+  fetch(FB+"/HOME_SCORECARD.json?t="+Date.now())
+    .then(function(r){return r.json();})
+    .then(function(srv){
+      if(srv&&typeof srv==="object"&&Number(srv.ts||0)>Number(HSC.ts||0)){_hscAdopt(srv);return;} // server नया है — उसे अपनाओ
+      return fetch(FB+"/HOME_SCORECARD.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(HSC)})
+        .then(function(r){if(r.ok){_setHscPending(false);toast("✅ डिस्प्ले बोर्ड अब प्रकाशित हो गया","ok");}});
+    })
     .catch(function(){});
 }
 function hscFetch(){
@@ -16,7 +26,11 @@ function hscFetch(){
   fetch(FB+"/HOME_SCORECARD.json?t="+Date.now())
     .then(function(r){return r.json();})
     .then(function(d){
-      if(d&&typeof d==="object"){HSC=d;try{localStorage.setItem("dc_homesc3",JSON.stringify(d));}catch(e){}renderHomeSc();}
+      if(d&&typeof d==="object"){
+        // local, server से नया हो (कहीं से पुराना data server पर चढ़ गया) — local रखो और उसे दोबारा प्रकाशित करो
+        if(HSC&&Number(HSC.ts||0)>Number(d.ts||0)){logErr("hsc-conflict",new Error("server stale — republishing"));_setHscPending(true);_hscRetryPublish();return;}
+        HSC=d;try{localStorage.setItem("dc_homesc3",JSON.stringify(d));}catch(e){}renderHomeSc();
+      }
     }).catch(function(){});
 }
 function fmtL(n){n=Number(n)||0;return n.toLocaleString("en-IN");}
@@ -415,7 +429,8 @@ function saveHsc(){
     beTgt:document.getElementById("hsc-betgt").value.replace(/,/g,"").trim(),
     ceTgt:document.getElementById("hsc-cetgt").value.replace(/,/g,"").trim(),
     atcTgt:document.getElementById("hsc-atctgt").value.replace(/,/g,"").trim(),
-    updatedBy:CU?CU.name:"",updatedAt:new Date().toLocaleString("hi-IN")
+    updatedBy:CU?CU.name:"",updatedAt:new Date().toLocaleString("hi-IN"),
+    ts:Date.now() // नया-पुराना तय करने के लिए — बड़ा ts हमेशा जीतता है
   };
   if(!d.curPaid||!d.curAmt){toast("इस वर्ष के आँकड़े जरूरी हैं","err");return;}
   HSC=d;
