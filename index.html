@@ -39,6 +39,20 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .sdot.off{background:var(--red);animation:none;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
 @keyframes sp{to{transform:rotate(360deg);}}
+@media (max-width:480px){
+  .hdr1{flex-wrap:wrap;gap:6px;}
+  .hdr-left{flex-shrink:0;}
+  .hdr-title{font-size:13px;}
+  .hdr-icon{width:30px;height:30px;font-size:15px;}
+  .hdr-right{width:100%;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;justify-content:flex-start;padding-bottom:2px;}
+  .hdr-right::-webkit-scrollbar{display:none;}
+  .hdr-right .hbtn{flex-shrink:0;padding:5px 7px;font-size:10px;}
+  .user-pill{flex-shrink:0;}
+  .uname{max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle;}
+  .login-card{padding:16px 14px;}
+  .role-card{padding:10px 6px;}
+  .role-card-icon svg{width:44px;height:44px;}
+}
 .stxt{color:var(--green);}
 .stxt.off{color:var(--red);}
 .stime{margin-left:auto;color:var(--muted);font-size:10px;}
@@ -85,7 +99,9 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .cat-tab.active.c7{background:#37474f;}
 .list-hdr{display:flex;align-items:center;justify-content:space-between;padding:0 12px 8px;}
 .list-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
-.btn-row{display:flex;gap:5px;}
+.btn-row{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.btn-row::-webkit-scrollbar{display:none;}
+.btn-row .tbtn{flex-shrink:0;}
 .tbtn{display:flex;align-items:center;gap:4px;border:none;border-radius:18px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:"Noto Sans Devanagari",sans-serif;white-space:nowrap;}
 .tbtn-blue{background:var(--blue);color:#fff;}
 .tbtn-red{background:var(--red);color:#fff;}
@@ -618,7 +634,7 @@ var HQS = ["आदेगांव","पिंडरई","जोबा","पा�
 var CATS = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
 var CICO = ["👥","🏠","🏪","🌾","🏛️","🏭","📋","📌"];
 var SUP_PW = "bijli@2025";
-var APP_VER = "7.7"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "7.8"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
