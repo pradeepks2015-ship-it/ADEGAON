@@ -210,8 +210,10 @@ function buildUI(){
   document.getElementById("hdr-sub").textContent=CU.role==="supervisor"?"JE | सभी HQ":"Lineman | "+CU.hq;
   var info=document.getElementById("user-info-menu");
   if(info) info.textContent=(CU.role==="supervisor"?"👨‍💼 JE":"🔧 Lineman")+" | "+CU.hq+" | "+CU.name+" | v"+APP_VER;
-  var lm=document.getElementById("log-menu-item");
-  if(lm) lm.style.display=CU.role==="supervisor"?"flex":"none";
+  ["log-menu-item","hsc-menu-item","cash-menu-item"].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.style.display=CU.role==="supervisor"?"flex":"none";
+  });
   buildHQTabs(); buildCatTabs(); buildActionBtns();
 }
 
@@ -319,14 +321,7 @@ function buildActionBtns(){
     var b2=document.createElement("button");
     b2.className="tbtn tbtn-red"; b2.innerHTML="🗑️ हटाएं"; b2.onclick=clearList;
     c.appendChild(b2);
-    var b3=document.createElement("button");
-    b3.className="tbtn"; b3.style.cssText="background:#6a1b9a;color:#fff;";
-    b3.innerHTML="🖥 होम पेज डिस्प्ले बोर्ड"; b3.onclick=openHscModal;
-    c.appendChild(b3);
-    var b4=document.createElement("button");
-    b4.className="tbtn"; b4.style.cssText="background:#1b5e20;color:#fff;";
-    b4.innerHTML="💵 कैश लिस्ट"; b4.onclick=openCashModal;
-    c.appendChild(b4);
+    // होम पेज डिस्प्ले बोर्ड और कैश लिस्ट अब profile dropdown में हैं (buildUI देखें)
   }
 }
 
