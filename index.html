@@ -86,6 +86,8 @@
           <span style="font-size:10px;color:var(--muted);margin-left:2px;">&#9660;</span>
           <div class="logout-menu" id="logout-menu">
             <div class="user-info-item" id="user-info-menu">---</div>
+            <div class="logout-item" id="hsc-menu-item" style="display:none;color:#c58af9;" onclick="openHscModal()">&#128421; होम पेज डिस्प्ले बोर्ड</div>
+            <div class="logout-item" id="cash-menu-item" style="display:none;color:var(--green);" onclick="openCashModal()">&#128181; कैश लिस्ट</div>
             <div class="logout-item" id="log-menu-item" style="display:none;color:var(--gold2);" onclick="openLogModal()">&#129534; एरर लॉग</div>
             <div class="logout-item" onclick="doLogout(true)">&#128682; लॉगआउट करें</div>
           </div>
@@ -98,7 +100,6 @@
     <div class="summary" id="summary"></div>
     <div class="cat-scroll" id="cat-tabs"></div>
     <div class="list-hdr">
-      <span class="list-title" id="list-title">सूची</span>
       <div class="btn-row" id="action-btns"></div>
     </div>
     <div class="search-wrap">

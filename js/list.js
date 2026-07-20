@@ -7,7 +7,6 @@ function renderSummaryWith(data){
     "<div class='sbox'><div class='snum'>"+paid+"</div><div class='slbl'>✓ वसूल</div></div>"+
     "<div class='sbox'><div class='snum'>"+pend+"</div><div class='slbl'>✗ बाकी</div></div>"+
     "<div class='sbox'><div class='snum'>"+fmt(pendAmt)+"</div><div class='slbl'>बाकी राशि</div></div>";
-  document.getElementById("list-title").textContent=activeHQ+" › "+activeCat;
 }
 
 function setFilter(btn){

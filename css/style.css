@@ -56,7 +56,8 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .hdr-sub{font-size:10px;color:var(--muted);}
 .hbtn{border:none;border-radius:8px;padding:5px 8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;}
 .user-pill{display:flex;align-items:center;gap:5px;background:var(--card);border:1px solid var(--border);border-radius:20px;padding:4px 9px 4px 4px;cursor:pointer;position:relative;}
-.logout-menu{display:none;position:absolute;top:38px;right:0;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px;z-index:300;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,.5);}
+/* fixed इसलिए — मोबाइल पर .hdr-right scrollable है और absolute menu उसमें कटता (clip) था */
+.logout-menu{display:none;position:fixed;top:56px;right:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px;z-index:600;min-width:210px;box-shadow:0 8px 24px rgba(0,0,0,.5);}
 .logout-menu.open{display:block;}
 .user-info-item{padding:8px 12px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);margin-bottom:4px;}
 .logout-item{padding:9px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--red);}
@@ -88,7 +89,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .cat-tab.active.c5{background:#b71c1c;}
 .cat-tab.active.c6{background:#4527a0;}
 .cat-tab.active.c7{background:#37474f;}
-.list-hdr{display:flex;align-items:center;justify-content:space-between;padding:0 12px 8px;}
+.list-hdr{display:flex;align-items:center;justify-content:flex-end;padding:0 12px 8px;}
 .list-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
 .btn-row{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .btn-row::-webkit-scrollbar{display:none;}
