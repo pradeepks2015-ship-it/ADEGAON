@@ -1,0 +1,164 @@
+// @ts-check
+// वसूली ट्रैकर — smoke tests
+// हर बाहरी request (CDN/Firebase/Google) block की जाती है ताकि:
+//  1. tests कभी असली production database को न छुएं
+//  2. app का offline-first रास्ता भी हर PR पर अपने आप जांचा जाए
+const { test, expect } = require('@playwright/test');
+
+/** @param {import('@playwright/test').Page} page */
+async function blockExternal(page) {
+  await page.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (route) => route.abort());
+}
+
+/** @param {import('@playwright/test').Page} page */
+async function openApp(page) {
+  await blockExternal(page);
+  await page.goto('/');
+  // startApp 2 sec के fallback timer पर चलता है
+  await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
+}
+
+/** @param {import('@playwright/test').Page} page */
+async function loginLineman(page, name = 'टेस्ट लाइनमैन') {
+  await page.click('#rc-lin');
+  await page.fill('#uname-inp', name);
+  await page.selectOption('#hq-sel', { index: 1 });
+  await page.click('.login-btn');
+  await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+}
+
+/** @param {import('@playwright/test').Page} page */
+async function loginJE(page, pw = 'Test#123') {
+  await page.evaluate((p) => _saveJEHash(p), pw); // offline-hash रास्ता — नेट बंद है
+  await page.click('#rc-sup');
+  await page.fill('#uname-inp', 'टेस्ट जेई');
+  await page.fill('#sup-pw', pw);
+  await page.click('.login-btn');
+  await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+}
+
+test.describe('बूट और login', () => {
+  test('app बिना नेट के भी खुलती है और version दिखाती है', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await openApp(page);
+    await expect(page.locator('#ver-badge')).toContainText('Version');
+    expect(errors).toEqual([]);
+  });
+
+  test('lineman login चलता है — tabs और summary बनते हैं', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    expect(await page.locator('.cat-tab').count()).toBe(8);
+    // summary offline में token-gate (4s) के बाद render होती है — इंतज़ार करें
+    await page.waitForFunction(() => document.querySelectorAll('.sbox').length === 4, null, { timeout: 15000 });
+  });
+
+  test('JE गलत पासवर्ड पर रुकता है, सही पर अंदर जाता है', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => _saveJEHash('SahiPass#1'));
+    await page.click('#rc-sup');
+    await page.fill('#uname-inp', 'जेई');
+    await page.fill('#sup-pw', 'galat-pass');
+    await page.click('.login-btn');
+    await page.waitForTimeout(1000);
+    expect(await page.evaluate(() => document.getElementById('app-screen').classList.contains('active'))).toBe(false);
+    await page.fill('#sup-pw', 'SahiPass#1');
+    await page.click('.login-btn');
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'));
+  });
+});
+
+test.describe('रोल-आधारित UI', () => {
+  test('JE को dropdown में चारों tools दिखते हैं, lineman को नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const jeVisible = await page.evaluate(() =>
+      ['hsc-menu-item', 'cash-menu-item', 'log-menu-item', 'backup-menu-item']
+        .every((id) => document.getElementById(id).style.display !== 'none'));
+    expect(jeVisible).toBe(true);
+    await page.evaluate(() => doLogout(false));
+    await loginLineman(page);
+    const linHidden = await page.evaluate(() =>
+      ['hsc-menu-item', 'cash-menu-item', 'log-menu-item', 'backup-menu-item']
+        .every((id) => document.getElementById(id).style.display === 'none'));
+    expect(linHidden).toBe(true);
+  });
+
+  test('JE के सभी modals खुलते-बंद होते हैं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const ok = await page.evaluate(() => {
+      const results = [];
+      openUpModal(); results.push(document.getElementById('up-overlay').classList.contains('open')); closeUpModal();
+      openScorecard(); results.push(document.getElementById('sc-overlay').classList.contains('open')); closeScModal();
+      openLogModal(); results.push(document.getElementById('log-overlay').classList.contains('open')); closeLogModal();
+      openHscModal(); results.push(document.getElementById('hsc-overlay').classList.contains('open')); closeHscModal();
+      openCashModal(); results.push(document.getElementById('cash-overlay').classList.contains('open')); closeCashModal();
+      return results;
+    });
+    expect(ok).toEqual([true, true, true, true, true]);
+  });
+});
+
+test.describe('डेटा और वसूली', () => {
+  test('cache की लिस्ट render होती है और वसूल mark काम करता है', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '111222', name: 'राम कुमार', status: 'pending', amount: 500 },
+        { acc: '333444', name: 'श्याम लाल', status: 'pending', amount: 700 },
+      ]);
+    });
+    await loginLineman(page); // HQ index 1 = आदेगांव (index 0 placeholder)
+    await expect(page.locator('.con-card').first()).toContainText('राम कुमार', { timeout: 15000 });
+    await page.evaluate(() => markPaid(0));
+    await page.waitForTimeout(500);
+    const st = await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता')[0].status);
+    expect(st).toBe('paid');
+  });
+
+  test('कैश लिस्ट: नया-पुराना timestamp नियम (बोर्ड टकराव)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((res) => {
+      let serverBoard = { curPaid: '999', curAmt: '9', ts: 200 };
+      let putCount = 0;
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('HOME_SCORECARD') > -1) {
+          if (opts && opts.method === 'PUT') { putCount++; serverBoard = JSON.parse(opts.body); return Promise.resolve({ ok: true, json: () => Promise.resolve(serverBoard) }); }
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(serverBoard) });
+        }
+        return orig(url, opts);
+      };
+      Object.defineProperty(navigator, 'onLine', { get: () => true });
+      // पुराना local (ts=100) → server (ts=200) अपनाए, PUT न करे
+      HSC = { curPaid: '0', curAmt: '0', ts: 100 };
+      _setHscPending(true);
+      _hscRetryPublish();
+      setTimeout(() => {
+        const case1 = HSC.curPaid === '999' && putCount === 0 && !_hscPending();
+        // नया local (ts=300) → PUT हो
+        HSC = { curPaid: '777', curAmt: '7', ts: 300 };
+        _setHscPending(true);
+        _hscRetryPublish();
+        setTimeout(() => res({ case1, case2: putCount === 1 && serverBoard.curPaid === '777' }), 400);
+      }, 400);
+    }));
+    expect(r.case1).toBe(true);
+    expect(r.case2).toBe(true);
+  });
+});
+
+test.describe('error logging', () => {
+  test('logErr entry बनाता है और बिना पकड़ी error अपने आप log होती है', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => { try { localStorage.removeItem('dc_logs3'); } catch (e) {} });
+    await page.evaluate(() => logErr('test-ctx', new Error('जांच'), 'extra'));
+    await page.evaluate(() => { setTimeout(() => { throw new Error('uncaught-जांच'); }, 0); });
+    await page.waitForTimeout(500);
+    const logs = await page.evaluate(() => getLogs());
+    expect(logs.some((l) => l.c === 'test-ctx' && l.m.indexOf('जांच') > -1)).toBe(true);
+    expect(logs.some((l) => l.c === 'js-error' && l.m.indexOf('uncaught') > -1)).toBe(true);
+  });
+});
