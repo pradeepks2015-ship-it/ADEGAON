@@ -2,6 +2,20 @@ function fbPath(hq,cat){
   return hq.replace(/\s/g,"_").replace(/[.#$\[\]]/g,"_")+"/"+cat.replace(/\s/g,"_").replace(/[.#$\[\]]/g,"_");
 }
 
+// ── FORMAT NORMALIZER: server से आई लिस्ट को हमेशा एक जैसा array बनाओ ──
+// पुराना ढांचा: array | नया (आने वाला) per-record ढांचा: object {IVRS: record}
+// नए ढांचे में हर record का 'o' field उसका क्रम बताएगा — उसी से order बहाल होता है
+// चरण 3 (per-record migration) में सिर्फ लिखने वाला code बदलेगा — पढ़ना यहीं से दोनों संभालता है
+function normList(d){
+  if(!d) return [];
+  var arr=Array.isArray(d)?d.filter(Boolean):Object.keys(d).map(function(k){return d[k];}).filter(Boolean);
+  arr=arr.map(migrateRemarks);
+  var hasO=false;
+  for(var i=0;i<arr.length;i++){ if(arr[i]&&arr[i].o!=null){hasO=true;break;} }
+  if(hasO) arr.sort(function(a,b){return (Number(a&&a.o)||0)-(Number(b&&b.o)||0);});
+  return arr;
+}
+
 function fbGet(hq,cat,cb){
   var cached=cGet(hq,cat);
   // pending offline बदलाव हैं तो server data से overwrite मत करो — पहले sync
@@ -16,8 +30,7 @@ function fbGet(hq,cat,cb){
     fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
       .then(function(r){return r.json();})
       .then(function(d){
-        var data=!d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
-        data=data.map(migrateRemarks);
+        var data=normList(d);
         overlayOps(hq,cat,data);
         var changed=JSON.stringify(data)!==JSON.stringify(cached);
         cSet(hq,cat,data);
@@ -30,8 +43,7 @@ function fbGet(hq,cat,cb){
   fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
     .then(function(r){return r.json();})
     .then(function(d){
-      var data=!d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
-      data=data.map(migrateRemarks);
+      var data=normList(d);
       overlayOps(hq,cat,data);
       cSet(hq,cat,data);
       cb(data);
@@ -113,8 +125,7 @@ function startListen(hq,cat){
   stopListen();
 
   function applyIncoming(d){
-    var data=!d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
-    data = data.map(migrateRemarks);
+    var data=normList(d);
     overlayOps(hq,cat,data);
     var prev=cGet(hq,cat);
     var changed=JSON.stringify(data)!==JSON.stringify(prev);

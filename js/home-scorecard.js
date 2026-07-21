@@ -297,8 +297,7 @@ function _cashRefreshAll(hqs,cb){
     fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
       .then(function(r){return r.json();})
       .then(function(d){
-        var data=!d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
-        data=data.map(migrateRemarks);
+        var data=normList(d);
         overlayOps(j.hq,j.cat,data);
         cSet(j.hq,j.cat,data);
         fin();
