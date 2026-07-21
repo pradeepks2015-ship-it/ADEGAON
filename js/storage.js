@@ -88,8 +88,7 @@ function flushPending(){
     fetch(FB+"/"+fbPath(it.hq,it.cat)+".json?t="+Date.now())
       .then(function(r){return r.json();})
       .then(function(d){
-        var server=!d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
-        server=server.map(migrateRemarks);
+        var server=normList(d);
         var merged=mergeArrays(cGet(it.hq,it.cat),server);
         return fetch(FB+"/"+fbPath(it.hq,it.cat)+".json",{
           method:"PUT",headers:{"Content-Type":"application/json"},
@@ -143,8 +142,8 @@ function prefetchAll(){
     fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
       .then(function(r){return r.json();})
       .then(function(d){
-        var data=!d?[]:(Array.isArray(d)?d:Object.values(d).filter(Boolean));
-        if(data.length){cSet(j.hq,j.cat,data.map(migrateRemarks));got++;}
+        var data=normList(d);
+        if(data.length){cSet(j.hq,j.cat,data);got++;}
         setTimeout(next,250);
       }).catch(function(){_prefetchRun=false;});
   })();

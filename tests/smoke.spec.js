@@ -150,6 +150,32 @@ test.describe('डेटा और वसूली', () => {
   });
 });
 
+test.describe('data format (चरण 1 — दोनों ढांचे)', () => {
+  test('normList पुराना array और नया per-record object दोनों पढ़ता है', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const rec1 = { acc: '111', name: 'राम', status: 'pending', amount: 100 };
+      const rec2 = { acc: '222', name: 'श्याम', status: 'paid', amount: 200 };
+      // 1. पुराना ढांचा: array (null holes सहित)
+      const a = normList([rec1, null, rec2]);
+      // 2. नया ढांचा: object keyed by IVRS
+      const b = normList({ '111': rec1, '222': rec2 });
+      // 3. नया ढांचा + 'o' क्रम — upload का order बहाल हो
+      const c = normList({ '111': { acc: '111', o: 2 }, '222': { acc: '222', o: 1 } });
+      // 4. खाली/null
+      const d = normList(null);
+      return {
+        arrayOk: a.length === 2 && a[0].acc === '111' && a[1].acc === '222',
+        objectOk: b.length === 2 && b[0].acc === '111',
+        remarksMigrated: Array.isArray(b[0].remarksArr),
+        orderOk: c[0].acc === '222' && c[1].acc === '111',
+        nullOk: Array.isArray(d) && d.length === 0,
+      };
+    });
+    expect(r).toEqual({ arrayOk: true, objectOk: true, remarksMigrated: true, orderOk: true, nullOk: true });
+  });
+});
+
 test.describe('error logging', () => {
   test('logErr entry बनाता है और बिना पकड़ी error अपने आप log होती है', async ({ page }) => {
     await openApp(page);
