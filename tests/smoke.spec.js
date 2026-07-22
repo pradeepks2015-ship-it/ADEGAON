@@ -74,13 +74,13 @@ test.describe('रोल-आधारित UI', () => {
     await openApp(page);
     await loginJE(page);
     const jeVisible = await page.evaluate(() =>
-      ['hsc-menu-item', 'cash-menu-item', 'log-menu-item', 'backup-menu-item']
+      ['hsc-menu-item', 'cash-menu-item', 'log-menu-item', 'backup-menu-item', 'wasc-menu-item']
         .every((id) => document.getElementById(id).style.display !== 'none'));
     expect(jeVisible).toBe(true);
     await page.evaluate(() => doLogout(false));
     await loginLineman(page);
     const linHidden = await page.evaluate(() =>
-      ['hsc-menu-item', 'cash-menu-item', 'log-menu-item', 'backup-menu-item']
+      ['hsc-menu-item', 'cash-menu-item', 'log-menu-item', 'backup-menu-item', 'wasc-menu-item']
         .every((id) => document.getElementById(id).style.display === 'none'));
     expect(linHidden).toBe(true);
   });
@@ -95,9 +95,34 @@ test.describe('रोल-आधारित UI', () => {
       openLogModal(); results.push(document.getElementById('log-overlay').classList.contains('open')); closeLogModal();
       openHscModal(); results.push(document.getElementById('hsc-overlay').classList.contains('open')); closeHscModal();
       openCashModal(); results.push(document.getElementById('cash-overlay').classList.contains('open')); closeCashModal();
+      openWaScorecard(); results.push(document.getElementById('wasc-overlay').classList.contains('open')); closeWaScorecard();
       return results;
     });
-    expect(ok).toEqual([true, true, true, true, true]);
+    expect(ok).toEqual([true, true, true, true, true, true]);
+  });
+
+  test('स्कोरकार्ड डिस्प्ले — सभी HQ की सही गिनती और वसूल% बनता है', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', status: 'paid', amount: 100 },
+        { acc: '2', status: 'pending', amount: 500 },
+      ]);
+    });
+    await page.evaluate(() => openWaScorecard());
+    await page.waitForFunction(() => document.querySelectorAll('#wasc-content tbody tr').length === 6, null, { timeout: 20000 });
+    const r = await page.evaluate(() => {
+      const row = document.querySelectorAll('#wasc-content tbody tr')[0];
+      return {
+        hq: row.querySelector('.wasc-hq').textContent,
+        paidBold: row.querySelector('.wasc-paid-num').textContent,
+        text: row.textContent,
+      };
+    });
+    expect(r.hq).toBe('आदेगांव');
+    expect(r.paidBold).toBe('1');
+    expect(r.text).toContain('50.0%');
   });
 });
 
