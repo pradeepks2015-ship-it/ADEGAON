@@ -418,7 +418,7 @@ function _waScRender(){
   html+="<table class='wasc-table'><thead><tr><th>क्र.</th><th>मुख्यालय</th>"+
     "<th>कुल उपभोक्ता<br><span class='wasc-sub'>बकाया राशि</span></th>"+
     "<th class='wasc-col-paid'>वसूल उपभोक्ता<br><span class='wasc-sub'>वसूल राशि</span></th>"+
-    "<th>वसूल %</th></tr></thead><tbody>";
+    "<th>Paid Count %</th></tr></thead><tbody>";
   rows.forEach(function(r,i){
     html+="<tr><td>"+(i+1)+"</td><td class='wasc-hq'>"+escHtml(r.hq)+"</td>"+
       "<td>"+fmt(r.tot)+"<br><span class='wasc-sub'>&#8377;"+fmt(r.bakaya)+"</span></td>"+
