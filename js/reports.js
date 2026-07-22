@@ -370,3 +370,74 @@ function downloadFullBackup(){
     });
   });
 }
+
+// ─── स्कोरकार्ड डिस्प्ले (JE only) — सभी HQ की सारांश तालिका, WhatsApp पर screenshot शेयर के लिए ───
+function openWaScorecard(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह देख सकते हैं","err");return;}
+  var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
+  document.getElementById("wasc-overlay").classList.add("open");
+  loadWaScorecard();
+}
+function closeWaScorecard(){document.getElementById("wasc-overlay").classList.remove("open");}
+
+// एक HQ का सारांश — "कुल उपभोक्ता" श्रेणी को मास्टर सूची मानकर कुल/बकाया, बाकी सभी श्रेणियों से unique वसूल (जैसा मौजूदा स्कोरकार्ड करता है)
+function _waScRow(hq){
+  var master=cGet(hq,CATS_DEFAULT[0])||[];
+  var seenTot={},tot=0,bakaya=0;
+  master.forEach(function(x){
+    if(!x)return;
+    var key=x.acc?String(x.acc):("_t"+tot+Math.random());
+    if(seenTot[key])return; seenTot[key]=1;
+    tot++;
+    if(x.status!=="paid") bakaya+=Number(x.amount)||0;
+  });
+  var seenPaid={},paid=0,paidAmt=0;
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+    var d=cGet(hq,cat)||[];
+    d.forEach(function(x){
+      if(!x||x.status!=="paid")return;
+      var key=x.acc?String(x.acc):("_p"+paid+Math.random());
+      if(seenPaid[key])return; seenPaid[key]=1;
+      paid++; paidAmt+=Number(x.amount)||0;
+    });
+  }
+  return {hq:hq,tot:tot,bakaya:bakaya,paid:paid,paidAmt:paidAmt,pct:tot?(paid/tot*100):0};
+}
+
+function _waScRender(){
+  var el=document.getElementById("wasc-content");
+  var rows=HQS.map(_waScRow);
+  var gTot=0,gBak=0,gPaid=0,gPaidAmt=0;
+  rows.forEach(function(r){gTot+=r.tot;gBak+=r.bakaya;gPaid+=r.paid;gPaidAmt+=r.paidAmt;});
+  var gPct=gTot?(gPaid/gTot*100):0;
+  var fmt=function(n){return Number(n||0).toLocaleString("hi-IN");};
+  var now=new Date();
+  var html="<div class='wasc-hdr'><div class='wasc-hdr-t'>&#9889; वसूली ट्रैकर — आदेगांव DC</div>"+
+    "<div class='wasc-hdr-s'>अद्यतन: "+now.toLocaleDateString("hi-IN")+" "+now.toLocaleTimeString("hi-IN",{hour:"2-digit",minute:"2-digit"})+"</div></div>";
+  html+="<table class='wasc-table'><thead><tr><th>क्र.</th><th>मुख्यालय</th>"+
+    "<th>कुल उपभोक्ता<br><span class='wasc-sub'>बकाया राशि</span></th>"+
+    "<th class='wasc-col-paid'>वसूल उपभोक्ता<br><span class='wasc-sub'>वसूल राशि</span></th>"+
+    "<th>वसूल %</th></tr></thead><tbody>";
+  rows.forEach(function(r,i){
+    html+="<tr><td>"+(i+1)+"</td><td class='wasc-hq'>"+escHtml(r.hq)+"</td>"+
+      "<td>"+fmt(r.tot)+"<br><span class='wasc-sub'>&#8377;"+fmt(r.bakaya)+"</span></td>"+
+      "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+fmt(r.paid)+"</span><br><span class='wasc-sub'>&#8377;"+fmt(r.paidAmt)+"</span></td>"+
+      "<td>"+r.pct.toFixed(1)+"%</td></tr>";
+  });
+  html+="</tbody><tfoot><tr><td colspan='2'>योग</td>"+
+    "<td>"+fmt(gTot)+"<br><span class='wasc-sub'>&#8377;"+fmt(gBak)+"</span></td>"+
+    "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+fmt(gPaid)+"</span><br><span class='wasc-sub'>&#8377;"+fmt(gPaidAmt)+"</span></td>"+
+    "<td>"+gPct.toFixed(1)+"%</td></tr></tfoot></table>";
+  el.innerHTML=html;
+}
+
+function loadWaScorecard(){
+  var el=document.getElementById("wasc-content");
+  el.innerHTML="<div class='sc-loading'>⏳ ताज़ा data लाया जा रहा है...</div>";
+  if(navigator.onLine){
+    _cashRefreshAll(HQS,function(){_waScRender();});
+  } else {
+    _waScRender();
+  }
+}
