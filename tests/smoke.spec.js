@@ -266,6 +266,28 @@ test.describe('ग्राम-वार वसूली', () => {
     expect(new Set(r.mohgaon).size).toBe(1);
     expect(new Set(r.navalgaon).size).toBe(1);
   });
+
+  test('मढ़ी HQ के मर्ज-समूह (JAMUA/JUMUA, RAHLI/REHLI, KHAMARIYA GUJAR/MADHI) एक ही कुंजी में पड़ते हैं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      jamua: [_vgNormKey('मढ़ी', 'JAMUA'), _vgNormKey('मढ़ी', 'JUMUA')],
+      rahli: [_vgNormKey('मढ़ी', 'RAHLI'), _vgNormKey('मढ़ी', 'REHLI')],
+      khamariya: [_vgNormKey('मढ़ी', 'KHAMARIYA GUJAR'), _vgNormKey('मढ़ी', 'KHAMARIYA MADHI')],
+    }));
+    expect(new Set(r.jamua).size).toBe(1);
+    expect(new Set(r.rahli).size).toBe(1);
+    expect(new Set(r.khamariya).size).toBe(1);
+  });
+
+  test('पाटन HQ के मर्ज-समूह (JUBAN/JUWAN TOLA ग्रुप, JOGANI/JOGNI TOLA) एक ही कुंजी में पड़ते हैं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      juban: [_vgNormKey('पाटन', 'JUBAN TOLA'), _vgNormKey('पाटन', 'JUWAN TOLA'), _vgNormKey('पाटन', 'JUWANTOLA')],
+      jogani: [_vgNormKey('पाटन', 'JOGANI TOLA'), _vgNormKey('पाटन', 'JOGNI TOLA')],
+    }));
+    expect(new Set(r.juban).size).toBe(1);
+    expect(new Set(r.jogani).size).toBe(1);
+  });
 });
 
 test.describe('गांव-वार सुधरी Excel', () => {

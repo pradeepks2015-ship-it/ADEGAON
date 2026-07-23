@@ -8,7 +8,12 @@ var vgRows=[];
 var VILLAGE_ALIASES={
   "जोबा":{"PIPARIYA JOBA":"PIPARIYA"},
   "पिंडरई":{"ORAPANI TOLA":"ORAPANI"},
-  "पाटन":{"KHAKHARIYA TOLA62":"KHAKHARIYA TOLA"},
+  "पाटन":{
+    "KHAKHARIYA TOLA62":"KHAKHARIYA TOLA",
+    "JUWAN TOLA":"JUBAN TOLA",
+    "JUWANTOLA":"JUBAN TOLA",
+    "JOGNI TOLA":"JOGANI TOLA"
+  },
   "बीबी":{
     "MOHGAON KACHHI AUR":"MOHGAON KACHHI",
     "MOHGAON KACCHI":"MOHGAON KACHHI",
@@ -19,6 +24,11 @@ var VILLAGE_ALIASES={
     "KHMRIYA KACHHI":"KHAMARIYA KACHHI",
     "NAVAL GAON":"NAVALGAON",
     "NAWALGAON":"NAVALGAON"
+  },
+  "मढ़ी":{
+    "JUMUA":"JAMUA",
+    "REHLI":"RAHLI",
+    "KHAMARIYA GUJAR":"KHAMARIYA MADHI"
   }
 };
 // गांव नाम की तुलना-कुंजी — trim + uppercase से केस/स्पेस भिन्नता अपने-आप मर्ज; ऊपर की सूची से बाकी बचे जोड़े भी मर्ज
