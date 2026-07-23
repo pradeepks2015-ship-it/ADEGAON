@@ -296,6 +296,28 @@ test.describe('ग्राम-वार वसूली', () => {
     }));
     expect(new Set(r.komsaghat).size).toBe(1);
   });
+
+  test('पिंडरई HQ के मर्ज-समूह (KARABDOL/KARAPDOL, SINGHODI MOCHIPATHAR ग्रुप) एक ही कुंजी में पड़ते हैं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      karabdol: [_vgNormKey('पिंडरई', 'KARABDOL'), _vgNormKey('पिंडरई', 'KARAPDOL')],
+      singhodi: [
+        _vgNormKey('पिंडरई', 'SINGHODI MOCHIPATHAR'),
+        _vgNormKey('पिंडरई', 'SINGODI MOCHI'),
+        _vgNormKey('पिंडरई', 'SINGODI MOCHIPATHAR'),
+      ],
+    }));
+    expect(new Set(r.karabdol).size).toBe(1);
+    expect(new Set(r.singhodi).size).toBe(1);
+  });
+
+  test('पाटन HQ का KALYAN PUR/KALYANPUR मर्ज-समूह एक ही कुंजी में पड़ता है', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      kalyanpur: [_vgNormKey('पाटन', 'KALYAN PUR'), _vgNormKey('पाटन', 'KALYANPUR')],
+    }));
+    expect(new Set(r.kalyanpur).size).toBe(1);
+  });
 });
 
 test.describe('गांव-वार सुधरी Excel', () => {
