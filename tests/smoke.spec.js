@@ -175,6 +175,52 @@ test.describe('डेटा और वसूली', () => {
   });
 });
 
+test.describe('ग्राम-वार वसूली', () => {
+  test('JE को सभी HQ tabs दिखते हैं, lineman को सिर्फ अपना HQ', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openVillageModal());
+    await page.waitForTimeout(500);
+    const jeTabs = await page.locator('#vg-hq-tabs .hq-tab').count();
+    expect(jeTabs).toBe(6); // HQS.length जितने tabs
+    await page.evaluate(() => closeVillageModal());
+    await page.evaluate(() => doLogout(false));
+    await loginLineman(page);
+    await page.evaluate(() => openVillageModal());
+    await page.waitForTimeout(500);
+    const linTabs = await page.locator('#vg-hq-tabs .hq-tab').count();
+    expect(linTabs).toBe(1);
+  });
+
+  test('गांव-वार गिनती, खोज, और bunch-selection का जोड़ सही बनता है', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', addr: 'रामपुर', status: 'paid', amount: 100 },
+        { acc: '2', addr: 'रामपुर', status: 'pending', amount: 200 },
+        { acc: '3', addr: 'श्यामपुर', status: 'paid', amount: 150 },
+      ]);
+    });
+    await page.evaluate(() => openVillageModal());
+    await page.waitForFunction(() => document.querySelectorAll('#vg-list .vg-row').length === 2, null, { timeout: 15000 });
+    // खोज
+    await page.fill('#vg-search', 'राम');
+    await page.waitForTimeout(200);
+    expect(await page.locator('#vg-list .vg-row').count()).toBe(1);
+    await page.fill('#vg-search', '');
+    await page.evaluate(() => _vgRenderList());
+    // दोनों गांव चुनकर जोड़ जांचें
+    await page.click('#vg-list .vg-row:nth-child(1) input[type=checkbox]');
+    await page.click('#vg-list .vg-row:nth-child(2) input[type=checkbox]');
+    await page.waitForTimeout(200);
+    const summary = await page.evaluate(() => document.getElementById('vg-summary').textContent);
+    expect(summary).toContain('3 कनेक्शन');
+    expect(summary).toContain('2 वसूल');
+    expect(summary).toContain('66.7% Paid Count');
+  });
+});
+
 test.describe('data format (चरण 1 — दोनों ढांचे)', () => {
   test('normList पुराना array और नया per-record object दोनों पढ़ता है', async ({ page }) => {
     await openApp(page);

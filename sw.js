@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v20";
+var CACHE_NAME="adegaon-dc-v21";
 var CDN=[
   "https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
@@ -15,6 +15,7 @@ var CDN=[
   "./js/list.js",
   "./js/upload.js",
   "./js/reports.js",
+  "./js/village.js",
   "./js/home-scorecard.js",
   "./js/main.js"
 ];
