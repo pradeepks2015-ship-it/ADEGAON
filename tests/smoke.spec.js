@@ -288,6 +288,14 @@ test.describe('ग्राम-वार वसूली', () => {
     expect(new Set(r.juban).size).toBe(1);
     expect(new Set(r.jogani).size).toBe(1);
   });
+
+  test('जोबा HQ का KOMSAGHAT/KOSAMAGHT मर्ज-समूह एक ही कुंजी में पड़ता है', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      komsaghat: [_vgNormKey('जोबा', 'KOMSAGHAT'), _vgNormKey('जोबा', 'KOSAMAGHT')],
+    }));
+    expect(new Set(r.komsaghat).size).toBe(1);
+  });
 });
 
 test.describe('गांव-वार सुधरी Excel', () => {
