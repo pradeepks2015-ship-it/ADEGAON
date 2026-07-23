@@ -6,6 +6,10 @@ var vgRows=[];
 
 // मिलते-जुलते गांव-नाम (केस/स्पेस भिन्नता तो अपने-आप मर्ज होती है — नीचे सिर्फ अलग-टोकन वाले जोड़े, जो सिर्फ केस बदलने से मर्ज नहीं होते)
 var VILLAGE_ALIASES={
+  "आदेगांव":{
+    "HAMEERGAGH":"HAMEERGARH",
+    "CHOTA BICHHUA":"CHHOTA BICHHUA"
+  },
   "जोबा":{"PIPARIYA JOBA":"PIPARIYA","KOSAMAGHT":"KOMSAGHAT"},
   "पिंडरई":{
     "ORAPANI TOLA":"ORAPANI",
