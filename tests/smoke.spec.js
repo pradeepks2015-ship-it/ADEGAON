@@ -219,6 +219,32 @@ test.describe('ग्राम-वार वसूली', () => {
     expect(summary).toContain('2 वसूल');
     expect(summary).toContain('66.7% Paid Count');
   });
+
+  test('पूरी टेबल मोड — screenshot के लिए सभी गांव एक साथ, योग सही', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', addr: 'रामपुर', status: 'paid', amount: 100 },
+        { acc: '2', addr: 'रामपुर', status: 'pending', amount: 200 },
+        { acc: '3', addr: 'श्यामपुर', status: 'paid', amount: 150 },
+      ]);
+    });
+    await page.evaluate(() => openVillageModal());
+    await page.waitForFunction(() => document.querySelectorAll('#vg-list .vg-row').length === 2, null, { timeout: 15000 });
+    await page.click('#vg-mode-table');
+    await page.waitForFunction(() => document.querySelectorAll('#vg-list tbody tr').length === 2, null, { timeout: 10000 });
+    // टेबल मोड में select-only बटन/summary छिपे हों
+    expect(await page.evaluate(() => getComputedStyle(document.getElementById('vg-select-btns')).display)).toBe('none');
+    const footer = await page.locator('#vg-list tfoot').textContent();
+    expect(footer).toContain('योग (2 गांव)');
+    expect(footer).toContain('3');
+    expect(footer).toContain('2');
+    expect(footer).toContain('66.7%');
+    // वापस चुनें मोड में लौटने पर checkbox सूची फिर दिखे
+    await page.click('#vg-mode-select');
+    await page.waitForFunction(() => document.querySelectorAll('#vg-list .vg-row').length === 2, null, { timeout: 10000 });
+  });
 });
 
 test.describe('data format (चरण 1 — दोनों ढांचे)', () => {
