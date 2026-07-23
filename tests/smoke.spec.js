@@ -300,8 +300,10 @@ test.describe('ग्राम-वार वसूली', () => {
 
 test.describe('गांव-वार सुधरी Excel', () => {
   test('मिलते-जुलते गांव-नाम मर्ज करके सारांश + HQ-वार sheets बनती हैं', async ({ page }) => {
+    test.setTimeout(90000); // background prefetch (offline-gated fetches) को settle होने का समय — धीमे CI runner पर flake रोकने के लिए
     await openApp(page);
     await loginJE(page);
+    await page.waitForTimeout(2000); // login के बाद का background prefetch शुरू होकर शांत हो जाए
     await page.evaluate(() => {
       cSet('जोबा', 'कुल उपभोक्ता', [
         { acc: '1', addr: 'PIPARIYA', name: 'राम', status: 'paid', amount: 100 },
