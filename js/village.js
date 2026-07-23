@@ -9,7 +9,17 @@ var VILLAGE_ALIASES={
   "जोबा":{"PIPARIYA JOBA":"PIPARIYA"},
   "पिंडरई":{"ORAPANI TOLA":"ORAPANI"},
   "पाटन":{"KHAKHARIYA TOLA62":"KHAKHARIYA TOLA"},
-  "बीबी":{"MOHGAON KACHHI AUR":"MOHGAON KACHHI"}
+  "बीबी":{
+    "MOHGAON KACHHI AUR":"MOHGAON KACHHI",
+    "MOHGAON KACCHI":"MOHGAON KACHHI",
+    "MOHGAON KACHI":"MOHGAON KACHHI",
+    "DEVRI":"DEORI",
+    "KHAMARIYA KACCHI":"KHAMARIYA KACHHI",
+    "KHAMARIYA KACHHI TOLA":"KHAMARIYA KACHHI",
+    "KHMRIYA KACHHI":"KHAMARIYA KACHHI",
+    "NAVAL GAON":"NAVALGAON",
+    "NAWALGAON":"NAVALGAON"
+  }
 };
 // गांव नाम की तुलना-कुंजी — trim + uppercase से केस/स्पेस भिन्नता अपने-आप मर्ज; ऊपर की सूची से बाकी बचे जोड़े भी मर्ज
 function _vgNormKey(hq,name){

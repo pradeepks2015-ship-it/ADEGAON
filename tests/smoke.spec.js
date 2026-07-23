@@ -238,6 +238,34 @@ test.describe('ग्राम-वार वसूली', () => {
     expect(rows.some((r) => r.includes('2') && (r.includes('PIPARIYA') || r.includes('Piparia')))).toBe(true);
     expect(rows.some((r) => /khubi/i.test(r) && r.includes('2'))).toBe(true);
   });
+
+  test('बीबी HQ के नए मर्ज-समूह (DEORI/DEVRI, KHAMARIYA KACHHI ग्रुप, MOHGAON KACCHI, NAVALGAON ग्रुप) एक ही कुंजी में पड़ते हैं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      deori: [_vgNormKey('बीबी', 'DEORI'), _vgNormKey('बीबी', 'DEVRI')],
+      khamariya: [
+        _vgNormKey('बीबी', 'KHAMARIYA KACCHI'),
+        _vgNormKey('बीबी', 'KHAMARIYA KACHHI'),
+        _vgNormKey('बीबी', 'KHAMARIYA KACHHI TOLA'),
+        _vgNormKey('बीबी', 'KHMRIYA KACHHI'),
+      ],
+      mohgaon: [
+        _vgNormKey('बीबी', 'MOHGAON KACCHI'),
+        _vgNormKey('बीबी', 'MOHGAON KACHHI'),
+        _vgNormKey('बीबी', 'Mohgaon kachi'),
+        _vgNormKey('बीबी', 'MOHGAON KACHHI AUR'),
+      ],
+      navalgaon: [
+        _vgNormKey('बीबी', 'NAVAL GAON'),
+        _vgNormKey('बीबी', 'NAVALGAON'),
+        _vgNormKey('बीबी', 'Nawalgaon'),
+      ],
+    }));
+    expect(new Set(r.deori).size).toBe(1);
+    expect(new Set(r.khamariya).size).toBe(1);
+    expect(new Set(r.mohgaon).size).toBe(1);
+    expect(new Set(r.navalgaon).size).toBe(1);
+  });
 });
 
 test.describe('गांव-वार सुधरी Excel', () => {
