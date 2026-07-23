@@ -318,6 +318,16 @@ test.describe('ग्राम-वार वसूली', () => {
     }));
     expect(new Set(r.kalyanpur).size).toBe(1);
   });
+
+  test('आदेगांव HQ के मर्ज-समूह (HAMEERGAGH/HAMEERGARH, CHHOTA/CHOTA BICHHUA) एक ही कुंजी में पड़ते हैं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      hameergarh: [_vgNormKey('आदेगांव', 'HAMEERGAGH'), _vgNormKey('आदेगांव', 'HAMEERGARH')],
+      bichhua: [_vgNormKey('आदेगांव', 'CHHOTA BICHHUA'), _vgNormKey('आदेगांव', 'CHOTA BICHHUA')],
+    }));
+    expect(new Set(r.hameergarh).size).toBe(1);
+    expect(new Set(r.bichhua).size).toBe(1);
+  });
 });
 
 test.describe('गांव-वार सुधरी Excel', () => {
