@@ -89,6 +89,7 @@
             <div class="user-info-item" id="user-info-menu">---</div>
             <div class="logout-item" id="hsc-menu-item" style="display:none;color:#c58af9;" onclick="openHscModal()">&#128421; होम पेज डिस्प्ले बोर्ड</div>
             <div class="logout-item" id="wasc-menu-item" style="display:none;color:#4db6ac;" onclick="openWaScorecard()">&#128202; स्कोरकार्ड डिस्प्ले</div>
+            <div class="logout-item" id="village-menu-item" style="color:#ffb74d;" onclick="openVillageModal()">&#127961; ग्राम-वार वसूली</div>
             <div class="logout-item" id="cash-menu-item" style="display:none;color:var(--green);" onclick="openCashModal()">&#128181; कैश लिस्ट</div>
             <div class="logout-item" id="backup-menu-item" style="display:none;color:var(--gold);" onclick="downloadFullBackup()">&#128190; पूरा बैकअप</div>
             <div class="logout-item" id="log-menu-item" style="display:none;color:var(--gold2);" onclick="openLogModal()">&#129534; एरर लॉग</div>
@@ -390,6 +391,29 @@
   </div>
 </div>
 
+<!-- ग्राम-वार वसूली (JE: सभी HQ चुनकर; Lineman: सिर्फ अपने HQ के गांव) -->
+<div class="moverlay" id="village-overlay" onclick="if(event.target===this)closeVillageModal()">
+  <div class="msheet" style="max-height:92vh;">
+    <div class="mhandle"></div>
+    <div class="mtitle">&#127961; ग्राम-वार वसूली</div>
+    <div class="hq-scroll" id="vg-hq-tabs" style="margin-bottom:10px;"></div>
+    <div class="si-wrap" style="margin-bottom:8px;">
+      <span class="si-icon">&#128269;</span>
+      <input type="text" class="si" id="vg-search" placeholder="गांव खोजें..." oninput="_vgRenderList()">
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <button class="btn-cancel" style="flex:1;padding:8px;" onclick="_vgSelectAll(true)">&#9745; सभी चुनें</button>
+      <button class="btn-cancel" style="flex:1;padding:8px;" onclick="_vgSelectAll(false)">&#9744; कोई नहीं</button>
+    </div>
+    <div id="vg-list" class="log-list" style="max-height:32vh;"></div>
+    <div id="vg-summary"></div>
+    <div class="mfooter">
+      <button class="btn-cancel" onclick="_vgRefresh()">&#128260; रिफ्रेश करें</button>
+      <button class="btn-save" onclick="closeVillageModal()">बंद करें</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="js/config.js"></script>
@@ -401,6 +425,7 @@
 <script src="js/list.js"></script>
 <script src="js/upload.js"></script>
 <script src="js/reports.js"></script>
+<script src="js/village.js"></script>
 <script src="js/home-scorecard.js"></script>
 <script src="js/main.js"></script>
 </body>
