@@ -129,17 +129,19 @@ function _vgRefresh(){
   _vgLoadAndRender();
 }
 
-// सभी HQ की गांव-वार सुधरी Excel — मिलते-जुलते गांव-नाम VILLAGE_ALIASES से मर्ज होकर दिखेंगे (असली data नहीं बदलती)
+// गांव-वार सुधरी Excel — JE: सभी HQ | Lineman: सिर्फ अपना HQ (report जैसी ही scoping)
+// मिलते-जुलते गांव-नाम VILLAGE_ALIASES से मर्ज होकर दिखेंगे (असली data नहीं बदलती)
 function downloadVillageExcel(){
-  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE डाउनलोड कर सकते हैं","err");return;}
+  if(!CU){toast("पहले login करें","err");return;}
+  var hqs=CU.role==="supervisor"?HQS:[CU.hq];
   ensureXLSX(function(ok){
     if(!ok){toast("📴 Excel के लिए इन्टरनेट चाहिए","err");return;}
-    toast("⏳ सभी HQ ताज़ा हो रहे हैं...","inf");
-    _cashRefreshAll(HQS,function(){
+    toast("⏳ ताज़ा हो रहा है...","inf");
+    _cashRefreshAll(hqs,function(){
       var wb=XLSX.utils.book_new();
       var sumRows=[["HQ","गांव","कुल कनेक्शन","बकाया राशि","वसूल","वसूल राशि","Paid Count %"]];
       var grandTot=0;
-      HQS.forEach(function(hq){
+      hqs.forEach(function(hq){
         var rows=_vgComputeRows(hq);
         var dispByCanon={};
         rows.forEach(function(r){
