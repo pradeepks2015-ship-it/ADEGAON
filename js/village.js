@@ -1,37 +1,31 @@
-// ─── ग्राम-वार वसूली: गांव खोजें, कई गांव एक साथ चुनें, कनेक्शन/वसूल/Paid Count % देखें ───
+// ─── ग्राम-वार वसूली: गांव खोजें, कनेक्शन/वसूल/Paid Count % देखें (screenshot-friendly तालिका) ───
 // डेटा स्रोत: "कुल उपभोक्ता" (मास्टर) श्रेणी का 'addr' field — यही व्यवहार में गांव का नाम रखता है
 // JE: सभी HQ के बीच स्विच कर सकते हैं | Lineman: सिर्फ अपने HQ के गांव दिखेंगे
 var vgActiveHQ="";
 var vgRows=[];
-var vgSelected={}; // village name -> true
-var vgViewMode="select"; // 'select' (checkbox + bunch summary) | 'table' (पूरी सूची, screenshot के लिए)
+
+// मिलते-जुलते गांव-नाम (केस/स्पेस भिन्नता तो अपने-आप मर्ज होती है — नीचे सिर्फ अलग-टोकन वाले जोड़े, जो सिर्फ केस बदलने से मर्ज नहीं होते)
+var VILLAGE_ALIASES={
+  "जोबा":{"PIPARIYA JOBA":"PIPARIYA"},
+  "पिंडरई":{"ORAPANI TOLA":"ORAPANI"},
+  "पाटन":{"KHAKHARIYA TOLA62":"KHAKHARIYA TOLA"},
+  "बीबी":{"MOHGAON KACHHI AUR":"MOHGAON KACHHI"}
+};
+// गांव नाम की तुलना-कुंजी — trim + uppercase से केस/स्पेस भिन्नता अपने-आप मर्ज; ऊपर की सूची से बाकी बचे जोड़े भी मर्ज
+function _vgNormKey(hq,name){
+  var k=(name||"").trim().toUpperCase().replace(/\s+/g," ");
+  var al=VILLAGE_ALIASES[hq];
+  if(al&&al[k]) k=al[k];
+  return k;
+}
 
 function openVillageModal(){
   vgActiveHQ=(CU.role==="supervisor")?activeHQ:CU.hq;
-  vgSelected={};
   document.getElementById("vg-search").value="";
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
   document.getElementById("village-overlay").classList.add("open");
   _vgBuildHQTabs();
-  _vgSetMode("select");
   _vgLoadAndRender();
-}
-
-// select-mode: गांव चुनकर bunch-summary देखना | table-mode: पूरी HQ की सभी गांव एक साथ — screenshot के लिए
-function _vgSetMode(mode){
-  vgViewMode=mode;
-  document.getElementById("vg-mode-select").classList.toggle("sel-blue",mode==="select");
-  document.getElementById("vg-mode-table").classList.toggle("sel-blue",mode==="table");
-  document.getElementById("vg-select-btns").style.display=mode==="select"?"flex":"none";
-  document.getElementById("vg-summary").style.display=mode==="select"?"":"none";
-  var listEl=document.getElementById("vg-list");
-  if(mode==="table"){
-    listEl.style.maxHeight="none"; listEl.style.overflowY="visible";
-    document.getElementById("vg-search").value=""; // टेबल खुलते ही पूरी (unfiltered) सूची दिखे
-  } else {
-    listEl.style.maxHeight="32vh"; listEl.style.overflowY="auto";
-  }
-  _vgRenderList();
 }
 function closeVillageModal(){document.getElementById("village-overlay").classList.remove("open");}
 
@@ -45,7 +39,7 @@ function _vgBuildHQTabs(){
     b.textContent=hq;
     b.onclick=function(){
       if(hq===vgActiveHQ)return;
-      vgActiveHQ=hq; vgSelected={};
+      vgActiveHQ=hq;
       document.getElementById("vg-search").value="";
       document.querySelectorAll("#vg-hq-tabs .hq-tab").forEach(function(x){x.classList.remove("active");});
       b.classList.add("active");
@@ -55,24 +49,29 @@ function _vgBuildHQTabs(){
   });
 }
 
-// एक HQ की "कुल उपभोक्ता" सूची को गांव (addr) से समूहित करना — unique acc, वर्तमान status + राशि
+// एक HQ की "कुल उपभोक्ता" सूची को गांव से समूहित करना — मिलते-जुलते नाम मर्ज (_vgNormKey), unique acc, वर्तमान status + राशि
+// प्रदर्शन के लिए हर समूह में जो spelling सबसे ज़्यादा बार आई हो वही दिखेगी
 function _vgComputeRows(hq){
   var master=cGet(hq,CATS_DEFAULT[0])||[];
   var byV={};
   master.forEach(function(x){
     if(!x)return;
-    var v=(x.addr||"").trim()||"(गांव दर्ज नहीं)";
+    var raw=(x.addr||"").trim()||"(गांव दर्ज नहीं)";
+    var k=_vgNormKey(hq,raw);
     var key=x.acc?String(x.acc):("_r"+Math.random());
-    if(!byV[v]) byV[v]={tot:0,paid:0,bakaya:0,paidAmt:0,seen:{}};
-    if(byV[v].seen[key])return;
-    byV[v].seen[key]=1;
-    byV[v].tot++;
-    if(x.status==="paid"){ byV[v].paid++; byV[v].paidAmt+=Number(x.amount)||0; }
-    else byV[v].bakaya+=Number(x.amount)||0;
+    if(!byV[k]) byV[k]={tot:0,paid:0,bakaya:0,paidAmt:0,seen:{},names:{}};
+    byV[k].names[raw]=(byV[k].names[raw]||0)+1;
+    if(byV[k].seen[key])return;
+    byV[k].seen[key]=1;
+    byV[k].tot++;
+    if(x.status==="paid"){ byV[k].paid++; byV[k].paidAmt+=Number(x.amount)||0; }
+    else byV[k].bakaya+=Number(x.amount)||0;
   });
-  var rows=Object.keys(byV).map(function(v){
-    var d=byV[v];
-    return {village:v,tot:d.tot,paid:d.paid,bakaya:d.bakaya,paidAmt:d.paidAmt,pct:d.tot?(d.paid/d.tot*100):0};
+  var rows=Object.keys(byV).map(function(k){
+    var d=byV[k];
+    var best=k,bc=-1;
+    Object.keys(d.names).forEach(function(n){ if(d.names[n]>bc){bc=d.names[n];best=n;} });
+    return {village:best,tot:d.tot,paid:d.paid,bakaya:d.bakaya,paidAmt:d.paidAmt,pct:d.tot?(d.paid/d.tot*100):0};
   });
   rows.sort(function(a,b){return a.village.localeCompare(b.village,"hi");});
   return rows;
@@ -111,58 +110,9 @@ function _vgRenderTable(el,filtered){
 
 function _vgRenderList(){
   var el=document.getElementById("vg-list");
-  el.innerHTML="";
   var filtered=_vgFiltered();
-  if(!filtered.length){
-    el.innerHTML="<div class='log-empty'>कोई गांव नहीं मिला</div>";
-    if(vgViewMode==="select") _vgUpdateSummary();
-    return;
-  }
-  if(vgViewMode==="table"){
-    _vgRenderTable(el,filtered);
-    return;
-  }
-  filtered.forEach(function(r){
-    var row=document.createElement("label");
-    row.className="vg-row";
-    var cb=document.createElement("input");
-    cb.type="checkbox";
-    cb.checked=!!vgSelected[r.village];
-    cb.onchange=function(){
-      if(cb.checked) vgSelected[r.village]=1; else delete vgSelected[r.village];
-      _vgUpdateSummary();
-    };
-    var name=document.createElement("span"); name.className="vg-name"; name.textContent=r.village;
-    var tot=document.createElement("span"); tot.className="vg-tot"; tot.textContent=r.tot+" कनेक्शन • ₹"+r.bakaya.toLocaleString("hi-IN")+" बकाया";
-    var paid=document.createElement("span"); paid.className="vg-paid"; paid.textContent=r.paid+" वसूल • ₹"+r.paidAmt.toLocaleString("hi-IN");
-    var pct=document.createElement("span"); pct.className="vg-pct"; pct.textContent=r.pct.toFixed(1)+"%";
-    row.appendChild(cb); row.appendChild(name); row.appendChild(tot); row.appendChild(paid); row.appendChild(pct);
-    el.appendChild(row);
-  });
-  _vgUpdateSummary();
-}
-
-function _vgSelectAll(state){
-  _vgFiltered().forEach(function(r){
-    if(state) vgSelected[r.village]=1; else delete vgSelected[r.village];
-  });
-  _vgRenderList();
-}
-
-function _vgUpdateSummary(){
-  var el=document.getElementById("vg-summary");
-  var sel=Object.keys(vgSelected);
-  if(!sel.length){el.innerHTML="";return;}
-  var tot=0,paid=0,bak=0,paidAmt=0;
-  sel.forEach(function(v){
-    var r=vgRows.filter(function(x){return x.village===v;})[0];
-    if(r){tot+=r.tot;paid+=r.paid;bak+=r.bakaya;paidAmt+=r.paidAmt;}
-  });
-  var pct=tot?(paid/tot*100):0;
-  var fmt=function(n){return Number(n||0).toLocaleString("hi-IN");};
-  el.innerHTML="<div class='vg-sum-box'><div class='vg-sum-t'>चुने गए "+sel.length+" गांव — जोड़</div>"+
-    "<div class='vg-sum-nums'><span>"+tot+" कनेक्शन</span><span class='vg-sum-paid'>"+paid+" वसूल</span><span>"+pct.toFixed(1)+"% Paid Count</span></div>"+
-    "<div class='vg-sum-nums' style='margin-top:4px;font-size:10px;font-weight:600;'><span>₹"+fmt(bak)+" बकाया</span><span class='vg-sum-paid'>₹"+fmt(paidAmt)+" वसूल राशि</span></div></div>";
+  if(!filtered.length){el.innerHTML="<div class='log-empty'>कोई गांव नहीं मिला</div>";return;}
+  _vgRenderTable(el,filtered);
 }
 
 function _vgLoadAndRender(){
@@ -177,4 +127,51 @@ function _vgLoadAndRender(){
 function _vgRefresh(){
   toast("🔄 ताज़ा data लाया जा रहा है...","inf");
   _vgLoadAndRender();
+}
+
+// सभी HQ की गांव-वार सुधरी Excel — मिलते-जुलते गांव-नाम VILLAGE_ALIASES से मर्ज होकर दिखेंगे (असली data नहीं बदलती)
+function downloadVillageExcel(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE डाउनलोड कर सकते हैं","err");return;}
+  ensureXLSX(function(ok){
+    if(!ok){toast("📴 Excel के लिए इन्टरनेट चाहिए","err");return;}
+    toast("⏳ सभी HQ ताज़ा हो रहे हैं...","inf");
+    _cashRefreshAll(HQS,function(){
+      var wb=XLSX.utils.book_new();
+      var sumRows=[["HQ","गांव","कुल कनेक्शन","बकाया राशि","वसूल","वसूल राशि","Paid Count %"]];
+      var grandTot=0;
+      HQS.forEach(function(hq){
+        var rows=_vgComputeRows(hq);
+        var dispByCanon={};
+        rows.forEach(function(r){
+          sumRows.push([hq,r.village,r.tot,r.bakaya,r.paid,r.paidAmt,r.pct.toFixed(1)+"%"]);
+          grandTot+=r.tot;
+          dispByCanon[_vgNormKey(hq,r.village)]=r.village;
+        });
+        var master=cGet(hq,CATS_DEFAULT[0])||[];
+        var enriched=master.filter(Boolean).map(function(x){
+          return {rec:x,canon:_vgNormKey(hq,(x.addr||"").trim())};
+        });
+        enriched.sort(function(a,b){
+          var va=dispByCanon[a.canon]||"",vb=dispByCanon[b.canon]||"";
+          return va.localeCompare(vb,"hi");
+        });
+        var detRows=[["क्र.","गांव","नाम","पिता/पति","Consumer No","बकाया","Mobile","स्थिति"]];
+        enriched.forEach(function(e,i){
+          var x=e.rec;
+          detRows.push([i+1,dispByCanon[e.canon]||x.addr||"",x.name||"",x.father||"",x.acc||"",Number(x.amount)||0,x.phone||"",x.status==="paid"?"वसूल":"बाकी"]);
+        });
+        var ws=XLSX.utils.aoa_to_sheet(detRows);
+        ws["!cols"]=[{wch:4},{wch:16},{wch:20},{wch:18},{wch:14},{wch:10},{wch:13},{wch:8}];
+        XLSX.utils.book_append_sheet(wb,ws,_bkSheetName(hq));
+      });
+      var wsSum=XLSX.utils.aoa_to_sheet(sumRows);
+      wsSum["!cols"]=[{wch:12},{wch:16},{wch:10},{wch:10},{wch:8},{wch:10},{wch:10}];
+      XLSX.utils.book_append_sheet(wb,wsSum,"सारांश");
+      wb.SheetNames.unshift(wb.SheetNames.pop()); // सारांश पहली sheet
+      var now=new Date();
+      var fn="ADEGAON_गांव_वार_"+now.toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx";
+      XLSX.writeFile(wb,fn);
+      toast("📥 सुधरी Excel download हो गई ("+grandTot+" records)","ok");
+    });
+  });
 }

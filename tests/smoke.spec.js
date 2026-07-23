@@ -192,7 +192,7 @@ test.describe('ग्राम-वार वसूली', () => {
     expect(linTabs).toBe(1);
   });
 
-  test('गांव-वार गिनती, खोज, और bunch-selection का जोड़ सही बनता है', async ({ page }) => {
+  test('गांव-वार गिनती, खोज, राशि और योग — सीधे टेबल में सही बनते हैं', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
     await page.evaluate(() => {
@@ -203,47 +203,72 @@ test.describe('ग्राम-वार वसूली', () => {
       ]);
     });
     await page.evaluate(() => openVillageModal());
-    await page.waitForFunction(() => document.querySelectorAll('#vg-list .vg-row').length === 2, null, { timeout: 15000 });
+    await page.waitForFunction(() => document.querySelectorAll('#vg-list tbody tr').length === 2, null, { timeout: 15000 });
     // खोज
     await page.fill('#vg-search', 'राम');
     await page.waitForTimeout(200);
-    expect(await page.locator('#vg-list .vg-row').count()).toBe(1);
+    expect(await page.locator('#vg-list tbody tr').count()).toBe(1);
     await page.fill('#vg-search', '');
     await page.evaluate(() => _vgRenderList());
-    // दोनों गांव चुनकर जोड़ जांचें
-    await page.click('#vg-list .vg-row:nth-child(1) input[type=checkbox]');
-    await page.click('#vg-list .vg-row:nth-child(2) input[type=checkbox]');
-    await page.waitForTimeout(200);
-    const summary = await page.evaluate(() => document.getElementById('vg-summary').textContent);
-    expect(summary).toContain('3 कनेक्शन');
-    expect(summary).toContain('2 वसूल');
-    expect(summary).toContain('66.7% Paid Count');
+    const footer = await page.locator('#vg-list tfoot').textContent();
+    expect(footer).toContain('योग (2 गांव)');
+    expect(footer).toContain('66.7%');
+    expect(footer).toContain('₹200'); // बकाया
+    expect(footer).toContain('₹250'); // वसूल राशि (100+150)
   });
 
-  test('पूरी टेबल मोड — screenshot के लिए सभी गांव एक साथ, योग सही', async ({ page }) => {
+  test('मिलते-जुलते गांव-नाम (केस भिन्नता + अलग-टोकन) रिपोर्ट में मर्ज होते हैं', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
     await page.evaluate(() => {
-      cSet('आदेगांव', 'कुल उपभोक्ता', [
-        { acc: '1', addr: 'रामपुर', status: 'paid', amount: 100 },
-        { acc: '2', addr: 'रामपुर', status: 'pending', amount: 200 },
-        { acc: '3', addr: 'श्यामपुर', status: 'paid', amount: 150 },
+      cSet('जोबा', 'कुल उपभोक्ता', [
+        { acc: '1', addr: 'PIPARIYA', status: 'paid', amount: 100 },
+        { acc: '2', addr: 'PIPARIYA JOBA', status: 'pending', amount: 200 },
+        { acc: '3', addr: 'Khubi', status: 'paid', amount: 50 },
+        { acc: '4', addr: 'KHUBI', status: 'pending', amount: 60 },
       ]);
     });
     await page.evaluate(() => openVillageModal());
-    await page.waitForFunction(() => document.querySelectorAll('#vg-list .vg-row').length === 2, null, { timeout: 15000 });
-    await page.click('#vg-mode-table');
-    await page.waitForFunction(() => document.querySelectorAll('#vg-list tbody tr').length === 2, null, { timeout: 10000 });
-    // टेबल मोड में select-only बटन/summary छिपे हों
-    expect(await page.evaluate(() => getComputedStyle(document.getElementById('vg-select-btns')).display)).toBe('none');
-    const footer = await page.locator('#vg-list tfoot').textContent();
-    expect(footer).toContain('योग (2 गांव)');
-    expect(footer).toContain('3');
-    expect(footer).toContain('2');
-    expect(footer).toContain('66.7%');
-    // वापस चुनें मोड में लौटने पर checkbox सूची फिर दिखे
-    await page.click('#vg-mode-select');
-    await page.waitForFunction(() => document.querySelectorAll('#vg-list .vg-row').length === 2, null, { timeout: 10000 });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll('#vg-hq-tabs .hq-tab')).find((t) => t.textContent === 'जोबा').click();
+    });
+    await page.waitForFunction(() => document.querySelectorAll('#vg-list tbody tr').length === 2, null, { timeout: 15000 });
+    const rows = await page.evaluate(() => Array.from(document.querySelectorAll('#vg-list tbody tr')).map((r) => r.textContent));
+    expect(rows.some((r) => r.includes('2') && (r.includes('PIPARIYA') || r.includes('Piparia')))).toBe(true);
+    expect(rows.some((r) => /khubi/i.test(r) && r.includes('2'))).toBe(true);
+  });
+});
+
+test.describe('गांव-वार सुधरी Excel', () => {
+  test('मिलते-जुलते गांव-नाम मर्ज करके सारांश + HQ-वार sheets बनती हैं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => {
+      cSet('जोबा', 'कुल उपभोक्ता', [
+        { acc: '1', addr: 'PIPARIYA', name: 'राम', status: 'paid', amount: 100 },
+        { acc: '2', addr: 'PIPARIYA JOBA', name: 'श्याम', status: 'pending', amount: 100 },
+      ]);
+    });
+    const r = await page.evaluate(() => new Promise((res) => {
+      var sheets = [];
+      window.XLSX = {
+        utils: {
+          book_new: function () { return { SheetNames: [], Sheets: {} }; },
+          aoa_to_sheet: function (a) { return { rows: a }; },
+          book_append_sheet: function (wb, ws, nm) { wb.SheetNames.push(nm); wb.Sheets[nm] = ws; sheets.push({ name: nm, rows: ws.rows }); },
+        },
+        writeFile: function (wb) { res({ order: wb.SheetNames.slice(), sheets: sheets }); },
+      };
+      downloadVillageExcel();
+    }));
+    expect(r.order[0]).toBe('सारांश');
+    const summarySheet = r.sheets.find((s) => s.name === 'सारांश');
+    const jobaRow = summarySheet.rows.find((row) => row[0] === 'जोबा');
+    expect(jobaRow[1]).toBe('PIPARIYA'); // मर्ज होकर एक ही गांव
+    expect(jobaRow[2]).toBe(2); // कुल कनेक्शन
+    const jobaSheet = r.sheets.find((s) => s.name === 'जोबा');
+    expect(jobaSheet.rows.length).toBe(3); // header + 2 records
   });
 });
 

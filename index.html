@@ -397,22 +397,14 @@
     <div class="mhandle"></div>
     <div class="mtitle">&#127961; ग्राम-वार वसूली</div>
     <div class="hq-scroll" id="vg-hq-tabs" style="margin-bottom:10px;"></div>
-    <div class="stoggle" style="margin-bottom:10px;">
-      <button class="topt sel-blue" id="vg-mode-select" onclick="_vgSetMode('select')">&#9745; चुनें</button>
-      <button class="topt" id="vg-mode-table" onclick="_vgSetMode('table')">&#128247; पूरी टेबल (स्क्रीनशॉट के लिए)</button>
-    </div>
     <div class="si-wrap" style="margin-bottom:8px;">
       <span class="si-icon">&#128269;</span>
       <input type="text" class="si" id="vg-search" placeholder="गांव खोजें..." oninput="_vgRenderList()">
     </div>
-    <div id="vg-select-btns" style="display:flex;gap:8px;margin-bottom:8px;">
-      <button class="btn-cancel" style="flex:1;padding:8px;" onclick="_vgSelectAll(true)">&#9745; सभी चुनें</button>
-      <button class="btn-cancel" style="flex:1;padding:8px;" onclick="_vgSelectAll(false)">&#9744; कोई नहीं</button>
-    </div>
-    <div id="vg-list" class="log-list" style="max-height:32vh;"></div>
-    <div id="vg-summary"></div>
+    <div id="vg-list"></div>
     <div class="mfooter">
       <button class="btn-cancel" onclick="_vgRefresh()">&#128260; रिफ्रेश करें</button>
+      <button class="btn-cancel" onclick="downloadVillageExcel()">&#128229; सुधरी Excel</button>
       <button class="btn-save" onclick="closeVillageModal()">बंद करें</button>
     </div>
   </div>
