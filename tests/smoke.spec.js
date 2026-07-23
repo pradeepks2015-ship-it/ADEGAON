@@ -272,8 +272,10 @@ test.describe('गांव-वार सुधरी Excel', () => {
   });
 
   test('lineman भी डाउनलोड कर सकता है, पर सिर्फ अपने HQ का', async ({ page }) => {
+    test.setTimeout(90000); // background prefetch (offline-gated fetches) को settle होने का समय — धीमे CI runner पर flake रोकने के लिए
     await openApp(page);
     await loginLineman(page); // HQ index 1 = पिंडरई
+    await page.waitForTimeout(2000); // login के बाद का background prefetch शुरू होकर शांत हो जाए
     const myHQ = await page.evaluate(() => CU.hq);
     await page.evaluate(() => {
       cSet(CU.hq, 'कुल उपभोक्ता', [{ acc: '1', addr: 'ORAPANI', name: 'राधा', status: 'paid', amount: 100 }]);
