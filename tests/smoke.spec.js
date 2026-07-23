@@ -270,6 +270,30 @@ test.describe('गांव-वार सुधरी Excel', () => {
     const jobaSheet = r.sheets.find((s) => s.name === 'जोबा');
     expect(jobaSheet.rows.length).toBe(3); // header + 2 records
   });
+
+  test('lineman भी डाउनलोड कर सकता है, पर सिर्फ अपने HQ का', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page); // HQ index 1 = पिंडरई
+    const myHQ = await page.evaluate(() => CU.hq);
+    await page.evaluate(() => {
+      cSet(CU.hq, 'कुल उपभोक्ता', [{ acc: '1', addr: 'ORAPANI', name: 'राधा', status: 'paid', amount: 100 }]);
+      cSet('जोबा', 'कुल उपभोक्ता', [{ acc: '9', addr: 'PIPARIYA', name: 'गीता', status: 'paid', amount: 50 }]);
+    });
+    const r = await page.evaluate(() => new Promise((res) => {
+      var sheets = [];
+      window.XLSX = {
+        utils: {
+          book_new: function () { return { SheetNames: [], Sheets: {} }; },
+          aoa_to_sheet: function (a) { return { rows: a }; },
+          book_append_sheet: function (wb, ws, nm) { wb.SheetNames.push(nm); wb.Sheets[nm] = ws; sheets.push(nm); },
+        },
+        writeFile: function (wb) { res({ sheets: wb.SheetNames.slice() }); },
+      };
+      downloadVillageExcel();
+    }));
+    expect(r.sheets).toContain(myHQ);
+    expect(r.sheets).not.toContain('जोबा');
+  });
 });
 
 test.describe('data format (चरण 1 — दोनों ढांचे)', () => {
