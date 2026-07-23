@@ -6,10 +6,30 @@ var vgRows=[];
 
 // मिलते-जुलते गांव-नाम (केस/स्पेस भिन्नता तो अपने-आप मर्ज होती है — नीचे सिर्फ अलग-टोकन वाले जोड़े, जो सिर्फ केस बदलने से मर्ज नहीं होते)
 var VILLAGE_ALIASES={
-  "जोबा":{"PIPARIYA JOBA":"PIPARIYA"},
+  "जोबा":{"PIPARIYA JOBA":"PIPARIYA","KOSAMAGHT":"KOMSAGHAT"},
   "पिंडरई":{"ORAPANI TOLA":"ORAPANI"},
-  "पाटन":{"KHAKHARIYA TOLA62":"KHAKHARIYA TOLA"},
-  "बीबी":{"MOHGAON KACHHI AUR":"MOHGAON KACHHI"}
+  "पाटन":{
+    "KHAKHARIYA TOLA62":"KHAKHARIYA TOLA",
+    "JUWAN TOLA":"JUBAN TOLA",
+    "JUWANTOLA":"JUBAN TOLA",
+    "JOGNI TOLA":"JOGANI TOLA"
+  },
+  "बीबी":{
+    "MOHGAON KACHHI AUR":"MOHGAON KACHHI",
+    "MOHGAON KACCHI":"MOHGAON KACHHI",
+    "MOHGAON KACHI":"MOHGAON KACHHI",
+    "DEVRI":"DEORI",
+    "KHAMARIYA KACCHI":"KHAMARIYA KACHHI",
+    "KHAMARIYA KACHHI TOLA":"KHAMARIYA KACHHI",
+    "KHMRIYA KACHHI":"KHAMARIYA KACHHI",
+    "NAVAL GAON":"NAVALGAON",
+    "NAWALGAON":"NAVALGAON"
+  },
+  "मढ़ी":{
+    "JUMUA":"JAMUA",
+    "REHLI":"RAHLI",
+    "KHAMARIYA GUJAR":"KHAMARIYA MADHI"
+  }
 };
 // गांव नाम की तुलना-कुंजी — trim + uppercase से केस/स्पेस भिन्नता अपने-आप मर्ज; ऊपर की सूची से बाकी बचे जोड़े भी मर्ज
 function _vgNormKey(hq,name){

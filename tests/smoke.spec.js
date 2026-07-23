@@ -238,12 +238,72 @@ test.describe('ग्राम-वार वसूली', () => {
     expect(rows.some((r) => r.includes('2') && (r.includes('PIPARIYA') || r.includes('Piparia')))).toBe(true);
     expect(rows.some((r) => /khubi/i.test(r) && r.includes('2'))).toBe(true);
   });
+
+  test('बीबी HQ के नए मर्ज-समूह (DEORI/DEVRI, KHAMARIYA KACHHI ग्रुप, MOHGAON KACCHI, NAVALGAON ग्रुप) एक ही कुंजी में पड़ते हैं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      deori: [_vgNormKey('बीबी', 'DEORI'), _vgNormKey('बीबी', 'DEVRI')],
+      khamariya: [
+        _vgNormKey('बीबी', 'KHAMARIYA KACCHI'),
+        _vgNormKey('बीबी', 'KHAMARIYA KACHHI'),
+        _vgNormKey('बीबी', 'KHAMARIYA KACHHI TOLA'),
+        _vgNormKey('बीबी', 'KHMRIYA KACHHI'),
+      ],
+      mohgaon: [
+        _vgNormKey('बीबी', 'MOHGAON KACCHI'),
+        _vgNormKey('बीबी', 'MOHGAON KACHHI'),
+        _vgNormKey('बीबी', 'Mohgaon kachi'),
+        _vgNormKey('बीबी', 'MOHGAON KACHHI AUR'),
+      ],
+      navalgaon: [
+        _vgNormKey('बीबी', 'NAVAL GAON'),
+        _vgNormKey('बीबी', 'NAVALGAON'),
+        _vgNormKey('बीबी', 'Nawalgaon'),
+      ],
+    }));
+    expect(new Set(r.deori).size).toBe(1);
+    expect(new Set(r.khamariya).size).toBe(1);
+    expect(new Set(r.mohgaon).size).toBe(1);
+    expect(new Set(r.navalgaon).size).toBe(1);
+  });
+
+  test('मढ़ी HQ के मर्ज-समूह (JAMUA/JUMUA, RAHLI/REHLI, KHAMARIYA GUJAR/MADHI) एक ही कुंजी में पड़ते हैं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      jamua: [_vgNormKey('मढ़ी', 'JAMUA'), _vgNormKey('मढ़ी', 'JUMUA')],
+      rahli: [_vgNormKey('मढ़ी', 'RAHLI'), _vgNormKey('मढ़ी', 'REHLI')],
+      khamariya: [_vgNormKey('मढ़ी', 'KHAMARIYA GUJAR'), _vgNormKey('मढ़ी', 'KHAMARIYA MADHI')],
+    }));
+    expect(new Set(r.jamua).size).toBe(1);
+    expect(new Set(r.rahli).size).toBe(1);
+    expect(new Set(r.khamariya).size).toBe(1);
+  });
+
+  test('पाटन HQ के मर्ज-समूह (JUBAN/JUWAN TOLA ग्रुप, JOGANI/JOGNI TOLA) एक ही कुंजी में पड़ते हैं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      juban: [_vgNormKey('पाटन', 'JUBAN TOLA'), _vgNormKey('पाटन', 'JUWAN TOLA'), _vgNormKey('पाटन', 'JUWANTOLA')],
+      jogani: [_vgNormKey('पाटन', 'JOGANI TOLA'), _vgNormKey('पाटन', 'JOGNI TOLA')],
+    }));
+    expect(new Set(r.juban).size).toBe(1);
+    expect(new Set(r.jogani).size).toBe(1);
+  });
+
+  test('जोबा HQ का KOMSAGHAT/KOSAMAGHT मर्ज-समूह एक ही कुंजी में पड़ता है', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      komsaghat: [_vgNormKey('जोबा', 'KOMSAGHAT'), _vgNormKey('जोबा', 'KOSAMAGHT')],
+    }));
+    expect(new Set(r.komsaghat).size).toBe(1);
+  });
 });
 
 test.describe('गांव-वार सुधरी Excel', () => {
   test('मिलते-जुलते गांव-नाम मर्ज करके सारांश + HQ-वार sheets बनती हैं', async ({ page }) => {
+    test.setTimeout(90000); // background prefetch (offline-gated fetches) को settle होने का समय — धीमे CI runner पर flake रोकने के लिए
     await openApp(page);
     await loginJE(page);
+    await page.waitForTimeout(2000); // login के बाद का background prefetch शुरू होकर शांत हो जाए
     await page.evaluate(() => {
       cSet('जोबा', 'कुल उपभोक्ता', [
         { acc: '1', addr: 'PIPARIYA', name: 'राम', status: 'paid', amount: 100 },
