@@ -80,10 +80,28 @@ function _vgBuildHQTabs(){
   });
 }
 
+// किसी उपभोक्ता की असली वसूल-स्थिति सिर्फ "कुल उपभोक्ता" में नहीं — किसी भी श्रेणी में paid mark हो तो वसूल गिनें
+// (जैसा स्कोरकार्ड डिस्प्ले — reports.js: _waScRow — पहले से करता है, ताकि दोनों जगह एक जैसा आंकड़ा दिखे)
+function _vgPaidMap(hq){
+  var seen={},map={};
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+    var d=cGet(hq,cat)||[];
+    d.forEach(function(x){
+      if(!x||x.status!=="paid"||!x.acc)return;
+      var key=String(x.acc);
+      if(seen[key])return; seen[key]=1;
+      map[key]=Number(x.amount)||0;
+    });
+  }
+  return map;
+}
+
 // एक HQ की "कुल उपभोक्ता" सूची को गांव से समूहित करना — मिलते-जुलते नाम मर्ज (_vgNormKey), unique acc, वर्तमान status + राशि
 // प्रदर्शन के लिए हर समूह में जो spelling सबसे ज़्यादा बार आई हो वही दिखेगी
 function _vgComputeRows(hq){
   var master=cGet(hq,CATS_DEFAULT[0])||[];
+  var paidMap=_vgPaidMap(hq);
   var byV={};
   master.forEach(function(x){
     if(!x)return;
@@ -95,7 +113,8 @@ function _vgComputeRows(hq){
     if(byV[k].seen[key])return;
     byV[k].seen[key]=1;
     byV[k].tot++;
-    if(x.status==="paid"){ byV[k].paid++; byV[k].paidAmt+=Number(x.amount)||0; }
+    var isPaid=x.acc&&paidMap.hasOwnProperty(String(x.acc))?true:(x.status==="paid");
+    if(isPaid){ byV[k].paid++; byV[k].paidAmt+=(x.acc&&paidMap.hasOwnProperty(String(x.acc)))?paidMap[String(x.acc)]:(Number(x.amount)||0); }
     else byV[k].bakaya+=Number(x.amount)||0;
   });
   var rows=Object.keys(byV).map(function(k){
@@ -181,6 +200,7 @@ function downloadVillageExcel(){
           dispByCanon[_vgNormKey(hq,r.village)]=r.village;
         });
         var master=cGet(hq,CATS_DEFAULT[0])||[];
+        var paidMap=_vgPaidMap(hq);
         var enriched=master.filter(Boolean).map(function(x){
           return {rec:x,canon:_vgNormKey(hq,(x.addr||"").trim())};
         });
@@ -191,7 +211,8 @@ function downloadVillageExcel(){
         var detRows=[["क्र.","गांव","नाम","पिता/पति","Consumer No","बकाया","Mobile","स्थिति"]];
         enriched.forEach(function(e,i){
           var x=e.rec;
-          detRows.push([i+1,dispByCanon[e.canon]||x.addr||"",x.name||"",x.father||"",x.acc||"",Number(x.amount)||0,x.phone||"",x.status==="paid"?"वसूल":"बाकी"]);
+          var isPaid=x.acc&&paidMap.hasOwnProperty(String(x.acc))?true:(x.status==="paid");
+          detRows.push([i+1,dispByCanon[e.canon]||x.addr||"",x.name||"",x.father||"",x.acc||"",Number(x.amount)||0,x.phone||"",isPaid?"वसूल":"बाकी"]);
         });
         var ws=XLSX.utils.aoa_to_sheet(detRows);
         ws["!cols"]=[{wch:4},{wch:16},{wch:20},{wch:18},{wch:14},{wch:10},{wch:13},{wch:8}];

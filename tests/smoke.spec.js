@@ -217,6 +217,26 @@ test.describe('ग्राम-वार वसूली', () => {
     expect(footer).toContain('₹250'); // वसूल राशि (100+150)
   });
 
+  test('किसी भी श्रेणी में paid mark हो तो ग्राम-वार वसूली में भी वसूल गिना जाए (स्कोरकार्ड जैसा)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => {
+      // मास्टर "कुल उपभोक्ता" में यह उपभोक्ता अभी भी pending दिखा रहा है...
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '501', addr: 'टेस्टपुर', status: 'pending', amount: 300 },
+      ]);
+      // ...लेकिन "घरेलू" श्रेणी में उसे वसूल mark कर दिया गया है
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '501', addr: 'टेस्टपुर', status: 'paid', amount: 300 },
+      ]);
+    });
+    const row = await page.evaluate(() => _vgComputeRows('आदेगांव')[0]);
+    expect(row.tot).toBe(1);
+    expect(row.paid).toBe(1);
+    expect(row.bakaya).toBe(0);
+    expect(row.paidAmt).toBe(300);
+  });
+
   test('मिलते-जुलते गांव-नाम (केस भिन्नता + अलग-टोकन) रिपोर्ट में मर्ज होते हैं', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
