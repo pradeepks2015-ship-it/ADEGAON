@@ -328,6 +328,14 @@ test.describe('ग्राम-वार वसूली', () => {
     expect(new Set(r.hameergarh).size).toBe(1);
     expect(new Set(r.bichhua).size).toBe(1);
   });
+
+  test('पिंडरई HQ का PINDARI RAIYAT/PINDRAI RAIYAT मर्ज-समूह एक ही कुंजी में पड़ता है', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      pindariRaiyat: [_vgNormKey('पिंडरई', 'PINDARI RAIYAT'), _vgNormKey('पिंडरई', 'PINDRAI RAIYAT')],
+    }));
+    expect(new Set(r.pindariRaiyat).size).toBe(1);
+  });
 });
 
 test.describe('गांव-वार सुधरी Excel', () => {
