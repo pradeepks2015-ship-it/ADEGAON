@@ -176,7 +176,7 @@ function loadHQPins(){
 }
 function fetchHQPinsFromFB(){
   fetch(FB+"/HQ_PIN.json?t="+Date.now())
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(d){
       if(d&&typeof d==="object"){
         HQ_PINS=d;

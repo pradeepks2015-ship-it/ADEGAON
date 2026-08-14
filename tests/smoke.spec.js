@@ -1577,7 +1577,7 @@ test.describe('_cashRefreshAll — कमज़ोर नेटवर्क प�
           return new Promise(() => {}); // कभी resolve/reject नहीं होगा — अटकी हुई श्रेणी
         }
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ8') > -1) {
-          return Promise.resolve({ json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };
@@ -1595,6 +1595,48 @@ test.describe('_cashRefreshAll — कमज़ोर नेटवर्क प�
     expect(r.ms).toBeLessThan(2000);
     expect(r.stuckStillOld).toBe(true);
     expect(r.othersUpdated).toBe(true);
+  });
+});
+
+test.describe('Firebase permission-denied response को असली record न समझा जाए', () => {
+  test('fbGet — HTTP 401/403 पर मिलने वाला {"error":"..."} JSON असली consumer record न बने (bug: ₹NaN वाला टूटा हुआ card)', async ({ page }) => {
+    await openApp(page);
+    const result = await page.evaluate(() => new Promise((resolve) => {
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ11/घरेलू') > -1) {
+          return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ error: 'Permission denied' }) });
+        }
+        return orig(url, opts);
+      };
+      fbGet('टेस्ट HQ11', 'घरेलू', function (data) {
+        window.fetch = orig;
+        resolve(data);
+      });
+    }));
+    expect(result).toEqual([]);
+  });
+
+  test('startListen — pollOnce पर भी permission-denied response से टूटा हुआ record न बने', async ({ page }) => {
+    await openApp(page);
+    const result = await page.evaluate(() => new Promise((resolve) => {
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ12/घरेलू') > -1) {
+          return Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({ error: 'Permission denied' }) });
+        }
+        return orig(url, opts);
+      };
+      cSet('टेस्ट HQ12', 'घरेलू', [{ acc: 'OLD', name: 'पुराना', amount: '10', status: 'pending' }]);
+      startListen('टेस्ट HQ12', 'घरेलू');
+      setTimeout(function () {
+        window.fetch = orig;
+        stopListen();
+        resolve(cGet('टेस्ट HQ12', 'घरेलू'));
+      }, 300);
+    }));
+    expect(result.length).toBe(1);
+    expect(result[0].acc).toBe('OLD'); // पुराना cache जस का तस रहे, कोई टूटा record न जुड़े
   });
 });
 
@@ -2220,7 +2262,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ9') > -1) {
           fetchCount++;
-          return Promise.resolve({ json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };
@@ -2244,7 +2286,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ10') > -1) {
           fetchCount++;
-          return Promise.resolve({ json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };

@@ -140,7 +140,7 @@ function flushPending(){
     // put (पुराना array फॉर्मेट) — पहले server data लो, merge करो, फिर save — दोनों के बदलाव बचें
     // (_fbPut को ही बुलाओ, सीधे fetch PUT नहीं — वही एक जगह है जो migrated श्रेणी पर raw array भेजने से बचाती है)
     fetch(FB+"/"+fbPath(it.hq,it.cat)+".json?t="+Date.now())
-      .then(function(r){return r.json();})
+      .then(_fbJson)
       .then(function(d){
         var server=normList(d);
         var merged=mergeArrays(cGet(it.hq,it.cat),server);
@@ -188,7 +188,7 @@ function prefetchAll(){
     var j=jobs[idx++];
     if(isPending(j.hq,j.cat)){next();return;}
     fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
-      .then(function(r){return r.json();})
+      .then(_fbJson)
       .then(function(d){
         var data=normList(d);
         if(data.length){cSet(j.hq,j.cat,data);got++;}

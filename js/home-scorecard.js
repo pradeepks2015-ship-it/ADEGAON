@@ -13,7 +13,7 @@ function _hscAdopt(d){
 function _hscRetryPublish(){
   if(!HSC||!navigator.onLine)return;
   fetch(FB+"/HOME_SCORECARD.json?t="+Date.now())
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(srv){
       if(srv&&typeof srv==="object"&&Number(srv.ts||0)>Number(HSC.ts||0)){_hscAdopt(srv);return;} // server नया है — उसे अपनाओ
       // सिर्फ़ JE ही असली publish कर सकता है (Firebase rules) — lineman/login-से-पहले वाले device
@@ -31,7 +31,7 @@ function hscFetch(){
     _setHscPending(false); // JE के अलावा किसी device पर pending होने का कोई मतलब नहीं (पुराना bug — नीचे देखें)
   }
   fetch(FB+"/HOME_SCORECARD.json?t="+Date.now())
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(d){
       if(d&&typeof d==="object"){
         // सिर्फ़ JE (supervisor) के device पर local, server से नया हो तो ही असली "अभी तक प्रकाशित न
@@ -322,7 +322,7 @@ function _cashRefreshAll(hqs,cb,force){
     function safeFin(){ if(finned)return; finned=true; fin(); }
     var tm=setTimeout(safeFin,_CASH_REFRESH_TIMEOUT_MS);
     fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
-      .then(function(r){return r.json();})
+      .then(_fbJson)
       .then(function(d){
         clearTimeout(tm);
         var data=normList(d);

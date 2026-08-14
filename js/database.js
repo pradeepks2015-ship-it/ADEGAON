@@ -29,7 +29,7 @@ function fbGet(hq,cat,cb){
     cb(cached); // तुरंत cache से दिखाएं — fast!
     // background silent refresh
     fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
-      .then(function(r){return r.json();})
+      .then(_fbJson)
       .then(function(d){
         trackUsageBytes(JSON.stringify(d||"").length);
         _checkMigrationRevert(hq,cat,d); // migrated list कहीं पुराने device ने वापस array में तो नहीं बदल दी
@@ -51,7 +51,7 @@ function fbGet(hq,cat,cb){
     setSyncStatus(false);
   },FB_GET_TIMEOUT_MS);
   fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(d){
       trackUsageBytes(JSON.stringify(d||"").length);
       _checkMigrationRevert(hq,cat,d);
@@ -299,7 +299,7 @@ function startListen(hq,cat){
   function pollOnce(){
     if(isPending(hq,cat)){if(navigator.onLine)flushPending();return;}
     fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
-      .then(function(r){return r.json();})
+      .then(_fbJson)
       .then(applyIncoming)
       .catch(function(){setSyncStatus(false);});
   }

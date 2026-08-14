@@ -14,7 +14,7 @@ var HQ_AUTH_EMAIL = {
   "बीबी":"hq-bibi@adegaondc.internal",
   "मढ़ी":"hq-madhi@adegaondc.internal"
 };
-var APP_VER = "9.79"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "9.80"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
@@ -63,6 +63,18 @@ function applyFBCatNames(d){
   return changed;
 }
 
+// Firebase REST API permission-denied जैसी errors भी valid JSON response देती हैं (जैसे
+// {"error":"Permission denied"}), HTTP status भले ही 401/403 हो — पहले हम हर fetch के बाद बिना
+// r.ok जांचे सीधे r.json() मानकर आगे बढ़ जाते थे, तो normList() उस error-object की value
+// (एक साधारण string) को असली consumer record समझकर एक टूटा हुआ (₹NaN वाला, नाम-पता खाली)
+// card बना देता था — असली bug यही था, सिर्फ़ rules की समस्या नहीं। अब हर जगह पहले HTTP
+// status जांचते हैं; असफल हो तो वही रास्ता चलता है जो genuine network-failure के लिए पहले
+// से बना है (हर fetch chain का catch handler)।
+function _fbJson(r){
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}
+
 function loadCatNames(){
   try{var s=localStorage.getItem("dc_catnames3");if(s)CAT_NAMES=JSON.parse(s);}catch(e){}
   fetchCatNamesFromFB(false);
@@ -70,7 +82,7 @@ function loadCatNames(){
 
 function fetchCatNamesFromFB(showToast){
   fetch(FB+"/CAT_NAMES.json?t="+Date.now())
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(d){
       var changed=applyFBCatNames(d);
       if(changed){
