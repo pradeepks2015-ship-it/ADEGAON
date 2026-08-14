@@ -50,7 +50,7 @@ function _migRunDryRun(){
   var rows=[],done=0;
   jobs.forEach(function(j){
     fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
-      .then(function(r){return r.json();})
+      .then(_fbJson)
       .then(function(d){
         var a=_migAnalyzeList(d);
         // MIGRATED flag "हां" कहता है पर data अब भी array है — किसी पुराने device ने migration पलट दिया
@@ -151,7 +151,7 @@ function isMigrated(hq,cat){
 }
 function loadMigratedFlags(){
   fetch(FB+"/MIGRATED.json?t="+Date.now())
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(d){ if(d&&typeof d==="object") MIGRATED=d; })
     .catch(function(){});
 }
@@ -192,7 +192,7 @@ function _migConvertToObject(arr){
 // array को object में बदलकर PUT करना, फिर MIGRATED flag सेट करना
 function _migrateOne(hq,cat,cb){
   fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(raw){
       if(!raw){ cb({hq:hq,cat:cat,status:"empty"}); return; }
       if(!Array.isArray(raw)){ cb({hq:hq,cat:cat,status:"already"}); return; }

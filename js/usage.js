@@ -36,7 +36,7 @@ function _usageMonthKey(offset){
 }
 function _usageSumMonth(month,cb){
   fetch(FB+"/USAGE/"+month+".json?t="+Date.now())
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(d){
       var tot=0;
       if(d&&typeof d==="object") Object.keys(d).forEach(function(k){ if(d[k]&&d[k].b) tot+=Number(d[k].b)||0; });
@@ -72,7 +72,7 @@ function _usageRender(){
 // 3 महीने से पुराने usage records अपने आप हटें — free plan की जगह न भरे (जैसे LOGS में होता है)
 function _usageCleanupOld(){
   fetch(FB+"/USAGE.json?shallow=true&t="+Date.now())
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(d){
       if(!d)return;
       var cutoff=_usageMonthKey(3);

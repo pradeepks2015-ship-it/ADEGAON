@@ -38,7 +38,7 @@ function _dvRender(){
   if(!el)return;
   el.innerHTML="<div class='log-empty'>⏳ लोड हो रहा है...</div>";
   fetch(FB+"/DEVICE_VERSIONS.json?t="+Date.now())
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(d){
       var rows=[];
       if(d&&typeof d==="object") Object.keys(d).forEach(function(k){ if(d[k]) rows.push(d[k]); });
@@ -76,7 +76,7 @@ function refreshLogBadge(){
   var seen=_logSeenTs();
   var days=[0,1].map(function(off){return new Date(Date.now()-off*86400000).toISOString().slice(0,10);});
   Promise.all(days.map(function(day){
-    return fetch(FB+"/LOGS/"+day+".json?t="+Date.now()).then(function(r){return r.json();}).catch(function(){return null;});
+    return fetch(FB+"/LOGS/"+day+".json?t="+Date.now()).then(_fbJson).catch(function(){return null;});
   })).then(function(res){
     var count=0;
     res.forEach(function(d){
@@ -162,7 +162,7 @@ function fetchServerLogs(){
   var days=[0,1].map(function(off){return new Date(Date.now()-off*86400000).toISOString().slice(0,10);});
   Promise.all(days.map(function(day){
     return fetch(FB+"/LOGS/"+day+".json?t="+Date.now())
-      .then(function(r){return r.json();})
+      .then(_fbJson)
       .catch(function(){return null;});
   })).then(function(res){
     var all=[];
@@ -175,7 +175,7 @@ function fetchServerLogs(){
 // 15 दिन से पुराने server logs अपने आप हटें — free plan की जगह न भरे
 function cleanupOldServerLogs(){
   fetch(FB+"/LOGS.json?shallow=true&t="+Date.now())
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(d){
       if(!d)return;
       var cutoff=new Date(Date.now()-15*86400000).toISOString().slice(0,10);

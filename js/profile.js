@@ -30,7 +30,7 @@ function loadProfilePhoto(cb){
   var key=_profileKey();
   if(!key){ if(cb)cb(); return; }
   fetch(FB+"/PROFILE_PHOTOS/"+key+".json")
-    .then(function(r){return r.json();})
+    .then(_fbJson)
     .then(function(d){
       _profilePhotoCache = d && d.photo ? d.photo : null;
       var dot=document.getElementById("udot");
