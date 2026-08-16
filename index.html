@@ -109,6 +109,7 @@ try{
             <div class="user-info-item" id="user-info-menu">---</div>
             <button type="button" class="logout-item" id="hsc-menu-item" style="display:none;color:#7b3fd1;" onclick="openHscModal()">&#128421; होम पेज डिस्प्ले बोर्ड</button>
             <button type="button" class="logout-item" id="wasc-menu-item" style="display:none;color:#00695c;" onclick="openWaScorecard()">&#128202; स्कोरकार्ड डिस्प्ले</button>
+            <button type="button" class="logout-item" id="todaysc-menu-item" style="display:none;color:#ef6c00;" onclick="openTodayScorecard()">&#128197; आज की वसूली</button>
             <button type="button" class="logout-item" id="village-menu-item" style="color:#a34d00;" onclick="openVillageModal()">&#127961; ग्राम-वार वसूली</button>
             <button type="button" class="logout-item" id="cash-menu-item" style="display:none;color:var(--green);" onclick="openCashModal()">&#128181; कैश लिस्ट</button>
             <button type="button" class="logout-item" id="backup-menu-item" style="display:none;color:var(--gold);" onclick="downloadFullBackup()">&#128190; पूरा बैकअप</button>
@@ -520,6 +521,19 @@ try{
     <div class="mfooter">
       <button class="btn-cancel" onclick="loadWaScorecard()">&#128260; रिफ्रेश करें</button>
       <button class="btn-save" onclick="closeWaScorecard()">बंद करें</button>
+    </div>
+  </div>
+</div>
+
+<!-- आज की वसूली (JE only) — वर्तमान दिनांक का मुख्यालय-वार भुगतान संख्या स्कोरकार्ड -->
+<div class="moverlay" id="todaysc-overlay" onclick="if(event.target===this)closeTodayScorecard()">
+  <div class="msheet" style="max-height:92vh;">
+    <div class="mhandle"></div>
+    <div class="mtitle">&#128197; आज की वसूली</div>
+    <div id="todaysc-content"></div>
+    <div class="mfooter">
+      <button class="btn-cancel" onclick="loadTodayScorecard()">&#128260; रिफ्रेश करें</button>
+      <button class="btn-save" onclick="closeTodayScorecard()">बंद करें</button>
     </div>
   </div>
 </div>

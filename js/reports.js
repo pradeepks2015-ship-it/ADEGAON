@@ -508,3 +508,74 @@ function loadWaScorecard(){
     _waScRender();
   }
 }
+
+// ── आज की वसूली — वर्तमान दिनांक का मुख्यालय-वार भुगतान संख्या स्कोरकार्ड (JE only) ──
+function openTodayScorecard(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह देख सकते हैं","err");return;}
+  var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
+  document.getElementById("todaysc-overlay").classList.add("open");
+  loadTodayScorecard();
+}
+function closeTodayScorecard(){document.getElementById("todaysc-overlay").classList.remove("open");}
+
+function _todayDateStr(){
+  var d=new Date();
+  return d.getDate()+"/"+(d.getMonth()+1)+"/"+d.getFullYear(); // normPayDate() जैसा ही d/m/yyyy फॉर्मेट, तुलना के लिए
+}
+
+// एक HQ का आज का वसूल count/amount — "कुल उपभोक्ता" को मास्टर मानकर, बाकी categories से unique acc गिनना
+// (_waScRow जैसा ही dedup तरीका, सिर्फ आज की तारीख़ का filter जोड़ा)
+function _todayScRow(hq){
+  var todayStr=_todayDateStr();
+  var master=cGet(hq,CATS_DEFAULT[0])||[];
+  var masterAcc={};
+  master.forEach(function(x){ if(x&&x.acc) masterAcc[String(x.acc)]=1; });
+  var seen={},count=0,amt=0;
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+    var d=cGet(hq,cat)||[];
+    d.forEach(function(x){
+      if(!x||x.status!=="paid"||!x.paydate)return;
+      if(x.acc&&!masterAcc[String(x.acc)])return; // "कुल उपभोक्ता" में न हो तो न गिनें
+      if(normPayDate(String(x.paydate).trim())!==todayStr)return;
+      var key=x.acc?String(x.acc):("_"+count+Math.random());
+      if(seen[key])return; seen[key]=1;
+      count++; amt+=Number(x.amount)||0;
+    });
+  }
+  return {hq:hq,count:count,amt:amt};
+}
+
+function _todayScRender(){
+  var el=document.getElementById("todaysc-content");
+  var rows=HQS.map(_todayScRow);
+  var gCount=0,gAmt=0;
+  rows.forEach(function(r){gCount+=r.count;gAmt+=r.amt;});
+  var fmt=function(n){return Number(n||0).toLocaleString("hi-IN");};
+  var html="<div class='wasc-hdr'><div class='wasc-hdr-t'>&#128197; आज की वसूली — "+escHtml(_todayDateStr())+"</div></div>";
+  if(!gCount){
+    html+="<div class='empty'><div class='empty-ico'>📅</div><div class='empty-t'>आज तक कोई वसूली नहीं</div><div class='empty-s'>अभी तक किसी भी HQ में आज का कोई भुगतान दर्ज नहीं</div></div>";
+    el.innerHTML=html;
+    return;
+  }
+  html+="<table class='wasc-table'><thead><tr><th>क्र.</th><th>मुख्यालय</th><th class='wasc-col-paid'>आज वसूल</th><th>आज राशि</th></tr></thead><tbody>";
+  rows.forEach(function(r,i){
+    html+="<tr><td>"+(i+1)+"</td><td class='wasc-hq'>"+escHtml(r.hq)+"</td>"+
+      "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+fmt(r.count)+"</span></td>"+
+      "<td>&#8377;"+fmt(r.amt)+"</td></tr>";
+  });
+  html+="</tbody><tfoot><tr><td colspan='2'>योग</td>"+
+    "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+fmt(gCount)+"</span></td>"+
+    "<td>&#8377;"+fmt(gAmt)+"</td></tr></tfoot></table>";
+  el.innerHTML=html;
+}
+
+function loadTodayScorecard(){
+  var el=document.getElementById("todaysc-content");
+  el.innerHTML="<div class='sc-loading'>⏳ ताज़ा data लाया जा रहा है...</div>";
+  if(navigator.onLine){
+    _cashRefreshAll(HQS,function(){_todayScRender();});
+  } else {
+    _todayScRender();
+  }
+}

@@ -257,10 +257,11 @@ test.describe('रोल-आधारित UI', () => {
       openHscModal(); results.push(document.getElementById('hsc-overlay').classList.contains('open')); closeHscModal();
       openCashModal(); results.push(document.getElementById('cash-overlay').classList.contains('open')); closeCashModal();
       openWaScorecard(); results.push(document.getElementById('wasc-overlay').classList.contains('open')); closeWaScorecard();
+      openTodayScorecard(); results.push(document.getElementById('todaysc-overlay').classList.contains('open')); closeTodayScorecard();
       openMigModal(); results.push(document.getElementById('mig-overlay').classList.contains('open')); closeMigModal();
       return results;
     });
-    expect(ok).toEqual([true, true, true, true, true, true, true]);
+    expect(ok).toEqual([true, true, true, true, true, true, true, true]);
   });
 
   test('स्कोरकार्ड डिस्प्ले — सभी HQ की सही गिनती और वसूल% बनता है', async ({ page }) => {
@@ -2395,5 +2396,56 @@ test.describe('अपलोड — दो फ़ाइलें जल्दी-
       }, 20);
     }));
     expect(names).toEqual(['NEW-HQ']);
+  });
+});
+
+test.describe('आज की वसूली — मुख्यालय-वार आज के भुगतान का स्कोरकार्ड (JE only)', () => {
+  test('todaysc-menu-item — lineman को न दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const linemanHidden = await page.evaluate(() => getComputedStyle(document.getElementById('todaysc-menu-item')).display);
+    expect(linemanHidden).toBe('none');
+  });
+
+  test('openTodayScorecard — lineman सीधे function बुलाए तो भी न खुले (defense-in-depth)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const opened = await page.evaluate(() => {
+      openTodayScorecard();
+      return document.getElementById('todaysc-overlay').classList.contains('open');
+    });
+    expect(opened).toBe(false);
+  });
+
+  test('_todayScRow — सिर्फ़ आज की तारीख़ वाले paid records गिने, पुरानी तारीख़ और pending वाले न गिने जाएं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var today = _todayDateStr();
+      var y = new Date(); y.setDate(y.getDate() - 1);
+      var yesterday = y.getDate() + '/' + (y.getMonth() + 1) + '/' + y.getFullYear();
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: 'A1', name: 'एक', status: 'paid', paydate: today, amount: '100' },
+        { acc: 'A2', name: 'दो', status: 'paid', paydate: yesterday, amount: '200' },
+        { acc: 'A3', name: 'तीन', status: 'pending', amount: '300' },
+      ]);
+      return _todayScRow('आदेगांव');
+    });
+    expect(r.count).toBe(1);
+    expect(r.amt).toBe(100);
+  });
+
+  test('_todayScRender — सभी HQ मिलाकर सही योग (total) दिखाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var today = _todayDateStr();
+      HQS.forEach(function (hq, i) {
+        cSet(hq, 'कुल उपभोक्ता', [{ acc: 'X' + i, name: 'उप ' + i, status: 'paid', paydate: today, amount: '50' }]);
+      });
+      _todayScRender();
+      return { html: document.getElementById('todaysc-content').innerHTML, hqCount: HQS.length };
+    });
+    expect(r.html).toContain(String(r.hqCount)); // योग count सभी HQ जितना
   });
 });
