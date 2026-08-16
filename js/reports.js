@@ -552,7 +552,7 @@ function _todayScRender(){
   var gCount=0,gAmt=0;
   rows.forEach(function(r){gCount+=r.count;gAmt+=r.amt;});
   var fmt=function(n){return Number(n||0).toLocaleString("hi-IN");};
-  var html="<div class='wasc-hdr'><div class='wasc-hdr-t'>&#128197; आज की वसूली — "+escHtml(_todayDateStr())+"</div></div>";
+  var html="<div class='wasc-hdr'><div class='wasc-hdr-t'>&#128979;&#65039; आज की वसूली — "+escHtml(_todayDateStr())+"</div></div>";
   if(!gCount){
     html+="<div class='empty'><div class='empty-ico'>📅</div><div class='empty-t'>आज तक कोई वसूली नहीं</div><div class='empty-s'>अभी तक किसी भी HQ में आज का कोई भुगतान दर्ज नहीं</div></div>";
     el.innerHTML=html;
