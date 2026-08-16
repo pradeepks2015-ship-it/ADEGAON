@@ -404,6 +404,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .wasc-table th{background:var(--card);color:var(--muted);font-size:9px;font-weight:700;padding:6px 4px;border-bottom:1px solid var(--border);text-align:center;line-height:1.4;}
 .wasc-table td{padding:7px 4px;text-align:center;border-bottom:1px solid var(--border);color:var(--text);line-height:1.4;}
 .wasc-hq{font-weight:700;text-align:left !important;color:var(--gold2);padding-left:6px !important;}
+.wasc-th-left{text-align:left !important;padding-left:6px !important;}
 .wasc-sub{font-size:9px;color:var(--muted);}
 .wasc-col-paid{background:rgba(0,200,150,.08);}
 .wasc-paid-num{font-weight:800;font-size:14px;color:var(--green);}

@@ -482,7 +482,7 @@ function _waScRender(){
   var now=new Date();
   var html="<div class='wasc-hdr'><div class='wasc-hdr-t'>&#9889; वसूली ट्रैकर — आदेगांव DC</div>"+
     "<div class='wasc-hdr-s'>अद्यतन: "+now.toLocaleDateString("hi-IN")+" "+now.toLocaleTimeString("hi-IN",{hour:"2-digit",minute:"2-digit"})+"</div></div>";
-  html+="<table class='wasc-table'><thead><tr><th>क्र.</th><th>मुख्यालय</th>"+
+  html+="<table class='wasc-table'><thead><tr><th>क्र.</th><th class='wasc-th-left'>मुख्यालय</th>"+
     "<th>कुल उपभोक्ता<br><span class='wasc-sub'>बकाया राशि</span></th>"+
     "<th class='wasc-col-paid'>वसूल उपभोक्ता<br><span class='wasc-sub'>वसूल राशि</span></th>"+
     "<th>Paid Count %</th></tr></thead><tbody>";
@@ -558,7 +558,7 @@ function _todayScRender(){
     el.innerHTML=html;
     return;
   }
-  html+="<table class='wasc-table'><thead><tr><th>क्र.</th><th>मुख्यालय</th><th class='wasc-col-paid'>आज वसूल</th><th>आज राशि</th></tr></thead><tbody>";
+  html+="<table class='wasc-table'><thead><tr><th>क्र.</th><th class='wasc-th-left'>मुख्यालय</th><th class='wasc-col-paid'>बिल भुगतान संख्या</th><th>आज राशि</th></tr></thead><tbody>";
   rows.forEach(function(r,i){
     html+="<tr><td>"+(i+1)+"</td><td class='wasc-hq'>"+escHtml(r.hq)+"</td>"+
       "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+fmt(r.count)+"</span></td>"+
