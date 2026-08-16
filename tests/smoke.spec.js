@@ -1818,7 +1818,7 @@ test.describe('error logging', () => {
 });
 
 test.describe('डेटा उपयोग (Firebase Blaze plan) — अनुमानित ट्रेंड ट्रैकिंग', () => {
-  test('trackUsageBytes जमा होता है और _usageFlush /USAGE/{महीना} पर POST करके काउंटर रीसेट कर देता है', async ({ page }) => {
+  test('trackUsageBytes जमा होता है और _usageFlush /USAGE/{तारीख़} पर POST करके काउंटर रीसेट कर देता है', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
     const result = await page.evaluate(() => new Promise((resolve) => {
@@ -1836,8 +1836,8 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
       _usageFlush();
       setTimeout(() => { window.fetch = orig; resolve({ posted: posted, remaining: _usageBytes }); }, 200);
     }));
-    const curMonth = new Date().toISOString().slice(0, 7);
-    expect(result.posted.url).toContain('/USAGE/' + curMonth);
+    const curDay = new Date().toISOString().slice(0, 10);
+    expect(result.posted.url).toContain('/USAGE/' + curDay);
     expect(result.posted.body.b).toBe(800);
     expect(result.remaining).toBe(0);
   });
@@ -1850,15 +1850,15 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
     await expect(page.locator('#toast')).toContainText('सिर्फ JE');
   });
 
-  test('_usageRender — पिछले महीने से 50% से ज़्यादा बढ़ोतरी हो तो चेतावनी दिखे', async ({ page }) => {
+  test('_usageRender — पिछले दिन से 50% से ज़्यादा बढ़ोतरी हो तो चेतावनी दिखे', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
     await page.evaluate(() => new Promise((resolve) => {
       const orig = window.fetch;
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('/USAGE/') > -1 && (!opts || !opts.method)) {
-          var curMonth = new Date().toISOString().slice(0, 7);
-          var isCur = url.indexOf('/USAGE/' + curMonth) > -1;
+          var curDay = new Date().toISOString().slice(0, 10);
+          var isCur = url.indexOf('/USAGE/' + curDay) > -1;
           var data = isCur ? { a: { d: 'dev1', b: 3000000, t: Date.now() } } : { a: { d: 'dev1', b: 1000000, t: Date.now() } };
           return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
         }
@@ -1870,7 +1870,7 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
     await expect(page.locator('#usage-content')).toContainText('ज़्यादा डेटा इस्तेमाल हुआ');
   });
 
-  test('_usageRender — बढ़ोतरी सामान्य हो तो कोई चेतावनी न दिखे, बस दोनों महीनों का आंकड़ा दिखे', async ({ page }) => {
+  test('_usageRender — बढ़ोतरी सामान्य हो तो कोई चेतावनी न दिखे, बस दोनों दिनों का आंकड़ा दिखे', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
     await page.evaluate(() => new Promise((resolve) => {
@@ -1887,6 +1887,26 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
     const content = await page.locator('#usage-content').innerText();
     expect(content).not.toContain('असामान्य बढ़ोतरी');
     expect(content).toContain('MB');
+  });
+
+  test('_usageRender — आज के 360MB/day free-कोटा का सही % दिखे (asli Firebase console जैसा daily quota)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => new Promise((resolve) => {
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('/USAGE/') > -1 && (!opts || !opts.method)) {
+          // 180MB आज = 360MB में से 50%
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ a: { d: 'dev1', b: 180 * 1024 * 1024, t: Date.now() } }) });
+        }
+        return orig(url, opts);
+      };
+      _usageRender();
+      setTimeout(() => { window.fetch = orig; resolve(); }, 300);
+    }));
+    const content = await page.locator('#usage-content').innerText();
+    expect(content).toContain('180.0 MB / 360 MB');
+    expect(content).toContain('50%');
   });
 });
 
