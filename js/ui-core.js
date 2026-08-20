@@ -419,6 +419,12 @@ function openEditCat(i, slotKey){
   var newName=prompt(activeHQ+" — श्रेणी का नया नाम डालें:",cur);
   if(!newName||!newName.trim()||newName.trim()===cur) return;
   newName=newName.trim();
+  // "/" (या .#$[]) नाम में हो तो Firebase पर गलत जगह (नेस्टेड path) सेव होकर हमेशा के लिए
+  // permission-denied (401) देने लगता है — असली bug यही मिला था ("vig/O&m Cases" जैसा नाम)
+  if(/[.#$\[\]\/]/.test(newName)){
+    toast("⚠️ नाम में ये चिह्न न लिखें: . # $ [ ] /","err");
+    return;
+  }
   var oldCat=CATS[i];
   // 1. Cache rename
   var d=cGet(activeHQ,oldCat);

@@ -14,7 +14,7 @@ var HQ_AUTH_EMAIL = {
   "बीबी":"hq-bibi@adegaondc.internal",
   "मढ़ी":"hq-madhi@adegaondc.internal"
 };
-var APP_VER = "9.84"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "9.85"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
@@ -30,8 +30,8 @@ function getMaxRecords(cat){
 var CATS_DEFAULT = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
 var CAT_NAMES = {}; // {HQ: {4:"नाम", 5:"नाम", 6:"नाम", 7:"नाम"}}
 
-function hqKey(hq){ return (hq||activeHQ).replace(/[\s.#$\[\]]/g,"_"); }
-function catKey(cat){ return (cat||"").replace(/[\s.#$\[\]]/g,"_"); }
+function hqKey(hq){ return (hq||activeHQ).replace(/[\s.#$\[\]\/]/g,"_"); }
+function catKey(cat){ return (cat||"").replace(/[\s.#$\[\]\/]/g,"_"); }
 
 function getCatName(hq,i){
   return (CAT_NAMES[hq]&&CAT_NAMES[hq][i]!=null) ? CAT_NAMES[hq][i] : CATS_DEFAULT[i];

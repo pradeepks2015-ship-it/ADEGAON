@@ -2469,3 +2469,24 @@ test.describe('आज की वसूली — मुख्यालय-वा
     expect(r.html).toContain(String(r.hqCount)); // योग count सभी HQ जितना
   });
 });
+
+test.describe('श्रेणी/HQ नाम में "/" — नेस्टेड Firebase path बनकर permission-denied (401) में फंसने से बचाव', () => {
+  test('fbPath — HQ या category नाम में "/" हो तो भी सिर्फ़ 2-स्तर वाला path बने (एक भी हिस्से में "/" न बचे)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const p = await page.evaluate(() => fbPath('आदेगांव', 'vig/O&m Cases'));
+    const parts = p.split('/');
+    expect(parts.length).toBe(2);
+    expect(parts[1]).not.toContain('/');
+  });
+
+  test('openEditCat — नाम में "/" (या .#$[]) लिखने पर रुक जाए, पुराना नाम ही बना रहे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    page.once('dialog', (d) => d.accept('vig/O&m Cases'));
+    const before = await page.evaluate(() => CATS[4]);
+    await page.evaluate(() => openEditCat(4, 'cat4'));
+    await expect(page.locator('#toast')).toContainText('. # $ [ ] /');
+    expect(await page.evaluate(() => CATS[4])).toBe(before);
+  });
+});

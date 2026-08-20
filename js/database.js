@@ -1,5 +1,8 @@
+// "/" भी यहां ज़रूरी है (सिर्फ़ .#$[] नहीं) — वरना कोई category-नाम जिसमें "/" हो (जैसे किसी JE ने
+// "vig/O&m Cases" जैसा नाम रख दिया हो) असली path से एक स्तर नीचे नेस्टेड हो जाता है, जो Security
+// Rules के ढांचे से मेल नहीं खाता और हमेशा के लिए permission-denied (401) देता रहता है — असली bug यही था
 function fbPath(hq,cat){
-  return hq.replace(/\s/g,"_").replace(/[.#$\[\]]/g,"_")+"/"+cat.replace(/\s/g,"_").replace(/[.#$\[\]]/g,"_");
+  return hq.replace(/[\s.#$\[\]\/]/g,"_")+"/"+cat.replace(/[\s.#$\[\]\/]/g,"_");
 }
 
 // ── FORMAT NORMALIZER: server से आई लिस्ट को हमेशा एक जैसा array बनाओ ──
