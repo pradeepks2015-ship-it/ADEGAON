@@ -125,6 +125,7 @@
   "_vgNormKey",
   "_vgPaidMap",
   "_vgRefresh",
+  "_vgRenderCached",
   "_vgRenderList",
   "_vgRenderTable",
   "_waScRender",
