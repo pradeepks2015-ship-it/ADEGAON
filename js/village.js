@@ -56,7 +56,7 @@ function openVillageModal(){
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
   document.getElementById("village-overlay").classList.add("open");
   _vgBuildHQTabs();
-  _vgLoadAndRender();
+  _vgRenderCached();
 }
 function closeVillageModal(){document.getElementById("village-overlay").classList.remove("open");}
 
@@ -74,7 +74,7 @@ function _vgBuildHQTabs(){
       document.getElementById("vg-search").value="";
       document.querySelectorAll("#vg-hq-tabs .hq-tab").forEach(function(x){x.classList.remove("active");});
       b.classList.add("active");
-      _vgLoadAndRender();
+      _vgRenderCached();
     };
     el.appendChild(b);
   });
@@ -165,8 +165,14 @@ function _vgRenderList(){
   _vgRenderTable(el,filtered);
 }
 
-// स्कोरकार्ड डिस्प्ले जैसा ही — सभी 8 श्रेणियां ताज़ा करके तभी गिनना, वरना cross-category paid-map
-// (देखें _vgPaidMap) पुराने cache पर निर्भर रहकर कम वसूल दिखा सकता है (स्कोरकार्ड से मेल नहीं खाता)
+// खोलने/HQ-tab बदलने पर सीधे cache से दिखाएं (network नहीं) — पहले हर बार JE के लिए सभी 6 HQ की
+// सभी 8 categories का पूरा data दोबारा डाउनलोड होता था (असली bandwidth bug, "आज की वसूली" जैसा ही),
+// चाहे सिर्फ़ एक ही HQ का गांव-वार data देखना हो। ताज़ा चाहिए तो "रिफ्रेश करें" बटन है (देखें _vgRefresh)
+function _vgRenderCached(){
+  vgRows=_vgComputeRows(vgActiveHQ);
+  _vgRenderList();
+}
+
 function _vgLoadAndRender(){
   var el=document.getElementById("vg-list");
   el.innerHTML="<div class='log-empty'>⏳ लोड हो रहा है...</div>";
@@ -174,7 +180,7 @@ function _vgLoadAndRender(){
   _cashRefreshAll(hqs,function(){
     vgRows=_vgComputeRows(vgActiveHQ);
     _vgRenderList();
-  });
+  },true); // force=true — यह अब सिर्फ़ explicit "रिफ्रेश करें" बटन से बुलाया जाता है
 }
 
 function _vgRefresh(){
