@@ -510,11 +510,15 @@ function loadWaScorecard(){
 }
 
 // ── आज की वसूली — वर्तमान दिनांक का मुख्यालय-वार भुगतान संख्या स्कोरकार्ड (JE only) ──
+// खोलते ही सीधे cache से दिखाएं (WhatsApp स्कोरकार्ड — buildScorecard() — जैसा ही तरीका), network
+// refresh नहीं — वरना हर बार खोलने पर _cashRefreshAll() सभी 6 HQ के सभी 8 categories की पूरी लिस्ट
+// (कुल उपभोक्ता में 3500 तक records) दोबारा डाउनलोड करता, और यह फ़ीचर बार-बार खोला जाना स्वाभाविक है
+// (रोज़ का हिसाब चेक करने के लिए) — असली bandwidth bug यही था, ताज़ा चाहिए तो "रिफ्रेश करें" बटन है
 function openTodayScorecard(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह देख सकते हैं","err");return;}
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
   document.getElementById("todaysc-overlay").classList.add("open");
-  loadTodayScorecard();
+  _todayScRender();
 }
 function closeTodayScorecard(){document.getElementById("todaysc-overlay").classList.remove("open");}
 
@@ -570,11 +574,13 @@ function _todayScRender(){
   el.innerHTML=html;
 }
 
+// सिर्फ़ "रिफ्रेश करें" बटन से बुलाया जाता है (JE ने खुद मांगा है) — इसलिए force=true देकर
+// 5-मिनट वाली cooldown नज़रअंदाज़ करके हमेशा असली ताज़ा data लाया जाए
 function loadTodayScorecard(){
   var el=document.getElementById("todaysc-content");
   el.innerHTML="<div class='sc-loading'>⏳ ताज़ा data लाया जा रहा है...</div>";
   if(navigator.onLine){
-    _cashRefreshAll(HQS,function(){_todayScRender();});
+    _cashRefreshAll(HQS,function(){_todayScRender();},true);
   } else {
     _todayScRender();
   }

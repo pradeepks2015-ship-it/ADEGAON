@@ -2420,6 +2420,35 @@ test.describe('अपलोड — दो फ़ाइलें जल्दी-
 });
 
 test.describe('आज की वसूली — मुख्यालय-वार आज के भुगतान का स्कोरकार्ड (JE only)', () => {
+  test('openTodayScorecard — खोलते ही network fetch न हो, सिर्फ़ cache से दिखे (bug: हर बार खोलने पर सभी HQ/श्रेणी की पूरी लिस्ट दोबारा डाउनलोड होना)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const fetchCount = await page.evaluate(() => new Promise((resolve) => {
+      var count = 0;
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('.json') > -1 && (!opts || !opts.method)) count++;
+        return orig(url, opts);
+      };
+      openTodayScorecard();
+      setTimeout(() => { window.fetch = orig; resolve(count); }, 300);
+    }));
+    expect(fetchCount).toBe(0);
+  });
+
+  test('loadTodayScorecard (रिफ्रेश बटन) — force=true के साथ _cashRefreshAll बुलाए, cooldown नज़रअंदाज़ करके', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const forced = await page.evaluate(() => new Promise((resolve) => {
+      var seenForce = null;
+      const orig = _cashRefreshAll;
+      _cashRefreshAll = function (hqs, cb, force) { seenForce = force; cb(); };
+      loadTodayScorecard();
+      setTimeout(() => { _cashRefreshAll = orig; resolve(seenForce); }, 100);
+    }));
+    expect(forced).toBe(true);
+  });
+
   test('todaysc-menu-item — lineman को न दिखे', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
