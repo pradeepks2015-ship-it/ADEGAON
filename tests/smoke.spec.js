@@ -2351,6 +2351,60 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(r.secondCount).toBeGreaterThan(r.firstCount);
   });
 
+  test('openWaScorecard ("स्कोरकार्ड डिस्प्ले") — खोलते ही network fetch न हो, सिर्फ़ cache से दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const fetchCount = await page.evaluate(() => new Promise((resolve) => {
+      var count = 0;
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('.json') > -1 && (!opts || !opts.method)) count++;
+        return orig(url, opts);
+      };
+      openWaScorecard();
+      setTimeout(() => { window.fetch = orig; resolve(count); }, 300);
+    }));
+    expect(fetchCount).toBe(0);
+  });
+
+  test('loadWaScorecard (रिफ्रेश बटन) — force=true के साथ _cashRefreshAll बुलाए, cooldown नज़रअंदाज़ करके', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const forced = await page.evaluate(() => new Promise((resolve) => {
+      var seenForce = null;
+      const orig = _cashRefreshAll;
+      _cashRefreshAll = function (hqs, cb, force) { seenForce = force; cb(); };
+      loadWaScorecard();
+      setTimeout(() => { _cashRefreshAll = orig; resolve(seenForce); }, 100);
+    }));
+    expect(forced).toBe(true);
+  });
+
+  test('renderScBody (मुख्य "स्कोरकार्ड" बटन) — 5 मिनट के cooldown के अंदर दोबारा खोलने/HQ-tab बदलने पर network fetch न हो (bug: पहले हर बार 8 categories बिना रोक-टोक फिर से डाउनलोड होती थीं)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      scActiveHQ = 'आदेगांव';
+      var fetchCount = 0;
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('आदेगांव') > -1 && (!opts || !opts.method)) {
+          fetchCount++;
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([]) }); // असली fetch जैसा सफल जवाब — तभी cooldown रिकॉर्ड होगा
+        }
+        return orig(url, opts);
+      };
+      renderScBody();
+      setTimeout(() => {
+        var firstCount = fetchCount;
+        renderScBody(); // दोबारा (जैसे HQ-tab फिर क्लिक करना) — cooldown के अंदर
+        setTimeout(() => { window.fetch = orig; resolve({ firstCount: firstCount, secondCount: fetchCount }); }, 200);
+      }, 300);
+    }));
+    expect(r.firstCount).toBeGreaterThan(0); // पहली बार असली fetch हुआ
+    expect(r.secondCount).toBe(r.firstCount); // दोबारा cooldown के अंदर — कोई नया fetch नहीं
+  });
+
   test('lineman के लिए "स्कोरकार्ड" बटन छुपा रहे (header + bottom-nav) — यह JE का काम है, हर खुलने पर कई categories का data मंगाता है', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
