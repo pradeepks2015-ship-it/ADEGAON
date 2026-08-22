@@ -2287,6 +2287,19 @@ test.describe('परफ़ॉर्मेंस — बड़ी लिस्�
 });
 
 test.describe('Firebase bandwidth — एक ही list बेवजह बार-बार डाउनलोड न हो (bug: RTDB free download quota रोज़ पार होना)', () => {
+  test('"online" event — बार-बार नेटवर्क आने-जाने पर हर बार पूरा prefetchAll() न चले (bug: गांव में सिग्नल आने-जाने पर दिन में कई बार सभी HQ/श्रेणी का पूरा data दोबारा डाउनलोड होना — बिना कुछ खोले भी)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const calledAfterOnline = await page.evaluate(() => new Promise((resolve) => {
+      var called = false;
+      var orig = window.prefetchAll;
+      window.prefetchAll = function () { called = true; };
+      window.dispatchEvent(new Event('online'));
+      setTimeout(() => { window.prefetchAll = orig; resolve(called); }, 3500); // पुराने कोड में 3s बाद setTimeout से चलता था
+    }));
+    expect(calledAfterOnline).toBe(false);
+  });
+
   test('startListen — EventSource सफलतापूर्वक बनते ही तुरंत redundant REST fetch न हो (caller पहले ही data दिखा चुका होता है, और EventSource खुद जुड़ते ही पूरा data भेजता है)', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);

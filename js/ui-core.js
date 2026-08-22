@@ -28,12 +28,16 @@ function fmtDateTime(dt){
   return dt;
 }
 
+// ध्यान दें: यहां जान-बूझकर prefetchAll() नहीं बुलाया — गांव में नेटवर्क बार-बार आता-जाता रहता है,
+// तो "online" event दिन में कई बार लग सकता है, और हर बार सभी HQ/श्रेणी का पूरा data दोबारा
+// डाउनलोड करना असली bandwidth bug था (चारों modal-fix से भी बड़ा, क्योंकि यह बिना कुछ खोले भी अपने
+// आप चलता रहता)। Login के वक़्त एक बार prefetch (offline इस्तेमाल के लिए) पहले से काफ़ी है —
+// pending बदलाव flushPending() से, और जो list खुली है वो नीचे fbGet() से वैसे भी ताज़ा हो जाती है।
 window.addEventListener("online",function(){
   setSyncStatus(true);
   ensureLibs();
   flushPending();
   fetchCatNamesFromFB(false);
-  _prefetchRun=false; setTimeout(prefetchAll,3000);
   hscFetch();
   if(CU&&activeHQ&&activeCat&&!isPending(activeHQ,activeCat)){
     fbGet(activeHQ,activeCat,function(d){renderSummaryWith(d);renderListWith(d);});
