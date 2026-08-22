@@ -114,29 +114,29 @@ function buildScOverview(hqs){
     "<div class='sc-ov-box'><div class='sc-ov-num' style='color:var(--gold)'>"+fmt(totAmt)+"</div><div class='sc-ov-lbl'>वसूल राशि</div></div>";
 }
 
+// सबसे पहले cache से तुरंत दिखाएं (पुराना तरीका — हर category पर बिना cooldown के fbGet() — खोलने
+// और मॉडल के अंदर हर HQ-tab बदलने पर 8 categories बार-बार डाउनलोड करता था, कोई रोक-टोक नहीं थी;
+// असली bandwidth bug यही था, header/bottom-nav का सबसे प्रमुख बटन होने से सबसे ज़्यादा असर यहीं से)।
+// अब background refresh भी _cashRefreshAll() से होता है, जो 5-मिनट cooldown पहले से देता है —
+// तो बार-बार खोलने/tab बदलने पर भी असल network call ज़्यादा से ज़्यादा हर 5 मिनट में एक बार ही हो
+function _scBodyFromCache(){
+  var combined=[];
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var cat=(i>=4)?getCatName(scActiveHQ,i):CATS_DEFAULT[i];
+    combined=combined.concat(cGet(scActiveHQ,cat));
+  }
+  renderScDateTable(combined);
+}
 function renderScBody(){
-  var el=document.getElementById("sc-body");
   var hdr=document.getElementById("sc-date-hdr");
   hdr.textContent="📅 "+scActiveHQ+" — दिनांक-वार वसूली";
-  el.innerHTML="<div class='sc-loading'>⏳ लोड हो रहा है...</div>";
-  // Fetch all cats for this HQ and aggregate date-wise
-  var allLoaded=0;
-  var combined=[];
-  CATS.forEach(function(cat){
-    fbGet(scActiveHQ,cat,function(d){
-      combined=combined.concat(d);
-      allLoaded++;
-      if(allLoaded===CATS.length){
-        var fx=reconcileHQ(scActiveHQ);
-        if(fx){
-          combined=[];
-          CATS.forEach(function(c2){combined=combined.concat(cGet(scActiveHQ,c2));});
-          toast("🔁 "+fx+" record का status हर tab में मिलाया","inf");
-        }
-        renderScDateTable(combined);
-        buildScOverview([scActiveHQ]);
-      }
-    });
+  _scBodyFromCache();
+  if(!navigator.onLine) return;
+  _cashRefreshAll([scActiveHQ],function(){
+    var fx=reconcileHQ(scActiveHQ);
+    if(fx) toast("🔁 "+fx+" record का status हर tab में मिलाया","inf");
+    _scBodyFromCache();
+    buildScOverview([scActiveHQ]);
   });
 }
 
@@ -435,11 +435,14 @@ function downloadFullBackup(){
 }
 
 // ─── स्कोरकार्ड डिस्प्ले (JE only) — सभी HQ की सारांश तालिका, WhatsApp पर screenshot शेयर के लिए ───
+// खोलते ही सीधे cache से दिखाएं (आज की वसूली/ग्राम-वार वसूली जैसा ही तरीका) — network refresh नहीं,
+// वरना हर बार खोलने पर सभी 6 HQ की सभी 8 categories दोबारा डाउनलोड होतीं (वही असली bandwidth bug,
+// तीसरी जगह भी मिला) — ताज़ा चाहिए तो "रिफ्रेश करें" बटन है (देखें loadWaScorecard)
 function openWaScorecard(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह देख सकते हैं","err");return;}
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
   document.getElementById("wasc-overlay").classList.add("open");
-  loadWaScorecard();
+  _waScRender();
 }
 function closeWaScorecard(){document.getElementById("wasc-overlay").classList.remove("open");}
 
@@ -499,11 +502,12 @@ function _waScRender(){
   el.innerHTML=html;
 }
 
+// सिर्फ़ "रिफ्रेश करें" बटन से बुलाया जाता है — force=true देकर cooldown नज़रअंदाज़ करके हमेशा असली ताज़ा data
 function loadWaScorecard(){
   var el=document.getElementById("wasc-content");
   el.innerHTML="<div class='sc-loading'>⏳ ताज़ा data लाया जा रहा है...</div>";
   if(navigator.onLine){
-    _cashRefreshAll(HQS,function(){_waScRender();});
+    _cashRefreshAll(HQS,function(){_waScRender();},true);
   } else {
     _waScRender();
   }

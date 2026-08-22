@@ -97,6 +97,7 @@
   "_revertFixing",
   "_saveFailToast",
   "_saveJEHash",
+  "_scBodyFromCache",
   "_searchTimer",
   "_setHscPending",
   "_setOps",
