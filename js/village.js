@@ -183,8 +183,35 @@ function _vgLoadAndRender(){
   },true); // force=true — यह अब सिर्फ़ explicit "रिफ्रेश करें" बटन से बुलाया जाता है
 }
 
+// रोज़ हर HQ के लिए ज़्यादा से ज़्यादा 3 बार असली network refresh ("रिफ्रेश करें"/"सुधरी Excel") —
+// खोलना/tab बदलना पहले से मुफ़्त है (cache से), पर यही 2 actions असली bandwidth खर्च करते हैं, तो
+// यहीं दिन की सीमा लगाना काफ़ी है। localStorage में device पर ही गिनती, तारीख़ बदलते ही अपने आप रीसेट
+var VG_DAILY_MAX=3;
+function _vgLimitKey(){ return "dc_vglimit3"; }
+function _vgLimitState(){
+  var today=new Date().toISOString().slice(0,10);
+  try{
+    var s=JSON.parse(localStorage.getItem(_vgLimitKey()));
+    if(s&&s.date===today) return s;
+  }catch(e){}
+  return {date:today,counts:{}};
+}
+function _vgLimitSave(s){ try{localStorage.setItem(_vgLimitKey(),JSON.stringify(s));}catch(e){} }
+function _vgLimitCount(hq){ return _vgLimitState().counts[hq]||0; }
+function _vgLimitReached(hq){ return _vgLimitCount(hq)>=VG_DAILY_MAX; }
+function _vgLimitBump(hqs){
+  var s=_vgLimitState();
+  hqs.forEach(function(hq){ s.counts[hq]=(s.counts[hq]||0)+1; });
+  _vgLimitSave(s);
+}
+
 function _vgRefresh(){
+  if(_vgLimitReached(vgActiveHQ)){
+    toast("⚠️ "+vgActiveHQ+" के लिए आज की रिफ्रेश सीमा ("+VG_DAILY_MAX+" बार) पूरी हो गई — कल फिर कोशिश करें","err");
+    return;
+  }
   toast("🔄 ताज़ा data लाया जा रहा है...","inf");
+  _vgLimitBump(CU.role==="supervisor"?HQS:[CU.hq]);
   _vgLoadAndRender();
 }
 
@@ -210,9 +237,14 @@ function _autoColWidths(rows,minW,maxW){
 function downloadVillageExcel(){
   if(!CU){toast("पहले login करें","err");return;}
   var hqs=CU.role==="supervisor"?HQS:[CU.hq];
+  if(_vgLimitReached(vgActiveHQ)){
+    toast("⚠️ "+vgActiveHQ+" के लिए आज की रिफ्रेश सीमा ("+VG_DAILY_MAX+" बार) पूरी हो गई — कल फिर कोशिश करें","err");
+    return;
+  }
   ensureXLSX(function(ok){
     if(!ok){toast("📴 Excel के लिए इन्टरनेट चाहिए","err");return;}
     toast("⏳ ताज़ा हो रहा है...","inf");
+    _vgLimitBump(hqs);
     _cashRefreshAll(hqs,function(){
       var wb=XLSX.utils.book_new();
       var sumRows=[["HQ","गांव","कुल कनेक्शन","बकाया राशि","वसूल","वसूल राशि","Paid Count %"]];

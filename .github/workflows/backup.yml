@@ -1,10 +1,12 @@
 name: Scheduled Backup
 
-# रोज़ रात ~2:00 AM IST (UTC 20:30 पिछले दिन) अपने-आप चलता है; "workflow_dispatch" से
-# GitHub की "Actions" टैब से भी कभी भी मैन्युअली चलाया जा सकता है
+# हर रविवार रात ~2:00 AM IST (UTC 20:30 शनिवार) अपने-आप चलता है — पहले रोज़ चलता था, पूरे
+# database का पूरा data पढ़ने से यह भी Firebase की Downloads billing quota में गिनता है, तो
+# हफ़्ते में एक बार काफ़ी है (data safety बनी रहे, बेवजह रोज़ का extra खर्च न हो); "workflow_dispatch"
+# से GitHub की "Actions" टैब से भी कभी भी मैन्युअली चलाया जा सकता है
 on:
   schedule:
-    - cron: '30 20 * * *'
+    - cron: '30 20 * * 0'
   workflow_dispatch: {}
 
 jobs:
