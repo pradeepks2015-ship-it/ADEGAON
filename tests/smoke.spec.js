@@ -518,6 +518,56 @@ test.describe('ग्राम-वार वसूली', () => {
     expect(forced).toBe(true);
   });
 
+  test('_vgRefresh — रोज़ 3 बार के बाद 4थी बार रुक जाए, साफ़ चेतावनी दिखे, कोई network fetch न हो', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      vgActiveHQ = 'आदेगांव';
+      var fetchCalls = 0;
+      const orig = _cashRefreshAll;
+      _cashRefreshAll = function (hqs, cb) { fetchCalls++; cb(); };
+      _vgRefresh(); _vgRefresh(); _vgRefresh(); // 3 बार — सभी allowed
+      var after3 = fetchCalls;
+      _vgRefresh(); // चौथी बार — रुक जानी चाहिए
+      setTimeout(() => {
+        _cashRefreshAll = orig;
+        resolve({ after3: after3, after4: fetchCalls, toastText: document.getElementById('toast').textContent });
+      }, 100);
+    }));
+    expect(r.after3).toBe(3);
+    expect(r.after4).toBe(3); // चौथी बार पर कोई नया fetch नहीं हुआ
+    expect(r.toastText).toContain('सीमा');
+  });
+
+  test('downloadVillageExcel — रोज़ की सीमा पार होने पर Excel भी न बने, चेतावनी दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      vgActiveHQ = 'आदेगांव';
+      localStorage.setItem('dc_vglimit3', JSON.stringify({ date: new Date().toISOString().slice(0, 10), counts: { 'आदेगांव': 3 } }));
+      var called = false;
+      const orig = _cashRefreshAll;
+      _cashRefreshAll = function () { called = true; };
+      downloadVillageExcel();
+      setTimeout(() => {
+        _cashRefreshAll = orig;
+        resolve({ called: called, toastText: document.getElementById('toast').textContent });
+      }, 100);
+    }));
+    expect(r.called).toBe(false);
+    expect(r.toastText).toContain('सीमा');
+  });
+
+  test('_vgLimitState — तारीख़ बदलते ही गिनती अपने-आप रीसेट हो जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const count = await page.evaluate(() => {
+      localStorage.setItem('dc_vglimit3', JSON.stringify({ date: '2020-01-01', counts: { 'आदेगांव': 3 } })); // पुरानी तारीख़
+      return _vgLimitCount('आदेगांव');
+    });
+    expect(count).toBe(0);
+  });
+
   test('_vgLoadAndRender अब सभी 8 श्रेणियां ताज़ा करता है (स्कोरकार्ड जैसा) — सिर्फ मास्टर category नहीं', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
