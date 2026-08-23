@@ -358,12 +358,15 @@ function startListen(hq,cat){
     startPolling();
   }
 
-  // CAT_NAMES/MIGRATED flags कम बदलने वाली चीज़ें हैं (JE कभी-कभार नाम बदलता है) — 8 sec बहुत
-  // ज़्यादा बार-बार था और bandwidth बेवजह खर्च करता था; 30 sec में भी बदलाव उतनी ही जल्दी दिख जाता है
+  // CAT_NAMES/MIGRATED flags कम बदलने वाली चीज़ें हैं (JE कभी-कभार नाम बदलता है) — पहले 30 sec था,
+  // पर list खुली रहने के हर पल यह चलता रहता है (कई घंटे, कई devices साथ-साथ) — जुड़कर असली bandwidth
+  // बन जाता है। हर नए login/reload पर startApp() में loadCatNames()+loadMigratedFlags() से वैसे भी
+  // तुरंत सही value मिल जाती है — यह timer सिर्फ़ उस rare स्थिति के लिए है जब कोई device बिना reload
+  // किए बहुत देर लगातार खुला रहे और उसी दौरान कोई category rename हो जाए, इसलिए 12 घंटे काफ़ी है
   if(catNamesTimer) clearInterval(catNamesTimer);
   catNamesTimer=setInterval(function(){
     fetchCatNamesFromFB(true);
     loadMigratedFlags();
-  },30000);
+  },12*60*60*1000);
 }
 
