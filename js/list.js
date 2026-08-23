@@ -286,6 +286,33 @@ function clearList(){
   fbDel(activeHQ,activeCat,null);
 }
 
+// सभी 6 HQ में घरेलू/व्यवसाय/कृषि/गवर्नमेंट का पुराना unused data एक साथ मिटाना — नाम से मिलान
+// (index से नहीं), ताकि किसी HQ में यह slot rename होकर असल में इस्तेमाल हो रहा हो (जैसे किसी को
+// "3 MONTH NON PAYEE" कर दिया गया हो) तो वह गलती से न मिटे। मक़सद: login-prefetch और हर रिफ्रेश
+// (आज की वसूली/ग्राम-वार वसूली/स्कोरकार्ड) हल्का करना — यह सभी categories का data पढ़ते हैं
+var CLEAR_OLD_CATS=["घरेलू","व्यवसाय","कृषि","गवर्नमेंट"];
+function clearOldCategoriesData(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह कर सकते हैं","err");return;}
+  var jobs=[];
+  HQS.forEach(function(hq){
+    for(var i=0;i<CATS_DEFAULT.length;i++){
+      var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+      if(CLEAR_OLD_CATS.indexOf(cat)>-1) jobs.push({hq:hq,cat:cat});
+    }
+  });
+  if(!jobs.length){toast("मिटाने लायक कोई category नहीं मिली (शायद पहले से rename/खाली हैं)","inf");return;}
+  var list=jobs.map(function(j){return j.hq+" › "+j.cat;}).join("\n");
+  if(!confirm("⚠️ यह सभी मुख्यालयों में ये categories हमेशा के लिए मिटा देगा:\n\n"+list+"\n\nयह वापस नहीं हो सकता (पहले backup ज़रूर ले लें)। जारी रखें?"))return;
+  var done=0;
+  jobs.forEach(function(j){
+    if(j.hq===activeHQ&&j.cat===activeCat){ cSet(j.hq,j.cat,[]); renderSummaryWith([]); renderListWith([]); }
+    fbDel(j.hq,j.cat,function(){
+      done++;
+      if(done===jobs.length) toast("🗑️ "+jobs.length+" categories मिटा दी गईं","ok");
+    });
+  });
+}
+
 function openRmkModal(idx,acc){
   var d=cGet(activeHQ,activeCat);
   idx=_findRecordIdx(d,idx,acc);
