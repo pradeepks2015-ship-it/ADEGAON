@@ -2665,3 +2665,66 @@ test.describe('श्रेणी/HQ नाम में "/" — नेस्ट
     expect(await page.evaluate(() => CATS[4])).toBe(before);
   });
 });
+
+test.describe('पुरानी categories मिटाएं — घरेलू/व्यवसाय/कृषि/गवर्नमेंट का unused data एक साथ हटाना (JE only)', () => {
+  test('clearcats-menu-item — lineman को न दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const hidden = await page.evaluate(() => getComputedStyle(document.getElementById('clearcats-menu-item')).display);
+    expect(hidden).toBe('none');
+  });
+
+  test('clearOldCategoriesData — lineman सीधे function बुलाए तो भी कुछ न हो (defense-in-depth)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'X', status: 'pending', amount: 100 }]);
+      clearOldCategoriesData();
+      return cGet('आदेगांव', 'घरेलू').length;
+    });
+    expect(r).toBe(1); // कुछ नहीं हटा
+  });
+
+  test('सिर्फ़ घरेलू/व्यवसाय/कृषि/गवर्नमेंट (नाम से मिलान) मिटें — rename हो चुकी category सुरक्षित रहे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', status: 'pending', amount: 100 }]);
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', status: 'pending', amount: 100 }]); // मास्टर — छूना नहीं चाहिए
+      // पाटन में slot 4 ("गवर्नमेंट") को rename कर दिया गया है — इसे न छुआ जाए
+      CAT_NAMES['पाटन'] = { 4: '3 MONTH NON PAYEE' };
+      cSet('पाटन', '3 MONTH NON PAYEE', [{ acc: '2', status: 'pending', amount: 200 }]);
+      window.confirm = function () { return true; };
+      var origFbDel = fbDel;
+      var delCalls = [];
+      fbDel = function (hq, cat, cb) { delCalls.push(hq + '/' + cat); cSet(hq, cat, []); if (cb) cb(); };
+      clearOldCategoriesData();
+      setTimeout(() => {
+        fbDel = origFbDel;
+        resolve({
+          delCalls: delCalls,
+          adegaonGhareluGone: cGet('आदेगांव', 'घरेलू').length,
+          masterSafe: cGet('आदेगांव', 'कुल उपभोक्ता').length,
+          patanRenamedSafe: cGet('पाटन', '3 MONTH NON PAYEE').length,
+        });
+      }, 100);
+    }));
+    expect(r.delCalls).toContain('आदेगांव/घरेलू');
+    expect(r.delCalls).not.toContain('पाटन/3 MONTH NON PAYEE'); // rename हो चुकी थी — सुरक्षित
+    expect(r.adegaonGhareluGone).toBe(0);
+    expect(r.masterSafe).toBe(1); // "कुल उपभोक्ता" कभी नहीं छूती
+    expect(r.patanRenamedSafe).toBe(1); // rename वाली category का data सुरक्षित रहा
+  });
+
+  test('confirm में "नहीं" चुनने पर कुछ न मिटे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', status: 'pending', amount: 100 }]);
+      window.confirm = function () { return false; };
+      clearOldCategoriesData();
+      return cGet('आदेगांव', 'घरेलू').length;
+    });
+    expect(r).toBe(1);
+  });
+});
