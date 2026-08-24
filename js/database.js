@@ -249,6 +249,12 @@ function migrateRemarks(x){
 
 var catNamesTimer = null;
 var liveSource = null; // real-time SSE stream (Firebase REST streaming)
+// EventSource का URL जुड़ते वक़्त का ID_TOKEN अपने साथ रखता है — Firebase ID token ~1 घंटे बाद
+// expire होता है, तो एक ही list घंटों खुली रहने पर स्ट्रीम बंद (readyState=2) हो सकती है। पहले
+// यहां से सीधे हमेशा के लिए हर-15-सेकंड वाले भारी polling (पूरी लिस्ट दोबारा) पर चले जाते थे, कभी
+// वापस सस्ते live-sync पर नहीं लौटते — असली bandwidth bug यही था, बिना किसी modal/बटन के, सिर्फ़
+// list देर तक खुली रहने से। अब पहले ताज़ा token के साथ EventSource दोबारा जोड़ने की कोशिश होती है
+var _esReconnectAttempts = 0;
 
 function stopListen(){
   if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
@@ -299,11 +305,22 @@ function startListen(hq,cat){
     setSyncStatus(true); updTime();
   }
 
+  // Firebase का ETag तरीक़ा — "X-Firebase-ETag" भेजने पर जवाब में एक ETag मिलता है; अगली बार वही
+  // "if-none-match" में भेजने पर, अगर list बिल्कुल नहीं बदली, तो सर्वर सिर्फ़ खाली HTTP 304 देता है
+  // (पूरी list दोबारा नहीं) — यह fallback (पहले से महंगा तरीक़ा) है, तो इसे जितना हल्का बना सकें उतना अच्छा;
+  // ज़्यादातर 15-सेकंड वाले poll में असल में कुछ बदला ही नहीं होता, तो यह लगभग-मुफ़्त हो जाएगा
+  var _pollEtag=null;
   function pollOnce(){
     if(isPending(hq,cat)){if(navigator.onLine)flushPending();return;}
-    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
-      .then(_fbJson)
-      .then(applyIncoming)
+    var h={"X-Firebase-ETag":"true"};
+    if(_pollEtag) h["if-none-match"]=_pollEtag;
+    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:h})
+      .then(function(r){
+        if(r.status===304) return; // कुछ नहीं बदला — यहीं रुक जाओ (असली null value से अलग रखना ज़रूरी)
+        if(!r.ok) throw new Error("HTTP "+r.status);
+        _pollEtag=r.headers.get("ETag")||_pollEtag;
+        return r.json().then(applyIncoming);
+      })
       .catch(function(){setSyncStatus(false);});
   }
 
@@ -338,12 +355,20 @@ function startListen(hq,cat){
         }catch(e){}
         pollOnce(); // सुरक्षित fallback
       });
-      es.onopen=function(){setSyncStatus(true);};
+      es.onopen=function(){setSyncStatus(true);_esReconnectAttempts=0;};
       es.onerror=function(){
         setSyncStatus(false);
-        if(es.readyState===2){ // CLOSED — स्ट्रीम पूरी तरह टूट गई (जैसे auth fail), polling पर वापस जाओ
+        if(es.readyState===2){ // CLOSED — स्ट्रीम पूरी तरह टूट गई (जैसे token expire)
           if(liveSource===es) liveSource=null;
-          startPolling();
+          if(_esReconnectAttempts<3){
+            // पहले ताज़ा ID_TOKEN के साथ सस्ता live-sync दोबारा जोड़ने की कोशिश — token expire होना
+            // सामान्य बात है (हर ~1 घंटे), भारी polling पर जाने की ज़रूरत नहीं
+            _esReconnectAttempts++;
+            setTimeout(function(){ startListen(hq,cat); },2000);
+          } else {
+            // लगातार 3 बार तुरंत बंद हो रहा है (शायद असली permission समस्या) — तभी polling पर जाओ
+            startPolling();
+          }
         }
         // वरना EventSource खुद reconnect करने की कोशिश करता रहेगा
       };

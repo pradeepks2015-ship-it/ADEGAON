@@ -59,6 +59,7 @@
   "_diffToPatch",
   "_doSave",
   "_dvRender",
+  "_esReconnectAttempts",
   "_fbFetchOnce",
   "_fbFetchWithAuth",
   "_fbJson",
