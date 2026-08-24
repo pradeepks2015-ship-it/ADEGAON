@@ -2350,6 +2350,62 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(calledAfterOnline).toBe(false);
   });
 
+  test('EventSource बंद (readyState=2, जैसे ~1 घंटे बाद token expire) होने पर पहली बार में सीधे भारी polling पर न जाए — पहले ताज़ा token से दोबारा जोड़ने की कोशिश हो', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      var es = liveSource;
+      Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
+      es.onerror();
+      return { attempts: _esReconnectAttempts, pollActive: !!pollTimer };
+    });
+    expect(r.attempts).toBe(1);
+    expect(r.pollActive).toBe(false); // पहली बार में polling शुरू नहीं हुई — पहले reconnect की कोशिश
+  });
+
+  test('EventSource लगातार 3 बार जल्दी बंद हो (असली समस्या) तो आख़िरकार polling पर जाए — सुरक्षा-जाल बना रहे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      var es = liveSource;
+      Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
+      es.onerror(); es.onerror(); es.onerror(); es.onerror(); // 4 बार — तीसरी कोशिश के बाद आख़िरी बार polling पर जाना चाहिए
+      return { attempts: _esReconnectAttempts, pollActive: !!pollTimer };
+    });
+    expect(r.pollActive).toBe(true);
+  });
+
+  test('pollOnce (आख़िरी सहारे वाला भारी fallback) — ETag भेजे, और HTTP 304 (कुछ नहीं बदला) पर कोई दोबारा render/error न हो', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var es = liveSource;
+      Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
+      var sawEtagHeader = false, renderCalls = 0;
+      var origRenderListWith = renderListWith;
+      window.renderListWith = function (d) { renderCalls++; origRenderListWith(d); };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1) {
+          if (opts && opts.headers && opts.headers['X-Firebase-ETag']) sawEtagHeader = true;
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      es.onerror(); es.onerror(); es.onerror(); es.onerror(); // polling शुरू करो — यही पहला pollOnce() ट्रिगर करता है
+      setTimeout(() => {
+        window.fetch = orig;
+        window.renderListWith = origRenderListWith;
+        resolve({ sawEtagHeader: sawEtagHeader, renderCalls: renderCalls });
+      }, 300);
+    }));
+    expect(r.sawEtagHeader).toBe(true);
+    expect(r.renderCalls).toBe(0); // 304 पर न दोबारा render हुआ, न ही असली null-data समझकर कोई गड़बड़ हुई
+  });
+
   test('startListen — EventSource सफलतापूर्वक बनते ही तुरंत redundant REST fetch न हो (caller पहले ही data दिखा चुका होता है, और EventSource खुद जुड़ते ही पूरा data भेजता है)', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
