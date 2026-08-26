@@ -1740,6 +1740,7 @@ test.describe('अपडेट बैनर — नया version आने प�
     await openApp(page);
     const called = await page.evaluate(() => {
       return new Promise((resolve) => {
+        _pendingUpdate = false; // नया handler: pending update होने पर reload — यहां यही जांचना नहीं है
         var updateCalls = 0;
         var fakeReg = { update: function () { updateCalls++; return Promise.resolve(); } };
         _swSetupAutoUpdate(fakeReg);
@@ -2406,6 +2407,91 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(r.renderCalls).toBe(0); // 304 पर न दोबारा render हुआ, न ही असली null-data समझकर कोई गड़बड़ हुई
   });
 
+  test('fbGet — cached data हो तो background refresh ETag header भेजे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      cSet(activeHQ, activeCat, [{ acc: '1', status: 'pending', amount: 100 }]);
+      _fbGetEtag[activeHQ + '/' + activeCat] = '"etag-abc"'; // पहले से ETag store है
+      var sawEtag = false, sawIfNoneMatch = false;
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) {
+          if (opts && opts.headers && opts.headers['X-Firebase-ETag']) sawEtag = true;
+          if (opts && opts.headers && opts.headers['if-none-match']) sawIfNoneMatch = true;
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      fbGet(activeHQ, activeCat, function () {});
+      setTimeout(() => { window.fetch = orig; resolve({ sawEtag, sawIfNoneMatch }); }, 200);
+    }));
+    expect(r.sawEtag).toBe(true);       // ETag header भेजा
+    expect(r.sawIfNoneMatch).toBe(true); // पहले से store ETag if-none-match में भेजा
+  });
+
+  test('fbGet — background refresh 304 मिले तो cache/render न बदले', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var origData = [{ acc: '99', status: 'pending', amount: 500 }];
+      cSet(activeHQ, activeCat, origData);
+      var renderCalls = 0;
+      var origRender = renderListWith;
+      window.renderListWith = function (d) { renderCalls++; origRender(d); };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) {
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      fbGet(activeHQ, activeCat, function () {});
+      setTimeout(() => {
+        window.fetch = orig;
+        window.renderListWith = origRender;
+        resolve({ cacheLen: cGet(activeHQ, activeCat).length, renderCalls });
+      }, 200);
+    }));
+    expect(r.cacheLen).toBe(1);    // cache पहले जैसी — 304 ने कुछ नहीं बदला
+    expect(r.renderCalls).toBe(0); // render नहीं हुआ
+  });
+
+  test('SW update hidden — document.hidden पर controllerchange _reloadPage() बुलाए, banner नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      // SW registration पर हो सकता है पहले से banner आ गया हो — clean slate चाहिए
+      var existing = document.getElementById('update-banner');
+      if (existing) existing.remove();
+      _pendingUpdate = false;
+      var reloadCalled = false;
+      window._reloadPage = function () { reloadCalled = true; };
+      Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+      navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+      Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+      return { reloadCalled: reloadCalled, hasBanner: !!document.getElementById('update-banner') };
+    });
+    expect(r.reloadCalled).toBe(true);  // hidden था — silently reload
+    expect(r.hasBanner).toBe(false);    // banner नहीं — user की screen पर nothing shown
+  });
+
+  test('SW update visible — banner दिखे और _pendingUpdate set हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var existing = document.getElementById('update-banner');
+      if (existing) existing.remove();
+      _pendingUpdate = false;
+      Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+      navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+      return {
+        bannerVisible: !!document.getElementById('update-banner'),
+        pendingUpdate: _pendingUpdate,
+      };
+    });
+    expect(r.bannerVisible).toBe(true);
+    expect(r.pendingUpdate).toBe(true);
+  });
+
   test('startListen — EventSource सफलतापूर्वक बनते ही तुरंत redundant REST fetch न हो (caller पहले ही data दिखा चुका होता है, और EventSource खुद जुड़ते ही पूरा data भेजता है)', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
@@ -2550,6 +2636,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     await loginJE(page);
     await page.waitForFunction(() => !!catNamesTimer, null, { timeout: 15000 }); // startListen fbGet callback के बाद async चलता है
     const r = await page.evaluate(() => new Promise((resolve) => {
+      _pendingUpdate = false; // नया handler: pending update होने पर reload — यहां यही जांचना नहीं है
       var hadTimerBefore = !!catNamesTimer;
       Object.defineProperty(document, 'hidden', { value: true, configurable: true });
       document.dispatchEvent(new Event('visibilitychange'));

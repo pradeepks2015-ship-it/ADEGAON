@@ -339,27 +339,36 @@ function fallbackCopy(txt){
 // ब्राउज़र खुद कभी-कभी घंटों बाद ही नया sw.js जांचता है (tab लंबे समय खुला/background में पड़ा रहे
 // तो) — इसलिए खुद भी बार-बार जांचते रहें, ताकि नया version deploy होते ही (browser के अपने-आप
 // जांचने का इंतज़ार किए बिना) कुछ ही मिनट में "नया version आ गया है" बैनर दिख जाए
+var _pendingUpdate=false; // नया SW version आया — अगली बार focus मिलते ही reload करना है
+function _reloadPage(){ location.reload(); } // tests में override हो सके
 function _swSetupAutoUpdate(reg){
   if(!reg) return;
   setInterval(function(){reg.update().catch(function(){});},5*60*1000);
   document.addEventListener("visibilitychange",function(){
-    if(document.visibilityState==="visible") reg.update().catch(function(){});
+    if(document.visibilityState==="visible"){
+      // background में था और update आ चुका था — user के वापस आते ही silently reload (interrupt नहीं)
+      if(_pendingUpdate){_reloadPage();return;}
+      reg.update().catch(function(){});
+    }
   });
 }
 if("serviceWorker" in navigator && location.protocol.indexOf("http")===0){
   navigator.serviceWorker.register("sw.js").then(_swSetupAutoUpdate).catch(function(){});
   navigator.serviceWorker.addEventListener("controllerchange",function(){
-    _showUpdateBanner();
+    // page hidden हो (user दूसरे app में) तो silently reload — कोई interrupt नहीं, पर पुराना bandwidth-भारी
+    // code अपने आप बदल जाएगा (v9.92 वाले device जो banner click नहीं करते उनके लिए ज़रूरी)
+    if(document.hidden){_reloadPage();}else{_showUpdateBanner();}
   });
 }
 function _showUpdateBanner(){
+  _pendingUpdate=true; // visible होने पर visibilitychange handler reload करेगा
   if(document.getElementById("update-banner")) return;
   var b=document.createElement("div");
   b.id="update-banner";
   b.innerHTML="<span>🔄 ऐप का नया version आ गया है</span>"+
     "<button id='update-banner-btn'>रीलोड करें</button>";
   document.body.appendChild(b);
-  document.getElementById("update-banner-btn").onclick=function(){ location.reload(); };
+  document.getElementById("update-banner-btn").onclick=function(){ _reloadPage(); };
 }
 
 

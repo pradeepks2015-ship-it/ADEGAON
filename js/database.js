@@ -5,6 +5,10 @@ function fbPath(hq,cat){
   return hq.replace(/[\s.#$\[\]\/]/g,"_")+"/"+cat.replace(/[\s.#$\[\]\/]/g,"_");
 }
 
+// fbGet() के background silent refresh के लिए per-(hq+"/"+cat) ETag — Firebase 304 देता है अगर data नहीं बदला
+// तो हर बार list खोलने पर पूरा data दोबारा डाउनलोड करने की ज़रूरत नहीं
+var _fbGetEtag={};
+
 // ── FORMAT NORMALIZER: server से आई लिस्ट को हमेशा एक जैसा array बनाओ ──
 // पुराना ढांचा: array | नया (आने वाला) per-record ढांचा: object {IVRS: record}
 // नए ढांचे में हर record का 'o' field उसका क्रम बताएगा — उसी से order बहाल होता है
@@ -30,18 +34,26 @@ function fbGet(hq,cat,cb){
   }
   if(cached.length){
     cb(cached); // तुरंत cache से दिखाएं — fast!
-    // background silent refresh
-    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
-      .then(_fbJson)
-      .then(function(d){
-        trackUsageBytes(JSON.stringify(d||"").length);
-        _checkMigrationRevert(hq,cat,d); // migrated list कहीं पुराने device ने वापस array में तो नहीं बदल दी
-        var data=normList(d);
-        overlayOps(hq,cat,data);
-        var changed=JSON.stringify(data)!==JSON.stringify(cached);
-        cSet(hq,cat,data);
-        if(changed) cb(data);
-        setSyncStatus(true);
+    // background silent refresh — ETag भेजने पर अगर data नहीं बदला तो Firebase 304 देता है (खाली response,
+    // पूरी list दोबारा नहीं) — list बार-बार खोलने पर bandwidth बचत; पहली बार ETag मिलता है, अगली बार भेजते हैं
+    var _ekey=hq+"/"+cat;
+    var _bgh={"X-Firebase-ETag":"true"};
+    if(_fbGetEtag[_ekey]) _bgh["if-none-match"]=_fbGetEtag[_ekey];
+    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_bgh})
+      .then(function(r){
+        if(r.status===304) return; // कुछ नहीं बदला — यहीं रुक जाओ (bandwidth बचत)
+        if(!r.ok) throw new Error("HTTP "+r.status);
+        _fbGetEtag[_ekey]=r.headers.get("ETag")||_fbGetEtag[_ekey];
+        return r.json().then(function(d){
+          trackUsageBytes(JSON.stringify(d||"").length);
+          _checkMigrationRevert(hq,cat,d); // migrated list कहीं पुराने device ने वापस array में तो नहीं बदल दी
+          var data=normList(d);
+          overlayOps(hq,cat,data);
+          var changed=JSON.stringify(data)!==JSON.stringify(cached);
+          cSet(hq,cat,data);
+          if(changed) cb(data);
+          setSyncStatus(true);
+        });
       }).catch(function(){setSyncStatus(false);});
     return;
   }
