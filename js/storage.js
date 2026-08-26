@@ -61,6 +61,16 @@ function markPending(hq,cat,type,patch,err){
 function clearPendingKey(k){var p=getPending();delete p[k];setPendingObj(p);}
 function pendingCount(){return Object.keys(getPending()).length;}
 function isPending(hq,cat){return !!getPending()[cKey(hq,cat)];}
+// किसी HQ के लिए सही Firebase account से sign-in वापस मिल जाए (देखें ui-core.js: _ensureCorrectHqAuth)
+// तो उस HQ की पुरानी "authFailCount" गिनती अब मान्य नहीं रह जाती — वरना flushPending() हमेशा के लिए
+// उन entries को छोड़ता रहेगा (देखें नीचे STUCK_AUTH_MAX check), भले ही अब असल में sync हो सकता हो
+function _resetAuthFailForHQ(hq){
+  var p=getPending(),changed=false;
+  Object.keys(p).forEach(function(k){
+    if(p[k]&&p[k].hq===hq&&p[k].authFailCount){ p[k].authFailCount=0; changed=true; }
+  });
+  if(changed) setPendingObj(p);
+}
 
 // Record-level merge — दूसरों के बदलाव न मिटें
 function rmkKeyOf(r){return (r.text||"")+"|"+(r.by||"")+"|"+(r.at||"");}

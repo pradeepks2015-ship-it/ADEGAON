@@ -36,6 +36,7 @@ function fmtDateTime(dt){
 window.addEventListener("online",function(){
   setSyncStatus(true);
   ensureLibs();
+  _ensureCorrectHqAuth(); // पहले सही account पक्का करें, तभी flushPending() को असली मौक़ा मिलेगा
   flushPending();
   fetchCatNamesFromFB(false);
   hscFetch();
@@ -270,6 +271,29 @@ function doLogin(){
 // PIN से Firebase password बनाना — कम से कम 6 अक्षर चाहिए, इसलिए आगे एक तय prefix जोड़ते हैं
 // (असली secret PIN ही है, यह prefix कोई गोपनीयता नहीं जोड़ता, सिर्फ़ Firebase की न्यूनतम लंबाई पूरी करता है)
 function _hqAuthPassword(pin){ return "vasuli-"+pin; }
+
+// login के ठीक उसी वक़्त नेटवर्क कमज़ोर/बंद हो तो doLogin() पुराने anonymous रास्ते पर चला जाता है
+// (device UI में तो लाइनमैन logged-in दिखता है, पर Firebase में असल में anonymous ही रहता है) —
+// उस HQ का हर save तब तक 401 देता रहता है जब तक कोई मैन्युअल logout+login न करे। अब network वापस
+// आते ही ("online" event पर) यहां से अपने-आप सही HQ account से दोबारा sign-in की कोशिश होती है,
+// ताकि लाइनमैन को कुछ पता ही न चले और उसका pending data भी अपने आप sync हो जाए
+function _ensureCorrectHqAuth(){
+  if(!CU||CU.role!=="lineman"||!navigator.onLine) return;
+  var hqEmail=HQ_AUTH_EMAIL[CU.hq];
+  var pin=HQ_PINS[hqKey(CU.hq)];
+  if(!hqEmail||!pin) return; // इस HQ का PIN सेट ही नहीं — पुराना anonymous रास्ता ही सही व्यवहार है
+  var fbAuthOk=false;
+  try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
+  if(!fbAuthOk) return;
+  var u=firebase.auth().currentUser;
+  if(u&&u.email===hqEmail) return; // पहले से सही account से sign-in है — कुछ करने की ज़रूरत नहीं
+  firebase.auth().signInWithEmailAndPassword(hqEmail,_hqAuthPassword(pin))
+    .then(function(){
+      _resetAuthFailForHQ(CU.hq); // पुरानी "अनधिकृत" गिनती अब मान्य नहीं — दोबारा भेजने दो
+      flushPending();
+    })
+    .catch(function(){}); // अभी भी नाकाम (PIN बदल गया होगा) — अगली बार "online" event पर फिर कोशिश होगी
+}
 
 function _finishLogin(name,silent){
   // ताकि pull-to-refresh या कोई और असली page reload login session न मिटाए — reload के बाद
