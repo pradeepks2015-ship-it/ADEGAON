@@ -1478,6 +1478,110 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
   });
 
+  test('_ensureCorrectHqAuth — anonymous auth में login हो तो online होते ही सही HQ account से sign-in हो (bug: login के वक़्त network कमज़ोर होने पर device हमेशा के लिए anonymous रह जाता, हर save 401 देता रहता)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव' };
+      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null }, // anonymous
+          signInWithEmailAndPassword: function (email, pw) {
+            resolve({ email: email, pw: pw });
+            return Promise.resolve({});
+          },
+        };
+      };
+      _ensureCorrectHqAuth();
+    }));
+    expect(r.email).toBe('hq-adegaon@adegaondc.internal');
+    expect(r.pw).toBe('vasuli-4321');
+  });
+
+  test('_ensureCorrectHqAuth — पहले से सही HQ account से sign-in हो तो दोबारा sign-in न हो (redundant auth call से बचाव)', async ({ page }) => {
+    await openApp(page);
+    const called = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव' };
+      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      var calls = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: 'hq-adegaon@adegaondc.internal' },
+          signInWithEmailAndPassword: function () { calls++; return Promise.resolve({}); },
+        };
+      };
+      _ensureCorrectHqAuth();
+      return calls;
+    });
+    expect(called).toBe(0);
+  });
+
+  test('_ensureCorrectHqAuth — HQ का PIN सेट न हो तो कुछ न करे (anonymous ही पुराना/सही व्यवहार है)', async ({ page }) => {
+    await openApp(page);
+    const called = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा' };
+      delete HQ_PINS[hqKey('जोबा')];
+      var calls = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: { email: null }, signInWithEmailAndPassword: function () { calls++; return Promise.resolve({}); } };
+      };
+      _ensureCorrectHqAuth();
+      return calls;
+    });
+    expect(called).toBe(0);
+  });
+
+  test('_ensureCorrectHqAuth — JE (supervisor) के लिए कुछ न करे (सिर्फ़ lineman पर लागू)', async ({ page }) => {
+    await openApp(page);
+    const called = await page.evaluate(() => {
+      CU = { role: 'supervisor', name: 'टेस्ट जेई', hq: 'आदेगांव' };
+      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      var calls = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: { email: null }, signInWithEmailAndPassword: function () { calls++; return Promise.resolve({}); } };
+      };
+      _ensureCorrectHqAuth();
+      return calls;
+    });
+    expect(called).toBe(0);
+  });
+
+  test('_ensureCorrectHqAuth — sign-in सफल होने पर flushPending() भी बुलाया जाए (ताकि अटका data तुरंत भेजने की कोशिश हो)', async ({ page }) => {
+    await openApp(page);
+    const called = await page.evaluate(() => new Promise((resolve) => {
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव' };
+      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: { email: null }, signInWithEmailAndPassword: function () { return Promise.resolve({}); } };
+      };
+      var origFlush = flushPending;
+      window.flushPending = function () { window.flushPending = origFlush; resolve(true); };
+      _ensureCorrectHqAuth();
+      setTimeout(() => resolve(false), 500);
+    }));
+    expect(called).toBe(true);
+  });
+
+  test('_resetAuthFailForHQ — सिर्फ़ उसी HQ के stuck pending entries की authFailCount रीसेट हो, दूसरे HQ की न छुएं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      setPendingObj({
+        'आदेगांव_घरेलू': { hq: 'आदेगांव', cat: 'घरेलू', authFailCount: 3 },
+        'पिंडरई_घरेलू': { hq: 'पिंडरई', cat: 'घरेलू', authFailCount: 3 },
+      });
+      _resetAuthFailForHQ('आदेगांव');
+      var p = getPending();
+      return { adegaon: p['आदेगांव_घरेलू'].authFailCount, pindrai: p['पिंडरई_घरेलू'].authFailCount };
+    });
+    expect(r.adegaon).toBe(0);
+    expect(r.pindrai).toBe(3);
+  });
+
   test('HQ का PIN सेट न हो तो बिना PIN login चलता रहता है (पुराना व्यवहार बरकरार)', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
