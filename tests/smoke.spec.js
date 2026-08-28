@@ -1872,13 +1872,30 @@ test.describe('PWA installable — manifest + icons', () => {
 
   test('sw.js — Excel/CSV वाली भारी vendor लाइब्रेरी (862KB xlsx) eager-precache list में न हों (bug: हर version-update पर हर device बेवजह दोबारा डाउनलोड करता, चाहे कभी इस्तेमाल हो या न हो)', () => {
     const swContent = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
-    const cdnBlock = swContent.slice(swContent.indexOf('var CDN='), swContent.indexOf('];') + 2);
+    const cdnBlock = swContent.slice(swContent.indexOf('var CORE='), swContent.indexOf('];') + 2);
     expect(cdnBlock).not.toContain('vendor/xlsx');
     expect(cdnBlock).not.toContain('vendor/papaparse');
     // पर lazy-load वाला रास्ता (js/storage.js: ensureLibs) अब भी सही जगह से लोड करता हो
     const storageContent = fs.readFileSync(path.join(__dirname, '..', 'js', 'storage.js'), 'utf8');
     expect(storageContent).toContain('vendor/xlsx.full.min.js');
     expect(storageContent).toContain('vendor/papaparse.min.js');
+  });
+
+  test('sw.js — install atomic रहे: कोई भी CORE (js/*.js) फ़ाइल cache होने में नाकाम रहे तो पूरा install नाकाम माना जाए, सिर्फ़ OPTIONAL (icons/manifest) चुपचाप skip हों (bug: partial cache — कुछ js file cache हो जातीं कुछ नहीं, बाद में offline पड़े device पर "X is not defined" जैसी errors)', () => {
+    const swContent = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+    const coreBlock = swContent.slice(swContent.indexOf('var CORE='), swContent.indexOf('var OPTIONAL='));
+    const installBlock = swContent.slice(swContent.indexOf('addEventListener("install"'), swContent.indexOf('addEventListener("activate"'));
+    // index.html में <script src="js/..."> से लोड होने वाली हर फ़ाइल CORE में मौजूद हो
+    const indexContent = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const scriptSrcs = [...indexContent.matchAll(/<script src="(js\/[^"]+)">/g)].map((m) => m[1]);
+    expect(scriptSrcs.length).toBeGreaterThan(5);
+    scriptSrcs.forEach((src) => {
+      expect(coreBlock, src + ' CORE में होना चाहिए').toContain('./' + src);
+    });
+    // CORE वाले c.add() पर कोई per-file .catch न हो — नाकामी पूरे install (Promise.all) को reject करे
+    expect(installBlock).toMatch(/CORE\.map\(function\(u\)\{return c\.add\(u\);\}\)/);
+    // OPTIONAL वाले c.add() पर .catch(function(){}) हो — चुपचाप skip हों, install न रुके
+    expect(installBlock).toMatch(/OPTIONAL\.map\(function\(u\)\{return c\.add\(u\)\.catch\(function\(\)\{\}\);\}\)/);
   });
 
   test('index.html में manifest लिंक है और manifest.json सही/मान्य है', async ({ page }) => {
