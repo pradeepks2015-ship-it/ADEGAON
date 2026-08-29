@@ -3002,3 +3002,25 @@ test.describe('database.rules.json — HQ_PIN सिर्फ़ JE लिख �
     expect(hqPinRule['.read']).toBe('auth != null'); // login के वक़्त PIN जांचने के लिए सबको पढ़ना ज़रूरी है
   });
 });
+
+test.describe('database.rules.json — MIGRATED सिर्फ़ JE लिख सके (bug: "$other" के तहत कोई भी authenticated flag पलट सकता था — array/per-record format गड़बड़ाकर data corruption का खतरा)', () => {
+  test('MIGRATED का अपना explicit rule हो — सिर्फ JE-only write (सिर्फ migration.js: confirmAndRunMigration से लिखा जाता है, कोई और flow नहीं)', () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
+    const migratedRule = rules.rules.MIGRATED;
+    expect(migratedRule, 'MIGRATED का अपना top-level rule होना चाहिए — $other के भरोसे नहीं').toBeTruthy();
+    expect(migratedRule['.write']).toBe("auth.token.email === 'pradeepks2015@gmail.com'");
+    expect(migratedRule['.read']).toBe('auth != null'); // हर device fbSet() से पहले isMigrated() जांचता है, इसलिए पढ़ना सबके लिए ज़रूरी है
+  });
+});
+
+test.describe('database.rules.json — DEVICE_VERSIONS को पूरी तरह anonymous (कभी login न किया हो) visitor लिख न सके, सिर्फ JE पढ़ सके', () => {
+  test('DEVICE_VERSIONS का अपना explicit rule हो — हर लॉगिन-किया device (JE + लाइनमैन दोनों) लिख सके, पर सिर्फ JE पढ़े', () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
+    const dvRule = rules.rules.DEVICE_VERSIONS;
+    expect(dvRule, 'DEVICE_VERSIONS का अपना top-level rule होना चाहिए — $other के भरोसे नहीं').toBeTruthy();
+    expect(dvRule['.read']).toBe("auth.token.email === 'pradeepks2015@gmail.com'"); // सिर्फ JE का device-viewer इसे इस्तेमाल करता है
+    const devWrite = dvRule.$dev && dvRule.$dev['.write'];
+    expect(devWrite, '$dev.write होना चाहिए — startDevicePing हर लॉगिन-किया device (लाइनमैन समेत) से चलता है').toBeTruthy();
+    expect(devWrite).toContain("sign_in_provider !== 'anonymous'"); // सिर्फ असल लॉगिन-किया identity लिख सके, कोरा anonymous visitor नहीं
+  });
+});
