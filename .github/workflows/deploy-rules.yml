@@ -1,0 +1,28 @@
+name: Deploy Firebase Rules
+
+# database.rules.json बदलकर main में merge होते ही असली Firebase Realtime Database पर rules
+# अपने-आप live हो जाती हैं — अब JE को हर बार Firebase Console में जाकर मैन्युअली paste/publish
+# करने की ज़रूरत नहीं। workflow_dispatch से GitHub की "Actions" टैब से भी कभी भी मैन्युअली चलाया
+# जा सकता है (जैसे repo और live-rules में drift का शक हो तो दोबारा sync करने के लिए)।
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'database.rules.json'
+  workflow_dispatch: {}
+
+jobs:
+  deploy-rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deploy dependencies
+        run: npm install --no-save firebase-admin
+      - name: Deploy rules
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/deploy-rules.js

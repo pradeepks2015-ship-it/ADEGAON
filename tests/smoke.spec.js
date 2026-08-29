@@ -3082,3 +3082,21 @@ test.describe('database.rules.json — DEVICE_VERSIONS को पूरी त�
     expect(devWrite).toContain("sign_in_provider !== 'anonymous'"); // सिर्फ असल लॉगिन-किया identity लिख सके, कोरा anonymous visitor नहीं
   });
 });
+
+test.describe('Firebase Rules — auto-deploy पाइपलाइन (bug: JE को हर बदलाव के बाद मैन्युअली Console में paste/publish करना पड़ता था — भूलने/copy-paste ग़लती से repo और असली live-rules में चुपचाप drift हो सकता था)', () => {
+  test('deploy-rules.yml — database.rules.json बदलने पर main push से ट्रिगर हो, scripts/deploy-rules.js चलाए', () => {
+    const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy-rules.yml'), 'utf8');
+    expect(wf).toMatch(/branches:\s*\[main\]/);
+    expect(wf).toContain('database.rules.json');
+    expect(wf).toContain('scripts/deploy-rules.js');
+    expect(wf).toContain('FIREBASE_SERVICE_ACCOUNT'); // backup.js जैसा ही service account token — कोई नई secret नहीं चाहिए
+  });
+
+  test('scripts/deploy-rules.js — असली Firebase पर PUT करने से पहले rules JSON को local parse करके पक्का करे (ग़लत/टूटा JSON गलती से live न हो जाए)', () => {
+    const script = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deploy-rules.js'), 'utf8');
+    expect(script).toContain('database.rules.json');
+    expect(script).toMatch(/JSON\.parse\(rulesContent\)/); // deploy से पहले local validation
+    expect(script).toContain('.settings/rules.json'); // Firebase RTDB का असली rules-management endpoint
+    expect(script).toContain("method: \"PUT\"");
+  });
+});
