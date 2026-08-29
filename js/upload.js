@@ -199,7 +199,7 @@ function processRows(rows){
       var finalAmt=cleanAmt||"0";
       var entry={name:name,acc:acc,amount:finalAmt,phone:phone,addr:addr,father:father,remarks:rem,
         tariff:tariff,load:load,unit:unit,lastPayDate:lastPayDate,lastPaidAmt:lastPaidAmt,
-        status:"pending",uploadedBy:CU.name,uploadedAt:dtStr,ts:Date.now(),remarksArr:[]};
+        status:"pending",uploadedBy:CU.name,uploadedAt:dtStr,ts:serverNow(),remarksArr:[]};
       // बकाया 0 या minus हो तो अपने आप वसूल
       if(cleanAmt!=="" && !isNaN(cleanAmt) && Number(cleanAmt)<=0){
         entry.status="paid";
