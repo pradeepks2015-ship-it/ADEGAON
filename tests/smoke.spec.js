@@ -2992,3 +2992,13 @@ test.describe('पुरानी categories मिटाएं — घरेल
     expect(r).toBe(1);
   });
 });
+
+test.describe('database.rules.json — HQ_PIN सिर्फ़ JE लिख सके (bug: "$other" के तहत कोई भी authenticated — anonymous समेत — PIN बदल सकता था, लाइनमैन lock-out या account-takeover का खतरा)', () => {
+  test('HQ_PIN का अपना explicit rule हो — CAT_NAMES/HOME_SCORECARD जैसा JE-only write, बाक़ी सब पढ़ सकें', () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
+    const hqPinRule = rules.rules.HQ_PIN;
+    expect(hqPinRule, 'HQ_PIN का अपना top-level rule होना चाहिए — $other के भरोसे नहीं').toBeTruthy();
+    expect(hqPinRule['.write']).toBe("auth.token.email === 'pradeepks2015@gmail.com'");
+    expect(hqPinRule['.read']).toBe('auth != null'); // login के वक़्त PIN जांचने के लिए सबको पढ़ना ज़रूरी है
+  });
+});
