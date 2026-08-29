@@ -202,10 +202,14 @@ function _migrateOne(hq,cat,cb){
       fetch(FB+"/"+fbPath(hq,cat)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(obj)})
         .then(function(r){
           if(!r.ok) throw new Error("HTTP "+r.status);
-          return fetch(FB+"/MIGRATED/"+hqKey(hq)+"/"+catKey(cat)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:"true"});
+          // असली data convert हो चुका (सबसे ज़रूरी हिस्सा) — MIGRATED flag अक्सर पहले से ही "true"
+          // होता है (जैसे _checkMigrationRevert के self-heal में, जो isMigrated()===true होने पर
+          // ही चलता है) और अब सिर्फ़ JE लिख सकता है (database.rules.json) — तो लाइनमैन के लिए यह
+          // दोबारा-लिखाई 401 दे सकती है, पर इससे असली सफल data-conversion को "असफल" मानना ग़लत
+          // होगा; इसलिए यहां fail हो तो चुपचाप अनदेखा करो (flag का मान वैसे भी नहीं बदलता)
+          return fetch(FB+"/MIGRATED/"+hqKey(hq)+"/"+catKey(cat)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:"true"}).catch(function(){});
         })
-        .then(function(r2){
-          if(!r2.ok) throw new Error("HTTP "+r2.status);
+        .then(function(){
           cb({hq:hq,cat:cat,status:"ok",count:Object.keys(obj).length});
         })
         .catch(function(e){ logErr("migrate-fail",e,hq+"/"+cat); cb({hq:hq,cat:cat,status:"error",err:String(e&&e.message||e)}); });
