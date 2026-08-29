@@ -12,6 +12,16 @@
       ".read": "auth != null",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com'"
     },
+    "MIGRATED": {
+      ".read": "auth != null",
+      ".write": "auth.token.email === 'pradeepks2015@gmail.com'"
+    },
+    "DEVICE_VERSIONS": {
+      ".read": "auth.token.email === 'pradeepks2015@gmail.com'",
+      "$dev": {
+        ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'"
+      }
+    },
     "आदेगांव": {
       ".read": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'Jm8txywdH1gmNmvODYPMpNO3at33'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'Jm8txywdH1gmNmvODYPMpNO3at33'",
