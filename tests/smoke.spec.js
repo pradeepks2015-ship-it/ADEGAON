@@ -357,6 +357,24 @@ test.describe('डेटा और वसूली', () => {
     expect(st).toBe('paid');
   });
 
+  test('markPaid — record का ts डिवाइस के कच्चे Date.now() की बजाय सुधरे हुए serverNow() से बने (bug: डिवाइस की ग़लत घड़ी से overlayOps/reconcileHQ जैसी ts-आधारित conflict-resolution ग़लत फ़ैसला ले सकती थी)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '999', name: 'टेस्ट', status: 'pending', amount: 100 }]);
+      // जैसे डिवाइस की घड़ी 30 दिन पीछे हो, पर server-offset सीखा जा चुका हो
+      _serverTimeOffset = 30 * 24 * 60 * 60 * 1000;
+    });
+    await loginLineman(page);
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      var before = Date.now();
+      markPaid(0);
+      var ts = cGet('आदेगांव', 'कुल उपभोक्ता')[0].ts;
+      return { ts: ts, before: before };
+    });
+    expect(r.ts - r.before).toBeGreaterThan(29 * 24 * 60 * 60 * 1000); // offset लागू हुआ, कच्चा Date.now() नहीं
+  });
+
   test('रिमार्क मोडल खुला रहते हुए लिस्ट का क्रम बदल जाए (background sync) — फिर भी सही record में सेव हो, acc से मिलान करके', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {
@@ -994,6 +1012,46 @@ test.describe('डिवाइस Version ट्रैकिंग', () => {
     }));
     expect(call.method).toBe('PUT');
     expect(call.body).toEqual(expect.objectContaining({ v: call.ver, role: 'supervisor' }));
+  });
+
+  test('pingDeviceVersion — ts की जगह असली Firebase server-time (".sv":"timestamp") भेजे, ताकि response से offset सीखा जा सके', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const t = await page.evaluate(() => new Promise((resolve) => {
+      const real = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/DEVICE_VERSIONS/') > -1) {
+          resolve(JSON.parse(opts.body).t);
+          window.fetch = real;
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+        }
+        return real(url, opts);
+      };
+      pingDeviceVersion();
+    }));
+    expect(t).toEqual({ '.sv': 'timestamp' });
+  });
+
+  test('pingDeviceVersion — सफल response से resolved server timestamp आने पर serverNow() offset सीखे (bug: डिवाइस की ग़लत घड़ी से ts-आधारित conflict-resolution ग़लत फ़ैसला ले सकता था)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var fakeServerTs = Date.now() + 10 * 24 * 60 * 60 * 1000; // सर्वर असल में 10 दिन "आगे" है — जैसे डिवाइस की घड़ी 10 दिन पीछे हो
+      var real = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/DEVICE_VERSIONS/') > -1) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ v: APP_VER, t: fakeServerTs }) });
+        }
+        return real(url, opts);
+      };
+      pingDeviceVersion();
+      setTimeout(() => {
+        window.fetch = real;
+        resolve({ diff: serverNow() - Date.now(), fakeServerTs: fakeServerTs, rawNow: Date.now() });
+      }, 200);
+    }));
+    // serverNow() अब Date.now() से करीब 10 दिन आगे होना चाहिए (कुछ ms tolerance के साथ, request-latency के लिए)
+    expect(Math.abs(r.diff - (r.fakeServerTs - r.rawNow))).toBeLessThan(5000);
   });
 
   test('logout पर deviceTimer साफ़ हो जाता है', async ({ page }) => {

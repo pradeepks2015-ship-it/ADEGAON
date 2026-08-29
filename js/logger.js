@@ -10,17 +10,35 @@ var DEV_ID=(function(){
   }catch(e){return "unknown";}
 })();
 
+// ── SERVER TIME OFFSET: डिवाइस की घड़ी ग़लत हो (गांव में आम — तारीख़/समय ग़लती से बदल जाना) तो
+// ts-आधारित conflict-resolution (overlayOps/reconcileHQ/recOp — नीचे list.js) ग़लत फ़ैसला ले सकता
+// था। कोई अलग/नई network call जोड़ने की बजाय — नीचे वाली DEVICE_VERSIONS ping (पहले से हर login
+// + हर 4 घंटे चलती है) में अब असली Firebase server-time (".sv":"timestamp") भेजते हैं; जवाब में
+// सर्वर उसे resolve करके असली timestamp लौटाता है (REST API की गारंटी-शुदा व्यवहार, response
+// body हमेशा पढ़ने लायक होती है, header-CORS जैसी अनिश्चितता नहीं) — उसी से offset सीखते रहते हैं।
+var _serverTimeOffset=0;
+try{var _s=localStorage.getItem("dc_srvoffset");if(_s)_serverTimeOffset=Number(_s)||0;}catch(e){}
+function serverNow(){ return Date.now()+_serverTimeOffset; }
+function _learnServerOffset(resolvedServerTs,localNowAtRequest){
+  if(typeof resolvedServerTs!=="number")return;
+  _serverTimeOffset=resolvedServerTs-localNowAtRequest;
+  try{localStorage.setItem("dc_srvoffset",String(_serverTimeOffset));}catch(e){}
+}
+
 // ── DEVICE VERSION TRACKING: कौन सा device किस app version पर है, यह हमेशा पता रहे ──
 // चरण 3 माइग्रेशन (per-record) से पहले/बाद यह पक्का करने के लिए ज़रूरी कि कोई device पुराने
 // write-path वाले code पर न रह जाए (वरना वह migrated list को दोबारा array में लिख सकता है)
 var deviceTimer=null;
 function pingDeviceVersion(){
   if(!navigator.onLine||!CU)return;
+  var reqAt=Date.now();
   fetch(FB+"/DEVICE_VERSIONS/"+DEV_ID+".json",{
     method:"PUT",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({v:APP_VER,hq:CU.hq,role:CU.role,name:CU.name,t:Date.now()})
-  }).catch(function(){});
+    body:JSON.stringify({v:APP_VER,hq:CU.hq,role:CU.role,name:CU.name,t:{".sv":"timestamp"}})
+  }).then(function(r){ return r.ok?r.json():null; })
+    .then(function(d){ if(d&&typeof d.t==="number") _learnServerOffset(d.t,reqAt); })
+    .catch(function(){});
 }
 function startDevicePing(){
   pingDeviceVersion();

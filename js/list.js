@@ -117,7 +117,7 @@ function _getOps(){try{return JSON.parse(localStorage.getItem("vt_ops")||"{}");}
 function _setOps(o){try{localStorage.setItem("vt_ops",JSON.stringify(o));}catch(e){}}
 function recOp(hq,acc,status,paydate,by,at,ts){
   if(!hq||!acc)return;
-  var o=_getOps(),now=Date.now();
+  var o=_getOps(),now=serverNow();
   Object.keys(o).forEach(function(k){if(now-(o[k].ts||0)>172800000)delete o[k];}); // 48h prune
   o[hq+"|"+String(acc).trim()]={status:status,paydate:paydate||"",by:by||"",at:at||"",ts:ts||now};
   _setOps(o);
@@ -149,7 +149,7 @@ function overlayOps(hq,cat,data){
       x.paydate=now.toLocaleDateString("hi-IN");
       x.updatedBy="System (बकाया ≤0 auto)";
       x.updatedAt=now.toLocaleString("hi-IN");
-      x.ts=Date.now();
+      x.ts=serverNow();
       applied++;
       if(x.acc){ _autoFixPatch[key]=_autoFixPatch[key]||{}; _autoFixPatch[key][String(x.acc)]=x; }
       else _autoFixUnsafe[key]=true; // acc नहीं — patch-key नहीं बन सकता, सुरक्षित array-PUT पर वापस
@@ -218,7 +218,7 @@ function reconcileHQ(hq){
         var pm=paidMap[String(x.acc).trim()];
         x.status="paid"; x.paydate=pm.paydate;
         if(pm.by){x.updatedBy=pm.by;x.updatedAt=pm.at;}
-        x.ts=Date.now();
+        x.ts=serverNow();
         changed=true; fixed++;
       }
     });
@@ -251,7 +251,7 @@ function markPaid(idx,acc){
   d[idx].paydate=dateStr;
   d[idx].updatedBy=CU.name;
   d[idx].updatedAt=dtStr;
-  d[idx].ts=Date.now();
+  d[idx].ts=serverNow();
   cSet(activeHQ,activeCat,d);
   renderSummaryWith(d); renderListWith(d);
   toast("✅ वसूली दर्ज! (हर tab में अपडेट)","ok");
@@ -270,7 +270,7 @@ function markUnpaid(idx,acc){
   d[idx].paydate="";
   d[idx].updatedBy=CU.name;
   d[idx].updatedAt=dtStr;
-  d[idx].ts=Date.now();
+  d[idx].ts=serverNow();
   cSet(activeHQ,activeCat,d);
   renderSummaryWith(d); renderListWith(d);
   toast("↩ वापस बाकी किया — "+d[idx].name+" (हर tab में)","inf");
@@ -402,7 +402,7 @@ function saveRmk(){
   }
   d[idx].updatedBy=CU.name;
   d[idx].updatedAt=dtStr;
-  d[idx].ts=Date.now();
+  d[idx].ts=serverNow();
   cSet(activeHQ,activeCat,d);
   closeRmkModal();
   renderSummaryWith(d); renderListWith(d);

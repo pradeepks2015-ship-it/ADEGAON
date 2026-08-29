@@ -467,7 +467,7 @@ function saveHsc(){
     ceTgt:document.getElementById("hsc-cetgt").value.replace(/,/g,"").trim(),
     atcTgt:document.getElementById("hsc-atctgt").value.replace(/,/g,"").trim(),
     updatedBy:CU?CU.name:"",updatedAt:new Date().toLocaleString("hi-IN"),
-    ts:Date.now() // नया-पुराना तय करने के लिए — बड़ा ts हमेशा जीतता है
+    ts:serverNow() // नया-पुराना तय करने के लिए — बड़ा ts हमेशा जीतता है (डिवाइस की ग़लत घड़ी से सुरक्षित)
   };
   if(!d.curPaid||!d.curAmt){toast("इस वर्ष के आँकड़े जरूरी हैं","err");return;}
   HSC=d;
