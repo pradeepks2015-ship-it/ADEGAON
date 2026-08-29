@@ -28,7 +28,7 @@
 - `index.html`, `css/style.css`
 - `sw.js` — service worker + CACHE_NAME
 - `tests/smoke.spec.js` — पूरा टेस्ट suite
-- `database.rules.json` — Firebase Realtime Database की Security Rules (version-controlled कॉपी; असली/लाइव rules Firebase Console → Realtime Database → Rules में हैं)
+- `database.rules.json` — Firebase Realtime Database की Security Rules (source of truth — `main` पर push होते ही `.github/workflows/deploy-rules.yml` अपने-आप असली Firebase पर deploy कर देता है, देखें `scripts/deploy-rules.js`)
 - `eslint.config.js` / `eslint.shared-globals.json` — CI लिंट सेटअप; कोई नई top-level global var/function (जो दूसरी js/*.js फाइल में इस्तेमाल हो) जोड़ें तो `node scripts/gen-eslint-globals.js` चलाकर globals list दोबारा बनाएं
 
 ## काम शुरू करने से पहले
@@ -45,7 +45,7 @@
 3. Commit → `git fetch origin main` करके rebase करें (पिछले squash-merge से conflict बचाने के लिए) → push → PR बनाएं → PR की "smoke" **और** "lint" दोनों CI checks पास होने का इंतज़ार करें → तभी merge करें (squash) → PR activity से unsubscribe करें।
 4. बड़े visual/UI बदलाव हों तो पहले screenshot लेकर दिखाएं, अनुमति के बाद ही merge करें।
 5. कभी भी बिना पूछे risky/destructive git ऑपरेशन (force push to main, reset --hard, आदि) न करें।
-6. Firebase Security Rules में कोई बदलाव करना हो तो पहले `database.rules.json` में बदलें, commit/PR/merge की सामान्य प्रक्रिया से गुज़ारें, और merge के बाद **JE (उपयोगकर्ता) को Firebase Console → Realtime Database → Rules में जाकर वही बदलाव मैन्युअली paste/publish करने को कहें** — इस रेपो से rules अपने-आप deploy नहीं होतीं, यह फाइल सिर्फ़ version-history/backup के लिए है (कोई automated deploy pipeline अभी नहीं है)।
+6. Firebase Security Rules में कोई बदलाव करना हो तो पहले `database.rules.json` में बदलें, commit/PR/merge की सामान्य प्रक्रिया से गुज़ारें — merge होते ही `.github/workflows/deploy-rules.yml` अपने-आप असली Firebase Database पर rules publish कर देता है (backup.js जैसा ही `FIREBASE_SERVICE_ACCOUNT` secret इस्तेमाल होता है, कोई मैन्युअल Console कदम नहीं चाहिए)। PR merge होने के बाद Actions टैब में "Deploy Firebase Rules" workflow हरा (green) होने की पुष्टि कर लें।
 
 ## भाषा
 उपयोगकर्ता (JE) से हमेशा हिंदी में बात करें — कोड कमेंट भी हिंदी में लिखे जाते हैं (established convention)।
