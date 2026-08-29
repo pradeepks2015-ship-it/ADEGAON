@@ -1329,6 +1329,33 @@ test.describe('चरण 3 — migration-revert ऑटो-पहचान', () =
     expect(logs.filter((l) => l.c === 'migration-reverted').length).toBe(1);
   });
 
+  test('_migrateOne — असली data-conversion सफल हो पर MIGRATED flag दोबारा-लिखना 401 से नाकाम हो (लाइनमैन के self-heal में — flag अब JE-only-write है), तो भी overall status "ok" रहे, "migrate-fail" न लॉग हो (bug: असली सफल सुधार को ग़लती से "असफल" मान लिया जाता था)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/MIGRATED/') > -1 && opts && opts.method === 'PUT') {
+          return Promise.resolve({ ok: false, status: 401 }); // लाइनमैन के पास अब यह लिखने की अनुमति नहीं
+        }
+        if (String(url).indexOf(fbPath('टेस्ट HQ6', 'कुल उपभोक्ता')) > -1 && (!opts || !opts.method)) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', name: 'क' }]) });
+        }
+        if (String(url).indexOf(fbPath('टेस्ट HQ6', 'कुल उपभोक्ता')) > -1 && opts && opts.method === 'PUT') {
+          return Promise.resolve({ ok: true }); // असली data-PUT सफल
+        }
+        return orig(url, opts);
+      };
+      _migrateOne('टेस्ट HQ6', 'कुल उपभोक्ता', function (result) {
+        window.fetch = orig;
+        resolve({ result: result, logs: getLogs().filter((l) => l.c === 'migrate-fail') });
+      });
+    }));
+    expect(r.result.status).toBe('ok');
+    expect(r.logs.length).toBe(0);
+  });
+
   test('_migRender — "पलटा हुआ" HQ को लाल चेतावनी के साथ अलग दिखाता है, और माइग्रेट बटन भी दिखता रहता है (मैन्युअल ठीक करने के लिए)', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
