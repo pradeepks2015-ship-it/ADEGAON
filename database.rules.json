@@ -8,6 +8,10 @@
       ".read": "auth != null",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' && (!newData.exists() || !data.child('ts').exists() || newData.child('ts').val() >= data.child('ts').val())"
     },
+    "HQ_PIN": {
+      ".read": "auth != null",
+      ".write": "auth.token.email === 'pradeepks2015@gmail.com'"
+    },
     "आदेगांव": {
       ".read": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'Jm8txywdH1gmNmvODYPMpNO3at33'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'Jm8txywdH1gmNmvODYPMpNO3at33'",
