@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "test": "playwright test",
-    "lint": "eslint js scripts tests playwright.config.js eslint.config.js"
+    "lint": "eslint js scripts tests playwright.config.js eslint.config.js",
+    "check-xss": "node scripts/check-xss-onclick-escaping.js"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
