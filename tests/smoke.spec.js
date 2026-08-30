@@ -3110,6 +3110,20 @@ test.describe('database.rules.json — DEVICE_VERSIONS को पूरी त�
   });
 });
 
+test.describe('database.rules.json — $other catch-all बहुत ढीला था (bug: LOGS/USAGE/PROFILE_PHOTOS कहीं explicit नहीं थे, "$other": auth != null के तहत कोई भी anonymous device मनमाना नया top-level path बनाकर junk data भर सकता था — storage/bandwidth abuse का खतरा)', () => {
+  test('LOGS/USAGE/PROFILE_PHOTOS का अपना explicit rule हो (हर लॉगिन-किया device खुद अपना diagnostic/profile data लिख सके), और $other पूरी तरह बंद (false) हो', () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
+    ['LOGS', 'USAGE', 'PROFILE_PHOTOS'].forEach((key) => {
+      const rule = rules.rules[key];
+      expect(rule, key + ' का अपना top-level rule होना चाहिए — $other के भरोसे नहीं').toBeTruthy();
+      expect(rule['.read']).toBe('auth != null');
+      expect(rule['.write']).toBe('auth != null');
+    });
+    expect(rules.rules.$other['.read']).toBe(false);
+    expect(rules.rules.$other['.write']).toBe(false);
+  });
+});
+
 test.describe('Firebase Rules — auto-deploy पाइपलाइन (bug: JE को हर बदलाव के बाद मैन्युअली Console में paste/publish करना पड़ता था — भूलने/copy-paste ग़लती से repo और असली live-rules में चुपचाप drift हो सकता था)', () => {
   test('deploy-rules.yml — database.rules.json बदलने पर main push से ट्रिगर हो, scripts/deploy-rules.js चलाए', () => {
     const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy-rules.yml'), 'utf8');
