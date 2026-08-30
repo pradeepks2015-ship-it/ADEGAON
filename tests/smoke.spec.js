@@ -1528,6 +1528,65 @@ test.describe('चरण 3 — migration-revert ऑटो-पहचान', () =
     expect(r.logs.length).toBe(0);
   });
 
+  // असली production लॉग में चार अलग-अलग HQ (पाटन/आदेगांव/बीबी/जोबा) से "migration-reverted" आ रहा
+  // था, सब नए version वाले devices से। जड़: MIGRATED सिर्फ़ memory में था और हर बार खाली से शुरू
+  // होकर network से भरता था — कमज़ोर नेट पर वो fetch नाकाम होते ही isMigrated() झूठा "नहीं" कहता,
+  // और _fbPut() का guard भी उसी खाली flag को देखकर धोखा खाकर पूरा array लिख देता → माइग्रेशन पलट जाता
+  test('loadMigratedFlags — सफल होने पर flags localStorage में भी सेव हों (सिर्फ़ memory में नहीं)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const saved = await page.evaluate(() => new Promise((resolve) => {
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/MIGRATED.json') > -1) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'टेस्ट_HQ20': { 'कुल_उपभोक्ता': true } }) });
+        }
+        return orig(url, opts);
+      };
+      loadMigratedFlags();
+      setTimeout(() => { window.fetch = orig; resolve(localStorage.getItem('dc_migrated3')); }, 300);
+    }));
+    expect(JSON.parse(saved)).toEqual({ 'टेस्ट_HQ20': { 'कुल_उपभोक्ता': true } });
+  });
+
+  test('reload के बाद network से पहले ही MIGRATED localStorage से बहाल हो जाए — isMigrated() सही जवाब दे', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      localStorage.setItem('dc_migrated3', JSON.stringify({ 'टेस्ट_HQ21': { 'कुल_उपभोक्ता': true } }));
+    });
+    await page.reload();
+    await page.waitForFunction(() => typeof isMigrated === 'function', null, { timeout: 15000 });
+    expect(await page.evaluate(() => isMigrated('टेस्ट HQ21', 'कुल उपभोक्ता'))).toBe(true);
+  });
+
+  test('MIGRATED का network-fetch नाकाम हो तो भी migrated list पर पूरा array PUT न हो (bug: माइग्रेशन चुपचाप पलट जाता था)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      localStorage.setItem('dc_migrated3', JSON.stringify({ 'टेस्ट_HQ22': { 'कुल_उपभोक्ता': true } }));
+    });
+    await page.reload();
+    await page.waitForFunction(() => typeof loadMigratedFlags === 'function', null, { timeout: 15000 });
+    await loginLineman(page);
+    const body = await page.evaluate(() => new Promise((resolve) => {
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/MIGRATED.json') > -1) return Promise.reject(new Error('Failed to fetch')); // कमज़ोर नेट
+        if (String(url).indexOf(fbPath('टेस्ट HQ22', 'कुल उपभोक्ता')) > -1 && opts && (opts.method === 'PUT' || opts.method === 'PATCH')) {
+          window.fetch = orig;
+          resolve({ method: opts.method, body: JSON.parse(opts.body) });
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+        }
+        return orig(url, opts);
+      };
+      loadMigratedFlags(); // नाकाम — पर cache से flags पहले से मौजूद हैं
+      setTimeout(() => {
+        fbSet('टेस्ट HQ22', 'कुल उपभोक्ता', [{ acc: '1', name: 'क', amount: 100 }], [], null);
+      }, 100);
+    }));
+    expect(Array.isArray(body.body)).toBe(false); // सबसे ज़रूरी: raw array नहीं गया
+    expect(body.body['1']).toBeTruthy();          // per-record (acc-keyed) फॉर्मेट ही गया
+  });
+
   test('_migRender — "पलटा हुआ" HQ को लाल चेतावनी के साथ अलग दिखाता है, और माइग्रेट बटन भी दिखता रहता है (मैन्युअल ठीक करने के लिए)', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
