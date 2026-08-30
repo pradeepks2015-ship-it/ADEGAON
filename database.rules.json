@@ -22,6 +22,18 @@
         ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'"
       }
     },
+    "LOGS": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "USAGE": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "PROFILE_PHOTOS": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
     "आदेगांव": {
       ".read": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'Jm8txywdH1gmNmvODYPMpNO3at33'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'Jm8txywdH1gmNmvODYPMpNO3at33'",
@@ -53,8 +65,8 @@
       "$cat": { "$acc": { ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''" } }
     },
     "$other": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": false,
+      ".write": false
     }
   }
 }
