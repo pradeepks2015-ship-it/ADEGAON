@@ -3196,7 +3196,35 @@ test.describe('XSS सुरक्षा — PDF/print export और दिन�
     expect(html).not.toContain("openPhModal('O'Brien'");
     expect(html).toContain("openAccModal('x\\');alert(7);//')");
     expect(html).toContain("openPhModal('O\\'Brien','9\\'999999999'");
-    // प्लेन टेक्स्ट (display) कॉपी अब भी सामान्य escHtml से ही आए (सिंगल-कोट HTML-content में खतरा नहीं, escape ज़रूरी नहीं)
+    // प्लेन टेक्स्ट (display) कॉपी में escHtml अब ' को &#39; कर देता है — पर browser उसे parse करके
+    // वापस साधारण ' के तौर पर दिखाता है (round-trip में कुछ नहीं टूटता, इंसान को कोई फ़र्क़ नहीं दिखता)
     expect(html).toContain('<div class="cc-name">O\'Brien</div>');
+  });
+
+  test('renderSummaryWith — श्रेणी का नाम (JE बदल सकते हैं) innerHTML में escape होकर जाए (bug: eslint-plugin-no-unsanitized ऑडिट में मिला — नाम validation सिर्फ़ Firebase-असुरक्षित चिह्न रोकती है, HTML-special चिह्न नहीं)', async ({ page }) => {
+    await openApp(page);
+    const html = await page.evaluate(() => {
+      activeCat = "<img src=x onerror=alert(9)>";
+      renderSummaryWith([]);
+      return document.getElementById('summary').innerHTML;
+    });
+    expect(html).not.toContain('<img src=x onerror=alert(9)>');
+    expect(html).toContain('&lt;img src=x onerror=alert(9)&gt;');
+  });
+
+  test('escHtml अब सिंगल-कोट (\') को भी escape करता है — openPinModal जैसे single-quoted attribute (value=\'...\') में breakout से बचाव (bug: HQ_PIN फ़ील्ड पर digit-only validation नहीं, JE कुछ भी टाइप कर सकता है)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    // .innerHTML पढ़ने पर browser हमेशा double-quote में serialize कर देता है (चाहे source में
+    // single-quote हो), तो असली सुरक्षा साबित करने के लिए parsed DOM attribute ही सही जांच है —
+    // अगर breakout हुआ होता तो एक अलग असली onmouseover attribute बन जाता
+    const result = await page.evaluate(() => {
+      HQ_PINS[hqKey('आदेगांव')] = "1' onmouseover='alert(8)";
+      openPinModal();
+      var el = document.getElementById('pin-आदेगांव');
+      return { value: el.value, hasOnmouseover: el.getAttribute('onmouseover') !== null };
+    });
+    expect(result.hasOnmouseover).toBe(false);
+    expect(result.value).toBe("1' onmouseover='alert(8)");
   });
 });

@@ -5,12 +5,14 @@
   "private": true,
   "scripts": {
     "test": "playwright test",
-    "lint": "eslint js scripts tests playwright.config.js eslint.config.js"
+    "lint": "eslint --report-unused-disable-directives js scripts tests playwright.config.js eslint.config.js",
+    "check-xss": "node scripts/check-xss-onclick-escaping.js"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.1",
     "eslint": "^10.8.0",
+    "eslint-plugin-no-unsanitized": "^4.1.5",
     "espree": "^10.4.0",
     "globals": "^15.15.0"
   }

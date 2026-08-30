@@ -2,8 +2,10 @@ function renderSummaryWith(data){
   var tot=0,paid=0,pend=0,pendAmt=0;
   data.forEach(function(c){tot++;if(c.status==="paid")paid++;else{pend++;pendAmt+=Number(c.amount)||0;}});
   var fmt=function(a){return a>=100000?"₹"+(a/100000).toFixed(1)+"L":a>=1000?"₹"+(a/1000).toFixed(1)+"K":"₹"+a;};
+  // audit-verified: activeCat escHtml() से गुज़रता है, बाक़ी सब संख्या
+  // eslint-disable-next-line no-unsanitized/property
   document.getElementById("summary").innerHTML=
-    "<div class='sbox'><div class='snum'>"+tot+"</div><div class='slbl'>"+activeCat+"</div></div>"+
+    "<div class='sbox'><div class='snum'>"+tot+"</div><div class='slbl'>"+escHtml(activeCat)+"</div></div>"+
     "<div class='sbox'><div class='snum'>"+paid+"</div><div class='slbl'>✓ वसूल</div></div>"+
     "<div class='sbox'><div class='snum'>"+pend+"</div><div class='slbl'>✗ बाकी</div></div>"+
     "<div class='sbox'><div class='snum'>"+fmt(pendAmt)+"</div><div class='slbl'>बाकी राशि</div></div>";
@@ -50,6 +52,9 @@ function renderListWith(data){
     else emptyMsg="सूची खाली है";
     var emptyIco=activeFilter==="paid"?"✅":activeFilter==="pending"?"⏳":(q?"🔍":"📋");
     var emptySub=(!q&&activeFilter==="all")?"📤 अपलोड बटन से लिस्ट डालें":"🔍 खोज या फ़िल्टर बदलें";
+    // audit-verified: emptyMsg/emptyIco/emptySub सब hardcoded literals में से चुने जाते हैं (कभी भी
+    // सीधे q/किसी field का value नहीं होते) — plugin ternary को समझ नहीं पाता
+    // eslint-disable-next-line no-unsanitized/property
     c.innerHTML="<div class='empty'><div class='empty-ico'>"+emptyIco+"</div>"+
       "<div class='empty-t'>"+emptyMsg+"</div>"+
       "<div class='empty-s'>"+emptySub+"</div></div>";
@@ -58,6 +63,10 @@ function renderListWith(data){
   }
   var toRender=filtered.slice(0,_renderLimit);
   var hasMore=filtered.length>_renderLimit;
+  // audit-verified: नीचे हर con-card में सभी consumer fields (name/father/acc/phone/addr/tariff/
+  // load/unit/rmk/paydate आदि) escHtml()/escJsAttr() से गुज़रते हैं — plugin .map().join() के अंदर
+  // की calls नहीं देख पाता
+  // eslint-disable-next-line no-unsanitized/property
   c.innerHTML=toRender.map(function(x){
     var oi=data.indexOf(x),isPaid=x.status==="paid";
     var remarksArr=x.remarksArr||[];
@@ -106,19 +115,23 @@ function renderListWith(data){
   requestAnimationFrame(_updateBnavVisibility); // अगले paint frame तक टालें — DOM लिखने के तुरंत बाद scrollHeight पढ़ने से जबरन (महंगा) layout reflow होता है, बड़ी list पर धीमापन
 }
 
+// सिंगल-कोट (') को भी &#39; कर देते हैं — भले ही ज़्यादातर जगह double-quoted attribute
+// (onclick=\"...\") या plain text content है जहां ' वैसे भी खतरनाक नहीं, पर कहीं single-quoted
+// attribute (value='...') में इस्तेमाल हो (जैसे ui-core.js: openPinModal) तो वहां raw ' attribute
+// को समय से पहले बंद कर सकता था — असली bug यही था (HQ_PIN फ़ील्ड पर कोई digit-only validation नहीं,
+// JE कुछ भी टाइप कर सकता है)। &#39; हर जगह ' जैसा ही दिखता है, कहीं कुछ नहीं टूटता।
 function escHtml(s){
   if(!s) return "";
-  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
 
 // जब कोई value onclick="...('VALUE')" जैसे single-quoted JS string के अंदर, किसी HTML attribute में
-// डालनी हो — escHtml() अकेले काफ़ी नहीं है, वो सिर्फ़ & < > " को संभालता है, सिंगल-कोट (') को नहीं।
-// अगर acc/नाम/फ़ोन में कभी ' आ जाए (जैसे कोई नाम "O'Brien" जैसा, या जान-बूझकर बनाया गया data),
-// तो वो onclick की JS string को समय से पहले बंद करके बाक़ी बचा हिस्सा असली JS code की तरह चला सकता
-// था — असली bug यही था (सिर्फ़ HTML-content के लिए escHtml काफ़ी है, पर JS-string context अलग जोखिम
-// है)। पहले JS-string के लिए escape (\ और ' दोनों, साथ ही newline), फिर सामान्य HTML-attribute
-// escape (escHtml) — यही सही क्रम है, क्योंकि browser पहले HTML entity decode करता है, फिर उस
-// decode हुए टेक्स्ट को JS की तरह चलाता है।
+// डालनी हो — escHtml() अकेले काफ़ी नहीं है। भले ही अब वो ' को &#39; कर देता है (जो HTML-parse होकर
+// वापस ' बन जाता है), पर JS engine को वो ' बिना backslash के मिलता है — तो onclick की JS string
+// तब भी समय से पहले बंद हो सकती है। अगर acc/नाम/फ़ोन में कभी ' आ जाए (जैसे कोई नाम "O'Brien" जैसा,
+// या जान-बूझकर बनाया गया data), तो असली bug यही था। पहले JS-string के लिए escape (\ और ' दोनों,
+// साथ ही newline), फिर सामान्य HTML-attribute escape (escHtml) — यही सही क्रम है, क्योंकि browser
+// पहले HTML entity decode करता है, फिर उस decode हुए टेक्स्ट को JS की तरह चलाता है।
 function escJsAttr(s){
   if(!s) return "";
   return escHtml(String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/\n/g,"\\n").replace(/\r/g,"\\r"));
@@ -366,6 +379,8 @@ function openRmkModal(idx,acc){
         "<div class='prev-rmk-meta'>— "+escHtml(r.by)+(r.at?" • "+r.at:"")+"</div>"+
       "</div>";
     }).join("");
+    // audit-verified: html ऊपर .map().join() से बना — हर remark में r.text/r.by escHtml() से गुज़रा
+    // eslint-disable-next-line no-unsanitized/property
     lst.innerHTML=html;
     sec.style.display="block";
   } else {

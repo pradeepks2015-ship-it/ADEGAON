@@ -193,6 +193,9 @@ function openPinModal(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE PIN सेट कर सकते हैं","err");return;}
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
   var el=document.getElementById("pin-fields");
+  // audit-verified: hq/v दोनों escHtml() से गुज़रते हैं (escHtml अब सिंगल-कोट भी escape करता है, तो
+  // यहां single-quoted value='...' attribute में भी breakout नहीं हो सकता)
+  // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=HQS.map(function(hq){
     var v=HQ_PINS[hqKey(hq)]||"";
     return "<label class='f-label'>"+escHtml(hq)+"</label><input type='text' inputmode='numeric' class='f-input' id='pin-"+hqKey(hq)+"' value='"+escHtml(v)+"' placeholder='खाली = PIN ज़रूरी नहीं' style='margin-bottom:10px;'>";

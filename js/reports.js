@@ -107,6 +107,8 @@ function buildScOverview(hqs){
   var totPaid=Object.keys(allPaidAccs).length;
   var totPend=totCons-totPaid;
   var fmt=function(a){return a>=100000?"₹"+(a/100000).toFixed(1)+"L":a>=1000?"₹"+(a/1000).toFixed(1)+"K":"₹"+a;};
+  // audit-verified: totCons/totPaid/totPend/fmt(totAmt) सब संख्या हैं, कोई free-text field नहीं
+  // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=
     "<div class='sc-ov-box'><div class='sc-ov-num'>"+totCons+"</div><div class='sc-ov-lbl'>कुल उपभोक्ता</div></div>"+
     "<div class='sc-ov-box'><div class='sc-ov-num' style='color:var(--green)'>"+totPaid+"</div><div class='sc-ov-lbl'>✅ वसूल</div></div>"+
@@ -198,6 +200,9 @@ function renderScDateTable(data){
   // कुल उपभोक्ता CATS[0] से
   var hqTotal=cGet(scActiveHQ,CATS[0]).length||0;
   var pct=hqTotal?((totCount/hqTotal)*100).toFixed(1):"0.0";
+  // audit-verified: rows ऊपर .map().join() से बना (हर dt/name/acc escHtml() से गुज़रा है),
+  // hqTotal/totCount/pct संख्या
+  // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=
     "<div style='font-size:11px;color:var(--muted);margin-bottom:6px;'>📊 कुल उपभोक्ता: <b style=\'color:var(--fg)\'>"+(hqTotal||"-")+"</b> &nbsp;|&nbsp; वसूल: <b style=\'color:var(--green)\'>"+(totCount)+"</b> &nbsp;|&nbsp; बाकी: <b style=\'color:var(--red)\'>"+(hqTotal-totCount)+"</b> &nbsp;|&nbsp; प्रतिशत: <b style=\'color:var(--gold)\'>"+(pct)+"%</b></div>"+
     "<table class='sc-date-table'>"+
@@ -261,6 +266,9 @@ function downloadScPDF(){
     "<button class='np' onclick='window.print()' style='margin-bottom:8px;padding:6px 14px;background:#4a148c;color:#fff;border:none;border-radius:5px;cursor:pointer;'>Print / PDF Save</button>"+
     rows+"</body></html>";
   var w=window.open("","_blank");
+  // audit-verified: html के अंदर hq/CU.name escHtml() से गुज़रे, rows भी .map().join() से escHtml()
+  // सहित बना (ऊपर देखें)
+  // eslint-disable-next-line no-unsanitized/method
   if(w){w.document.write(html);w.document.close();setTimeout(function(){w.print();},600);}
   else toast("Popup block है, allow करें","inf");
 }
@@ -508,6 +516,8 @@ function _waScRender(){
     "<td>"+fmt(gTot)+"<br><span class='wasc-sub'>&#8377;"+fmt(gBak)+"</span></td>"+
     "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+fmt(gPaid)+"</span><br><span class='wasc-sub'>&#8377;"+fmt(gPaidAmt)+"</span></td>"+
     "<td>"+gPct.toFixed(1)+"%</td></tr></tfoot></table>";
+  // audit-verified: r.hq escHtml() से गुज़रता है (ऊपर देखें), बाक़ी सब संख्या
+  // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=html;
 }
 
@@ -572,6 +582,8 @@ function _todayScRender(){
   var html="<div class='wasc-hdr'><div class='wasc-hdr-t'>&#128979;&#65039; आज की वसूली — "+escHtml(_todayDateStr())+"</div></div>";
   if(!gCount){
     html+="<div class='empty'><div class='empty-ico'>📅</div><div class='empty-t'>आज तक कोई वसूली नहीं</div><div class='empty-s'>अभी तक किसी भी HQ में आज का कोई भुगतान दर्ज नहीं</div></div>";
+    // audit-verified: html में सिर्फ़ escHtml(_todayDateStr()) और hardcoded literals हैं
+    // eslint-disable-next-line no-unsanitized/property
     el.innerHTML=html;
     return;
   }
@@ -584,6 +596,8 @@ function _todayScRender(){
   html+="</tbody><tfoot><tr><td colspan='2'>योग</td>"+
     "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+fmt(gCount)+"</span></td>"+
     "<td>&#8377;"+fmt(gAmt)+"</td></tr></tfoot></table>";
+  // audit-verified: r.hq escHtml() से गुज़रता है (ऊपर देखें), बाक़ी संख्या
+  // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=html;
 }
 

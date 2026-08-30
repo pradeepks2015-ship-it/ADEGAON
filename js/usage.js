@@ -71,6 +71,9 @@ function _usageRender(){
         "<div style='display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:4px;color:var(--muted);'><span>आज का फ्री-कोटा</span><span>"+curMB.toFixed(1)+" MB / "+USAGE_DAY_QUOTA_MB+" MB ("+pct.toFixed(0)+"%)</span></div>"+
         "<div style='background:var(--border);border-radius:6px;height:8px;overflow:hidden;'><div style='width:"+pct.toFixed(1)+"%;height:100%;background:"+barColor+";'></div></div>"+
         "</div>";
+      // audit-verified: warnHtml/quotaHtml/curD/prevD/curBytes/prevBytes सब संख्या या
+      // program-generated date-key strings हैं (_usageDayKey से), कोई free-text field नहीं
+      // eslint-disable-next-line no-unsanitized/property
       el.innerHTML=warnHtml+quotaHtml+
         "<table class='wasc-table'><thead><tr><th class='wasc-th-left'>तारीख़</th><th>अनुमानित डेटा (सभी devices)</th></tr></thead><tbody>"+
         "<tr><td class='wasc-hq'>"+curD+" (आज)</td><td>"+_usageFmt(curBytes)+"</td></tr>"+
