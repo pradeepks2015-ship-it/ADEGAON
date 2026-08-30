@@ -362,21 +362,23 @@ function downloadPDF(){
   var paidAmt=paid.reduce(function(s,x){return s+(Number(x.amount)||0);},0);
   var rows=data.map(function(x,i){
     var isPaid=x.status==="paid";
-    var allRmk=(x.remarksArr||[]).map(function(r){return r.text+" <small>("+r.by+")</small>";}).join("<br>");
+    // remarksArr का text लाइनमैन/JE का free-typed इनपुट है — escHtml के बिना यहां (document.write
+    // से बने नए tab में) कोई भी स्क्रिप्ट-जैसा remark टाइप करके असली XSS चला सकता था (असली bug यही था)
+    var allRmk=(x.remarksArr||[]).map(function(r){return escHtml(r.text)+" <small>("+escHtml(r.by)+")</small>";}).join("<br>");
     return "<tr style='border-bottom:1px solid #ddd;background:"+(i%2===0?"#fff":"#f9f9f9")+";'>"+
       "<td style='padding:5px;text-align:center;'>"+(i+1)+"</td>"+
-      "<td style='padding:5px;font-weight:600;'>"+x.name+"</td>"+
-      "<td style='padding:5px;color:#555;'>"+(x.father||"-")+"</td>"+
-      "<td style='padding:5px;color:#1565c0;'>"+x.acc+"</td>"+
-      "<td style='padding:5px;color:#333;'>"+(x.phone||"-")+"</td>"+
+      "<td style='padding:5px;font-weight:600;'>"+escHtml(x.name)+"</td>"+
+      "<td style='padding:5px;color:#555;'>"+escHtml(x.father||"-")+"</td>"+
+      "<td style='padding:5px;color:#1565c0;'>"+escHtml(x.acc)+"</td>"+
+      "<td style='padding:5px;color:#333;'>"+escHtml(x.phone||"-")+"</td>"+
       "<td style='padding:5px;text-align:right;font-weight:700;'>₹"+Number(x.amount).toLocaleString("hi-IN")+"</td>"+
-      "<td style='padding:5px;'>"+(x.tariff||"-")+"</td>"+
-      "<td style='padding:5px;'>"+(x.load||"-")+"</td>"+
+      "<td style='padding:5px;'>"+escHtml(x.tariff||"-")+"</td>"+
+      "<td style='padding:5px;'>"+escHtml(x.load||"-")+"</td>"+
       "<td style='padding:5px;text-align:center;font-weight:700;color:"+(isPaid?"#2e7d32":"#c62828")+"'>"+
-        (isPaid?"✓ वसूल":"✗ बाकी")+(x.paydate?"<br><small>"+x.paydate+"</small>":"")+
+        (isPaid?"✓ वसूल":"✗ बाकी")+(x.paydate?"<br><small>"+escHtml(x.paydate)+"</small>":"")+
       "</td>"+
       "<td style='padding:5px;background:"+(allRmk?"#fff8e1":"")+"'>"+(allRmk||"-")+"</td>"+
-      "<td style='padding:5px;font-size:10px;color:#555;'>"+(x.lastPaidAmt?"₹"+x.lastPaidAmt+(x.lastPayDate?"<br>"+x.lastPayDate:""): "-")+"</td>"+
+      "<td style='padding:5px;font-size:10px;color:#555;'>"+(x.lastPaidAmt?"₹"+escHtml(String(x.lastPaidAmt))+(x.lastPayDate?"<br>"+escHtml(x.lastPayDate):""): "-")+"</td>"+
     "</tr>";
   }).join("");
   var html="<!DOCTYPE html><html><head><meta charset='UTF-8'>"+
@@ -386,7 +388,7 @@ function downloadPDF(){
     "table{width:100%;border-collapse:collapse;}th{background:#1a237e;color:#fff;padding:5px;}"+
     "@media print{.np{display:none}}</style></head><body>"+
     "<h2>आदेगांव DC वसूली रिपोर्ट</h2>"+
-    "<p>HQ: <b>"+activeHQ+"</b> | Category: <b>"+activeCat+"</b> | दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+CU.name+"</p>"+
+    "<p>HQ: <b>"+escHtml(activeHQ)+"</b> | Category: <b>"+escHtml(activeCat)+"</b> | दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+escHtml(CU.name)+"</p>"+
     "<div class='info'>"+
       "<div class='ib'><b>"+data.length+"</b>कुल</div>"+
       "<div class='ib'><b style='color:green'>"+paid.length+"</b>वसूल</div>"+
