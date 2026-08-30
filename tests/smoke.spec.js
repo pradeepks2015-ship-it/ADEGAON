@@ -1086,6 +1086,178 @@ test.describe('डिवाइस Version ट्रैकिंग', () => {
   });
 });
 
+// असली production में यह सूची ~38 entries तक पहुंच गई थी जबकि असली कर्मचारी ~28 ही थे — DEVICE_VERSIONS
+// की key DEV_ID (localStorage में) है, तो browser data साफ़ होने/ऐप दोबारा install होने पर हर बार नई
+// entry बनती थी ("Pradeep (JE)" की अकेले 20+ entries मिलीं)। साथ ही "पुराने version" चेतावनी उन मरे
+// हुए devices से हमेशा लाल रहती थी जो अब कभी अपडेट होंगे ही नहीं — असली bug यही था
+test.describe('कर्मचारी सक्रियता सूची — नाम-वार समूह, 7-दिन अवधि, पुरानी entries हटाना (JE only)', () => {
+  // एक ही व्यक्ति के 3 devices + एक पुराना (40 दिन) + एक और कर्मचारी
+  const mockDV = () => {
+    window.fetch = function (url, opts) {
+      if (String(url).indexOf('/DEVICE_VERSIONS.json') > -1) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({
+          d1: { v: APP_VER, hq: 'आदेगांव', role: 'supervisor', name: 'Pradeep (JE)', t: Date.now() - 60000 },
+          d2: { v: APP_VER, hq: 'आदेगांव', role: 'supervisor', name: 'pradeep (je)', t: Date.now() - 2 * 86400000 },
+          d3: { v: '9.0', hq: 'आदेगांव', role: 'supervisor', name: 'PRADEEP (JE)', t: Date.now() - 3 * 86400000 },
+          d4: { v: APP_VER, hq: 'पाटन', role: 'lineman', name: 'Vaibhav', t: Date.now() - 40 * 86400000 },
+          d5: { v: APP_VER, hq: 'जोबा', role: 'lineman', name: 'Devendra kumar', t: Date.now() - 3600000 },
+        }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+    };
+  };
+
+  test('एक ही व्यक्ति की अलग-अलग वर्तनी/कई devices एक ही पंक्ति में जुड़ें (3 devices दिखे), अलग नाम अलग पंक्ति में', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openMigModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => _dvRender());
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
+    const r = await page.evaluate(() => {
+      const t = document.getElementById('mig-devices').textContent;
+      return { text: t, rows: document.querySelectorAll('#mig-devices tbody tr').length };
+    });
+    expect(r.rows).toBe(2); // Pradeep के तीनों + Devendra = सिर्फ़ 2 पंक्तियां (Vaibhav 40 दिन पुराना, 7-दिन में नहीं)
+    expect(r.text).toContain('3 devices'); // तीनों वर्तनी एक ही व्यक्ति मानी गईं
+    expect(r.text).not.toContain('Vaibhav');
+  });
+
+  // लाइनमैन अपना नाम जैसे मन आए वैसे टाइप करते हैं ("SOHAN YADAV", "pradeep", "Devendra kumar") —
+  // सूची बेतरतीब दिखती थी
+  test('_dvTitle — सभी नाम एक ही रूप में दिखें (देवनागरी नाम ज्यों के त्यों), पर समूह-पहचान पर असर न हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      caps: _dvTitle('SOHAN YADAV'),
+      small: _dvTitle('pradeep'),
+      mixed: _dvTitle('Devendra kumar'),
+      dotted: _dvTitle('ANIRAM.PARTE'),
+      hindi: _dvTitle('आनंद कुमार कवरेती'),
+      // तीनों वर्तनी की समूह-पहचान एक ही रहनी चाहिए
+      sameKey: _dvNameKey('PRADEEP') === _dvNameKey('pradeep') && _dvNameKey('pradeep') === _dvNameKey('Pradeep'),
+    }));
+    expect(r.caps).toBe('Sohan Yadav');
+    expect(r.small).toBe('Pradeep');
+    expect(r.mixed).toBe('Devendra Kumar');
+    expect(r.dotted).toBe('Aniram.Parte');
+    expect(r.hindi).toBe('आनंद कुमार कवरेती'); // देवनागरी में छोटे/बड़े अक्षर होते ही नहीं
+    expect(r.sameKey).toBe(true);
+  });
+
+  test('डिफ़ॉल्ट 7 दिन — पुरानी entry छुपे और "पुरानी हटाएं" बटन उसकी गिनती के साथ दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openMigModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => _dvRender());
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
+    const txt = await page.evaluate(() => document.getElementById('mig-devices').textContent);
+    expect(await page.evaluate(() => _DV_WINDOW)).toBe(7);
+    expect(txt).toContain('पुरानी 1 हटाएं'); // सिर्फ़ Vaibhav (40 दिन) छुपा
+  });
+
+  test('अवधि बदलने पर एक भी नई network call न हो (bandwidth) — "सभी" चुनने पर पुरानी entry भी दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openMigModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => _dvRender());
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
+    const r = await page.evaluate(() => {
+      let calls = 0;
+      window.fetch = function () { calls++; return Promise.resolve({ ok: true, json: () => Promise.resolve(null) }); };
+      _dvSetWindow(0); // "सभी"
+      return { calls: calls, text: document.getElementById('mig-devices').textContent };
+    });
+    expect(r.calls).toBe(0); // पहले से लाया हुआ data दोबारा रंगा गया, कोई नई fetch नहीं
+    expect(r.text).toContain('Vaibhav'); // अब 40-दिन पुरानी entry भी दिखे
+  });
+
+  test('_dvActivity — वसूली में एक ही उपभोक्ता कई श्रेणियों में हो तो एक ही बार गिने (status propagate होता है)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const a = await page.evaluate(() => {
+      const now = Date.now();
+      // एक ही acc दो श्रेणियों में (propagateStatus से ऐसा होता ही है) — dedup होना चाहिए
+      cSet('जोबा', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'A', status: 'paid', amount: 100, updatedBy: 'Devendra kumar', ts: now - 3600000 },
+        { acc: '2', name: 'B', status: 'pending', amount: 100, updatedBy: 'Devendra kumar', ts: now - 3600000 },
+        { acc: '3', name: 'C', status: 'paid', amount: 100, updatedBy: 'कोई और', ts: now - 40 * 86400000 }, // बहुत पुराना
+      ]);
+      cSet('जोबा', 'घरेलू', [
+        { acc: '1', name: 'A', status: 'paid', amount: 100, updatedBy: 'Devendra kumar', ts: now - 3600000 },
+      ]);
+      return _dvActivity(now - 7 * 86400000);
+    });
+    expect(a['devendra kumar']).toEqual({ work: 2, paid: 1, rmk: 0 }); // acc "1" दो जगह था पर एक ही बार गिना
+    expect(a['कोई और']).toBeUndefined(); // 7-दिन की खिड़की से बाहर
+  });
+
+  test('_dvActivity — रिमार्क अलग से गिने जाएं: हर श्रेणी के अपने (propagateStatus remarksArr copy नहीं करता), और सिर्फ़ चुनी अवधि वाले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const a = await page.evaluate(() => {
+      const now = Date.now();
+      const dmy = (ago) => { const d = new Date(now - ago); return d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear() + ', 2:15:30 pm'; };
+      cSet('जोबा', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'A', status: 'pending', amount: 100, remarksArr: [
+          { text: 'घर बंद', by: 'Devendra kumar', at: dmy(2 * 86400000) },
+          { text: 'फिर जाना है', by: 'Devendra kumar', at: dmy(3 * 86400000) },
+          { text: 'बहुत पुराना', by: 'Devendra kumar', at: dmy(40 * 86400000) }, // खिड़की से बाहर
+        ] },
+      ]);
+      // वही acc दूसरी श्रेणी में — पर रिमार्क अलग हैं, इसलिए ये भी गिनने चाहिए (dedup नहीं)
+      cSet('जोबा', 'घरेलू', [
+        { acc: '1', name: 'A', status: 'pending', amount: 100, remarksArr: [
+          { text: 'दूसरी श्रेणी का रिमार्क', by: 'Devendra kumar', at: dmy(86400000) },
+        ] },
+      ]);
+      return _dvActivity(now - 7 * 86400000);
+    });
+    expect(a['devendra kumar'].rmk).toBe(3); // 2 + 1 दूसरी श्रेणी का; 40-दिन पुराना नहीं
+    expect(a['devendra kumar'].paid).toBe(0);
+  });
+
+  test('_dvClearOld — सिर्फ़ चुनी अवधि से पुरानी entries DELETE हों, हाल की न छुएं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openMigModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => _dvRender());
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
+    const deleted = await page.evaluate(() => {
+      window.confirm = () => true;
+      const gone = [];
+      window.fetch = function (url, opts) {
+        if (opts && opts.method === 'DELETE') gone.push(String(url));
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      _dvClearOld();
+      return new Promise((res) => setTimeout(() => res(gone), 200));
+    });
+    expect(deleted.length).toBe(1);
+    expect(deleted[0]).toContain('/DEVICE_VERSIONS/d4.json'); // सिर्फ़ 40-दिन पुराना Vaibhav वाला
+  });
+
+  test('_dvClearOld — lineman सीधे function बुलाए तो भी कुछ न मिटे (defense-in-depth)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const deleted = await page.evaluate(() => {
+      _DV_RAW = { d4: { v: '9.0', hq: 'पाटन', role: 'lineman', name: 'Vaibhav', t: Date.now() - 40 * 86400000 } };
+      _DV_WINDOW = 7;
+      window.confirm = () => true;
+      const gone = [];
+      window.fetch = function (url, opts) {
+        if (opts && opts.method === 'DELETE') gone.push(String(url));
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      _dvClearOld();
+      return new Promise((res) => setTimeout(() => res(gone), 200));
+    });
+    expect(deleted.length).toBe(0);
+  });
+});
+
 test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
   test('बदले/नए/हटाए गए records का सही PATCH payload बनता है', async ({ page }) => {
     await openApp(page);
