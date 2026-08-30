@@ -77,6 +77,8 @@ function _dvRender(){
         html+="<tr"+(old?" style='background:rgba(240,80,80,.06);'":"")+"><td class='wasc-hq'>"+escHtml(r.name||"?")+(r.role==="supervisor"?" (JE)":"")+"</td><td>"+escHtml(r.hq||"?")+"</td><td>"+(old?"⚠️ v":"✅ v")+escHtml(r.v||"?")+"</td><td>"+when+"</td></tr>";
       });
       html+="</tbody></table>";
+      // audit-verified: r.name/r.hq/r.v ऊपर escHtml() से गुज़रते हैं, when/old सिर्फ़ format/boolean
+      // eslint-disable-next-line no-unsanitized/property
       el.innerHTML=html;
     })
     .catch(function(){ el.innerHTML="<div class='log-empty'>लोड नहीं हो पाया — दोबारा कोशिश करें</div>"; });
@@ -151,6 +153,9 @@ function openLogModal(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE लॉग देख सकते हैं","err");return;}
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
   document.getElementById("log-overlay").classList.add("open");
+  // audit-verified: logRowsHtml() खुद हर field को escHtml() से गुज़ारता है — plugin किसी local
+  // helper function के अंदर की escaping नहीं देख पाता, सिर्फ़ escape.methods में listed नाम पहचानता है
+  // eslint-disable-next-line no-unsanitized/property
   document.getElementById("log-local").innerHTML=logRowsHtml(getLogs().slice().reverse());
   document.getElementById("log-srv").innerHTML='<div class="log-empty">लोड हो रहा है...</div>';
   fetchServerLogs();
@@ -186,6 +191,8 @@ function fetchServerLogs(){
     var all=[];
     res.forEach(function(d){if(d&&typeof d==="object")Object.keys(d).forEach(function(k){all.push(d[k]);});});
     all.sort(function(a,b){return String(b&&b.t||"").localeCompare(String(a&&a.t||""));});
+    // audit-verified: logRowsHtml() खुद हर field escHtml() से गुज़ारता है, बाक़ी branch hardcoded
+    // eslint-disable-next-line no-unsanitized/property
     document.getElementById("log-srv").innerHTML=all.length?logRowsHtml(all):'<div class="log-empty">पिछले 2 दिन में किसी device पर कोई error नहीं ✅</div>';
   });
 }
@@ -205,6 +212,8 @@ function cleanupOldServerLogs(){
 
 function clearLocalLogs(){
   try{localStorage.removeItem(LOG_KEY);}catch(e){}
+  // audit-verified: logRowsHtml([]) हमेशा एक hardcoded "कोई error नहीं" संदेश लौटाता है
+  // eslint-disable-next-line no-unsanitized/property
   document.getElementById("log-local").innerHTML=logRowsHtml([]);
   toast("इस डिवाइस के लॉग साफ़ हो गए","ok");
 }

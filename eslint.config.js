@@ -4,6 +4,7 @@
 // function के अंदर वाले local variables पर लागू है, टॉप-लेवल पर नहीं।
 const js = require("@eslint/js");
 const globals = require("globals");
+const noUnsanitized = require("eslint-plugin-no-unsanitized");
 
 // js/*.js में परिभाषित सभी टॉप-लेवल var/function — बाकी फाइलों में इस्तेमाल होते हैं
 const sharedGlobals = require("./eslint.shared-globals.json");
@@ -16,6 +17,7 @@ module.exports = [
   },
   {
     files: ["js/**/*.js"],
+    plugins: { "no-unsanitized": noUnsanitized },
     languageOptions: {
       sourceType: "script",
       ecmaVersion: 2021,
@@ -37,6 +39,13 @@ module.exports = [
       // जैसा लगता है, जबकि यह इस no-build-step, multi-file shared-namespace architecture
       // का सामान्य पैटर्न है, कोई असली बग नहीं
       "no-redeclare": "off",
+      // innerHTML/document.write में कोई भी field escHtml()/escJsAttr() से गुज़रे बिना सीधे न जाए —
+      // भविष्य में कोई नया field जोड़ते समय escHtml लगाना भूल जाए तो यह तुरंत पकड़ ले (जैसे बग
+      // reports.js/upload.js में मैनुअल ऑडिट से मिला था)। यह .map().join("") जैसे pattern के अंदर
+      // की escHtml() calls नहीं देख पाता — वहां हर जगह मैनुअली जांचकर eslint-disable-next-line लगाया
+      // गया है, कारण के साथ।
+      "no-unsanitized/method": ["error", { escape: { methods: ["escHtml", "escJsAttr"] } }],
+      "no-unsanitized/property": ["error", { escape: { methods: ["escHtml", "escJsAttr"] } }],
     },
   },
   {

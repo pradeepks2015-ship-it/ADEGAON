@@ -225,6 +225,8 @@ function processRows(rows){
     wb2.textContent="";
   }
   document.getElementById("prev-title").textContent="पूर्वावलोकन ("+parsedRows.length+" records)";
+  // audit-verified: नीचे हर r.name/r.father/r.acc escHtml() से गुज़रता है
+  // eslint-disable-next-line no-unsanitized/property
   document.getElementById("prev-rows").innerHTML=parsedRows.slice(0,5).map(function(r,i){
     return "<div class='prev-row'><span class='pr-name'>"+(i+1)+". "+escHtml(r.name)+(r.father?" / "+escHtml(r.father):"")+"</span><span class='pr-acc'>"+escHtml(r.acc)+"</span><span class='pr-amt'>₹"+Number(r.amount).toLocaleString("hi-IN")+"</span></div>";
   }).join("");
@@ -401,6 +403,9 @@ function downloadPDF(){
       "<th>#</th><th>नाम</th><th>पिता/पति</th><th>Consumer No</th><th>Mobile</th><th>बकाया</th><th>Tariff</th><th>Load</th><th>स्थिति</th><th>रिमार्क</th><th>पिछला भुगतान</th>"+
     "</tr></thead><tbody>"+rows+"</tbody></table></body></html>";
   var w=window.open("","_blank");
+  // audit-verified: rows ऊपर .map().join() से बना (हर field escHtml() से गुज़रा — देखें ऊपर
+  // allRmk/x.name/x.acc आदि), activeHQ/activeCat/CU.name भी escHtml() से गुज़रे
+  // eslint-disable-next-line no-unsanitized/method
   if(w){w.document.write(html);w.document.close();setTimeout(function(){w.print();},600);}
   else toast("Popup block है, allow करें","inf");
 }

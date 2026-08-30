@@ -67,6 +67,8 @@ function _migRunDryRun(){
   });
   function fin(){
     done++;
+    // audit-verified: done/jobs.length संख्या हैं
+    // eslint-disable-next-line no-unsanitized/property
     if(done<jobs.length){el.innerHTML="<div class='log-empty'>⏳ जांच जारी — "+done+"/"+jobs.length+"...</div>";return;}
     // HQ/श्रेणी क्रम में सजाएं (जैसा jobs में था)
     var order={};jobs.forEach(function(j,i){order[j.hq+"|"+j.cat]=i;});
@@ -137,6 +139,10 @@ function _migRender(rows){
     });
     html+="</tbody></table>";
   }
+  // audit-verified: html में हर जगह r.hq/r.cat/pr.hq/pr.cat/pr.issue/pr.detail escHtml() से गुज़रे
+  // हैं (ऊपर देखें), बाक़ी संख्या/hardcoded — plugin बड़े multi-branch html+= pattern में हर टुकड़ा
+  // ट्रेस नहीं कर पाता
+  // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=html;
   document.getElementById("mig-dl").style.display=rows.length?"":"none";
 }
@@ -236,6 +242,8 @@ function runMigration(){
   function next(){
     if(idx>=jobs.length){ _migRenderResult(results); loadMigratedFlags(); return; }
     var j=jobs[idx++];
+    // audit-verified: j.hq/j.cat escHtml() से गुज़रते हैं, idx/jobs.length संख्या
+    // eslint-disable-next-line no-unsanitized/property
     el.innerHTML="<div class='log-empty'>⏳ माइग्रेट हो रहा है — "+idx+"/"+jobs.length+" ("+escHtml(j.hq)+" / "+escHtml(j.cat)+")...</div>";
     _migrateOne(j.hq,j.cat,function(r){ results.push(r); next(); });
   }
@@ -260,6 +268,10 @@ function _migRenderResult(results){
     html+="<tr><td class='wasc-hq'>"+escHtml(r.hq)+"</td><td>"+escHtml(r.cat)+"</td><td>"+lbl+"</td></tr>";
   });
   html+="</tbody></table>";
+  // audit-verified: r.hq/r.cat escHtml() से गुज़रते हैं; lbl में r.err सिर्फ़ JS Error.message है
+  // (_migrateOne में String(e&&e.message||e) से बनता है — fetch/HTTP-status त्रुटि, कभी लाइनमैन का
+  // free-typed टेक्स्ट नहीं), बाक़ी hardcoded labels
+  // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=html;
 }
 

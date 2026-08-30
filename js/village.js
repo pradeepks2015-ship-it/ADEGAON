@@ -155,6 +155,8 @@ function _vgRenderTable(el,filtered){
     "<td>"+gTot+"<br><span class='wasc-sub'>&#8377;"+fmt(gBak)+"</span></td>"+
     "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+gPaid+"</span><br><span class='wasc-sub'>&#8377;"+fmt(gPaidAmt)+"</span></td>"+
     "<td>"+gPct.toFixed(1)+"%</td></tr></tfoot></table>";
+  // audit-verified: vgActiveHQ/r.village escHtml() से गुज़रते हैं (ऊपर देखें), बाक़ी संख्या
+  // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=html;
 }
 
