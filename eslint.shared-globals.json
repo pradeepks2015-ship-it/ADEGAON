@@ -217,6 +217,7 @@
   "ensureLibs",
   "ensureXLSX",
   "escHtml",
+  "escJsAttr",
   "fallbackCopy",
   "fbDel",
   "fbGet",

@@ -84,8 +84,8 @@ function renderListWith(data){
       "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+(x.father?" / "+escHtml(x.father):"")+"</div><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
       "<div class='cc-amt'>₹"+Number(x.amount).toLocaleString("hi-IN")+" <span>बकाया</span></div>"+
       "<div class='cc-chips'>"+
-        (x.acc?"<span class='chip chip-acc' onclick=\"openAccModal('"+escHtml(x.acc)+"')\">📄 "+escHtml(x.acc)+"</span>":"")+
-                (x.phone?"<span class='chip chip-ph' style='cursor:pointer;' onclick=\"openPhModal('"+escHtml(x.name)+"','"+escHtml(x.phone)+"','"+escHtml(x.acc||"")+"','"+(Number(x.amount)||0)+"')\">📞 "+escHtml(x.phone)+"</span>":"")+
+        (x.acc?"<span class='chip chip-acc' onclick=\"openAccModal('"+escJsAttr(x.acc)+"')\">📄 "+escHtml(x.acc)+"</span>":"")+
+                (x.phone?"<span class='chip chip-ph' style='cursor:pointer;' onclick=\"openPhModal('"+escJsAttr(x.name)+"','"+escJsAttr(x.phone)+"','"+escJsAttr(x.acc||"")+"','"+(Number(x.amount)||0)+"')\">📞 "+escHtml(x.phone)+"</span>":"")+
         (x.addr?"<span class='chip chip-addr'>📍 "+escHtml(x.addr)+"</span>":"")+
       "</div>"+
       "<div class='cc-extra'>"+
@@ -95,9 +95,9 @@ function renderListWith(data){
       "</div>"+
       "<div class='cc-bot'><span class='sbadge "+(isPaid?"sb-paid":"sb-pending")+"'>"+(isPaid?"✅ वसूल":"⏳ बाकी")+"</span>"+
       "<div class='act-btns'>"+
-        "<button class='abtn abtn-rmk' onclick=\"openRmkModal("+oi+",'"+escHtml(x.acc||"")+"')\">✏️ रिमार्क</button>"+
-        (!isPaid?"<button class='abtn abtn-pay' onclick=\"markPaid("+oi+",'"+escHtml(x.acc||"")+"')\">✓ वसूल</button>":
-                 "<button class='abtn' style='background:rgba(255,77,109,.12);color:var(--red);border:1px solid rgba(255,77,109,.2);' onclick=\"markUnpaid("+oi+",'"+escHtml(x.acc||"")+"')\">↩ वापस बाकी</button>")+
+        "<button class='abtn abtn-rmk' onclick=\"openRmkModal("+oi+",'"+escJsAttr(x.acc||"")+"')\">✏️ रिमार्क</button>"+
+        (!isPaid?"<button class='abtn abtn-pay' onclick=\"markPaid("+oi+",'"+escJsAttr(x.acc||"")+"')\">✓ वसूल</button>":
+                 "<button class='abtn' style='background:rgba(255,77,109,.12);color:var(--red);border:1px solid rgba(255,77,109,.2);' onclick=\"markUnpaid("+oi+",'"+escJsAttr(x.acc||"")+"')\">↩ वापस बाकी</button>")+
       "</div></div>"+
       "<div class='cc-info'>"+prevPayInfo+payDateInfo+uploadInfo+"</div>"+
       rmkHtml+"</div>";
@@ -109,6 +109,19 @@ function renderListWith(data){
 function escHtml(s){
   if(!s) return "";
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// जब कोई value onclick="...('VALUE')" जैसे single-quoted JS string के अंदर, किसी HTML attribute में
+// डालनी हो — escHtml() अकेले काफ़ी नहीं है, वो सिर्फ़ & < > " को संभालता है, सिंगल-कोट (') को नहीं।
+// अगर acc/नाम/फ़ोन में कभी ' आ जाए (जैसे कोई नाम "O'Brien" जैसा, या जान-बूझकर बनाया गया data),
+// तो वो onclick की JS string को समय से पहले बंद करके बाक़ी बचा हिस्सा असली JS code की तरह चला सकता
+// था — असली bug यही था (सिर्फ़ HTML-content के लिए escHtml काफ़ी है, पर JS-string context अलग जोखिम
+// है)। पहले JS-string के लिए escape (\ और ' दोनों, साथ ही newline), फिर सामान्य HTML-attribute
+// escape (escHtml) — यही सही क्रम है, क्योंकि browser पहले HTML entity decode करता है, फिर उस
+// decode हुए टेक्स्ट को JS की तरह चलाता है।
+function escJsAttr(s){
+  if(!s) return "";
+  return escHtml(String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/\n/g,"\\n").replace(/\r/g,"\\r"));
 }
 
 // ── एक IVRS/acc का status उस HQ की हर tab में sync ──

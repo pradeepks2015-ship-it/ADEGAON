@@ -3127,3 +3127,76 @@ test.describe('Firebase Rules — auto-deploy पाइपलाइन (bug: JE 
     expect(script).toContain("method: \"PUT\"");
   });
 });
+
+test.describe('XSS सुरक्षा — PDF/print export और दिनांक-वार तालिका (bug: consumer name/remarks — जिसमें remarks लाइनमैन का free-typed text है — बिना escHtml के document.write()/innerHTML में जाकर असली स्क्रिप्ट चला सकते थे)', () => {
+  test('downloadPDF (upload.js) — consumer name और remarks में स्क्रिप्ट-जैसा टेक्स्ट हो तो PDF-HTML में escape होकर जाए, असली <script>/<img onerror> न बचे', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{
+        acc: '1', name: '<img src=x onerror=alert(1)>', father: '<b>पिता</b>', phone: '9999999999',
+        status: 'pending', amount: 100,
+        remarksArr: [{ text: '<script>alert(2)</script>', by: '<b>कोई</b>' }],
+      }]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता';
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadPDF();
+    }));
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(html).not.toContain('<script>alert(2)</script>');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).toContain('&lt;script&gt;alert(2)&lt;/script&gt;');
+  });
+
+  test('downloadScPDF (reports.js) — दिनांक-वार PDF में consumer name/Consumer No escape होकर जाएं', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '<script>alert(3)</script>', name: '<img src=x onerror=alert(4)>', status: 'paid', amount: 100, paydate: '1/1/2026' }]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadScPDF();
+    }));
+    expect(html).not.toContain('<script>alert(3)</script>');
+    expect(html).not.toContain('<img src=x onerror=alert(4)>');
+  });
+
+  test('renderScDateTable (स्क्रीन पर दिनांक-वार तालिका) — consumer name/Consumer No escape होकर दिखें', async ({ page }) => {
+    await openApp(page);
+    const html = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      var rec = { acc: '<script>alert(5)</script>', name: '<img src=x onerror=alert(6)>', status: 'paid', amount: 100, paydate: '1/1/2026' };
+      cSet('आदेगांव', 'कुल उपभोक्ता', [rec]); // renderScDateTable इसी master-list से acc मिलान करके फ़िल्टर करता है
+      renderScDateTable([rec]);
+      return document.getElementById('sc-body').innerHTML;
+    });
+    expect(html).not.toContain('<script>alert(5)</script>');
+    expect(html).not.toContain('<img src=x onerror=alert(6)>');
+  });
+
+  test('renderListWith — con-card के onclick="...(\'...\')" में escHtml काफ़ी नहीं (सिंगल-कोट को browser वापस decode कर देता है), escJsAttr चाहिए', async ({ page }) => {
+    await openApp(page);
+    const html = await page.evaluate(() => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता';
+      var rec = { acc: "x');alert(7);//", name: "O'Brien", phone: "9'999999999", status: 'pending', amount: 100 };
+      cSet('आदेगांव', 'कुल उपभोक्ता', [rec]);
+      renderListWith([rec]);
+      return document.getElementById('con-list').innerHTML;
+    });
+    // असली breakout होता तो onclick="openAccModal('x');alert(7);//')" जैसा टूटा हुआ attribute बनता —
+    // escJsAttr सिंगल-कोट को \' में बदलकर JS string को समय से पहले बंद होने से रोकता है
+    expect(html).not.toContain("openAccModal('x');alert(7);//');");
+    expect(html).not.toContain("openPhModal('O'Brien'");
+    expect(html).toContain("openAccModal('x\\');alert(7);//')");
+    expect(html).toContain("openPhModal('O\\'Brien','9\\'999999999'");
+    // प्लेन टेक्स्ट (display) कॉपी अब भी सामान्य escHtml से ही आए (सिंगल-कोट HTML-content में खतरा नहीं, escape ज़रूरी नहीं)
+    expect(html).toContain('<div class="cc-name">O\'Brien</div>');
+  });
+});

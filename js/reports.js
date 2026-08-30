@@ -191,8 +191,8 @@ function renderScDateTable(data){
       "<td style='font-weight:600;'>"+escHtml(dt)+"</td>"+
       "<td style='text-align:center;color:var(--green);font-weight:700;'>"+d.count+"</td>"+
       "<td style='text-align:right;color:var(--gold);font-weight:700;'>₹"+d.amount.toLocaleString("hi-IN")+"</td>"+
-      "<td style='color:var(--muted);font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+d.names.slice(0,3).join(", ")+(d.names.length>3?" +"+(d.names.length-3):"")+"</td>"+
-      "<td style='color:#64b5f6;font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+d.accs.slice(0,3).join(", ")+(d.accs.length>3?" +"+(d.accs.length-3):"")+"</td>"+
+      "<td style='color:var(--muted);font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+escHtml(d.names.slice(0,3).join(", "))+(d.names.length>3?" +"+(d.names.length-3):"")+"</td>"+
+      "<td style='color:#64b5f6;font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+escHtml(d.accs.slice(0,3).join(", "))+(d.accs.length>3?" +"+(d.accs.length-3):"")+"</td>"+
     "</tr>";
   }).join("");
   // कुल उपभोक्ता CATS[0] से
@@ -244,11 +244,11 @@ function downloadScPDF(){
     var totC=0,totA=0;
     var hqRows=dates.map(function(dt){
       var d=byDate[dt]; totC+=d.count; totA+=d.amount;
-      return "<tr><td>"+escHtml(dt)+"</td><td style='text-align:center;'>"+d.count+"</td><td style='text-align:right;font-weight:700;'>₹"+d.amount.toLocaleString("hi-IN")+"</td><td style='font-size:9px;color:#555;'>"+d.names.slice(0,3).join(", ")+(d.names.length>3?" +"+(d.names.length-3):"")+"</td><td style='font-size:9px;color:#1a237e;'>"+d.accs.slice(0,3).join(", ")+(d.accs.length>3?" +"+(d.accs.length-3):"")+"</td></tr>";
+      return "<tr><td>"+escHtml(dt)+"</td><td style='text-align:center;'>"+d.count+"</td><td style='text-align:right;font-weight:700;'>₹"+d.amount.toLocaleString("hi-IN")+"</td><td style='font-size:9px;color:#555;'>"+escHtml(d.names.slice(0,3).join(", "))+(d.names.length>3?" +"+(d.names.length-3):"")+"</td><td style='font-size:9px;color:#1a237e;'>"+escHtml(d.accs.slice(0,3).join(", "))+(d.accs.length>3?" +"+(d.accs.length-3):"")+"</td></tr>";
     }).join("");
     var pdfPct=hqTotal?((totC/hqTotal)*100).toFixed(1):"0.0";
     hqRows+="<tr style='background:#e8f5e9;font-weight:700;'><td>कुल ("+pdfPct+"%)</td><td style='text-align:center;'>"+totC+" / "+hqTotal+"</td><td style='text-align:right;'>₹"+totA.toLocaleString("hi-IN")+"</td><td></td><td></td></tr>";
-    rows+="<h3 style='color:#4a148c;margin-top:18px;'>📍 "+hq+"</h3>"+
+    rows+="<h3 style='color:#4a148c;margin-top:18px;'>📍 "+escHtml(hq)+"</h3>"+
       "<table style='width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px;'>"+
       "<thead><tr style='background:#4a148c;color:#fff;'><th style='padding:5px;text-align:left;'>दिनांक</th><th style='padding:5px;text-align:center;'>संख्या</th><th style='padding:5px;text-align:right;'>राशि</th><th style='padding:5px;'>उपभोक्ता</th><th style='padding:5px;'>Consumer No</th></tr></thead>"+
       "<tbody>"+hqRows+"</tbody></table>";
@@ -257,7 +257,7 @@ function downloadScPDF(){
     "<style>body{font-family:Arial,sans-serif;font-size:11px;margin:15px;}h2{color:#4a148c;}td{padding:5px;border-bottom:1px solid #ddd;}"+
     "@media print{.np{display:none}}</style></head><body>"+
     "<h2>&#127942; DC स्कोरकार्ड — दिनांक-वार वसूली</h2>"+
-    "<p>दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+CU.name+"</p>"+
+    "<p>दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+escHtml(CU.name)+"</p>"+
     "<button class='np' onclick='window.print()' style='margin-bottom:8px;padding:6px 14px;background:#4a148c;color:#fff;border:none;border-radius:5px;cursor:pointer;'>Print / PDF Save</button>"+
     rows+"</body></html>";
   var w=window.open("","_blank");
