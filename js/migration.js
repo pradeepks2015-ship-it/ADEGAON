@@ -150,7 +150,17 @@ function _migRender(rows){
 // ─── माइग्रेशन-स्थिति ट्रैकिंग (कौन सा HQ/श्रेणी पहले से per-record फॉर्मेट में है) ───
 // Firebase path: /MIGRATED/{hqKey}/{catKey} = true — write-path (database.js: fbSet) यही देखकर
 // तय करता है कि पूरा array भेजे (पुराना तरीका) या सिर्फ बदले record PATCH करे (नया, migrated तरीका)
+// यह flag localStorage में भी रखा जाता है (जैसे CAT_NAMES का dc_catnames3, HQ_PINS का dc_hqpins) —
+// पहले सिर्फ़ memory में था और हर बार ऐप खुलने पर खाली ({}) से शुरू होकर सिर्फ़ network से भरता था।
+// कमज़ोर नेटवर्क (गांव में आम) में वह fetch नाकाम हो जाता तो isMigrated() झूठा "नहीं" कहता, fbSet()
+// पुराने रास्ते _fbPut() पर चला जाता, और _fbPut() का सुरक्षा-guard भी उसी खाली flag को देखकर धोखा
+// खा जाता — नतीजा पूरा array लिख जाता और माइग्रेशन पलट जाता। असली bug यही था: production लॉग में
+// चार अलग-अलग HQ से "migration-reverted" आ रहे थे, सब नए version वाले devices से (किसी पुराने
+// version की वजह से नहीं), और सबसे ज़्यादा उसी device से जिसके "Failed to fetch" सबसे ज़्यादा थे।
+// अब fetch नाकाम हो तो पिछली जानी-मानी स्थिति काम आती है, "कुछ भी migrated नहीं" नहीं मान लिया जाता।
+var MIG_FLAG_KEY="dc_migrated3";
 var MIGRATED = {};
+try{var _mf=localStorage.getItem(MIG_FLAG_KEY);if(_mf)MIGRATED=JSON.parse(_mf)||{};}catch(e){}
 function isMigrated(hq,cat){
   var hk=hqKey(hq), ck=catKey(cat);
   return !!(MIGRATED[hk]&&MIGRATED[hk][ck]);
@@ -158,7 +168,12 @@ function isMigrated(hq,cat){
 function loadMigratedFlags(){
   fetch(FB+"/MIGRATED.json?t="+Date.now())
     .then(_fbJson)
-    .then(function(d){ if(d&&typeof d==="object") MIGRATED=d; })
+    .then(function(d){
+      if(d&&typeof d==="object"){
+        MIGRATED=d;
+        try{localStorage.setItem(MIG_FLAG_KEY,JSON.stringify(d));}catch(e){}
+      }
+    })
     .catch(function(){});
 }
 
@@ -172,7 +187,10 @@ function _checkMigrationRevert(hq,cat,raw){
   var key=hqKey(hq)+"/"+catKey(cat);
   if(_revertFixing[key]) return; // पहले से ठीक करने की कोशिश चल रही है — दोबारा शुरू मत करो
   _revertFixing[key]=true;
-  logErr("migration-reverted","किसी पुराने version वाले device ने बचाते समय वापस array format में बदल दिया — अपने आप ठीक किया जा रहा है",hq+"/"+cat);
+  // पहले यह संदेश सीधे "पुराने version वाले device" को दोष देता था — production लॉग से पता चला कि
+  // असली वजह अक्सर वो नहीं, बल्कि MIGRATED flag का किसी device पर लोड न हो पाना थी (देखें ऊपर
+  // MIG_FLAG_KEY वाला नोट)। संदेश अब असली संभावित कारण बताता है, ताकि जांच ग़लत दिशा में न जाए
+  logErr("migration-reverted","list वापस पुराने array format में मिली — किसी device पर MIGRATED flag लोड न हो पाया होगा (कमज़ोर नेट), या वो बहुत पुराने version पर है। अपने आप ठीक किया जा रहा है",hq+"/"+cat);
   _migrateOne(hq,cat,function(r){
     _revertFixing[key]=false;
     if(r&&r.status==="ok") toast("🛠 "+hq+"/"+cat+" — पुराना format मिला, अपने आप ठीक कर दिया गया","inf");
