@@ -1290,10 +1290,53 @@ test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
     expect(r).toEqual({});
   });
 
-  test('किसी record में acc न हो तो null (असुरक्षित — caller array-PUT पर वापस जाए)', async ({ page }) => {
+  // पहले acc-रहित record मिलने पर यह null लौटाता था और caller पूरी लिस्ट का array-PUT कर देता था।
+  // असली production लॉग (बीबी/कुल उपभोक्ता) में दिखा कि वह रास्ता सुरक्षित था ही नहीं — _fbPut का
+  // guard उसी record को वैसे भी छोड़ देता था, पर पूरा node overwrite हो जाता (साथ काम कर रहे किसी
+  // और लाइनमैन की वसूली मिट सकती थी) और पूरी लिस्ट दोबारा नेट पर जाती
+  test('acc-रहित record को छोड़कर बाक़ी सबका patch बने (पूरी लिस्ट का array-PUT न हो)', async ({ page }) => {
     await openApp(page);
-    const r = await page.evaluate(() => _diffToPatch([], [{ status: 'pending' }]));
-    expect(r).toBeNull();
+    const r = await page.evaluate(() => _diffToPatch(
+      [{ acc: '1', status: 'pending', o: 0 }],
+      [{ acc: '1', status: 'paid', o: 0 }, { name: 'बिना Consumer No वाला', status: 'pending' }]
+    ));
+    expect(r['1']).toEqual(expect.objectContaining({ status: 'paid' })); // बाक़ी record सामान्य रूप से patch हुआ
+    expect(Object.keys(r).length).toBe(1); // acc-रहित record न जुड़ा, न किसी को हटाया गया
+  });
+
+  test('acc-रहित record सिर्फ़ छूटे — पहले से सेव किसी record को हटाया न जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => _diffToPatch(
+      [{ acc: '1', status: 'pending', o: 0 }, { acc: '2', status: 'pending', o: 1 }],
+      [{ acc: '1', status: 'pending', o: 0 }, { acc: '2', status: 'pending', o: 1 }, { name: 'नया, बिना acc' }]
+    ));
+    expect(r).toEqual({}); // कुछ नहीं बदला — कोई network call भी नहीं होनी चाहिए
+  });
+
+  test('_fbPutPerRecord — acc-रहित record पर पूरी लिस्ट PUT न हो, सिर्फ़ PATCH जाए, और लॉग में उपभोक्ता की पहचान आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      MIGRATED[hqKey('टेस्ट HQ30')] = {}; MIGRATED[hqKey('टेस्ट HQ30')][catKey('कुल उपभोक्ता')] = true;
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf(fbPath('टेस्ट HQ30', 'कुल उपभोक्ता')) > -1 && opts && opts.method) {
+          window.fetch = orig;
+          resolve({ method: opts.method, body: JSON.parse(opts.body), logs: getLogs().filter((l) => l.c === 'mig-noacc-skip') });
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+        }
+        return orig(url, opts);
+      };
+      fbSet('टेस्ट HQ30', 'कुल उपभोक्ता',
+        [{ acc: '1', status: 'paid', o: 0 }, { name: 'रामू', addr: 'बीबी', phone: '9999999999', status: 'pending' }],
+        [{ acc: '1', status: 'pending', o: 0 }], null);
+    }));
+    expect(r.method).toBe('PATCH');            // पूरी लिस्ट का PUT नहीं
+    expect(r.body['1']).toBeTruthy();
+    expect(r.logs.length).toBe(1);
+    expect(r.logs[0].m).toContain('रामू');     // JE को पता चले किसका Consumer No भरना है
+    expect(r.logs[0].m).toContain('9999999999');
   });
 
   test('offline में fbSet — migrated HQ/श्रेणी पर पेंडिंग queue में सिर्फ patch बनता है, पूरी array नहीं', async ({ page }) => {

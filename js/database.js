@@ -154,19 +154,22 @@ function _saveFailToast(e){
 
 // migrated (per-record) HQ/श्रेणी के लिए — prev/arr में जो record बदले/जुड़े/हटे हों सिर्फ उन्हें PATCH करना,
 // पूरी लिस्ट दोबारा नहीं भेजना (bandwidth बचत + concurrent-edit टकराव खत्म)
-// किसी record में acc न हो तो null लौटाएं — caller पुराने सुरक्षित array-PUT पर वापस जाए
+// acc-रहित record को छोड़कर बाक़ी सबका patch बनाएं।
+// पहले यह ऐसे record पर null लौटाता था और caller पूरी लिस्ट का array-PUT कर देता था — पर वह
+// "सुरक्षित" रास्ता असल में सुरक्षित था ही नहीं: _fbPut का guard उस array को object में बदलकर
+// वही acc-रहित record वैसे भी छोड़ देता था (mig-noacc-skip), यानी वो record किसी भी हाल में सेव
+// नहीं होता था — उल्टा पूरा node overwrite हो जाता, जिससे उसी वक़्त किसी और लाइनमैन की दर्ज की
+// वसूली मिट सकती थी (per-record PATCH बनाया ही इसीलिए गया था), और पूरी लिस्ट दोबारा भेजने से
+// नेट भी लगता। असली production लॉग में यही जोड़ी बार-बार दिखी: mig-noacc-fallback + mig-noacc-skip
 function _diffToPatch(prev,arr){
-  for(var i=0;i<arr.length;i++){
-    var x=arr[i];
-    if(!x||x.acc==null||String(x.acc).trim()==="") return null;
-  }
   var prevByAcc={};
-  (prev||[]).forEach(function(x){ if(x&&x.acc!=null) prevByAcc[String(x.acc)]=x; });
+  (prev||[]).forEach(function(x){ if(x&&x.acc!=null&&String(x.acc).trim()!=="") prevByAcc[String(x.acc).trim()]=x; });
   var maxO=-1;
   (prev||[]).forEach(function(x){ if(x&&x.o!=null&&Number(x.o)>maxO) maxO=Number(x.o); });
   var patch={},changed=false,nextO=maxO+1,newAccSet={};
-  arr.forEach(function(x){
-    var k=String(x.acc);
+  (arr||[]).forEach(function(x){
+    if(!x||x.acc==null||String(x.acc).trim()==="") return; // acc नहीं — इसे per-record key दी ही नहीं जा सकती
+    var k=String(x.acc).trim();
     newAccSet[k]=1;
     if(x.o==null) x.o=nextO++; // नया record — मौजूदा क्रम के आखिर में जुड़े
     var old=prevByAcc[k];
@@ -178,13 +181,21 @@ function _diffToPatch(prev,arr){
   return changed?patch:{};
 }
 
+// acc-रहित records की पहचान — नाम/पता/मोबाइल से, ताकि JE उन्हें ढूंढकर Consumer No भर सके
+// (acc खुद ही गायब है, इसलिए पहचानने का और कोई ज़रिया नहीं — _migRender की probRows जैसा ही तरीक़ा)
+function _noAccLabels(arr){
+  return (arr||[]).filter(function(x){ return x&&(x.acc==null||String(x.acc).trim()===""); })
+    .map(function(x){ return (x.name||"(नाम नहीं)")+(x.addr?" — "+x.addr:"")+(x.phone?" — "+x.phone:""); });
+}
+
 function _fbPutPerRecord(hq,cat,prev,arr,cb){
-  var patch=_diffToPatch(prev,arr);
-  if(patch===null){
-    logErr("mig-noacc-fallback","record बिना acc मिला — सुरक्षा के लिए पूरी लिस्ट (array) से सेव किया",hq+"/"+cat);
-    _fbPut(hq,cat,arr,cb);
-    return;
+  // acc-रहित record किसी भी तरीक़े से per-record सेव नहीं हो सकता (acc ही उसकी key है) — बाक़ी
+  // सबका patch भेज दें, और JE को साफ़ बताएं कि किस उपभोक्ता का Consumer No भरना है
+  var noAcc=_noAccLabels(arr);
+  if(noAcc.length){
+    logErr("mig-noacc-skip",noAcc.length+" record बिना Consumer No के हैं, इसलिए वो सेव नहीं हो पा रहे (बाक़ी सब सेव हो गए)। ठीक करने के लिए: चरण 3 जांच → दोबारा जांचें → \"समस्या वाले records\"। "+noAcc.slice(0,2).join(" | "),hq+"/"+cat);
   }
+  var patch=_diffToPatch(prev,arr);
   if(!Object.keys(patch).length){ if(cb) cb(true); return; } // कुछ बदला ही नहीं — network call भी नहीं
   fetch(FB+"/"+fbPath(hq,cat)+".json",{
     method:"PATCH",
