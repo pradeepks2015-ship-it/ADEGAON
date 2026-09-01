@@ -947,7 +947,37 @@ test.describe('चरण 3 माइग्रेशन — Dry-run जांच'
     expect(r.dup.dupSamples).toContain('5');
     expect(r.illegal).toEqual(expect.objectContaining({ tot: 3, illegalAcc: 2 }));
     expect(r.alreadyObjFmt).toEqual(expect.objectContaining({ tot: 2, alreadyObj: true }));
-    expect(r.empty).toEqual(expect.objectContaining({ tot: 0 }));
+    // खाली श्रेणी "ठीक" मानी जाए — alreadyObj:true. पहले यह false था, जिससे _migRunDryRun का
+    // reverted = isMigrated && !alreadyObj हर खाली-पर-migrated श्रेणी को लाल "(पलटा हुआ)" दिखा
+    // देता था (असली रिपोर्ट में 10+ ऐसी झूठी पंक्तियां, सबमें 0 records)
+    expect(r.empty).toEqual(expect.objectContaining({ tot: 0, alreadyObj: true }));
+  });
+
+  test('खाली श्रेणी झूठी "(पलटा हुआ)" न दिखे — dry-run में सिर्फ़ असली array-format वाली दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openMigModal());
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      MIGRATED[hqKey('आदेगांव')] = {};
+      MIGRATED[hqKey('आदेगांव')][catKey('कुल उपभोक्ता')] = true; // खाली, पर flag लगा है
+      MIGRATED[hqKey('आदेगांव')][catKey('घरेलू')] = true;        // सच में array में पलटी हुई
+      window.fetch = function (url) {
+        var s = String(url);
+        if (s.indexOf(fbPath('आदेगांव', 'घरेलू')) > -1) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', name: 'क' }]) }); // array = असली revert
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) }); // बाक़ी सब खाली
+      };
+      _migRunDryRun();
+      var t = setInterval(function () {
+        if (MIG_REPORT && MIG_REPORT.length) {
+          clearInterval(t);
+          resolve(MIG_REPORT.filter(function (x) { return x.a.reverted; })
+            .map(function (x) { return x.hq + '/' + x.cat; }));
+        }
+      }, 100);
+    }));
+    expect(r).toEqual(['आदेगांव/घरेलू']); // सिर्फ़ असली वाली — कोई खाली श्रेणी नहीं
   });
 
   test('_migAnalyzeList — acc खाली वाले record की नाम/पता/मोबाइल से पहचान (missingAccSamples) देता है', async ({ page }) => {
@@ -1529,6 +1559,46 @@ test.describe('चरण 3 — migration-revert ऑटो-पहचान', () =
       return getLogs().filter((l) => l.c === 'migration-reverted');
     });
     expect(r.length).toBe(0);
+  });
+
+  // पहले सिर्फ़ "unsafe" वाला नतीजा लॉग होता था; "ok"/"already" चुपचाप निकल जाते (सिर्फ़ toast)।
+  // असली production में इसी वजह से घंटों तय नहीं हो पाया कि "migration-reverted" हल हुआ या नहीं
+  test('self-heal सफल हो तो "ठीक कर दिया" भी लॉग हो (सिर्फ़ toast दिखाकर चुप न रहे)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const logs = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      MIGRATED[hqKey('टेस्ट HQ40')] = {}; MIGRATED[hqKey('टेस्ट HQ40')][catKey('कुल उपभोक्ता')] = true;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf(fbPath('टेस्ट HQ40', 'कुल उपभोक्ता')) > -1 && (!opts || !opts.method)) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', name: 'क' }]) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+      };
+      _checkMigrationRevert('टेस्ट HQ40', 'कुल उपभोक्ता', [{ acc: '1', name: 'क' }]);
+      setTimeout(() => resolve(getLogs()), 400);
+    }));
+    expect(logs.filter((l) => l.c === 'migration-revert-fixed').length).toBe(1);
+    expect(logs.filter((l) => l.c === 'migration-revert-fixed')[0].m).toContain('1 records');
+  });
+
+  test('self-heal के वक़्त list पहले से ठीक मिले तो "already" भी लॉग हो — पता चले कि कुछ करना बाक़ी नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const logs = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      MIGRATED[hqKey('टेस्ट HQ41')] = {}; MIGRATED[hqKey('टेस्ट HQ41')][catKey('कुल उपभोक्ता')] = true;
+      window.fetch = function (url) {
+        if (String(url).indexOf(fbPath('टेस्ट HQ41', 'कुल उपभोक्ता')) > -1) {
+          // दोबारा पढ़ने पर object मिला — किसी और device ने बीच में ठीक कर दिया
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ '1': { acc: '1' } }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+      };
+      _checkMigrationRevert('टेस्ट HQ41', 'कुल उपभोक्ता', [{ acc: '1' }]);
+      setTimeout(() => resolve(getLogs()), 400);
+    }));
+    expect(logs.filter((l) => l.c === 'migration-revert-already').length).toBe(1);
   });
 
   test('migrated HQ का data array में मिले तो एक बार चेतावनी log होती है, बार-बार नहीं (गेट)', async ({ page }) => {
