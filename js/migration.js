@@ -18,7 +18,14 @@ function closeMigModal(){document.getElementById("mig-overlay").classList.remove
 // missingAccSamples: acc खाली होने पर कोई और पहचान (नंबर) नहीं होती, इसलिए नाम/पता/मोबाइल से पहचान दी जाती है —
 // ताकि JE आसानी से ढूंढ सके कि ठीक किसे करना है (देखें _migRender — "समस्या वाले records" सूची)
 function _migAnalyzeList(raw){
-  if(!raw) return {tot:0,missingAcc:0,missingAccSamples:[],dupAcc:0,dupSamples:[],illegalAcc:0,illegalSamples:[],alreadyObj:false};
+  // खाली श्रेणी को "ठीक" मानें, "पलटा हुआ" नहीं — यहां convert करने को कुछ है ही नहीं।
+  // पहले यह alreadyObj:false लौटाता था, और _migRunDryRun का
+  //   a.reverted = isMigrated(hq,cat) && !a.alreadyObj
+  // उसे उल्टा करके हर उस खाली श्रेणी को लाल "(पलटा हुआ)" दिखा देता था जिस पर कभी MIGRATED flag
+  // लगा था — असली production रिपोर्ट में 10+ ऐसी झूठी लाल पंक्तियां थीं (सबमें 0 records), और
+  // ऊपर की "migration पलट दिया गया" चेतावनी हमेशा जलती रहती थी, जिससे असली समस्या आने पर उस पर
+  // ध्यान ही न जाता — असली bug यही था
+  if(!raw) return {tot:0,missingAcc:0,missingAccSamples:[],dupAcc:0,dupSamples:[],illegalAcc:0,illegalSamples:[],alreadyObj:true};
   var isArr=Array.isArray(raw);
   var arr=(isArr?raw:Object.keys(raw).map(function(k){return raw[k];})).filter(Boolean);
   var seen={},dupSamples=[],illegalSamples=[],missingAccSamples=[],missingAcc=0,dupAcc=0,illegalAcc=0;
@@ -191,10 +198,25 @@ function _checkMigrationRevert(hq,cat,raw){
   // असली वजह अक्सर वो नहीं, बल्कि MIGRATED flag का किसी device पर लोड न हो पाना थी (देखें ऊपर
   // MIG_FLAG_KEY वाला नोट)। संदेश अब असली संभावित कारण बताता है, ताकि जांच ग़लत दिशा में न जाए
   logErr("migration-reverted","list वापस पुराने array format में मिली — किसी device पर MIGRATED flag लोड न हो पाया होगा (कमज़ोर नेट), या वो बहुत पुराने version पर है। अपने आप ठीक किया जा रहा है",hq+"/"+cat);
+  // नतीजा हमेशा लॉग करें — पहले सिर्फ़ "unsafe" लॉग होता था, "ok"/"already"/"empty" चुपचाप निकल
+  // जाते थे (सिर्फ़ एक toast, जो अक्सर किसी ने देखा ही नहीं)। इससे लॉग देखकर यह पता ही नहीं चलता
+  // था कि सुधार हुआ या नहीं — असली production में इसी वजह से "migration-reverted" बार-बार दिखता
+  // रहा और घंटों यह तय नहीं हो पाया कि समस्या बची है या हल हो चुकी है
   _migrateOne(hq,cat,function(r){
     _revertFixing[key]=false;
-    if(r&&r.status==="ok") toast("🛠 "+hq+"/"+cat+" — पुराना format मिला, अपने आप ठीक कर दिया गया","inf");
-    else if(r&&r.status==="unsafe") logErr("migration-revert-unsafe","ऑटो-सुधार असुरक्षित लगा (acc missing/duplicate) — मैन्युअल जांच ज़रूरी",hq+"/"+cat);
+    var st=(r&&r.status)||"error";
+    if(st==="ok"){
+      toast("🛠 "+hq+"/"+cat+" — पुराना format मिला, अपने आप ठीक कर दिया गया","inf");
+      logErr("migration-revert-fixed","अपने आप ठीक कर दिया गया — "+((r&&r.count)||0)+" records अब per-record फॉर्मेट में",hq+"/"+cat);
+    } else if(st==="unsafe"){
+      logErr("migration-revert-unsafe","ऑटो-सुधार असुरक्षित लगा (acc missing/duplicate) — चरण 3 जांच → \"समस्या वाले records\" देखकर Consumer No भरें",hq+"/"+cat);
+    } else if(st==="already"){
+      // दोबारा पढ़ने पर list ठीक मिली — किसी और device ने बीच में ठीक कर दिया, या यह झूठा alarm था
+      logErr("migration-revert-already","दोबारा जांचने पर list पहले से ठीक (per-record) मिली — किसी और device ने ठीक कर दिया होगा, कुछ करने की ज़रूरत नहीं",hq+"/"+cat);
+    } else if(st==="empty"){
+      logErr("migration-revert-empty","list खाली मिली — ठीक करने को कुछ नहीं",hq+"/"+cat);
+    }
+    // "error" पर _migrateOne खुद ही migrate-fail लॉग कर चुका होता है — दोबारा न लिखें
   });
 }
 
