@@ -54,8 +54,49 @@ function openUpModal(){
   document.getElementById("btn-up-ok").disabled=true;
   document.getElementById("btn-up-ok").style.opacity=".5";
   setUpMode("merge"); // DEFAULT: merge
+  // डिफ़ॉल्ट कट-ऑफ़ = चालू महीने की 1 तारीख़ — नया लेजर आने पर पिछले माह की वसूली आगे न जाए,
+  // पर 1-10 की खिड़की में इसी माह दर्ज हुई वसूली बनी रहे (देखें confirmUpload)
+  var kf=document.getElementById("up-keepfrom");
+  if(kf){ var n=new Date(); kf.value=n.getFullYear()+"-"+("0"+(n.getMonth()+1)).slice(-2)+"-01"; }
+  _upKeepToggle();
   updateUpCounter();
   document.getElementById("up-overlay").classList.add("open");
+}
+
+// checkbox बंद हो तो तारीख़ वाला हिस्सा भी छुप जाए
+function _upKeepToggle(){
+  var el=document.getElementById("up-keepfrom-wrap");
+  var cb=document.getElementById("up-keeppaid");
+  if(el) el.style.display=(cb&&cb.checked)?"block":"none";
+  _upKeepPreview();
+}
+
+// चुनी तारीख़ से कितने उपभोक्ताओं की वसूली आगे जाएगी — अपलोड से पहले ही साफ़ दिखे
+// (सिर्फ़ पहले से मौजूद local list पर गिनती — कोई network call नहीं)
+function _upKeepPreview(){
+  var note=document.getElementById("up-keepnote");
+  if(!note) return;
+  var cb=document.getElementById("up-keeppaid");
+  if(!cb||!cb.checked){ note.textContent=""; return; }
+  var hq=document.getElementById("up-hq")?document.getElementById("up-hq").value:activeHQ;
+  var cat=document.getElementById("up-cat")?document.getElementById("up-cat").value:activeCat;
+  var cut=_upKeepCutoff();
+  var ex=cGet(hq,cat)||[];
+  var keep=0,drop=0;
+  ex.forEach(function(e){
+    if(!e||!e.acc||e.status!=="paid") return;
+    if(latestPayVal(e)>=cut) keep++; else drop++;
+  });
+  note.textContent="🛡 "+keep+" उपभोक्ता की वसूली बनी रहेगी"+(drop?"  •  🧹 "+drop+" पुरानी (पिछले लेजर की) हट जाएगी":"");
+}
+
+// चुनी हुई तारीख़ को payDateVal जैसे तुलना-योग्य अंक (yyyymmdd) में बदलें
+function _upKeepCutoff(){
+  var kf=document.getElementById("up-keepfrom");
+  var v=kf&&kf.value?kf.value:""; // yyyy-mm-dd
+  var m=v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return 0; // तारीख़ न हो तो पुराना व्यवहार (सब रखो)
+  return (+m[1])*10000+(+m[2])*100+(+m[3]);
 }
 function onCatChange(){
   var cat=document.getElementById("up-cat").value;
@@ -271,13 +312,20 @@ function confirmUpload(){
     }
     
     // Replace mode या पहली बार — पुरानी वसूली सुरक्षित रखें (checkbox on हो तो)
-    var kept=0;
+    var kept=0,dropped=0;
     var keepEl=document.getElementById("up-keeppaid");
     if(!keepEl||keepEl.checked){
+      // सिर्फ़ चुनी तारीख़ (डिफ़ॉल्ट: चालू माह की 1) से दर्ज वसूली ही नए लेजर में जाए।
+      // पहले यहां कोई तारीख़-जांच नहीं थी — पिछले लेजर का हर "वसूल" नए लेजर में भी चिपक जाता था,
+      // इसलिए जिसने नया बिल जमा नहीं किया वो भी "वसूल" दिखता, लाइनमैन उस तक जाता ही नहीं और
+      // वसूली चुपचाप छूट जाती — असली bug यही था। अब पिछले माह वाले हट जाते हैं, पर 1-10 तारीख़ की
+      // खिड़की में (जब पुराना लेजर ही ऐप में होता है) दर्ज हुई वसूली बनी रहती है
+      var _cut=_upKeepCutoff();
       var exOld=cGet(hq,cat)||[];
       var paidByAcc={};
       exOld.forEach(function(e){
         if(e&&e.acc&&e.status==="paid"){
+          if(_cut&&latestPayVal(e)<_cut){ dropped++; return; } // पिछले लेजर की — आगे न ले जाएं
           paidByAcc[String(e.acc).trim()]={paydate:e.paydate||"",by:e.updatedBy||"",at:e.updatedAt||"",ts:e.ts||0,remarksArr:e.remarksArr||[]};
         }
       });
@@ -287,7 +335,14 @@ function confirmUpload(){
         if(bkRaw){
           var bkO=JSON.parse(bkRaw);
           if(Date.now()-(bkO.t||0)<604800000){
-            Object.keys(bkO.m||{}).forEach(function(k){if(!paidByAcc[k])paidByAcc[k]=bkO.m[k];});
+            // backup से वापस लेते समय भी वही तारीख़-कट-ऑफ़ लगे, वरना पिछले लेजर की वसूली
+            // पिछले दरवाज़े से नए लेजर में लौट आती
+            Object.keys(bkO.m||{}).forEach(function(k){
+              if(paidByAcc[k]) return;
+              var bm=bkO.m[k];
+              if(_cut&&latestPayVal({status:"paid",paydate:bm&&bm.paydate})<_cut){ dropped++; return; }
+              paidByAcc[k]=bm;
+            });
           }
         }
       }catch(e){}
@@ -302,7 +357,7 @@ function confirmUpload(){
       });
     }
     _doSave(hq,cat,arr);
-    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" पुरानी वसूली सुरक्षित":"")+" 🔥","ok");
+    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+" 🔥","ok");
     
   }catch(err){
     logErr("upload-confirm",err,activeHQ+"/"+(document.getElementById("up-cat")?document.getElementById("up-cat").value:""));

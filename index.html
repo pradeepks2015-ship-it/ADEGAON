@@ -226,10 +226,18 @@ try{
           </select>
         </div>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;margin:2px 2px 10px;">
-        <input type="checkbox" id="up-keeppaid" checked style="width:18px;height:18px;accent-color:var(--green);">
-        पुरानी ✅ वसूली सुरक्षित रखें <span style="color:var(--muted);font-size:11px;">(नए माह की fresh list पर इसे हटाएँ)</span>
-      </label>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;margin:10px 2px 6px;">
+      <input type="checkbox" id="up-keeppaid" checked onchange="_upKeepToggle()" style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;">
+      पुरानी ✅ वसूली सुरक्षित रखें
+    </label>
+    <!-- नया लेजर आने पर पिछले माह की वसूली नहीं रखनी चाहिए (वरना जिसने नया बिल जमा नहीं किया वो
+         भी "वसूल" दिखता रहेगा और लाइनमैन उस तक जाएगा ही नहीं)। पर 1-10 तारीख़ की खिड़की में जो
+         वसूली इसी माह दर्ज हुई है वो नए लेजर में भी बनी रहनी चाहिए — इसीलिए तारीख़ से छँटाई -->
+    <div id="up-keepfrom-wrap" style="margin:0 2px 10px;padding:9px 11px;background:rgba(0,200,150,.06);border:1px solid rgba(0,200,150,.25);border-radius:10px;">
+      <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:5px;">इस तारीख़ से दर्ज वसूली ही रखें — इससे पुरानी (पिछले लेजर की) हट जाएगी</label>
+      <input type="date" class="fi" id="up-keepfrom" onchange="_upKeepPreview()" style="margin-bottom:6px;">
+      <div id="up-keepnote" style="font-size:11.5px;color:var(--green);font-weight:700;line-height:1.5;"></div>
     </div>
     <!-- COUNTER BOX -->
     <div id="cat-hint" style="display:none;background:rgba(0,200,150,.08);border:1px solid rgba(0,200,150,.2);border-radius:9px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#086b52;"></div>

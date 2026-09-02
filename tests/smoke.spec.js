@@ -3224,6 +3224,69 @@ test.describe('लिस्ट अपलोड — सिर्फ़ JE का 
   });
 });
 
+// पहले "पुरानी वसूली सुरक्षित रखें" में कोई तारीख़-जांच नहीं थी — पिछले लेजर का हर "वसूल" नए लेजर
+// में भी चिपक जाता, इसलिए जिसने नया बिल जमा नहीं किया वो भी "वसूल" दिखता, लाइनमैन उस तक जाता ही
+// नहीं और वसूली चुपचाप छूट जाती
+test.describe('नया लेजर अपलोड — सिर्फ़ चुनी तारीख़ से दर्ज वसूली ही आगे जाए', () => {
+  const seed = async (page) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => {
+      // तारीख़ें आज के सापेक्ष — "पिछला लेजर" = 20 दिन पहले, "चालू खिड़की" = आज
+      var dmy = (d) => d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear();
+      var today = new Date();
+      var old = new Date(today.getTime() - 20 * 86400000);
+      var cut = new Date(today.getTime() - 5 * 86400000); // कट-ऑफ़ इन दोनों के बीच
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'सिर्फ़ पिछला लेजर', amount: 3400, status: 'paid', paydate: dmy(old), ts: Date.now() },
+        { acc: '2', name: 'पिछला + चालू (दोबारा वसूल किया)', amount: 3400, status: 'paid', paydate: dmy(today), ts: Date.now() },
+        { acc: '3', name: 'सिर्फ़ चालू', amount: 3400, status: 'paid', paydate: dmy(today), ts: Date.now() },
+        { acc: '4', name: 'कभी नहीं', amount: 3400, status: 'pending', ts: Date.now() },
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      document.getElementById('up-keepfrom').value = cut.getFullYear() + '-' + ('0' + (cut.getMonth() + 1)).slice(-2) + '-' + ('0' + cut.getDate()).slice(-2);
+      setUpMode('replace');
+      // नया (सितंबर) लेजर — सब pending
+      parsedRows = ['1', '2', '3', '4'].map(function (a) {
+        return { acc: a, name: 'उपभोक्ता ' + a, amount: 1200, status: 'pending', remarksArr: [] };
+      });
+    });
+  };
+
+  test('कट-ऑफ़ से पुरानी (पिछले माह की) वसूली हट जाए, इसी माह वाली बनी रहे', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      confirmUpload();
+      var d = cGet('आदेगांव', 'कुल उपभोक्ता');
+      var by = {}; d.forEach(function (x) { by[x.acc] = x.status; });
+      return by;
+    });
+    expect(r['1']).toBe('pending'); // सिर्फ़ 25 अगस्त — कट-ऑफ़ से पुरानी, हट गई
+    expect(r['2']).toBe('paid');    // दोबारा वसूल करने से paydate चालू माह की — बनी रही
+    expect(r['3']).toBe('paid');    // 5 सितंबर — बनी रही
+    expect(r['4']).toBe('pending'); // कभी जमा ही नहीं किया
+  });
+
+  test('_upKeepPreview — अपलोड से पहले ही दिखे कि कितनी वसूली रहेगी और कितनी हटेगी', async ({ page }) => {
+    await seed(page);
+    const note = await page.evaluate(() => { _upKeepPreview(); return document.getElementById('up-keepnote').textContent; });
+    expect(note).toContain('2 उपभोक्ता की वसूली बनी रहेगी'); // acc 2 और 3
+    expect(note).toContain('1 पुरानी');                      // acc 1
+  });
+
+  test('checkbox हटा दें तो कोई वसूली आगे न जाए (पुराना व्यवहार बरकरार)', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      document.getElementById('up-keeppaid').checked = false;
+      confirmUpload();
+      return cGet('आदेगांव', 'कुल उपभोक्ता').filter(function (x) { return x.status === 'paid'; }).length;
+    });
+    expect(r).toBe(0);
+  });
+});
+
 test.describe('अपलोड — दो फ़ाइलें जल्दी-जल्दी चुनने पर race-condition न हो', () => {
   test('handleFile — पहली (धीमी) फ़ाइल का parse देर से पूरा हो तो भी उसे नज़रअंदाज़ करे, दूसरी (नई) फ़ाइल का ही data रहे (bug: पुराने HQ का data नए के ऊपर चढ़ जाना)', async ({ page }) => {
     await openApp(page);
