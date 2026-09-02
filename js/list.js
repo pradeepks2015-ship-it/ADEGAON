@@ -304,6 +304,22 @@ function markUnpaid(idx,acc){
   propagateStatus(d[idx].acc,activeCat,"pending","",dtStr,d[idx].ts);
 }
 
+// ── भुगतान तारीख़ (नया लेजर अपलोड करते समय छँटाई के लिए) ─────────────────────
+// आदेगांव DC में मीटर रीडिंग 7 तारीख़ तक होती है और नया बिल-लेजर 10 तारीख़ को बनता है — यानी
+// 1 से 10 के बीच ऐप में पुराना लेजर ही रहता है। इस बीच दर्ज हुई वसूली नए लेजर में भी बनी रहनी
+// चाहिए, पर पिछले माह की वसूली नहीं (वरना जिसने नया बिल जमा नहीं किया वो भी "वसूल" दिखता रहेगा
+// और लाइनमैन उस तक जाएगा ही नहीं) — यही छँटाई upload.js का _upKeepCutoff() करता है
+function _payVal(s){
+  var v=String(s==null?"":s).trim();
+  if(!v) return 0;
+  return payDateVal(normPayDate(v));
+}
+// उपभोक्ता की भुगतान तारीख़, तुलना-योग्य अंक (yyyymmdd) में — सिर्फ़ "वसूल" वालों की
+function latestPayVal(x){
+  if(!x||x.status!=="paid") return 0;
+  return _payVal(x.paydate);
+}
+
 function clearList(){
   if(!confirm(activeHQ+" › "+activeCat+" की लिस्ट हटाएं?"))return;
   cSet(activeHQ,activeCat,[]);
