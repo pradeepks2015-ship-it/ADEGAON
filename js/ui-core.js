@@ -298,10 +298,44 @@ function _ensureCorrectHqAuth(){
     .catch(function(){}); // अभी भी नाकाम (PIN बदल गया होगा) — अगली बार "online" event पर फिर कोशिश होगी
 }
 
+// ── LOGIN SESSION ─────────────────────────────────────────────────────────────
+// पहले यह sessionStorage में रखा जाता था, जो सिर्फ़ उतनी देर ज़िंदा रहता है जब तक वह tab ज़िंदा है।
+// मोबाइल पर असली bug यही था: ऐप minimize करते ही Android/iOS मेमोरी बचाने के लिए उस tab को मार
+// देता है, वापस खोलने पर नया tab बनता है और sessionStorage खाली मिलता है — यानी हर बार नाम+PIN
+// दोबारा भरना पड़ता था। (Firebase का अपना auth session localStorage में होने से बचा रहता था,
+// सिर्फ़ ऐप की अपनी पहचान खोती थी।) अब localStorage में रखते हैं, तो ऐप बंद होने/फ़ोन रीस्टार्ट
+// होने पर भी login बना रहता है। यह पूरी तरह device के अंदर की बात है — इससे एक बाइट भी नेटवर्क
+// खर्च नहीं होता, उल्टा हर जबरन दोबारा-login पर होने वाली auth call और prefetch बच जाती है।
+var SESSION_MAX_DAYS=30; // इतने दिन ऐप बिल्कुल न खुले तो सुरक्षा के लिए दोबारा login माँगेगा
+function saveSession(){
+  try{localStorage.setItem("dc_cu",JSON.stringify({cu:CU,at:Date.now()}));}catch(e){}
+}
+function clearSession(){
+  try{localStorage.removeItem("dc_cu");}catch(e){}
+  try{sessionStorage.removeItem("dc_cu");}catch(e){} // v9.107 तक यहीं रखा जाता था
+}
+// सेव किया हुआ session लौटाए, या null। अवधि "आख़िरी बार ऐप खोलने" से गिनी जाती है (sliding) —
+// रोज़ काम करने वाले लाइनमैन को कभी दोबारा login नहीं करना पड़ेगा, पर खोया/छोड़ा हुआ फ़ोन
+// SESSION_MAX_DAYS बाद अपने आप बाहर हो जाएगा
+function loadSession(){
+  var raw=null,o;
+  try{raw=localStorage.getItem("dc_cu");}catch(e){}
+  if(!raw){ try{raw=sessionStorage.getItem("dc_cu");}catch(e){} } // पुराने version का session — एक बार चल जाए
+  if(!raw) return null;
+  try{o=JSON.parse(raw);}catch(e){return null;}
+  if(!o||typeof o!=="object") return null;
+  var cu=o.cu||o; // {cu,at} नया रूप — बिना cu वाला सीधा object पुराना (v9.107 तक का) रूप है
+  if(!cu||!cu.role||!cu.hq||!cu.name) return null;
+  var at=+o.at||0, now=Date.now();
+  // at भविष्य में हो (फ़ोन की घड़ी बदली गई) तो उसे भरोसेमंद न मानें — session चलने दें, समय ताज़ा हो जाएगा
+  if(at&&at<=now&&(now-at)>SESSION_MAX_DAYS*24*60*60*1000) return null;
+  return cu;
+}
+
 function _finishLogin(name,silent){
-  // ताकि pull-to-refresh या कोई और असली page reload login session न मिटाए — reload के बाद
-  // startApp() इसी से चुपचाप वापस अंदर ले आता है, दोबारा login नहीं करना पड़ता
-  try{sessionStorage.setItem("dc_cu",JSON.stringify(CU));}catch(e){}
+  // ताकि pull-to-refresh, असली page reload, या मोबाइल का ऐप minimize करने पर tab मर जाना —
+  // इनमें से कोई भी login session न मिटाए; startApp() इसी से चुपचाप वापस अंदर ले आता है
+  saveSession();
   activeHQ=CU.hq; activeFilter="all";
   rebuildCatsForHQ(activeHQ);
   activeCat=CATS[0];
@@ -313,7 +347,7 @@ function _finishLogin(name,silent){
     renderSummaryWith(data); renderListWith(data);
     startListen(activeHQ,activeCat);
     hideLoader(); if(!silent) toast("स्वागत है "+name+"!","ok");
-    setTimeout(prefetchAll,1500); // सभी लिस्ट offline के लिए download
+    setTimeout(function(){prefetchAll();},1500); // सभी लिस्ट offline के लिए download (दिन में एक बार — देखें storage.js)
     startDevicePing(); // यह device किस app version पर है — Firebase पर दर्ज करें
   });
 }
@@ -329,7 +363,7 @@ function doLogout(askConfirm){
   stopListen();
   if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
   stopDevicePing();
-  try{sessionStorage.removeItem("dc_cu");}catch(e){}
+  clearSession();
   CU=null; selectedRole="";
   document.getElementById("app-screen").classList.remove("active");
   document.getElementById("login-screen").classList.add("active");

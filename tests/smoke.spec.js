@@ -97,7 +97,7 @@ test.describe('बूट और login', () => {
   test('login session reload में बना रहे — pull-to-refresh जैसा असली page reload दोबारा login न मांगे', async ({ page }) => {
     await openApp(page);
     await loginLineman(page, 'रिलोड लाइनमैन');
-    expect(await page.evaluate(() => sessionStorage.getItem('dc_cu'))).toContain('रिलोड लाइनमैन');
+    expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toContain('रिलोड लाइनमैन');
     await page.reload();
     await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
     expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(false);
@@ -106,10 +106,85 @@ test.describe('बूट और login', () => {
     expect(await page.evaluate(() => document.getElementById('toast').classList.contains('show'))).toBe(false);
   });
 
+  // मोबाइल पर ऐप minimize होने पर OS पूरा tab मार देता है। असली दुनिया में यह "नया tab, वही
+  // browser profile" जैसा है — sessionStorage खाली, localStorage भरा हुआ। पहले session
+  // sessionStorage में था, इसलिए हर बार दोबारा नाम+PIN भरना पड़ता था
+  test('मोबाइल में ऐप minimize होकर मरने के बाद भी login बना रहे (sessionStorage उड़ जाए तब भी)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'मिनिमाइज़ लाइनमैन');
+    await page.evaluate(() => sessionStorage.clear()); // OS ने tab मार दिया
+    await page.reload();
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+    expect(await page.evaluate(() => CU && CU.name)).toBe('मिनिमाइज़ लाइनमैन');
+    expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(false);
+  });
+
+  test('loadSession — SESSION_MAX_DAYS से पुराना session न चले (खोया/छोड़ा हुआ फ़ोन हमेशा अंदर न रहे)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var day = 24 * 60 * 60 * 1000;
+      var cu = { role: 'lineman', name: 'पुराना', hq: HQS[1] };
+      localStorage.setItem('dc_cu', JSON.stringify({ cu: cu, at: Date.now() - (SESSION_MAX_DAYS - 1) * day }));
+      var justInside = loadSession();
+      localStorage.setItem('dc_cu', JSON.stringify({ cu: cu, at: Date.now() - (SESSION_MAX_DAYS + 1) * day }));
+      var expired = loadSession();
+      // फ़ोन की घड़ी आगे कर दी गई हो (at भविष्य में) — भरोसा न करें, session चलने दें
+      localStorage.setItem('dc_cu', JSON.stringify({ cu: cu, at: Date.now() + 90 * day }));
+      var future = loadSession();
+      return { justInside: justInside && justInside.name, expired: expired, future: future && future.name };
+    });
+    expect(r.justInside).toBe('पुराना');
+    expect(r.expired).toBeNull();
+    expect(r.future).toBe('पुराना');
+  });
+
+  test('loadSession — v9.107 तक के पुराने sessionStorage वाले session से भी एक बार अंदर आ जाए (अपडेट के दिन कोई बाहर न हो)', async ({ page }) => {
+    await openApp(page);
+    const name = await page.evaluate(() => {
+      localStorage.removeItem('dc_cu');
+      sessionStorage.setItem('dc_cu', JSON.stringify({ role: 'lineman', name: 'पुराने रूप वाला', hq: HQS[1] }));
+      var s = loadSession();
+      return s && s.name;
+    });
+    expect(name).toBe('पुराने रूप वाला');
+  });
+
+  test('loadSession — अधूरा/टूटा session data पर login screen ही दिखे (crash न हो)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var out = [];
+      ['{ टूटा json', JSON.stringify({ cu: { role: 'lineman', name: 'बिना HQ' }, at: Date.now() }), JSON.stringify({ cu: null, at: Date.now() }), 'null'].forEach(function (v) {
+        localStorage.setItem('dc_cu', v);
+        out.push(loadSession());
+      });
+      return out;
+    });
+    expect(r).toEqual([null, null, null, null]);
+  });
+
+  // login अब 30 दिन तक टिकता है, इसलिए यह और ज़रूरी हो गया: हर कोई (लाइनमैन भी, सिर्फ़ JE नहीं)
+  // बिना किसी की मदद के खुद लॉगआउट कर सके — साझा फ़ोन पर अगला कर्मचारी अपने नाम से आ सके
+  test('लाइनमैन खुद लॉगआउट कर सके — मेनू में बटन दिखे, दबाते ही login screen पर लौटे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'खुद लॉगआउट');
+    await page.click('.user-pill'); // हेडर में अपना नाम — हर भूमिका को दिखता है
+    const btn = page.locator('#logout-menu .logout-item', { hasText: 'लॉगआउट करें' });
+    await expect(btn).toBeVisible();
+    page.on('dialog', (d) => d.accept()); // "लॉगआउट करना चाहते हैं?"
+    await btn.click();
+    await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
+    expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toBeNull();
+    // reload पर भी वापस अंदर न आ जाए
+    await page.reload();
+    await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
+    expect(await page.evaluate(() => document.getElementById('app-screen').classList.contains('active'))).toBe(false);
+  });
+
   test('explicit logout के बाद session साफ़ हो जाए — अगला reload login screen पर ही रुके', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
     await page.evaluate(() => doLogout(false));
+    expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toBeNull();
     expect(await page.evaluate(() => sessionStorage.getItem('dc_cu'))).toBeNull();
     await page.reload();
     await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
@@ -2609,7 +2684,7 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
     expect(await page.evaluate(() => localStorage.getItem('dc_theme'))).toBe('dark');
     await expect(page.locator('#theme-switch-btn')).toHaveClass(/\bon\b/);
     // reload — theme flash न हो, तुरंत dark लागू हो; login session भी बना रहे (pull-to-refresh जैसे
-    // असली reload से logout न हो — सिर्फ़ dc_cu session-storage से चुपचाप वापस अंदर आ जाए)
+    // असली reload से logout न हो — सिर्फ़ dc_cu से चुपचाप वापस अंदर आ जाए)
     await page.reload();
     await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
@@ -2899,6 +2974,72 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       setTimeout(() => { window.prefetchAll = orig; resolve(called); }, 3500); // पुराने कोड में 3s बाद setTimeout से चलता था
     }));
     expect(calledAfterOnline).toBe(false);
+  });
+
+  // असली bug: prefetchAll() हर cold-start पर चलता था — लाइनमैन के लिए 8 पूरी लिस्ट, JE के लिए 48।
+  // मोबाइल पर ऐप दिन में कई बार minimize होकर मरता-खुलता है, तो यह दिन में दर्जनों बार दोहराता था,
+  // जबकि वही लिस्टें पहले से device पर सेव थीं
+  test('prefetchAll — दिन में एक बार से ज़्यादा न चले (bug: हर बार ऐप खुलने पर सभी श्रेणियों की पूरी लिस्ट दोबारा download)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'प्रीफ़ेच', hq: HQS[1] };
+      var key = _prefetchKey();
+      localStorage.removeItem(key);
+      var first = _prefetchDue();                                   // कभी हुआ ही नहीं → चलना चाहिए
+      localStorage.setItem(key, String(Date.now()));
+      var rightAfter = _prefetchDue();                              // अभी-अभी हुआ → न चले
+      localStorage.setItem(key, String(Date.now() - 23 * 60 * 60 * 1000));
+      var after23h = _prefetchDue();                                // 23 घंटे → अभी भी न चले
+      localStorage.setItem(key, String(Date.now() - 25 * 60 * 60 * 1000));
+      var after25h = _prefetchDue();                                // एक दिन से ज़्यादा → चले
+      localStorage.setItem(key, String(Date.now() + 5 * 60 * 60 * 1000));
+      var futureClock = _prefetchDue();                             // घड़ी पीछे हो गई → भरोसा न करें, चले
+      return { first: first, rightAfter: rightAfter, after23h: after23h, after25h: after25h, futureClock: futureClock };
+    });
+    expect(r.first).toBe(true);
+    expect(r.rightAfter).toBe(false);
+    expect(r.after23h).toBe(false);
+    expect(r.after25h).toBe(true);
+    expect(r.futureClock).toBe(true);
+  });
+
+  test('prefetchAll — रुका हुआ prefetch एक भी नेटवर्क call न करे, पर force=true उसे फिर भी चलाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'प्रीफ़ेच', hq: HQS[1] };
+      localStorage.setItem(_prefetchKey(), String(Date.now())); // आज हो चुका है
+      var hits = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf(FB) === 0) hits++; return orig(u, o); };
+      prefetchAll();
+      var throttled = hits;
+      prefetchAll(true);
+      var forced = hits;
+      window.fetch = orig;
+      _prefetchRun = false;
+      return { throttled: throttled, forced: forced };
+    });
+    expect(r.throttled).toBe(0);   // एक भी बाइट नहीं
+    expect(r.forced).toBeGreaterThan(0);
+  });
+
+  test('prefetchAll — हर HQ का अपना अलग हिसाब (एक HQ का prefetch दूसरे HQ के लाइनमैन को न रोके)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'क', hq: HQS[1] };
+      var k1 = _prefetchKey();
+      localStorage.setItem(k1, String(Date.now()));
+      var sameHq = _prefetchDue();
+      CU = { role: 'lineman', name: 'ख', hq: HQS[2] };
+      var otherHq = _prefetchDue();
+      CU = { role: 'supervisor', name: 'जेई', hq: HQS[0] };
+      var je = _prefetchDue();
+      return { k1: k1, sameHq: sameHq, otherHq: otherHq, je: je, jeKey: _prefetchKey() };
+    });
+    expect(r.sameHq).toBe(false);
+    expect(r.otherHq).toBe(true);
+    expect(r.je).toBe(true);
+    expect(r.jeKey).not.toBe(r.k1);
   });
 
   test('EventSource बंद (readyState=2, जैसे ~1 घंटे बाद token expire) होने पर पहली बार में सीधे भारी polling पर न जाए — पहले ताज़ा token से दोबारा जोड़ने की कोशिश हो', async ({ page }) => {
