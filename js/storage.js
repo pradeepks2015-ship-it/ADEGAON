@@ -177,9 +177,28 @@ function flushPending(){
 
 // ── PREFETCH: login के बाद सभी HQ/category की लिस्ट background में download —
 // ताकि हर लिस्ट बिना खोले भी offline available रहे ──
+// यह हर cold-start पर चलता था, और यही सबसे बड़ा छुपा हुआ bandwidth खर्च था: लाइनमैन के लिए
+// 8 पूरी लिस्ट (1 HQ × 8 श्रेणी), JE के लिए 48 (6 HQ × 8) — हर बार ऐप खुलने पर, चाहे वही लिस्ट
+// पहले से device पर सेव हो। मोबाइल पर ऐप दिन में कई बार minimize होकर मरता-खुलता है, तो यह दिन
+// में दर्जनों बार दोहराता था। अब दिन में एक बार से ज़्यादा नहीं। इससे कुछ छूटता नहीं —
+// जो लिस्ट खुली है वो हमेशा की तरह fbGet()+startListen() से ताज़ा ही रहती है, और पहले prefetch
+// की हुई लिस्टें device पर पड़ी रहती हैं (offline इस्तेमाल पर कोई असर नहीं)
 var _prefetchRun=false;
-function prefetchAll(){
+var PREFETCH_MIN_GAP_MS=24*60*60*1000;
+function _prefetchKey(){
+  return "dc_prefetch_"+(CU&&CU.role==="supervisor"?"je":hqKey(CU&&CU.hq));
+}
+function _prefetchDue(){
+  var last=0;
+  try{last=parseInt(localStorage.getItem(_prefetchKey())||"0",10)||0;}catch(e){}
+  var now=Date.now();
+  if(!last||last>now) return true; // कभी हुआ ही नहीं, या फ़ोन की घड़ी पीछे हो गई — भरोसा न करें
+  return (now-last)>=PREFETCH_MIN_GAP_MS;
+}
+// force=true — JE के "सब कुछ दोबारा लाओ" जैसे जान-बूझकर किए गए काम के लिए (अभी कोई caller नहीं)
+function prefetchAll(force){
   if(!CU||!navigator.onLine||_prefetchRun) return;
+  if(!force&&!_prefetchDue()) return;
   _prefetchRun=true;
   var hqs=CU.role==="supervisor"?HQS:[CU.hq];
   var jobs=[];
@@ -192,6 +211,9 @@ function prefetchAll(){
   (function next(){
     if(idx>=jobs.length){
       _prefetchRun=false;
+      // पूरा चक्र सफल हुआ तभी समय दर्ज करें — बीच में नेटवर्क टूटा तो नीचे वाला catch बिना
+      // समय लिखे लौटता है, यानी अगली बार ऐप खुलते ही दोबारा पूरी कोशिश होगी
+      try{localStorage.setItem(_prefetchKey(),String(Date.now()));}catch(e){}
       if(got>0) toast("📥 "+got+" लिस्ट offline के लिए device पर save हो गईं","inf");
       return;
     }
