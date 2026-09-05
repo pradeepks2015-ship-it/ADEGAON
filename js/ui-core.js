@@ -184,8 +184,13 @@ function fetchHQPinsFromFB(){
     .then(_fbJson)
     .then(function(d){
       if(d&&typeof d==="object"){
+        var oldPin=CU?HQ_PINS[hqKey(CU.hq)]:null;
         HQ_PINS=d;
         try{localStorage.setItem("dc_hqpins",JSON.stringify(d));}catch(e){}
+        // JE ने PIN बदल दिया हो तो device के पास सेव पुराना PIN गलत हो चुका है — उससे किया
+        // sign-in नाकाम रहता है और device चुपचाप anonymous रह जाता (हर save 401)। ताज़ा PIN
+        // मिलते ही सही account से दोबारा जुड़ने की कोशिश करें
+        if(CU&&oldPin!==HQ_PINS[hqKey(CU.hq)]) _afterAuthReady(_ensureCorrectHqAuth);
       }
     }).catch(function(){});
 }
@@ -280,6 +285,9 @@ function _hqAuthPassword(pin){ return "vasuli-"+pin; }
 // उस HQ का हर save तब तक 401 देता रहता है जब तक कोई मैन्युअल logout+login न करे। अब network वापस
 // आते ही ("online" event पर) यहां से अपने-आप सही HQ account से दोबारा sign-in की कोशिश होती है,
 // ताकि लाइनमैन को कुछ पता ही न चले और उसका pending data भी अपने आप sync हो जाए
+// एक ही HQ के लिए बार-बार "अटकी हुई गिनती" रीसेट न होती रहे (वरना 401 ↔ रीसेट का झूला चलता
+// रहेगा) — हर HQ के लिए app के एक session में सिर्फ़ एक बार
+var _authHealed={};
 function _ensureCorrectHqAuth(){
   if(!CU||CU.role!=="lineman"||!navigator.onLine) return;
   var hqEmail=HQ_AUTH_EMAIL[CU.hq];
@@ -289,9 +297,21 @@ function _ensureCorrectHqAuth(){
   try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
   if(!fbAuthOk) return;
   var u=firebase.auth().currentUser;
-  if(u&&u.email===hqEmail) return; // पहले से सही account से sign-in है — कुछ करने की ज़रूरत नहीं
+  if(u&&u.email===hqEmail){
+    // पहले से सही account से sign-in है — दोबारा sign-in की ज़रूरत नहीं। पर अगर पहले कभी
+    // 401 की वजह से इस HQ की entries "अटकी" चिह्नित हो चुकी हैं, तो वो गिनती अब मान्य नहीं:
+    // account सही है यानी rules इस HQ को लिखने देती हैं। पहले यह रीसेट सिर्फ़ नए sign-in पर
+    // होता था, इसलिए मैन्युअल logout+login के बाद भी अटका डेटा हमेशा के लिए अटका रह जाता था
+    if(!_authHealed[CU.hq]){
+      _authHealed[CU.hq]=true;
+      _resetAuthFailForHQ(CU.hq);
+      flushPending();
+    }
+    return;
+  }
   firebase.auth().signInWithEmailAndPassword(hqEmail,_hqAuthPassword(pin))
     .then(function(){
+      _authHealed[CU.hq]=true;
       _resetAuthFailForHQ(CU.hq); // पुरानी "अनधिकृत" गिनती अब मान्य नहीं — दोबारा भेजने दो
       flushPending();
     })
@@ -336,6 +356,14 @@ function _finishLogin(name,silent){
   // ताकि pull-to-refresh, असली page reload, या मोबाइल का ऐप minimize करने पर tab मर जाना —
   // इनमें से कोई भी login session न मिटाए; startApp() इसी से चुपचाप वापस अंदर ले आता है
   saveSession();
+  // silent = सेव किया हुआ session बहाल हुआ है, यानी इस बार signInWithEmailAndPassword नहीं चला।
+  // v9.108 का असली regression यही था: पहले tab मरने के बाद दोबारा login करना पड़ता था और वही
+  // login हर बार सही HQ account पक्का कर देता था। अब चुपचाप अंदर आ जाते हैं, तो अगर Firebase का
+  // अपना session कहीं खो गया या anonymous पर लौट गया (firebase.js खुद ऐसा करता है), device
+  // हमेशा के लिए anonymous रह जाता — हर save 401। "online" event यहां मदद नहीं करता क्योंकि वो
+  // सिर्फ़ offline→online बदलने पर चलता है, पहले से online रहते हुए ऐप खोलने पर कभी नहीं।
+  // Firebase का auth तय होने का इंतज़ार करते हैं ताकि सही account पहले से हो तो कोई नई call न जाए
+  if(silent) _afterAuthReady(_ensureCorrectHqAuth);
   activeHQ=CU.hq; activeFilter="all";
   rebuildCatsForHQ(activeHQ);
   activeCat=CATS[0];

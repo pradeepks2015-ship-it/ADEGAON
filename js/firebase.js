@@ -16,6 +16,19 @@ var ID_TOKEN = null;
 var AC_TOKEN = null; // App Check token — साबित करता है कि request असली app से है (अभी monitor mode)
 var AC_READY = false; // पहला App Check token मिल चुका है (सफल/असफल दोनों) — वरना request अनिश्चित काल इंतज़ार न करे
 var _tokenWaiters = []; // app खुलते ही token बनने से पहले निकली DB-calls यहां इंतज़ार करती हैं
+// Firebase अपना सेव किया हुआ login बहाल कर चुका है (चाहे मिला हो या नहीं) — तब तक
+// firebase.auth().currentUser देखना भरोसेमंद नहीं
+var AUTH_READY = false;
+var _authWaiters = [];
+// Firebase का auth तय हो जाने के बाद fn चलाओ। Firebase library ही लोड न हुई हो (offline पहली बार)
+// तो कभी न अटकें — 5 सेकंड बाद वैसे भी चला दो
+function _afterAuthReady(fn){
+  if(AUTH_READY){fn();return;}
+  var done=false;
+  function run(){if(done)return;done=true;try{fn();}catch(e){}}
+  _authWaiters.push(run);
+  setTimeout(run,5000);
+}
 var _acWaiters = []; // वैसे ही App Check token के लिए — पहले सिर्फ ID_TOKEN का इंतज़ार होता था, इसलिए ज़्यादातर requests बिना App Check header के निकल जाती थीं (Verified% कम दिखता था)
 try{
   firebase.initializeApp(firebaseConfig);
@@ -33,6 +46,10 @@ try{
     setInterval(_acRefresh, 30*60*1000);
   }catch(eAC){AC_READY=true;}
   firebase.auth().onIdTokenChanged(function(u){
+    // पहली बार यह callback तभी चलता है जब Firebase अपना सेव किया हुआ (persisted) login
+    // localStorage से बहाल कर चुका होता है — यानी अब currentUser पर भरोसा किया जा सकता है।
+    // इससे पहले उसे देखने पर null मिल सकता है और गलत नतीजा निकलता है (देखें _afterAuthReady)
+    if(!AUTH_READY){AUTH_READY=true; _authWaiters.splice(0).forEach(function(f){try{f();}catch(e){}});}
     if(u){
       u.getIdToken().then(function(t){
         ID_TOKEN=t;

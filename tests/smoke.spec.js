@@ -2003,6 +2003,94 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     expect(r.pw).toBe('vasuli-4321');
   });
 
+  // v9.108 का regression (असली production लॉग: SOHAN YADAV/बीबी, Satendra/बीबी, आनंद/आदेगांव —
+  // v9.108 पर लगातार HTTP 401)। पहले tab मरने के बाद दोबारा login करना पड़ता था और वही login हर
+  // बार सही HQ account पक्का कर देता था। v9.108 में session बहाल होकर चुपचाप अंदर आ जाते हैं, तो
+  // Firebase का अपना session खोने/anonymous पर लौटने पर device हमेशा के लिए anonymous रह जाता।
+  // "online" event यहां बचाता नहीं — वो सिर्फ़ offline→online बदलने पर चलता है
+  test('सेव किया हुआ session बहाल होने पर सही HQ account पक्का हो (v9.108 regression: चुपचाप अंदर आने पर device anonymous रह जाता, हर save 401)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null }, // Firebase अपने session से anonymous पर लौट आया
+          signInWithEmailAndPassword: function (email, pw) { resolve({ email: email, pw: pw }); return Promise.resolve({}); },
+        };
+      };
+      CU = { role: 'lineman', name: 'बहाल लाइनमैन', hq: 'आदेगांव' };
+      _finishLogin(CU.name, true); // silent = सेव किया session बहाल हुआ
+      setTimeout(() => resolve({ email: null, pw: null }), 8000);
+    }));
+    expect(r.email).toBe('hq-adegaon@adegaondc.internal');
+    expect(r.pw).toBe('vasuli-4321');
+  });
+
+  test('ताज़ा login (silent नहीं) पर दोबारा sign-in की कोशिश न हो — doLogin खुद सही account से जोड़ चुका है', async ({ page }) => {
+    await openApp(page);
+    const calls = await page.evaluate(() => new Promise((resolve) => {
+      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      var n = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null },
+          signInWithEmailAndPassword: function () { n++; return Promise.resolve({}); },
+        };
+      };
+      CU = { role: 'lineman', name: 'ताज़ा लाइनमैन', hq: 'आदेगांव' };
+      _finishLogin(CU.name); // silent नहीं
+      setTimeout(() => resolve(n), 6000);
+    }));
+    expect(calls).toBe(0);
+  });
+
+  test('_ensureCorrectHqAuth — सही account पहले से हो तो भी पुरानी "अटकी" गिनती साफ़ हो (bug: मैन्युअल logout+login के बाद भी अटका डेटा हमेशा के लिए अटका रह जाता था)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'अटका', hq: 'आदेगांव' };
+      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      _authHealed = {};
+      var p = {};
+      p[cKey('आदेगांव', 'कुल उपभोक्ता')] = { hq: 'आदेगांव', cat: 'कुल उपभोक्ता', type: 'put', authFailCount: STUCK_AUTH_MAX };
+      setPendingObj(p);
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: { email: 'hq-adegaon@adegaondc.internal' }, signInWithEmailAndPassword: function () { return Promise.resolve({}); } };
+      };
+      _ensureCorrectHqAuth();
+      var after = getPending()[cKey('आदेगांव', 'कुल उपभोक्ता')].authFailCount;
+      // दोबारा चलाने पर बार-बार रीसेट न हो (401 ↔ रीसेट का झूला न बने)
+      var p2 = getPending();
+      p2[cKey('आदेगांव', 'कुल उपभोक्ता')].authFailCount = STUCK_AUTH_MAX;
+      setPendingObj(p2);
+      _ensureCorrectHqAuth();
+      return { after: after, second: getPending()[cKey('आदेगांव', 'कुल उपभोक्ता')].authFailCount, max: STUCK_AUTH_MAX };
+    });
+    expect(r.after).toBe(0);       // पहली बार साफ़ हुई — अटका डेटा दोबारा भेजा जा सकेगा
+    expect(r.second).toBe(r.max);  // दूसरी बार नहीं — guard काम कर रहा है
+  });
+
+  test('पहला 401 आते ही सही account से जुड़ने की कोशिश हो (हार मानने का इंतज़ार न करे)', async ({ page }) => {
+    await openApp(page);
+    const tried = await page.evaluate(() => new Promise((resolve) => {
+      CU = { role: 'lineman', name: '401', hq: 'आदेगांव' };
+      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      _authHealed = {};
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null }, // anonymous — यही 401 की असली वजह
+          signInWithEmailAndPassword: function (email) { resolve(email); return Promise.resolve({}); },
+        };
+      };
+      markPending('आदेगांव', 'कुल उपभोक्ता', 'put', null, new Error('HTTP 401'));
+      setTimeout(() => resolve(null), 5000);
+    }));
+    expect(tried).toBe('hq-adegaon@adegaondc.internal');
+  });
+
   test('_ensureCorrectHqAuth — पहले से सही HQ account से sign-in हो तो दोबारा sign-in न हो (redundant auth call से बचाव)', async ({ page }) => {
     await openApp(page);
     const called = await page.evaluate(() => {
