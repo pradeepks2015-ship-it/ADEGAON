@@ -31,6 +31,11 @@ function _bumpAuthFail(k,err){
   var msg=(err&&err.message)||"";
   if(/HTTP (401|403)/.test(msg)){
     entry.authFailCount=(entry.authFailCount||0)+1;
+    // हार मानने से पहले खुद ठीक होने की एक कोशिश: 401 की सबसे आम वजह यह है कि device सही HQ
+    // account की जगह anonymous पर है। _ensureCorrectHqAuth सही account से दोबारा sign-in करके
+    // अटका डेटा अपने आप भेज देता है (उसमें अपना guard है, इसलिए बार-बार नहीं चलेगा)।
+    // पहले यह सिर्फ़ "online" event पर होता था — यानी जो device पहले से online था उस पर कभी नहीं
+    if(entry.authFailCount===1){ try{_ensureCorrectHqAuth();}catch(e){} }
     if(entry.authFailCount===STUCK_AUTH_MAX){
       logErr("pending-stuck-auth","लगातार "+STUCK_AUTH_MAX+" बार 401/403 — यह account/device "+entry.hq+"/"+entry.cat+" के लिए अधिकृत नहीं लगता, auto-retry रोका। डेटा device पर सुरक्षित है — सही account से login करें या JE को बताएं",entry.hq+"/"+entry.cat);
       toast("⚠️ "+entry.hq+"/"+entry.cat+" के बदलाव भेजे नहीं जा पा रहे (login/account समस्या) — JE को बताएं","err");
