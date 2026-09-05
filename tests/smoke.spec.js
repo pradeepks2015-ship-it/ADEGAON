@@ -2066,10 +2066,10 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
       p2[cKey('आदेगांव', 'कुल उपभोक्ता')].authFailCount = STUCK_AUTH_MAX;
       setPendingObj(p2);
       _ensureCorrectHqAuth();
-      return { after: after, second: getPending()[cKey('आदेगांव', 'कुल उपभोक्ता')].authFailCount };
+      return { after: after, second: getPending()[cKey('आदेगांव', 'कुल उपभोक्ता')].authFailCount, max: STUCK_AUTH_MAX };
     });
-    expect(r.after).toBe(0);        // पहली बार साफ़ हुई — अटका डेटा दोबारा भेजा जा सकेगा
-    expect(r.second).toBe(STUCK_AUTH_MAX); // दूसरी बार नहीं — guard काम कर रहा है
+    expect(r.after).toBe(0);       // पहली बार साफ़ हुई — अटका डेटा दोबारा भेजा जा सकेगा
+    expect(r.second).toBe(r.max);  // दूसरी बार नहीं — guard काम कर रहा है
   });
 
   test('पहला 401 आते ही सही account से जुड़ने की कोशिश हो (हार मानने का इंतज़ार न करे)', async ({ page }) => {
