@@ -355,6 +355,59 @@ function _celebSound(big){
   if(big) _dingAt(ctx,t+0.36,1318.5,0.45,0.12); // E6
 }
 
+// ── एक उपभोक्ता पर दिन में एक ही बार जश्न ─────────────────────────────────────
+// जश्न खुद एक बाइट नेटवर्क खर्च नहीं करता, पर वह बार-बार "✓ वसूल ↔ ↩ वापस बाकी" दबाने का
+// लालच पैदा करता है — और *वह* महंगा है: हर मार्क Firebase पर लिखा जाता है, propagateStatus
+// उसे हर उस श्रेणी में भी लिखता है जिसमें वही उपभोक्ता है, और हर लिखाई बाक़ी जुड़े फ़ोनों पर
+// push होती है (यही download quota में गिनती है)। इसलिए दोबारा मार्क करने पर जश्न नहीं दिखता —
+// लालच ही न रहे। सिर्फ़ आज का हिसाब रखा जाता है, ताकि यह सूची बढ़ती न जाए
+var CELEB_DONE_KEY="dc_celebdone";
+function _celebDoneToday(){
+  var today=new Date().toLocaleDateString("hi-IN");
+  var o=null;
+  try{ o=JSON.parse(localStorage.getItem(CELEB_DONE_KEY)); }catch(e){}
+  if(!o||typeof o!=="object"||o.d!==today) o={d:today,a:{}}; // दिन बदला — कल का हिसाब भूल जाओ
+  if(!o.a||typeof o.a!=="object") o.a={};
+  return o;
+}
+// आज इस उपभोक्ता को कितनी बार "वसूल" मार्क किया जा चुका है — गिनती बढ़ाकर नई संख्या लौटाता है।
+// यही एक गिनती दो काम करती है: (1) जश्न सिर्फ़ पहली बार, (2) हद से ज़्यादा टॉगल होने पर चेतावनी
+function _paidMarkCountToday(acc){
+  var key=String(acc==null?"":acc).trim();
+  if(!key) return 0; // acc ही नहीं — गिनने का कोई ज़रिया नहीं
+  var o=_celebDoneToday();
+  var n=(Number(o.a[key])||0)+1;
+  o.a[key]=n;
+  try{ localStorage.setItem(CELEB_DONE_KEY,JSON.stringify(o)); }catch(e){}
+  return n;
+}
+// पहली बार हो तो true; उसी उपभोक्ता पर दोबारा हो तो false
+function _celebFirstTimeToday(acc){
+  var key=String(acc==null?"":acc).trim();
+  if(!key) return true; // acc नहीं है तो रोकने का कोई आधार नहीं — जश्न दिखा दो
+  return _paidMarkCountToday(key)===1;
+}
+
+// ── हद से ज़्यादा टॉगल पर JE को पता चले ────────────────────────────────────────
+// एक ही उपभोक्ता को दिन में इतनी बार "वसूल" मार्क करना सामान्य काम में नहीं होता — असली सुधार
+// एक-दो बार में हो जाता है। इससे ज़्यादा का मतलब है या तो कोई गड़बड़ी है या कोई जान-बूझकर
+// बार-बार दबा रहा है। यह रोकता नहीं (हो सकता है कोई असली वजह हो), सिर्फ़ एक बार लॉग करता है
+// ताकि JE को "एरर लॉग" में दिख जाए कि कौन, किस उपभोक्ता पर, कितनी बार।
+// हर मार्क Firebase पर लिखा जाता है और बाक़ी जुड़े फ़ोनों पर push होता है — इसीलिए यह
+// bandwidth का सवाल भी है, सिर्फ़ अनुशासन का नहीं
+var TOGGLE_WARN_AT=4;
+function _warnIfTooManyMarks(n,rec){
+  if(n!==TOGGLE_WARN_AT) return; // ठीक इसी गिनती पर, यानी दिन में एक ही बार लॉग हो
+  try{
+    logErr("repeat-mark",
+      "एक ही उपभोक्ता को आज "+n+" बार 'वसूल' मार्क किया गया — "+
+      ((rec&&rec.name)||"(नाम नहीं)")+" (क्र. "+((rec&&rec.acc)||"?")+")। "+
+      "हर बार Firebase पर लिखा जाता है और बाक़ी फ़ोनों पर भेजा जाता है, इसलिए बेवजह दोहराने से "+
+      "डेटा-खर्च बढ़ता है। ज़रूरी हो तो संबंधित कर्मचारी से पूछ लें।",
+      activeHQ+"/"+activeCat);
+  }catch(e){}
+}
+
 function _celebPaid(rec){
   if(typeof document==="undefined") return;
   var old=document.getElementById("celeb");
@@ -418,7 +471,13 @@ function markPaid(idx,acc){
   cSet(activeHQ,activeCat,d);
   renderSummaryWith(d); renderListWith(d);
   toast("✅ वसूली दर्ज! (हर tab में अपडेट)","ok");
-  try{_celebPaid(d[idx]);}catch(e){} // जश्न सिर्फ़ सजावट है — इसमें कुछ गड़बड़ हो तो वसूली न रुके
+  // जश्न सिर्फ़ सजावट है — इसमें कुछ गड़बड़ हो तो वसूली न रुके। एक ही उपभोक्ता पर दिन में एक ही
+  // बार, ताकि बार-बार टॉगल करने का लालच न रहे; और हद से ज़्यादा दोहराने पर JE को लॉग में दिखे
+  try{
+    var _n=_paidMarkCountToday(d[idx].acc);
+    if(_n<=1) _celebPaid(d[idx]); // 0 = acc ही नहीं (गिनती नहीं हो सकती) — तब भी जश्न दिखे
+    else _warnIfTooManyMarks(_n,d[idx]);
+  }catch(e){}
   fbSet(activeHQ,activeCat,d,prevSnap,null);
   propagateStatus(d[idx].acc,activeCat,"paid",dateStr,dtStr,d[idx].ts);
 }
