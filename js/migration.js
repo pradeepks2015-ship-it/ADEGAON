@@ -10,7 +10,8 @@ function openMigModal(){
   document.getElementById("mig-overlay").classList.add("open");
   document.getElementById("mig-content").innerHTML="<div class='log-empty'>ऊपर 'दोबारा जांचें' दबाकर dry-run शुरू करें</div>";
   document.getElementById("mig-dl").style.display="none";
-  _dvRender();
+  // कर्मचारी सक्रियता अब यहां नहीं — उसकी अपनी स्क्रीन है (मेनू → 👥 कर्मचारी सक्रियता)।
+  // इससे चरण 3 खोलने पर DEVICE_VERSIONS की बेवजह fetch भी नहीं होती
 }
 function closeMigModal(){document.getElementById("mig-overlay").classList.remove("open");}
 
