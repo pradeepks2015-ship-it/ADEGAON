@@ -1228,6 +1228,61 @@ test.describe('कर्मचारी सक्रियता सूची �
     expect(r.text).not.toContain('Vaibhav');
   });
 
+  // JE का असली सवाल "आज कितने लोग काम पर थे" — उसे "आज कितने login हुए" से नापना v9.108 के बाद
+  // ग़लत नाप है (session 30 दिन टिकता है, लोग दोबारा login करते ही नहीं)। इसलिए "सक्रिय" गिना जाता है
+  test('_dvTodayStrip — आज ऐप खोलने वाले कर्मचारी/मुख्यालय गिने जाएं, एक व्यक्ति के कई device एक ही गिनें', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var now = Date.now();
+      var html = _dvTodayStrip({
+        a1: { v: APP_VER, hq: 'आदेगांव', name: 'Pradeep (JE)', t: now - 60000 },
+        a2: { v: APP_VER, hq: 'आदेगांव', name: 'PRADEEP (JE)', t: now - 120000 }, // वही व्यक्ति, दूसरा device
+        b1: { v: APP_VER, hq: 'जोबा', name: 'Devendra kumar', t: now - 3600000 },
+        c1: { v: APP_VER, hq: 'पाटन', name: 'पुराना', t: now - 5 * 86400000 },   // आज नहीं
+      });
+      var div = document.createElement('div');
+      div.innerHTML = html;
+      return div.textContent;
+    });
+    expect(r).toContain('2 कर्मचारी सक्रिय'); // Pradeep के दो device = एक ही व्यक्ति
+    expect(r).toContain('2/' + 6 + ' मुख्यालय');
+    expect(r).toContain('आज किसी ने ऐप नहीं खोला:');
+    expect(r).toContain('पाटन'); // 5 दिन पुराना — आज चुप
+  });
+
+  test('_dvTodayStrip — आज कोई सक्रिय न हो तो साफ़ कहे (0 न दिखाए), और सभी मुख्यालय चुप-सूची में आएं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var div = document.createElement('div');
+      div.innerHTML = _dvTodayStrip({ x: { v: APP_VER, hq: 'आदेगांव', name: 'क', t: Date.now() - 3 * 86400000 } });
+      return div.textContent;
+    });
+    expect(r).toContain('आज अभी तक किसी ने ऐप नहीं खोला');
+    expect(r).toContain('आदेगांव');
+  });
+
+  test('_dvTodayStrip — अवधि (7/30/सभी) बदलने पर भी "आज" वाली पट्टी वैसी ही रहे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openMigModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => _dvRender());
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('आज') > -1);
+    const r = await page.evaluate(() => {
+      var el = document.getElementById('mig-devices');
+      var grab = function () { var m = el.textContent.match(/(\d+) कर्मचारी सक्रिय/); return m ? m[1] : null; };
+      var at7 = grab();
+      _dvSetWindow(30);
+      var at30 = grab();
+      _dvSetWindow(0);
+      var atAll = grab();
+      return { at7: at7, at30: at30, atAll: atAll };
+    });
+    expect(r.at7).toBe('2');   // Pradeep (1 मिनट पहले) + Devendra (1 घंटा पहले)
+    expect(r.at30).toBe(r.at7);
+    expect(r.atAll).toBe(r.at7);
+  });
+
   // लाइनमैन अपना नाम जैसे मन आए वैसे टाइप करते हैं ("SOHAN YADAV", "pradeep", "Devendra kumar") —
   // सूची बेतरतीब दिखती थी
   test('_dvTitle — सभी नाम एक ही रूप में दिखें (देवनागरी नाम ज्यों के त्यों), पर समूह-पहचान पर असर न हो', async ({ page }) => {

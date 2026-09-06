@@ -135,6 +135,57 @@ function _dvActivity(sinceTs){
 
 function _dvSetWindow(d){ _DV_WINDOW=d; _dvPaint(); } // सिर्फ़ दोबारा रंगना — कोई नई fetch नहीं
 
+// ── "आज" की एक-पंक्ति झलक ──────────────────────────────────────────────────────
+// JE का असली सवाल है "आज कितने लोग काम पर थे"। उसे "आज कितने लॉगिन हुए" से नापना अब ग़लत नाप है:
+// v9.108 से session 30 दिन टिकता है, यानी लाइनमैन एक बार login करके महीने भर काम करता रहता है —
+// login गिनती अक्सर 0 आती जबकि 6 लोग दिन भर काम कर रहे होते। इसलिए यहां "सक्रिय" गिना जाता है:
+// DEVICE_VERSIONS का t हर बार ऐप खुलने पर (और फिर हर 4 घंटे) अपडेट होता है, तो "आज t वाला" =
+// "जिसने आज ऐप खोला"। यह पूरी तरह उसी data से बनता है जो _dvPaint के पास पहले से है
+// (_DV_RAW + local cache) — एक भी नई network call नहीं।
+//
+// "कल" की गिनती जान-बूझकर नहीं दिखाई जाती: DEVICE_VERSIONS में हर device का सिर्फ़ आख़िरी ping
+// रहता है (PUT overwrite करता है, इतिहास नहीं रखता), तो जो कल भी सक्रिय था और आज भी, उसका t आज
+// का है — "कल" हमेशा कम दिखेगा। ग़लत नंबर दिखाने से न दिखाना बेहतर है।
+function _dvTodayLabel(){
+  try{ return new Date().toLocaleDateString("hi-IN",{day:"numeric",month:"long"}); }
+  catch(e){ return ""; }
+}
+function _dvTodayStrip(raw){
+  var d0=new Date(); d0.setHours(0,0,0,0);
+  var todayStart=d0.getTime();
+  var people={},hqSet={};
+  Object.keys(raw||{}).forEach(function(k){
+    var r=raw[k];
+    if(!r||typeof r!=="object") return;
+    if((Number(r.t)||0)<todayStart) return;
+    people[_dvNameKey(r.name)+"|"+String(r.hq==null?"":r.hq)]=1; // एक ही व्यक्ति के कई device = एक
+    if(r.hq) hqSet[r.hq]=1;
+  });
+  var nPeople=Object.keys(people).length;
+  var act=_dvActivity(todayStart);
+  var paid=0,rmk=0;
+  Object.keys(act).forEach(function(k){ paid+=act[k].paid||0; rmk+=act[k].rmk||0; });
+  var quiet=HQS.filter(function(hq){ return !hqSet[hq]; });
+  var dl=_dvTodayLabel();
+  var h="<div style='background:linear-gradient(135deg,rgba(0,150,255,.10),rgba(120,80,255,.10));border:1px solid rgba(90,140,255,.32);border-radius:12px;padding:10px 12px;margin-bottom:10px;'>";
+  h+="<div style='font-size:11px;color:var(--muted);font-weight:700;margin-bottom:5px;'>📅 आज"+(dl?" — "+escHtml(dl):"")+"</div>";
+  if(!nPeople){
+    h+="<div style='font-size:13px;font-weight:800;'>आज अभी तक किसी ने ऐप नहीं खोला</div>";
+  } else {
+    h+="<div style='font-size:15px;font-weight:800;line-height:1.5;'>"+
+       "<span style='color:var(--gold2);'>"+nPeople+"</span> कर्मचारी सक्रिय"+
+       " &nbsp;•&nbsp; <span style='color:var(--gold2);'>"+Object.keys(hqSet).length+"/"+HQS.length+"</span> मुख्यालय"+
+       (paid?(" &nbsp;•&nbsp; <span style='color:var(--green);'>"+paid+"</span> वसूली"):"")+
+       (rmk?(" &nbsp;•&nbsp; <span style='color:#64b5f6;font-size:13px;'>"+rmk+" रिमार्क</span>"):"")+
+       "</div>";
+  }
+  if(quiet.length){
+    h+="<div style='font-size:11px;color:var(--red);font-weight:700;margin-top:6px;'>आज किसी ने ऐप नहीं खोला: "+escHtml(quiet.join(", "))+"</div>";
+  }
+  h+="</div>";
+  return h;
+}
+
 function _dvRender(){
   var el=document.getElementById("mig-devices");
   if(!el)return;
@@ -155,6 +206,8 @@ function _dvPaint(){
   var raw=_DV_RAW||{};
   var keys=Object.keys(raw);
   if(!keys.length){ el.innerHTML="<div class='log-empty'>अभी तक कोई device record नहीं — यह नए version से अपने आप बनता है</div>"; return; }
+  // "आज" वाली पट्टी चुनी हुई अवधि (7/30/सभी) से स्वतंत्र है — वो हमेशा आज का ही हाल दिखाती है
+  var todayStrip=_dvTodayStrip(raw);
   var cutoff=_DV_WINDOW?(Date.now()-_DV_WINDOW*86400000):0;
   var act=_dvActivity(cutoff||0);
   // नाम+HQ से समूह — एक ही व्यक्ति के कई devices/re-install एक पंक्ति में
@@ -175,7 +228,7 @@ function _dvPaint(){
     // audit-verified: _DV_WINDOW संख्या है (7/30/0) और _dvControls() सिर्फ़ संख्याओं + hardcoded
     // markup से बनता है — कोई user-typed field नहीं
     // eslint-disable-next-line no-unsanitized/property
-    el.innerHTML="<div class='log-empty'>पिछले "+_DV_WINDOW+" दिन में कोई सक्रिय नहीं — ऊपर से अवधि बदलकर देखें</div>"+_dvControls(hidden);
+    el.innerHTML=todayStrip+"<div class='log-empty'>पिछले "+_DV_WINDOW+" दिन में कोई सक्रिय नहीं — ऊपर से अवधि बदलकर देखें</div>"+_dvControls(hidden);
     return;
   }
   rows.sort(function(a,b){
@@ -184,7 +237,7 @@ function _dvPaint(){
     return (b.t||0)-(a.t||0);
   });
   var anyOld=rows.some(function(r){return r.v!==APP_VER;});
-  var html=_dvControls(hidden);
+  var html=todayStrip+_dvControls(hidden);
   html+=anyOld
     ?"<div style='background:rgba(240,80,80,.08);border:1px solid rgba(240,80,80,.3);border-radius:10px;padding:9px 11px;margin-bottom:8px;font-size:12px;color:var(--red);font-weight:700;'>⚠️ कुछ सक्रिय devices अभी भी पुराने version पर हैं — इन्हें अपडेट करवाएं</div>"
     :"<div style='background:rgba(0,200,150,.08);border:1px solid rgba(0,200,150,.3);border-radius:10px;padding:9px 11px;margin-bottom:8px;font-size:12px;color:var(--green);font-weight:700;'>✅ सभी सक्रिय devices v"+escHtml(APP_VER)+" पर हैं</div>";
