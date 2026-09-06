@@ -47,8 +47,26 @@ function openProfileModal(){
   document.getElementById("profile-name").textContent=CU.name;
   document.getElementById("profile-meta").textContent=(CU.role==="supervisor"?"कनिष्ठ अभियंता (JE)":"लाइनमैन")+" | "+CU.hq;
   _syncThemeSwitch();
+  _syncSoundSwitch();
 }
 function closeProfileModal(){ document.getElementById("profile-overlay").classList.remove("open"); }
+
+// ─── वसूली पर आवाज़: चालू/बंद ───────────────────────────────────────────────
+// डिफ़ॉल्ट चालू। बंद करने का रास्ता ज़रूरी है — लाइनमैन दिन में दर्जनों वसूली दर्ज करता है, और
+// कभी वह बैठक में या किसी के घर पर हो सकता है जहां हर बार आवाज़ ठीक न लगे
+function celebSoundOn(){
+  try{ return localStorage.getItem("dc_celebsound")!=="0"; }catch(e){ return true; }
+}
+function _syncSoundSwitch(){
+  var btn=document.getElementById("sound-switch-btn");
+  if(btn) btn.className="theme-switch"+(celebSoundOn()?" on":"");
+}
+function toggleCelebSound(){
+  var next=!celebSoundOn();
+  try{ localStorage.setItem("dc_celebsound", next?"1":"0"); }catch(e){}
+  _syncSoundSwitch();
+  if(next) _celebSound(false); // चालू करते ही एक बार सुनाकर दिखाओ कि कैसी लगती है
+}
 
 // ─── डार्क मोड: सिर्फ़ CSS वेरिएबल स्विच (html[data-theme=dark]) — कमज़ोर रोशनी/रात में आँखों को आराम,
 // device की system setting से नहीं जोड़ा (उपयोगकर्ता खुद चुने) — localStorage में याद रहता है
