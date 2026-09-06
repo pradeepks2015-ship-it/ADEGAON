@@ -203,6 +203,7 @@ function _prefetchDue(){
 // force=true — JE के "सब कुछ दोबारा लाओ" जैसे जान-बूझकर किए गए काम के लिए (अभी कोई caller नहीं)
 function prefetchAll(force){
   if(!CU||!navigator.onLine||_prefetchRun) return;
+  if(isDataPaused()) return; // 🛑 डेटा बचाओ मोड — force हो तब भी नहीं, यही तो सबसे भारी काम है
   if(!force&&!_prefetchDue()) return;
   _prefetchRun=true;
   var hqs=CU.role==="supervisor"?HQS:[CU.hq];

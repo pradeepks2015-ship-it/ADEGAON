@@ -30,6 +30,7 @@ function hscFetch(){
     if(CU&&CU.role==="supervisor"){_hscRetryPublish();return;}
     _setHscPending(false); // JE के अलावा किसी device पर pending होने का कोई मतलब नहीं (पुराना bug — नीचे देखें)
   }
+  if(isDataPaused()) return; // 🛑 डेटा बचाओ मोड — बोर्ड device के अपने cache से दिखता रहेगा
   fetch(FB+"/HOME_SCORECARD.json?t="+Date.now())
     .then(_fbJson)
     .then(function(d){

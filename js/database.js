@@ -44,6 +44,74 @@ function normList(d){
   return arr;
 }
 
+// ── 🛑 डेटा बचाओ मोड (मास्टर स्विच) ────────────────────────────────────────────
+// Firebase का no-cost download quota रोज़ 360 MB का है। किसी दिन वह भरता दिखे तो JE एक ही
+// स्विच से सभी devices पर आगे का download रोक सकें — यह आपातकालीन ब्रेक है, रोज़ का हथियार नहीं।
+//
+// रुकता क्या है: live sync (SSE), prefetch, खुली list का background refresh, स्कोरकार्ड का
+// ताज़ा data। चलता क्या रहता है: पूरी ऐप device के अपने cache से (यह ऐप वैसे भी offline-first
+// है), और सबसे ज़रूरी — *वसूली दर्ज करना*। वह upload है, download quota में गिनता ही नहीं,
+// इसलिए लाइनमैन का काम एक पल के लिए भी नहीं रुकता।
+//
+// स्विच पढ़ने का अपना खर्च: /PAUSE में बस {on:true/false} है। हर device इसे 5 मिनट में एक बार
+// देखता है, और वह भी सिर्फ़ तब जब ऐप सामने खुली हो — background में पड़े device को कुछ पूछने की
+// ज़रूरत ही नहीं, वह वैसे भी कुछ खर्च नहीं कर रहा। पूरे DC का दिन भर का हिसाब ~150 KB, यानी
+// 360 MB का 0.04% — जो यह बचाता है उसके सामने कुछ भी नहीं।
+var DATA_PAUSED=false;
+var PAUSE_INFO=null;          // {on, by, at} — किसने, कब दबाया
+var PAUSE_KEY="dc_paused";    // device पर याद, ताकि ऐप खुलते ही (जवाब आने से पहले भी) सही व्यवहार हो
+var PAUSE_POLL_MS=5*60*1000;
+var _pauseTimer=null;
+function isDataPaused(){ return !!DATA_PAUSED; }
+function loadPauseLocal(){
+  try{
+    var s=JSON.parse(localStorage.getItem(PAUSE_KEY));
+    if(s&&typeof s==="object"){
+      PAUSE_INFO=s.i||null;
+      // device पर सहेजी हालत पर भी वही "आज तक" वाली शर्त लगती है — वरना कल का रुका हुआ स्विच
+      // ऐप खुलते ही फिर से लागू हो जाता, जबकि quota तब तक रीसेट हो चुका होता है
+      DATA_PAUSED=PAUSE_INFO?_pauseStillValid(PAUSE_INFO):!!s.on;
+    }
+  }catch(e){}
+}
+// स्विच अपने आप उसी दिन तक चलता है — आधी रात के बाद अपने आप हट जाता है।
+// वजह दो हैं: (1) Firebase का quota वैसे भी रोज़ रीसेट होता है, तो कल इसे चालू रखने का कोई
+// मतलब ही नहीं; (2) सबसे संभावित गड़बड़ी यही है कि JE शाम को दबाकर भूल जाएँ और पूरी टीम कई दिन
+// पुराने डेटा पर चलती रहे। समय की तुलना serverNow() से होती है (device की घड़ी ग़लत हो सकती है)
+function _pauseStillValid(d){
+  if(!d||!d.on) return false;
+  var at=Number(d.at)||0;
+  if(!at) return true; // कब दबाया पता ही नहीं — भरोसा कर लो, चालू मानो
+  var s=new Date(serverNow()); s.setHours(0,0,0,0);
+  return at>=s.getTime(); // आज ही दबाया गया हो, तभी
+}
+function _applyPause(d){
+  var on=_pauseStillValid(d);
+  var was=DATA_PAUSED;
+  DATA_PAUSED=on;
+  PAUSE_INFO=(d&&typeof d==="object")?d:null;
+  try{ localStorage.setItem(PAUSE_KEY,JSON.stringify({on:on,i:PAUSE_INFO})); }catch(e){}
+  renderPauseBar();
+  if(on===was) return;
+  if(on){
+    stopListen(); // सबसे बड़ा खर्च यही है — तुरंत बंद
+  } else if(CU&&activeHQ&&activeCat){
+    startListen(activeHQ,activeCat); // वापस चालू — जुड़ते ही ताज़ा data अपने आप आ जाता है
+  }
+}
+function fetchPause(){
+  if(!navigator.onLine) return;
+  fetch(FB+"/PAUSE.json?t="+Date.now()).then(_fbJson).then(_applyPause).catch(function(){});
+}
+// सिर्फ़ तब पूछो जब ऐप सामने खुली हो — छुपे/बंद device को स्विच जानने की ज़रूरत ही नहीं
+function startPausePoll(){
+  if(_pauseTimer) return;
+  _pauseTimer=setInterval(function(){
+    if(document.hidden||!navigator.onLine) return;
+    fetchPause();
+  },PAUSE_POLL_MS);
+}
+
 var FB_GET_TIMEOUT_MS=8000; // टेस्ट में छोटा करके तेज़ जांच की जा सकती है
 function fbGet(hq,cat,cb){
   var cached=cGet(hq,cat);
@@ -55,6 +123,7 @@ function fbGet(hq,cat,cb){
   }
   if(cached.length){
     cb(cached); // तुरंत cache से दिखाएं — fast!
+    if(isDataPaused()) return; // 🛑 डेटा बचाओ मोड — cache से दिखाया जा चुका, refresh नहीं करेंगे
     // background silent refresh — ETag भेजने पर अगर data नहीं बदला तो Firebase 304 देता है (खाली response,
     // पूरी list दोबारा नहीं) — list बार-बार खोलने पर bandwidth बचत; पहली बार ETag मिलता है, अगली बार भेजते हैं
     fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_etagHeaders(hq,cat)})
@@ -317,6 +386,9 @@ function _sseFullPutData(evData){
 
 function startListen(hq,cat){
   stopListen();
+  // 🛑 डेटा बचाओ मोड — live sync ही सबसे बड़ा download खर्च है, इसलिए जुड़ें ही नहीं।
+  // स्विच हटते ही _applyPause खुद दोबारा जोड़ देता है, और जुड़ते ही पूरा ताज़ा data आ जाता है
+  if(isDataPaused()) return;
 
   function applyIncoming(d){
     _checkMigrationRevert(hq,cat,d); // migrated list कहीं पुराने device ने वापस array में तो नहीं बदल दी

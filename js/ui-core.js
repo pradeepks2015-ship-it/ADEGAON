@@ -36,6 +36,7 @@ function fmtDateTime(dt){
 window.addEventListener("online",function(){
   setSyncStatus(true);
   ensureLibs();
+  fetchPause(); // 🛑 स्विच का ताज़ा हाल — नेट बंद रहते हुए JE ने बदला हो सकता है
   _ensureCorrectHqAuth(); // पहले सही account पक्का करें, तभी flushPending() को असली मौक़ा मिलेगा
   flushPending();
   fetchCatNamesFromFB(false);
@@ -72,6 +73,7 @@ document.addEventListener("visibilitychange",function(){
       clearTimeout(_hideTimer); _hideTimer=null;
       return;
     }
+    fetchPause(); // वापस सामने आए — स्विच बीच में बदला हो सकता है
     if(CU&&activeHQ&&activeCat) startListen(activeHQ,activeCat);
   }
 });
@@ -212,6 +214,66 @@ function fetchHQPinsFromFB(){
       }
     }).catch(function(){});
 }
+// ── 🛑 डेटा बचाओ मोड — पट्टी और JE का स्विच (असली रोक js/database.js में है) ───────────────
+function renderPauseBar(){
+  var el=document.getElementById("pause-bar");
+  if(!el) return;
+  if(!isDataPaused()){ el.style.display="none"; el.textContent=""; return; }
+  el.style.display="block";
+  // textContent — कोई user-typed नाम यहां HTML बनकर नहीं जा सकता
+  el.textContent="🛑 डेटा बचाओ मोड चालू — आपकी वसूली दर्ज हो रही है, बस दूसरों का ताज़ा डेटा अभी नहीं आ रहा";
+}
+function openPauseModal(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह कर सकते हैं","err");return;}
+  var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
+  document.getElementById("pause-overlay").classList.add("open");
+  _pauseRender();
+  fetchPause(); // खोलते ही ताज़ा हाल — दूसरे device से बदला हो तो वही दिखे
+  setTimeout(_pauseRender,900);
+}
+function closePauseModal(){document.getElementById("pause-overlay").classList.remove("open");}
+function _pauseRender(){
+  var el=document.getElementById("pause-content");
+  if(!el) return;
+  var on=isDataPaused();
+  var who="",when="";
+  if(PAUSE_INFO&&PAUSE_INFO.by) who=String(PAUSE_INFO.by);
+  if(PAUSE_INFO&&PAUSE_INFO.at) { try{ when=new Date(Number(PAUSE_INFO.at)).toLocaleString("hi-IN"); }catch(e){} }
+  var h="";
+  h+="<div style='background:"+(on?"rgba(240,80,80,.10)":"rgba(0,200,150,.08)")+";border:1px solid "+(on?"rgba(240,80,80,.35)":"rgba(0,200,150,.3)")+";border-radius:12px;padding:12px;margin-bottom:10px;'>";
+  h+="<div style='font-size:15px;font-weight:800;color:"+(on?"var(--red)":"var(--green)")+";'>"+(on?"🛑 अभी चालू है — डाउनलोड रुका हुआ है":"✅ अभी बंद है — सब सामान्य चल रहा है")+"</div>";
+  if(on&&(who||when)) h+="<div style='font-size:11px;color:var(--muted);margin-top:5px;'>"+escHtml(who?(who+" ने"):"")+(when?(" "+escHtml(when)+" को"):"")+" चालू किया</div>";
+  if(on) h+="<div style='font-size:11px;color:var(--gold2);font-weight:700;margin-top:5px;'>⏱ आज रात अपने आप हट जाएगा — भूल जाने पर भी टीम कल पुराने डेटा पर नहीं रहेगी</div>";
+  h+="</div>";
+  h+="<div style='font-size:12px;line-height:1.75;color:var(--muted);margin-bottom:12px;'>"+
+     "<b style='color:var(--text);'>चालू करने पर क्या रुकता है:</b> live sync, सभी लिस्ट का background refresh, prefetch, स्कोरकार्ड का ताज़ा डेटा।<br>"+
+     "<b style='color:var(--green);'>क्या चलता रहता है:</b> पूरी ऐप device के अपने डेटा से, और सबसे ज़रूरी — <b>वसूली दर्ज करना</b> (वह upload है, quota में नहीं गिनता)।<br>"+
+     "<b style='color:var(--gold2);'>ध्यान रखें:</b> चालू रहने तक आपको दूसरों की वसूली दिखना बंद हो जाएगी। बाक़ी devices तक यह ~5 मिनट में पहुँचता है।"+
+     "</div>";
+  h+="<button class='btn-save' style='width:100%;background:"+(on?"var(--green)":"var(--red)")+";' onclick='_pauseToggle()'>"+
+     (on?"✅ वापस सामान्य करें":"🛑 अभी डाउनलोड रोकें")+"</button>";
+  // audit-verified: सिर्फ़ hardcoded markup + escHtml() से गुज़रे who/when
+  // eslint-disable-next-line no-unsanitized/property
+  el.innerHTML=h;
+}
+function _pauseToggle(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह कर सकते हैं","err");return;}
+  var next=!isDataPaused();
+  if(next&&!confirm("डाउनलोड रोक दें?\n\nसभी devices पर दूसरों का ताज़ा डेटा आना बंद हो जाएगा। वसूली दर्ज करना चलता रहेगा।")) return;
+  var body={on:next,by:CU.name,at:{".sv":"timestamp"}};
+  fetch(FB+"/PAUSE.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(function(r){
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      return r.json();
+    })
+    .then(function(d){
+      _applyPause(d&&typeof d==="object"?d:{on:next,by:CU.name});
+      _pauseRender();
+      toast(next?"🛑 डाउनलोड रोक दिया — बाक़ी devices तक ~5 मिनट में":"✅ वापस सामान्य — live sync फिर चालू","ok");
+    })
+    .catch(function(e){logErr("pause-save-fail",e);toast("⚠️ बदल नहीं पाया — दोबारा कोशिश करें","err");});
+}
+
 function openPinModal(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE PIN सेट कर सकते हैं","err");return;}
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
@@ -446,7 +508,7 @@ function buildUI(){
   document.getElementById("hdr-sub").textContent=CU.role==="supervisor"?"JE | सभी HQ":"Lineman | "+CU.hq;
   var info=document.getElementById("user-info-menu");
   if(info) info.textContent=(CU.role==="supervisor"?"👨‍💼 JE":"🔧 Lineman")+" | "+CU.hq+" | "+CU.name+" | v"+APP_VER;
-  ["log-menu-item","hsc-menu-item","cash-menu-item","backup-menu-item","wasc-menu-item","todaysc-menu-item","dv-menu-item","mig-menu-item","pin-menu-item","usage-menu-item","clearcats-menu-item"].forEach(function(id){
+  ["log-menu-item","hsc-menu-item","cash-menu-item","backup-menu-item","wasc-menu-item","todaysc-menu-item","pause-menu-item","dv-menu-item","mig-menu-item","pin-menu-item","usage-menu-item","clearcats-menu-item"].forEach(function(id){
     var el=document.getElementById(id);
     if(el) el.style.display=CU.role==="supervisor"?"flex":"none";
   });

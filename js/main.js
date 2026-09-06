@@ -5,11 +5,16 @@ function startApp(){
   loadCatNames();
   loadMigratedFlags();
   loadHQPins();
+  // 🛑 डेटा बचाओ मोड — पहले device की याद से (ताकि जवाब आने से पहले भी सही व्यवहार हो, वरना
+  // उन्हीं कुछ सेकंडों में live sync जुड़कर पूरी लिस्ट उतार लेता), फिर server से पक्का करें
+  loadPauseLocal();
+  renderPauseBar();
   rebuildCatsForHQ(HQS[0]);
   hideLoader();
   setSyncStatus(navigator.onLine);
   hscLoadLocal(); renderHomeSc();
-  if(navigator.onLine){ensureLibs();flushPending();hscFetch();}
+  if(navigator.onLine){ensureLibs();flushPending();fetchPause();hscFetch();}
+  startPausePoll();
   // Pull-to-refresh जैसा असली page reload, और मोबाइल पर ऐप minimize होने के बाद OS का tab मार
   // देना — दोनों CU (JS memory) मिटा देते हैं। सेव किया हुआ session मिले तो login screen दिखाए
   // बिना चुपचाप वापस अंदर ले जाएं (Firebase का अपना auth session वैसे भी बना रहता है — यह सिर्फ़

@@ -12,6 +12,10 @@
       ".read": "auth != null",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com'"
     },
+    "PAUSE": {
+      ".read": "auth != null",
+      ".write": "auth.token.email === 'pradeepks2015@gmail.com'"
+    },
     "MIGRATED": {
       ".read": "auth != null",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com'"
