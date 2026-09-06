@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v129";
+var CACHE_NAME="adegaon-dc-v130";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -42,7 +42,8 @@ var OPTIONAL=[
   "./icons/icon-maskable-512.png",
   "./icons/apple-touch-icon.png",
   "./icons/tower-decoration.svg",
-  "./icons/scorecard-icon.svg"
+  "./icons/scorecard-icon.svg",
+  "./icons/mascot.webp"
 ];
 self.addEventListener("install",function(e){
   e.waitUntil(

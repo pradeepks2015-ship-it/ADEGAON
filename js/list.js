@@ -300,6 +300,61 @@ function _dvNameKeySafe(n){
   try{ return _dvNameKey(n); }
   catch(e){ return String(n==null?"":n).trim().toLowerCase(); }
 }
+// ── जश्न की आवाज़ — फ़ोन के अंदर ही बनाई जाती है (Web Audio), कोई mp3/फ़ाइल डाउनलोड नहीं ─────
+// इसलिए इसका आकार शून्य है: न Firebase से कुछ आता है, न Netlify से। ब्राउज़र खुद ध्वनि-तरंगें
+// बनाता है — ताली के लिए तेज़ी से बुझता हुआ शोर (जैसे असली ताली), और साथ में एक छोटी घंटी।
+// ध्यान: मोबाइल ब्राउज़र बिना उपयोगकर्ता के छूए आवाज़ नहीं चलने देते — यहां दिक़्क़त नहीं, क्योंकि
+// "✓ वसूल" दबाना खुद एक tap है। फ़ोन silent पर हो तो (ख़ासकर iPhone) आवाज़ नहीं आएगी — यह
+// ब्राउज़र की सीमा है, इसमें कुछ किया नहीं जा सकता
+var _ac=null;
+function _celebAudioCtx(){
+  if(_ac) return _ac;
+  try{
+    var C=window.AudioContext||window.webkitAudioContext;
+    if(!C) return null;
+    _ac=new C();
+  }catch(e){ return null; }
+  return _ac;
+}
+// एक ताली = बहुत छोटा शोर का झटका, जो तुरंत बुझ जाए
+function _clapAt(ctx,t,gain){
+  var len=Math.floor(ctx.sampleRate*0.055);
+  var buf=ctx.createBuffer(1,len,ctx.sampleRate);
+  var ch=buf.getChannelData(0);
+  for(var i=0;i<len;i++){
+    var d=1-(i/len);
+    ch[i]=(Math.random()*2-1)*d*d*d; // तेज़ी से बुझता शोर — यही ताली जैसा सुनाई देता है
+  }
+  var src=ctx.createBufferSource(); src.buffer=buf;
+  var bp=ctx.createBiquadFilter(); bp.type="bandpass"; bp.frequency.value=1400; bp.Q.value=0.8;
+  var g=ctx.createGain(); g.gain.value=gain;
+  src.connect(bp); bp.connect(g); g.connect(ctx.destination);
+  src.start(t);
+}
+function _dingAt(ctx,t,freq,dur,gain){
+  var o=ctx.createOscillator(); o.type="sine"; o.frequency.value=freq;
+  var g=ctx.createGain();
+  g.gain.setValueAtTime(0,t);
+  g.gain.linearRampToValueAtTime(gain,t+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(t); o.stop(t+dur+0.02);
+}
+function _celebSound(big){
+  if(!celebSoundOn()) return;
+  var ctx=_celebAudioCtx();
+  if(!ctx) return;
+  try{ if(ctx.state==="suspended") ctx.resume(); }catch(e){}
+  var t=ctx.currentTime+0.01;
+  // ताली — असली तालियों जैसा लगे इसलिए थोड़े अनियमित अंतराल पर
+  var claps=big?7:4;
+  for(var i=0;i<claps;i++) _clapAt(ctx,t+i*0.075+Math.random()*0.02,big?0.5:0.38);
+  // "वाह" वाली चढ़ती घंटी — छोटी वसूली पर दो सुर, हर 10वीं पर तीन
+  _dingAt(ctx,t+0.10,784,0.28,0.14);   // G5
+  _dingAt(ctx,t+0.22,1046.5,0.34,0.13); // C6
+  if(big) _dingAt(ctx,t+0.36,1318.5,0.45,0.12); // E6
+}
+
 function _celebPaid(rec){
   if(typeof document==="undefined") return;
   var old=document.getElementById("celeb");
@@ -313,6 +368,17 @@ function _celebPaid(rec){
   var big=(n>0&&n%10===0);
   var card=document.createElement("div");
   card.className="celeb-card";
+  // मैस्कॉट — icons/mascot.webp सिर्फ़ 8.5 KB है और service worker से एक बार cache हो जाती है
+  // (Netlify से आती है, Firebase से नहीं — रोज़ाना download quota पर इसका कोई असर नहीं)।
+  // किसी पुराने फ़ोन पर WebP न चले तो चुपचाप छुप जाती है — जश्न फिर भी पूरा दिखता है
+  var mrow=document.createElement("div"); mrow.className="celeb-mrow";
+  var hL=document.createElement("span"); hL.className="celeb-clap l"; hL.textContent="👏";
+  var img=document.createElement("img");
+  img.className="celeb-mascot"; img.src="icons/mascot.webp"; img.alt=""; img.width=76; img.height=76;
+  img.onerror=function(){ this.style.display="none"; };
+  var hR=document.createElement("span"); hR.className="celeb-clap r"; hR.textContent="👏";
+  mrow.appendChild(hL); mrow.appendChild(img); mrow.appendChild(hR);
+  card.appendChild(mrow);
   var e=document.createElement("div"); e.className="celeb-emoji"; e.textContent=big?"🏆":"🎉";
   var nm=document.createElement("div"); nm.className="celeb-name";
   nm.textContent=(big?"शाबाश ":"शानदार ")+name+"!";
@@ -332,6 +398,7 @@ function _celebPaid(rec){
     wrap.appendChild(b);
   }
   document.body.appendChild(wrap);
+  try{_celebSound(big);}catch(e){} // आवाज़ न चल पाए तो भी दिखने वाला जश्न न रुके
   setTimeout(function(){ if(wrap.parentNode) wrap.parentNode.removeChild(wrap); },CELEB_MS+400);
 }
 

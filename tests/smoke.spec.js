@@ -490,13 +490,85 @@ test.describe('डेटा और वसूली', () => {
       CELEB_MS = 60; // टेस्ट में तेज़
       _celebPaid({ amount: 100 });
       var el = document.getElementById('celeb');
-      var hasImg = !!el.querySelector('img');
+      // मैस्कॉट अपने आप में एक जायज़ <img> है — यहां सिर्फ़ यह देखना है कि *नाम* से
+      // कोई नया img न बना हो
+      var hasImg = el.querySelectorAll('img:not(.celeb-mascot)').length > 0;
       var txt = el.textContent;
       setTimeout(() => resolve({ hasImg: hasImg, txt: txt, gone: !document.getElementById('celeb') }), 700);
     }));
-    expect(r.hasImg).toBe(false);           // नाम कभी असली HTML बनकर न जाए
+    expect(r.hasImg).toBe(false);           // नाम कभी असली HTML बनकर न जाए (मैस्कॉट वाला img अलग है)
     expect(r.txt).toContain('<img src=x');  // सिर्फ़ दिखने वाला टेक्स्ट
     expect(r.gone).toBe(true);              // अपने आप हट गया
+  });
+
+  test('जश्न में मैस्कॉट और ताली दिखे, और मैस्कॉट लोड न हो पाए तो चुपचाप छुप जाए (जश्न फिर भी पूरा)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'सोहन');
+    const r = await page.evaluate(() => {
+      _celebPaid({ amount: 500 });
+      var el = document.getElementById('celeb');
+      var img = el.querySelector('.celeb-mascot');
+      var claps = el.querySelectorAll('.celeb-clap').length;
+      img.onerror(); // जैसे पुराने फ़ोन पर WebP न चले
+      return { hasImg: !!img, src: img.getAttribute('src'), claps: claps, hiddenOnError: img.style.display, text: el.textContent };
+    });
+    expect(r.hasImg).toBe(true);
+    expect(r.src).toBe('icons/mascot.webp');
+    expect(r.claps).toBe(2);                 // दोनों तरफ़ ताली
+    expect(r.hiddenOnError).toBe('none');    // न चले तो छुप जाए
+    expect(r.text).toContain('सोहन');        // बाक़ी जश्न फिर भी पूरा
+  });
+
+  test('वसूली की आवाज़ — डिफ़ॉल्ट चालू, बंद करने पर कोई ध्वनि न बने, और याद रहे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'सोहन');
+    const r = await page.evaluate(() => {
+      var made = 0;
+      var realCtx = window.AudioContext;
+      // असली आवाज़ न बजे, सिर्फ़ यह जांचें कि बनाने की कोशिश हुई या नहीं
+      window.AudioContext = function () {
+        made++;
+        return { currentTime: 0, sampleRate: 44100, state: 'running', destination: {},
+          createBuffer: () => ({ getChannelData: () => new Float32Array(10) }),
+          createBufferSource: () => ({ connect() {}, start() {} }),
+          createBiquadFilter: () => ({ connect() {}, frequency: {}, Q: {} }),
+          createGain: () => ({ connect() {}, gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} } }),
+          createOscillator: () => ({ connect() {}, start() {}, stop() {}, frequency: {} }) };
+      };
+      window.webkitAudioContext = window.AudioContext;
+      var onByDefault = celebSoundOn();
+      _ac = null; _celebSound(false);
+      var whenOn = made;
+      toggleCelebSound();                 // बंद करो
+      var offNow = celebSoundOn();
+      var stored = localStorage.getItem('dc_celebsound');
+      made = 0; _ac = null; _celebSound(false);
+      var whenOff = made;
+      window.AudioContext = realCtx;
+      return { onByDefault: onByDefault, whenOn: whenOn, offNow: offNow, stored: stored, whenOff: whenOff };
+    });
+    expect(r.onByDefault).toBe(true); // बिना कुछ किए आवाज़ चालू
+    expect(r.whenOn).toBe(1);
+    expect(r.offNow).toBe(false);
+    expect(r.stored).toBe('0');       // localStorage में याद रहे
+    expect(r.whenOff).toBe(0);        // बंद है तो कुछ बने ही नहीं
+  });
+
+  test('आवाज़ का बटन प्रोफ़ाइल में हो और मौजूदा सेटिंग दिखाए', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'सोहन');
+    const r = await page.evaluate(() => {
+      localStorage.setItem('dc_celebsound', '0');
+      openProfileModal();
+      var off = document.getElementById('sound-switch-btn').className;
+      localStorage.setItem('dc_celebsound', '1');
+      _syncSoundSwitch();
+      var on = document.getElementById('sound-switch-btn').className;
+      closeProfileModal();
+      return { off: off, on: on };
+    });
+    expect(r.off).not.toContain('on');
+    expect(r.on).toContain('on');
   });
 
   test('_celebTodayCount — आज की अपनी वसूली गिने: एक ही उपभोक्ता कई श्रेणियों में हो तो एक बार, दूसरे कर्मचारी की न गिने, पुरानी तारीख़ की न गिने', async ({ page }) => {
