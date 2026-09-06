@@ -4332,3 +4332,158 @@ test.describe('XSS सुरक्षा — PDF/print export और दिन�
     expect(result.value).toBe("1' onmouseover='alert(8)");
   });
 });
+
+// JE का सवाल: "यदि मुझे आज का टोटल नेटवर्क कॉस्ट यहीं पर रोकना है तो कोई एक ऐसी मास्टर स्विच
+// बन सकती है क्या" — Firebase का no-cost download quota रोज़ 360 MB का है; किसी दिन वह भरता दिखे
+// तो JE एक ही स्विच से सभी devices पर आगे का download रोक सकें
+test.describe('🛑 डेटा बचाओ मोड — Firebase download रोकने का मास्टर स्विच (JE only)', () => {
+  test('चालू होने पर live sync न जुड़े और prefetch न चले (सबसे बड़े दो खर्च)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'क', hq: 'आदेगांव' };
+      localStorage.removeItem(_prefetchKey());
+      _applyPause({ on: true });
+      var live = !!liveSource || !!pollTimer;          // _applyPause ने बंद कर दिया होना चाहिए
+      startListen('आदेगांव', 'कुल उपभोक्ता');
+      var afterStart = !!liveSource || !!pollTimer;    // दोबारा जोड़ने की कोशिश भी न चले
+      var hits = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf(FB) === 0) hits++; return orig(u, o); };
+      prefetchAll(true);                               // force हो तब भी नहीं
+      window.fetch = orig;
+      _prefetchRun = false;
+      _applyPause({ on: false });
+      return { live: live, afterStart: afterStart, prefetchHits: hits };
+    });
+    expect(r.live).toBe(false);
+    expect(r.afterStart).toBe(false);
+    expect(r.prefetchHits).toBe(0);
+  });
+
+  test('चालू होने पर खुली लिस्ट cache से दिखे, पर उसका background refresh न हो', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'क', amount: 10, status: 'pending' }]);
+      _applyPause({ on: true });
+      var hits = 0, shown = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf(fbPath('आदेगांव', 'कुल उपभोक्ता')) > -1) hits++; return orig(u, o); };
+      fbGet('आदेगांव', 'कुल उपभोक्ता', function (d) { shown = d.length; });
+      setTimeout(() => { window.fetch = orig; _applyPause({ on: false }); resolve({ hits: hits, shown: shown }); }, 500);
+    }));
+    expect(r.shown).toBe(1);  // काम रुका नहीं — cache से पूरी लिस्ट मिली
+    expect(r.hits).toBe(0);   // पर एक भी बाइट network से नहीं
+  });
+
+  test('स्विच हटते ही live sync अपने आप वापस जुड़े', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource || !!pollTimer, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      _applyPause({ on: true });
+      var whilePaused = !!liveSource || !!pollTimer;
+      _applyPause({ on: false });
+      return { whilePaused: whilePaused, afterResume: !!liveSource || !!pollTimer };
+    });
+    expect(r.whilePaused).toBe(false);
+    expect(r.afterResume).toBe(true);
+  });
+
+  test('पट्टी सिर्फ़ चालू हालत में दिखे — लाइनमैन को पता रहे कि ऐप ख़राब नहीं है', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      _applyPause({ on: false });
+      var off = document.getElementById('pause-bar').style.display;
+      _applyPause({ on: true });
+      var el = document.getElementById('pause-bar');
+      var on = { disp: el.style.display, txt: el.textContent };
+      _applyPause({ on: false });
+      return { off: off, on: on };
+    });
+    expect(r.off).toBe('none');
+    expect(r.on.disp).not.toBe('none');
+    expect(r.on.txt).toContain('वसूली दर्ज हो रही है'); // डर न लगे — काम चालू है
+  });
+
+  test('स्विच device पर याद रहे — ऐप दोबारा खुलते ही (server के जवाब से पहले भी) रुका रहे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      _applyPause({ on: true, by: 'जेई', at: Date.now() });
+      var stored = localStorage.getItem(PAUSE_KEY);
+      DATA_PAUSED = false; PAUSE_INFO = null;   // जैसे ऐप नए सिरे से खुली हो
+      loadPauseLocal();
+      var after = isDataPaused();
+      _applyPause({ on: false });
+      return { stored: !!stored, after: after };
+    });
+    expect(r.stored).toBe(true);
+    expect(r.after).toBe(true);
+  });
+
+  test('स्विच सिर्फ़ JE बदल सके — lineman सीधे function बुलाए तो भी कुछ न लिखे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      var puts = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf('/PAUSE.json') > -1 && o && o.method === 'PUT') puts++; return orig(u, o); };
+      _pauseToggle();
+      openPauseModal();
+      var opened = document.getElementById('pause-overlay').classList.contains('open');
+      window.fetch = orig;
+      return { puts: puts, opened: opened };
+    });
+    expect(r.puts).toBe(0);
+    expect(r.opened).toBe(false);
+  });
+
+  // सबसे संभावित गड़बड़ी यही है कि JE शाम को स्विच दबाकर भूल जाएँ और पूरी टीम कई दिन पुराने डेटा
+  // पर चलती रहे। Firebase का quota वैसे भी रोज़ रीसेट होता है, तो कल इसे चालू रखने का मतलब ही नहीं
+  test('स्विच आज रात अपने आप हट जाए — कल का दबाया हुआ आज लागू न हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var todayStart = new Date(serverNow()); todayStart.setHours(0, 0, 0, 0);
+      _applyPause({ on: true, by: 'जेई', at: serverNow() });
+      var today = isDataPaused();
+      _applyPause({ on: true, by: 'जेई', at: todayStart.getTime() - 3600000 }); // कल शाम
+      var yesterday = isDataPaused();
+      // कब दबाया पता ही न हो (पुराना रूप) — तब भरोसा करके चालू ही मानें
+      _applyPause({ on: true, by: 'जेई' });
+      var noTime = isDataPaused();
+      _applyPause({ on: false });
+      return { today: today, yesterday: yesterday, noTime: noTime };
+    });
+    expect(r.today).toBe(true);
+    expect(r.yesterday).toBe(false); // भूल जाने पर भी कल अपने आप हट गया
+    expect(r.noTime).toBe(true);
+  });
+
+  test('device पर सहेजे स्विच पर भी वही "आज तक" वाली शर्त लगे (कल का रुका हुआ ऐप खुलते ही फिर लागू न हो)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var todayStart = new Date(serverNow()); todayStart.setHours(0, 0, 0, 0);
+      localStorage.setItem(PAUSE_KEY, JSON.stringify({ on: true, i: { on: true, by: 'जेई', at: todayStart.getTime() - 7200000 } }));
+      DATA_PAUSED = false;
+      loadPauseLocal();
+      var stale = isDataPaused();
+      localStorage.setItem(PAUSE_KEY, JSON.stringify({ on: true, i: { on: true, by: 'जेई', at: serverNow() } }));
+      DATA_PAUSED = false;
+      loadPauseLocal();
+      var fresh = isDataPaused();
+      _applyPause({ on: false });
+      return { stale: stale, fresh: fresh };
+    });
+    expect(r.stale).toBe(false);
+    expect(r.fresh).toBe(true);
+  });
+
+  test('database.rules.json — PAUSE सिर्फ़ JE लिख सके, बाक़ी सब पढ़ सकें', async () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+    expect(rules.PAUSE).toBeTruthy();
+    expect(rules.PAUSE['.read']).toBe('auth != null');
+    expect(rules.PAUSE['.write']).toContain('pradeepks2015@gmail.com');
+  });
+});

@@ -86,6 +86,9 @@ try{
       <span class="stime" id="stime"></span>
     </div>
   </div>
+  <!-- 🛑 डेटा बचाओ मोड की पट्टी — सिर्फ़ तभी दिखती है जब JE ने स्विच दबाया हो। ज़रूरी है:
+       वरना लाइनमैन को लगेगा ऐप ख़राब हो गई (दूसरों का ताज़ा डेटा आना रुक जाता है) -->
+  <div id="pause-bar" style="display:none;"></div>
   <div class="app-header">
     <img class="hdr-tower-deco" src="icons/tower-decoration.svg" alt="" aria-hidden="true">
     <div class="hdr1">
@@ -115,6 +118,7 @@ try{
             <button type="button" class="logout-item" id="backup-menu-item" style="display:none;color:var(--gold);" onclick="downloadFullBackup()">&#128190; पूरा बैकअप</button>
             <button type="button" class="logout-item" id="log-menu-item" style="display:none;color:var(--gold2);" onclick="openLogModal()">&#129534; एरर लॉग<span id="log-badge" class="log-badge" style="display:none;"></span></button>
             <button type="button" class="logout-item" id="usage-menu-item" style="display:none;color:#0288d1;" onclick="openUsageModal()">&#128246; डेटा उपयोग</button>
+            <button type="button" class="logout-item" id="pause-menu-item" style="display:none;color:#c62828;" onclick="openPauseModal()">&#128721; डेटा बचाओ मोड</button>
             <button type="button" class="logout-item" id="dv-menu-item" style="display:none;color:#1565c0;" onclick="openDvModal()">&#128101; कर्मचारी सक्रियता</button>
             <button type="button" class="logout-item" id="mig-menu-item" style="display:none;color:#455a64;" onclick="openMigModal()">&#128736;&#65039; चरण 3 जांच</button>
             <button type="button" class="logout-item" id="pin-menu-item" style="display:none;color:#c41f3d;" onclick="openPinModal()">&#128274; Lineman PIN</button>
@@ -504,6 +508,19 @@ try{
       <button class="btn-cancel" id="mig-dl" style="display:none;" onclick="downloadMigReport()">&#128190; रिपोर्ट Excel</button>
       <button class="btn-save" onclick="_migRunDryRun()">&#128260; दोबारा जांचें</button>
       <button class="btn-save" onclick="closeMigModal()">बंद करें</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🛑 डेटा बचाओ मोड (JE only) — आपातकालीन ब्रेक, जिस दिन Firebase का रोज़ाना download quota
+     भरता दिखे -->
+<div class="moverlay" id="pause-overlay" onclick="if(event.target===this)closePauseModal()">
+  <div class="msheet" style="max-height:92vh;">
+    <div class="mhandle"></div>
+    <div class="mtitle">&#128721; डेटा बचाओ मोड</div>
+    <div id="pause-content"></div>
+    <div class="mfooter">
+      <button class="btn-save" onclick="closePauseModal()">बंद करें</button>
     </div>
   </div>
 </div>
