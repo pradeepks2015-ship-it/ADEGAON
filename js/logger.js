@@ -59,7 +59,10 @@ function stopDevicePing(){
 // रहे जो अब कभी अपडेट होंगे ही नहीं। अब: (1) नाम+HQ से समूह, (2) डिफ़ॉल्ट सिर्फ़ पिछले 7 दिन,
 // (3) साथ में यह भी कि हर कर्मचारी ने असल में कितना काम किया (सिर्फ़ ऐप खोलना नहीं)।
 var _DV_RAW=null;      // {devKey: record} — एक बार लाकर रखा, अवधि बदलने पर दोबारा fetch नहीं (bandwidth)
-var _DV_WINDOW=7;      // 7 | 30 | 0 (=सभी)
+// 1 = आज | 7 | 30 | 0 (=सभी)। डिफ़ॉल्ट "आज" — JE रोज़ यही देखते हैं ("सिर्फ़ आज का डेटा दिखाए"),
+// और ऊपर की "आज" पट्टी से नीचे की तालिका का मेल भी तभी बैठता है। 7/30/सभी एक क्लिक दूर हैं।
+// ध्यान: "आज" का मतलब कैलेंडर-दिन है (रात 12 बजे से), न कि पिछले 24 घंटे — देखें _dvCutoff()
+var _DV_WINDOW=1;
 var DV_STALE_DAYS=60;  // इससे पुरानी entries viewer खुलते ही अपने आप हटें (जैसे LOGS में होता है)
 
 // "Vikas sahu" / "vikas sahu", "Manoj kumar dehariya" / "Manoj Kumar Dehariya" — एक ही व्यक्ति
@@ -135,6 +138,18 @@ function _dvActivity(sinceTs){
 
 function _dvSetWindow(d){ _DV_WINDOW=d; _dvPaint(); } // सिर्फ़ दोबारा रंगना — कोई नई fetch नहीं
 
+// चुनी हुई अवधि की शुरुआत का समय। "आज" (=1) कैलेंडर-दिन है — आज रात 12 बजे से, न कि पिछले
+// 24 घंटे; वरना कल शाम का काम भी "आज" में गिना जाता और गिनती ऊपर की "आज" पट्टी से मेल न खाती
+function _dvCutoff(){
+  if(!_DV_WINDOW) return 0; // सभी
+  if(_DV_WINDOW===1){ var d=new Date(); d.setHours(0,0,0,0); return d.getTime(); }
+  return Date.now()-_DV_WINDOW*86400000;
+}
+function _dvWindowLabel(){
+  if(!_DV_WINDOW) return "अब तक";
+  return _DV_WINDOW===1?"आज":(_DV_WINDOW+" दिन");
+}
+
 // ── "आज" की एक-पंक्ति झलक ──────────────────────────────────────────────────────
 // JE का असली सवाल है "आज कितने लोग काम पर थे"। उसे "आज कितने लॉगिन हुए" से नापना अब ग़लत नाप है:
 // v9.108 से session 30 दिन टिकता है, यानी लाइनमैन एक बार login करके महीने भर काम करता रहता है —
@@ -186,6 +201,16 @@ function _dvTodayStrip(raw){
   return h;
 }
 
+// रोज़ देखने वाली स्क्रीन — पहले यह "चरण 3" (कभी-कभार वाली माइग्रेशन जांच) के अंदर दबी थी
+function openDvModal(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह देख सकते हैं","err");return;}
+  var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
+  _DV_WINDOW=1; // हर बार खुलते ही "आज" — JE का रोज़ का सवाल यही है
+  document.getElementById("dv-overlay").classList.add("open");
+  _dvRender();
+}
+function closeDvModal(){document.getElementById("dv-overlay").classList.remove("open");}
+
 function _dvRender(){
   var el=document.getElementById("mig-devices");
   if(!el)return;
@@ -208,7 +233,7 @@ function _dvPaint(){
   if(!keys.length){ el.innerHTML="<div class='log-empty'>अभी तक कोई device record नहीं — यह नए version से अपने आप बनता है</div>"; return; }
   // "आज" वाली पट्टी चुनी हुई अवधि (7/30/सभी) से स्वतंत्र है — वो हमेशा आज का ही हाल दिखाती है
   var todayStrip=_dvTodayStrip(raw);
-  var cutoff=_DV_WINDOW?(Date.now()-_DV_WINDOW*86400000):0;
+  var cutoff=_dvCutoff();
   var act=_dvActivity(cutoff||0);
   // नाम+HQ से समूह — एक ही व्यक्ति के कई devices/re-install एक पंक्ति में
   var people={},hidden=0;
@@ -225,10 +250,10 @@ function _dvPaint(){
   });
   var rows=Object.keys(people).map(function(k){return people[k];});
   if(!rows.length){
-    // audit-verified: _DV_WINDOW संख्या है (7/30/0) और _dvControls() सिर्फ़ संख्याओं + hardcoded
-    // markup से बनता है — कोई user-typed field नहीं
+    // audit-verified: _dvWindowLabel() सिर्फ़ hardcoded शब्द/संख्या लौटाता है और _dvControls()
+    // सिर्फ़ संख्याओं + hardcoded markup से बनता है — कोई user-typed field नहीं
     // eslint-disable-next-line no-unsanitized/property
-    el.innerHTML=todayStrip+"<div class='log-empty'>पिछले "+_DV_WINDOW+" दिन में कोई सक्रिय नहीं — ऊपर से अवधि बदलकर देखें</div>"+_dvControls(hidden);
+    el.innerHTML=todayStrip+"<div class='log-empty'>"+(_DV_WINDOW===1?"आज":("पिछले "+_DV_WINDOW+" दिन में"))+" कोई सक्रिय नहीं — ऊपर से अवधि बदलकर देखें</div>"+_dvControls(hidden);
     return;
   }
   rows.sort(function(a,b){
@@ -247,7 +272,7 @@ function _dvPaint(){
   if(noData.length){
     html+="<div style='background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.3);border-radius:10px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--gold2);'>ℹ️ इन मुख्यालयों का data इस डिवाइस पर नहीं है, इसलिए इनका \"काम\" शून्य दिख सकता है: <b>"+escHtml(noData.join(", "))+"</b> — \"आज की वसूली\" या \"ग्राम-वार वसूली\" में रिफ्रेश दबाकर ताज़ा करें</div>";
   }
-  html+="<table class='wasc-table'><thead><tr><th class='wasc-th-left'>कर्मचारी</th><th>HQ</th><th>"+(_DV_WINDOW?(_DV_WINDOW+" दिन का काम"):"काम")+"</th><th>आख़िरी बार लॉगिन</th><th>Version</th></tr></thead><tbody>";
+  html+="<table class='wasc-table'><thead><tr><th class='wasc-th-left'>कर्मचारी</th><th>HQ</th><th>"+(_DV_WINDOW===1?"आज का काम":(_DV_WINDOW?(_DV_WINDOW+" दिन का काम"):"काम"))+"</th><th>आख़िरी बार लॉगिन</th><th>Version</th></tr></thead><tbody>";
   rows.forEach(function(r){
     var old=r.v!==APP_VER;
     var a=act[_dvNameKey(r.name)]||{work:0,paid:0,rmk:0};
@@ -278,8 +303,10 @@ function _dvControls(hidden){
     return "<button onclick=\"_dvSetWindow("+d+")\" style='border:1px solid "+(on?"var(--gold2)":"var(--border)")+";background:"+(on?"rgba(240,165,0,.12)":"var(--card)")+";color:"+(on?"var(--gold2)":"var(--muted)")+";border-radius:8px;padding:5px 12px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;'>"+lbl+"</button>";
   };
   var h="<div style='display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;'>"+
-    btn(7,"7 दिन")+btn(30,"30 दिन")+btn(0,"सभी");
-  if(hidden>0&&_DV_WINDOW) h+="<button onclick='_dvClearOld()' style='margin-left:auto;border:1px solid rgba(240,80,80,.3);background:rgba(240,80,80,.08);color:var(--red);border-radius:8px;padding:5px 12px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;'>🗑️ पुरानी "+hidden+" हटाएं</button>";
+    btn(1,"आज")+btn(7,"7 दिन")+btn(30,"30 दिन")+btn(0,"सभी");
+  // "आज" चुना हो तो "पुरानी हटाएं" न दिखाएं — वहां "पुरानी" का मतलब "कल और उससे पहले की सब"
+  // होता, यानी एक क्लिक में लगभग पूरी सूची मिट जाती। हटाना 7/30 दिन वाली सोची-समझी सफ़ाई ही रहे
+  if(hidden>0&&_DV_WINDOW&&_DV_WINDOW!==1) h+="<button onclick='_dvClearOld()' style='margin-left:auto;border:1px solid rgba(240,80,80,.3);background:rgba(240,80,80,.08);color:var(--red);border-radius:8px;padding:5px 12px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;'>🗑️ पुरानी "+hidden+" हटाएं</button>";
   h+="</div>";
   return h;
 }
@@ -288,7 +315,7 @@ function _dvControls(hidden){
 // में है वो अगले login/ping पर अपनी entry दोबारा बना लेता है (देखें pingDeviceVersion)
 function _dvClearOld(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह कर सकते हैं","err");return;}
-  if(!_DV_WINDOW){toast("पहले 7 या 30 दिन चुनें","inf");return;}
+  if(!_DV_WINDOW||_DV_WINDOW===1){toast("पहले 7 या 30 दिन चुनें","inf");return;}
   var cutoff=Date.now()-_DV_WINDOW*86400000;
   var raw=_DV_RAW||{};
   var olds=Object.keys(raw).filter(function(k){

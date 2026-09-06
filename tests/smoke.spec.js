@@ -1212,12 +1212,99 @@ test.describe('कर्मचारी सक्रियता सूची �
     };
   };
 
+  // पहले यह चरण 3 (कभी-कभार वाली माइग्रेशन जांच) के अंदर दबी थी, जबकि JE इसे रोज़ देखते हैं
+  test('कर्मचारी सक्रियता की अपनी स्क्रीन हो — मेनू से खुले, चरण 3 से अलग, और खुलते ही "आज" पर हो', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      _DV_WINDOW = 30; // पिछली बार कुछ और चुना हुआ था
+      openDvModal();
+      var dvOpen = document.getElementById('dv-overlay').classList.contains('open');
+      var migOpen = document.getElementById('mig-overlay').classList.contains('open');
+      var inDv = document.getElementById('dv-overlay').contains(document.getElementById('mig-devices'));
+      closeDvModal();
+      return { dvOpen: dvOpen, migOpen: migOpen, inDv: inDv, win: _DV_WINDOW, closed: !document.getElementById('dv-overlay').classList.contains('open') };
+    });
+    expect(r.dvOpen).toBe(true);
+    expect(r.migOpen).toBe(false); // चरण 3 वाला मॉडल इससे न खुले
+    expect(r.inDv).toBe(true);     // सूची अब इसी स्क्रीन के अंदर है
+    expect(r.win).toBe(1);         // हर बार खुलते ही "आज"
+    expect(r.closed).toBe(true);
+  });
+
+  test('चरण 3 खोलने पर DEVICE_VERSIONS की बेवजह fetch न हो (अब वह अलग स्क्रीन है)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const hits = await page.evaluate(() => new Promise((resolve) => {
+      var n = 0;
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/DEVICE_VERSIONS') > -1) n++;
+        return orig(url, opts);
+      };
+      openMigModal();
+      setTimeout(() => { window.fetch = orig; closeMigModal(); resolve(n); }, 600);
+    }));
+    expect(hits).toBe(0);
+  });
+
+  test('कर्मचारी सक्रियता — lineman सीधे function बुलाए तो भी न खुले (JE only)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const opened = await page.evaluate(() => {
+      openDvModal();
+      return document.getElementById('dv-overlay').classList.contains('open');
+    });
+    expect(opened).toBe(false);
+  });
+
+  test('डिफ़ॉल्ट अवधि "आज" हो, और वह कैलेंडर-दिन हो (रात 12 बजे से) — पिछले 24 घंटे नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var d = new Date(); d.setHours(0, 0, 0, 0);
+      var deflt = _DV_WINDOW;
+      var todayCut = _dvCutoff();
+      _dvSetWindow(7);
+      var weekCut = _dvCutoff();
+      _dvSetWindow(0);
+      var allCut = _dvCutoff();
+      _dvSetWindow(1);
+      return { deflt: deflt, todayCut: todayCut, midnight: d.getTime(), weekRolling: weekCut > 0 && weekCut < d.getTime(), allCut: allCut };
+    });
+    expect(r.deflt).toBe(1);              // खुलते ही "आज"
+    expect(r.todayCut).toBe(r.midnight);  // आज रात 12 बजे से, न कि "अभी − 24 घंटे"
+    expect(r.weekRolling).toBe(true);     // 7 दिन पहले की तरह rolling ही रहे
+    expect(r.allCut).toBe(0);
+  });
+
+  test('"आज" चुना हो तो "पुरानी हटाएं" बटन न दिखे (एक क्लिक में लगभग पूरी सूची मिटने से बचाव)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openDvModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => _dvRender());
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('कर्मचारी सक्रिय') > -1);
+    const r = await page.evaluate(() => {
+      var el = document.getElementById('mig-devices');
+      var onToday = el.textContent.indexOf('पुरानी') > -1;
+      _dvSetWindow(7);
+      var on7 = el.textContent.indexOf('पुरानी') > -1;
+      var toastBefore = document.getElementById('toast').textContent;
+      _dvSetWindow(1);
+      _dvClearOld(); // "आज" पर बुलाने से कुछ न मिटे
+      return { onToday: onToday, on7: on7, toastBefore: toastBefore, toastAfter: document.getElementById('toast').textContent };
+    });
+    expect(r.onToday).toBe(false);                     // "आज" पर बटन नहीं
+    expect(r.on7).toBe(true);                          // 7 दिन पर दिखता है (Vaibhav 40 दिन पुराना)
+    expect(r.toastAfter).toContain('पहले 7 या 30 दिन'); // "आज" पर _dvClearOld मना कर दे
+  });
+
   test('एक ही व्यक्ति की अलग-अलग वर्तनी/कई devices एक ही पंक्ति में जुड़ें (3 devices दिखे), अलग नाम अलग पंक्ति में', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
-    await page.evaluate(() => openMigModal());
+    await page.evaluate(() => openDvModal());
     await page.evaluate(mockDV);
-    await page.evaluate(() => _dvRender());
+    await page.evaluate(() => { _dvSetWindow(7); _dvRender(); }); // यह test 7-दिन वाली सूची जांचता है
     await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
     const r = await page.evaluate(() => {
       const t = document.getElementById('mig-devices').textContent;
@@ -1264,7 +1351,7 @@ test.describe('कर्मचारी सक्रियता सूची �
   test('_dvTodayStrip — अवधि (7/30/सभी) बदलने पर भी "आज" वाली पट्टी वैसी ही रहे', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
-    await page.evaluate(() => openMigModal());
+    await page.evaluate(() => openDvModal());
     await page.evaluate(mockDV);
     await page.evaluate(() => _dvRender());
     await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('आज') > -1);
@@ -1304,12 +1391,12 @@ test.describe('कर्मचारी सक्रियता सूची �
     expect(r.sameKey).toBe(true);
   });
 
-  test('डिफ़ॉल्ट 7 दिन — पुरानी entry छुपे और "पुरानी हटाएं" बटन उसकी गिनती के साथ दिखे', async ({ page }) => {
+  test('7 दिन चुनने पर पुरानी entry छुपे और "पुरानी हटाएं" बटन उसकी गिनती के साथ दिखे', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
-    await page.evaluate(() => openMigModal());
+    await page.evaluate(() => openDvModal());
     await page.evaluate(mockDV);
-    await page.evaluate(() => _dvRender());
+    await page.evaluate(() => { _dvSetWindow(7); _dvRender(); });
     await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
     const txt = await page.evaluate(() => document.getElementById('mig-devices').textContent);
     expect(await page.evaluate(() => _DV_WINDOW)).toBe(7);
@@ -1319,7 +1406,7 @@ test.describe('कर्मचारी सक्रियता सूची �
   test('अवधि बदलने पर एक भी नई network call न हो (bandwidth) — "सभी" चुनने पर पुरानी entry भी दिखे', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
-    await page.evaluate(() => openMigModal());
+    await page.evaluate(() => openDvModal());
     await page.evaluate(mockDV);
     await page.evaluate(() => _dvRender());
     await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
@@ -1381,9 +1468,9 @@ test.describe('कर्मचारी सक्रियता सूची �
   test('_dvClearOld — सिर्फ़ चुनी अवधि से पुरानी entries DELETE हों, हाल की न छुएं', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
-    await page.evaluate(() => openMigModal());
+    await page.evaluate(() => openDvModal());
     await page.evaluate(mockDV);
-    await page.evaluate(() => _dvRender());
+    await page.evaluate(() => { _dvSetWindow(7); _dvRender(); }); // हटाना 7/30 दिन पर ही होता है
     await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
     const deleted = await page.evaluate(() => {
       window.confirm = () => true;
