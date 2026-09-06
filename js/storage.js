@@ -224,12 +224,19 @@ function prefetchAll(force){
     }
     var j=jobs[idx++];
     if(isPending(j.hq,j.cat)){next();return;}
-    fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
-      .then(_fbJson)
-      .then(function(d){
-        var data=normList(d);
-        if(data.length){cSet(j.hq,j.cat,data);got++;}
-        setTimeout(next,250);
+    // ETag के साथ — जिस list में कुछ नहीं बदला उस पर Firebase खाली 304 देता है, पूरी list दोबारा
+    // नहीं। पहले यहां ETag इस्तेमाल ही नहीं होता था, इसलिए हर device रोज़ अपनी सारी श्रेणियां पूरी
+    // दोबारा डाउनलोड करता था — चाहे उनमें एक भी बदलाव न हुआ हो
+    var _tag=null;
+    fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now(),{headers:_etagHeaders(j.hq,j.cat)})
+      .then(function(r){
+        if(r.status===304){ setTimeout(next,250); return null; } // कुछ नहीं बदला — cache पहले से सही
+        _tag=r.headers.get("ETag");
+        return _fbJson(r).then(function(d){
+          var data=normList(d);
+          if(data.length){cSet(j.hq,j.cat,data);_etagSet(j.hq,j.cat,_tag);got++;}
+          setTimeout(next,250);
+        });
       }).catch(function(){_prefetchRun=false;});
   })();
 }

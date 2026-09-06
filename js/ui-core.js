@@ -49,12 +49,30 @@ window.addEventListener("offline",function(){setSyncStatus(false);});
 // टाइमर रोक दो — वरना background में पड़ा device घंटों तक चुपचाप Firebase bandwidth खर्च करता रहता,
 // चाहे कोई देख भी नहीं रहा हो। वापस दिखने पर फिर से जोड़ लेते हैं — EventSource खुद जुड़ते ही ताज़ा
 // data दे देता है, कुछ छूटता नहीं।
+// ...लेकिन तुरंत बंद कर देना उससे भी महंगा निकला। startListen() हर बार नया EventSource खोलता है, और
+// Firebase जुड़ते ही अपने पहले "put" event में *पूरी* list भेजता है (यह SSE का तरीक़ा है, इसमें ETag
+// जैसा कुछ नहीं) — यानी ऐप से बाहर जाकर वापस आने पर हर बार पूरी "कुल उपभोक्ता" लिस्ट दोबारा उतरती थी।
+// लाइनमैन दिन भर WhatsApp/कैमरा/कॉल के लिए ऐप से बाहर-अंदर होता रहता है, तो यह दिन में दर्जनों बार
+// होता था — Firebase के रोज़ाना download quota का सबसे बड़ा हिस्सा यही खा रहा था।
+// अब: थोड़ी देर के लिए बाहर जाने पर connection चालू ही रहने दो (SSE खुला रहने में कुछ खर्च नहीं होता,
+// वो सिर्फ़ असली बदलाव भेजता है)। सच में लंबे समय के लिए background में पड़ा रहे, तभी बंद करो —
+// मूल मक़सद (घंटों पड़ा device चुपचाप खर्च न करे) वैसे का वैसा पूरा होता है।
+var LISTEN_HIDE_GRACE_MS=3*60*1000;
+var _hideTimer=null;
 document.addEventListener("visibilitychange",function(){
   if(document.hidden){
-    stopListen();
-    if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
-  } else if(CU&&activeHQ&&activeCat){
-    startListen(activeHQ,activeCat);
+    if(_hideTimer) clearTimeout(_hideTimer);
+    _hideTimer=setTimeout(function(){
+      _hideTimer=null;
+      stopListen();
+      if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
+    },LISTEN_HIDE_GRACE_MS);
+  } else {
+    if(_hideTimer){ // इतनी जल्दी वापस आ गए कि connection बंद ही नहीं हुआ — कुछ करने की ज़रूरत नहीं
+      clearTimeout(_hideTimer); _hideTimer=null;
+      return;
+    }
+    if(CU&&activeHQ&&activeCat) startListen(activeHQ,activeCat);
   }
 });
 // हर 20 sec — pending बदलाव हों और नेट हो तो sync करते रहो
