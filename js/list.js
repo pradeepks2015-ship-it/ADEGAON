@@ -265,6 +265,76 @@ function _findRecordIdx(d,idx,acc){
   }
   return d[idx]?idx:-1;
 }
+// ── वसूली दर्ज होने पर छोटा जश्न ──────────────────────────────────────────────
+// यह पूरी तरह device के अंदर की चीज़ है — कोई image/font/library/network call नहीं, इसलिए
+// Firebase की bandwidth या billing पर एक बाइट का भी असर नहीं (JE की शर्त: कॉस्ट न बढ़े)।
+// जान-बूझकर pointer-events:none और अपने आप हट जाना — लाइनमैन एक के बाद एक कई वसूली दर्ज
+// करता है, जश्न उसका काम एक पल के लिए भी रोके नहीं
+var CELEB_MS=1700;
+// आज इस कर्मचारी ने अब तक कितनी वसूली की — सिर्फ़ device के अपने cache से गिनती, कोई fetch नहीं।
+// एक ही उपभोक्ता कई श्रेणियों में होता है (propagateStatus हर जगह status copy कर देता है),
+// इसलिए acc से dedup ज़रूरी — वरना एक वसूली 8 गिनी जाती
+function _celebTodayCount(hq){
+  var today=new Date().toLocaleDateString("hi-IN");
+  var me=_dvNameKeySafe(CU&&CU.name);
+  var seen={},n=0;
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+    var d=cGet(hq,cat);
+    if(!d||!d.length) continue;
+    for(var j=0;j<d.length;j++){
+      var x=d[j];
+      if(!x||x.status!=="paid"||!x.acc) continue;
+      if(x.paydate!==today) continue;
+      if(me&&_dvNameKeySafe(x.updatedBy)!==me) continue;
+      var k=String(x.acc).trim();
+      if(seen[k]) continue;
+      seen[k]=1; n++;
+    }
+  }
+  return n;
+}
+// logger.js का _dvNameKey यहां भी चाहिए, पर वह फ़ाइल cache न हुई हो (weak network) तो
+// पूरा markPaid न टूटे — इसलिए सुरक्षित wrapper
+function _dvNameKeySafe(n){
+  try{ return _dvNameKey(n); }
+  catch(e){ return String(n==null?"":n).trim().toLowerCase(); }
+}
+function _celebPaid(rec){
+  if(typeof document==="undefined") return;
+  var old=document.getElementById("celeb");
+  if(old) old.parentNode.removeChild(old); // पिछला जश्न अभी चल रहा हो तो उसे हटाकर नया
+  var wrap=document.createElement("div");
+  wrap.className="celeb"; wrap.id="celeb";
+  var n=_celebTodayCount(activeHQ);
+  var amt=Number(rec&&rec.amount)||0; // असली field "amount" है (देखें renderListWith का cc-amt)
+  var name=(CU&&CU.name)||"";
+  // हर 10वीं वसूली पर थोड़ा बड़ा जश्न — दिन भर एक ही चीज़ देखकर मन न भरे
+  var big=(n>0&&n%10===0);
+  var card=document.createElement("div");
+  card.className="celeb-card";
+  var e=document.createElement("div"); e.className="celeb-emoji"; e.textContent=big?"🏆":"🎉";
+  var nm=document.createElement("div"); nm.className="celeb-name";
+  nm.textContent=(big?"शाबाश ":"शानदार ")+name+"!";
+  var sub=document.createElement("div"); sub.className="celeb-sub";
+  sub.textContent=(amt?("₹"+amt.toLocaleString("hi-IN")+" वसूल"):"वसूली दर्ज")+(n?(" • आज की "+n+"वीं"):"");
+  // textContent इस्तेमाल किया गया है, innerHTML नहीं — नाम/रकम कहीं भी HTML बनकर नहीं जाते
+  card.appendChild(e); card.appendChild(nm); card.appendChild(sub);
+  wrap.appendChild(card);
+  var colors=["#00c896","#ffb300","#42a5f5","#ec407a","#ab47bc"];
+  var bits=big?22:14; // गिनती जान-बूझकर कम — सस्ते फ़ोन पर भी अटके नहीं
+  for(var i=0;i<bits;i++){
+    var b=document.createElement("div");
+    b.className="celeb-bit";
+    b.style.left=(Math.random()*100)+"%";
+    b.style.background=colors[i%colors.length];
+    b.style.animationDelay=(Math.random()*0.35)+"s";
+    wrap.appendChild(b);
+  }
+  document.body.appendChild(wrap);
+  setTimeout(function(){ if(wrap.parentNode) wrap.parentNode.removeChild(wrap); },CELEB_MS+400);
+}
+
 function markPaid(idx,acc){
   var d=cGet(activeHQ,activeCat);
   idx=_findRecordIdx(d,idx,acc);
@@ -281,6 +351,7 @@ function markPaid(idx,acc){
   cSet(activeHQ,activeCat,d);
   renderSummaryWith(d); renderListWith(d);
   toast("✅ वसूली दर्ज! (हर tab में अपडेट)","ok");
+  try{_celebPaid(d[idx]);}catch(e){} // जश्न सिर्फ़ सजावट है — इसमें कुछ गड़बड़ हो तो वसूली न रुके
   fbSet(activeHQ,activeCat,d,prevSnap,null);
   propagateStatus(d[idx].acc,activeCat,"paid",dateStr,dtStr,d[idx].ts);
 }

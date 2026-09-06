@@ -450,6 +450,76 @@ test.describe('डेटा और वसूली', () => {
     expect(r.ts - r.before).toBeGreaterThan(29 * 24 * 60 * 60 * 1000); // offset लागू हुआ, कच्चा Date.now() नहीं
   });
 
+  // JE का कहा: "जब कोई वसूल मार्क करे तो 🎉 इस तरह का कुछ सेलिब्रेशन आ सकता है क्या, बहुत शानदार
+  // <नाम>, लेकिन कॉस्ट नहीं बढ़नी चाहिए" — इसीलिए यह पूरी तरह device के अंदर है
+  test('वसूल मार्क करने पर जश्न दिखे — कर्मचारी का नाम और रकम के साथ, और एक भी network call न हो', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '777', name: 'राम कुमार', status: 'pending', amount: 4500 }]);
+    });
+    await loginLineman(page, 'सोहन यादव');
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      var calls = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf(FB) === 0) calls++; return orig(u, o); };
+      // असली record की तरह पूरा object — यहीं पकड़ में आया था कि code ग़लत field (amt) पढ़ रहा था
+      _celebPaid(cGet('आदेगांव', 'कुल उपभोक्ता')[0]);
+      window.fetch = orig;
+      var el = document.getElementById('celeb');
+      return {
+        shown: !!el,
+        text: el ? el.textContent : '',
+        bits: el ? el.querySelectorAll('.celeb-bit').length : 0,
+        clickThrough: el ? getComputedStyle(el).pointerEvents : '',
+        calls: calls,
+      };
+    });
+    expect(r.shown).toBe(true);
+    expect(r.text).toContain('सोहन यादव');
+    expect(r.text).toContain('4,500');
+    expect(r.bits).toBeGreaterThan(0);
+    expect(r.clickThrough).toBe('none'); // जश्न अगला "✓ वसूल" दबाने से न रोके
+    expect(r.calls).toBe(0);             // एक भी Firebase call नहीं — कॉस्ट शून्य
+  });
+
+  test('जश्न अपने आप हट जाए, और नाम/रकम में HTML हो तो भी टेक्स्ट ही रहे (कभी markup न बने)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, '<img src=x onerror=alert(1)>');
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      CELEB_MS = 60; // टेस्ट में तेज़
+      _celebPaid({ amount: 100 });
+      var el = document.getElementById('celeb');
+      var hasImg = !!el.querySelector('img');
+      var txt = el.textContent;
+      setTimeout(() => resolve({ hasImg: hasImg, txt: txt, gone: !document.getElementById('celeb') }), 700);
+    }));
+    expect(r.hasImg).toBe(false);           // नाम कभी असली HTML बनकर न जाए
+    expect(r.txt).toContain('<img src=x');  // सिर्फ़ दिखने वाला टेक्स्ट
+    expect(r.gone).toBe(true);              // अपने आप हट गया
+  });
+
+  test('_celebTodayCount — आज की अपनी वसूली गिने: एक ही उपभोक्ता कई श्रेणियों में हो तो एक बार, दूसरे कर्मचारी की न गिने, पुरानी तारीख़ की न गिने', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'Sohan Yadav');
+    const n = await page.evaluate(() => {
+      var today = new Date().toLocaleDateString('hi-IN');
+      var kal = new Date(Date.now() - 86400000).toLocaleDateString('hi-IN');
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: 'A', status: 'paid', paydate: today, updatedBy: 'Sohan Yadav' },
+        { acc: 'B', status: 'paid', paydate: today, updatedBy: 'SOHAN YADAV' }, // वही व्यक्ति, अलग वर्तनी
+        { acc: 'C', status: 'paid', paydate: today, updatedBy: 'कोई और' },      // दूसरा कर्मचारी
+        { acc: 'D', status: 'paid', paydate: kal, updatedBy: 'Sohan Yadav' },   // कल की
+        { acc: 'E', status: 'pending', paydate: '', updatedBy: 'Sohan Yadav' },
+      ]);
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: 'A', status: 'paid', paydate: today, updatedBy: 'sohan yadav' }, // वही A — दोबारा न गिने
+      ]);
+      return _celebTodayCount('आदेगांव');
+    });
+    expect(n).toBe(2); // सिर्फ़ A और B
+  });
+
   test('रिमार्क मोडल खुला रहते हुए लिस्ट का क्रम बदल जाए (background sync) — फिर भी सही record में सेव हो, acc से मिलान करके', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {
