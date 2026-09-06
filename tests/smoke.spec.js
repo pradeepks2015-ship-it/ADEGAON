@@ -501,6 +501,84 @@ test.describe('डेटा और वसूली', () => {
     expect(r.gone).toBe(true);              // अपने आप हट गया
   });
 
+  // JE की चिंता: "यदि कोई जानबूझकर बार-बार वसूल मार्क करे और फिर वापस करके फिर वसूल मार्क करे तो
+  // एक्युमुलेटेड नेटवर्क कॉस्ट बहुत ज़्यादा हो जाएगी"। जश्न खुद एक बाइट खर्च नहीं करता, पर वह
+  // टॉगल करने का लालच पैदा करता है — और हर मार्क Firebase पर लिखा जाकर बाक़ी फ़ोनों पर push होता है
+  test('एक ही उपभोक्ता पर दिन में एक ही बार जश्न — वापस करके दोबारा मार्क करने पर नहीं', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '900', name: 'राम', status: 'pending', amount: 500 },
+        { acc: '901', name: 'श्याम', status: 'pending', amount: 700 },
+      ]);
+    });
+    await loginLineman(page, 'सोहन');
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      localStorage.removeItem(CELEB_DONE_KEY);
+      window.confirm = () => true;
+      var shown = function () { var el = document.getElementById('celeb'); if (el) el.remove(); return !!el; };
+      markPaid(0, '900');   var first = shown();
+      markUnpaid(0, '900'); markPaid(0, '900'); var again = shown();  // वही उपभोक्ता — दोबारा नहीं
+      markPaid(1, '901');   var other = shown();                     // दूसरा उपभोक्ता — दिखे
+      return { first: first, again: again, other: other };
+    });
+    expect(r.first).toBe(true);
+    expect(r.again).toBe(false); // टॉगल करने से कुछ नया नहीं मिलता — लालच ख़त्म
+    expect(r.other).toBe(true);  // असली नई वसूली पर पूरा जश्न
+  });
+
+  test('एक ही उपभोक्ता को हद से ज़्यादा बार वसूल मार्क करने पर JE के लॉग में एक बार चेतावनी जाए (रोके नहीं)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '950', name: 'बार-बार', status: 'pending', amount: 300 }]);
+    });
+    await loginLineman(page, 'सोहन');
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      localStorage.removeItem(CELEB_DONE_KEY);
+      window.confirm = () => true;
+      var logged = [];
+      var orig = window.logErr;
+      window.logErr = function (t, m, c) { logged.push({ t: t, m: String(m) }); return orig(t, m, c); };
+      var atCount = [];
+      for (var i = 0; i < 6; i++) {              // 6 बार वसूल मार्क (बीच में वापस करके)
+        if (i) markUnpaid(0, '950');
+        markPaid(0, '950');
+        atCount.push(logged.length);
+      }
+      var stillPaid = cGet('आदेगांव', 'कुल उपभोक्ता')[0].status;
+      window.logErr = orig;
+      return { warns: logged.filter(function (x) { return x.t === 'repeat-mark'; }), atCount: atCount, stillPaid: stillPaid, threshold: TOGGLE_WARN_AT };
+    });
+    expect(r.warns.length).toBe(1);                       // दिन में एक ही बार लॉग, हर बार नहीं
+    expect(r.warns[0].m).toContain('बार-बार');            // उपभोक्ता का नाम लॉग में हो
+    expect(r.warns[0].m).toContain('950');                // और क्रमांक भी
+    expect(r.atCount[r.threshold - 1]).toBe(1);           // ठीक तय गिनती पर ही चेतावनी
+    expect(r.stillPaid).toBe('paid');                     // काम रोका नहीं गया
+  });
+
+  test('_celebFirstTimeToday — दिन बदलने पर हिसाब फिर से शुरू हो, और सूची बढ़ती न जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      localStorage.removeItem(CELEB_DONE_KEY);
+      var a = _celebFirstTimeToday('55');
+      var b = _celebFirstTimeToday('55');
+      // जैसे कल का बचा हुआ हिसाब पड़ा हो
+      localStorage.setItem(CELEB_DONE_KEY, JSON.stringify({ d: '1/1/2020', a: { '55': 1, '66': 1 } }));
+      var newDay = _celebFirstTimeToday('55');
+      var stored = JSON.parse(localStorage.getItem(CELEB_DONE_KEY));
+      // acc ही न हो तो जश्न रोका न जाए
+      var noAcc = _celebFirstTimeToday('');
+      return { a: a, b: b, newDay: newDay, keys: Object.keys(stored.a), noAcc: noAcc };
+    });
+    expect(r.a).toBe(true);
+    expect(r.b).toBe(false);
+    expect(r.newDay).toBe(true);        // नया दिन — फिर से जश्न
+    expect(r.keys).toEqual(['55']);     // कल का हिसाब हटा, सूची बढ़ती नहीं
+    expect(r.noAcc).toBe(true);
+  });
+
   test('जश्न में मैस्कॉट और ताली दिखे, और मैस्कॉट लोड न हो पाए तो चुपचाप छुप जाए (जश्न फिर भी पूरा)', async ({ page }) => {
     await openApp(page);
     await loginLineman(page, 'सोहन');
