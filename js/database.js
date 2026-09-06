@@ -5,9 +5,30 @@ function fbPath(hq,cat){
   return hq.replace(/[\s.#$\[\]\/]/g,"_")+"/"+cat.replace(/[\s.#$\[\]\/]/g,"_");
 }
 
-// fbGet() के background silent refresh के लिए per-(hq+"/"+cat) ETag — Firebase 304 देता है अगर data नहीं बदला
-// तो हर बार list खोलने पर पूरा data दोबारा डाउनलोड करने की ज़रूरत नहीं
-var _fbGetEtag={};
+// per-(hq+"/"+cat) ETag — Firebase 304 (खाली जवाब) देता है अगर data नहीं बदला, तो पूरा data दोबारा
+// डाउनलोड करने की ज़रूरत नहीं। पहले यह सिर्फ़ JS memory में था, यानी ऐप बंद/minimize होते ही मिट जाता
+// और अगली बार खुलने पर हर list फिर से पूरी डाउनलोड होती थी — मोबाइल पर ऐप दिन में कई बार मरता-खुलता
+// है, इसलिए असल में यह बचत मिलती ही नहीं थी। अब localStorage में, cache के साथ-साथ।
+// शर्त: ETag पर तभी भरोसा करें जब उसी key का cache भी मौजूद हो — वरना 304 आने पर हमारे पास न नया
+// data होगा न पुराना (cache अलग से मिट सकता है, जैसे quota भरने पर)
+var ETAG_KEY="dc_etag3";
+function _etagAll(){try{return JSON.parse(localStorage.getItem(ETAG_KEY))||{};}catch(e){return {};}}
+function _etagGet(hq,cat){
+  if(!cGet(hq,cat).length) return null; // cache ही नहीं है — पूरा data मंगाना ही पड़ेगा
+  return _etagAll()[hq+"/"+cat]||null;
+}
+function _etagSet(hq,cat,tag){
+  if(!tag) return;
+  var a=_etagAll(); a[hq+"/"+cat]=tag;
+  try{localStorage.setItem(ETAG_KEY,JSON.stringify(a));}catch(e){}
+}
+// ETag भेजने वाले request के headers — एक ही जगह, ताकि हर caller एक जैसा व्यवहार करे
+function _etagHeaders(hq,cat){
+  var h={"X-Firebase-ETag":"true"};
+  var t=_etagGet(hq,cat);
+  if(t) h["if-none-match"]=t;
+  return h;
+}
 
 // ── FORMAT NORMALIZER: server से आई लिस्ट को हमेशा एक जैसा array बनाओ ──
 // पुराना ढांचा: array | नया (आने वाला) per-record ढांचा: object {IVRS: record}
@@ -36,14 +57,11 @@ function fbGet(hq,cat,cb){
     cb(cached); // तुरंत cache से दिखाएं — fast!
     // background silent refresh — ETag भेजने पर अगर data नहीं बदला तो Firebase 304 देता है (खाली response,
     // पूरी list दोबारा नहीं) — list बार-बार खोलने पर bandwidth बचत; पहली बार ETag मिलता है, अगली बार भेजते हैं
-    var _ekey=hq+"/"+cat;
-    var _bgh={"X-Firebase-ETag":"true"};
-    if(_fbGetEtag[_ekey]) _bgh["if-none-match"]=_fbGetEtag[_ekey];
-    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_bgh})
+    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_etagHeaders(hq,cat)})
       .then(function(r){
         if(r.status===304) return; // कुछ नहीं बदला — यहीं रुक जाओ (bandwidth बचत)
         if(!r.ok) throw new Error("HTTP "+r.status);
-        _fbGetEtag[_ekey]=r.headers.get("ETag")||_fbGetEtag[_ekey];
+        var _tag=r.headers.get("ETag");
         return r.json().then(function(d){
           trackUsageBytes(JSON.stringify(d||"").length);
           _checkMigrationRevert(hq,cat,d); // migrated list कहीं पुराने device ने वापस array में तो नहीं बदल दी
@@ -51,6 +69,7 @@ function fbGet(hq,cat,cb){
           overlayOps(hq,cat,data);
           var changed=JSON.stringify(data)!==JSON.stringify(cached);
           cSet(hq,cat,data);
+          _etagSet(hq,cat,_tag); // cache लिखने के *बाद* ही — तभी अगली बार 304 पर भरोसा किया जा सकता है
           if(changed) cb(data);
           setSyncStatus(true);
         });
@@ -65,14 +84,16 @@ function fbGet(hq,cat,cb){
     cb([]);
     setSyncStatus(false);
   },FB_GET_TIMEOUT_MS);
-  fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
-    .then(_fbJson)
+  var _tag0=null;
+  fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:{"X-Firebase-ETag":"true"}})
+    .then(function(r){ _tag0=r.headers.get("ETag"); return _fbJson(r); })
     .then(function(d){
       trackUsageBytes(JSON.stringify(d||"").length);
       _checkMigrationRevert(hq,cat,d);
       var data=normList(d);
       overlayOps(hq,cat,data);
       cSet(hq,cat,data);
+      _etagSet(hq,cat,_tag0); // पहली बार का ETag भी सहेजो — अगली बार यह list मुफ़्त में ताज़ा होगी
       if(settled){
         // देर से जवाब आया — अगर अभी भी यही list खुली है तो ताज़ा data दिखा दो
         if(typeof CU!=="undefined"&&CU&&hq===activeHQ&&cat===activeCat){renderSummaryWith(data);renderListWith(data);}
@@ -332,17 +353,16 @@ function startListen(hq,cat){
   // "if-none-match" में भेजने पर, अगर list बिल्कुल नहीं बदली, तो सर्वर सिर्फ़ खाली HTTP 304 देता है
   // (पूरी list दोबारा नहीं) — यह fallback (पहले से महंगा तरीक़ा) है, तो इसे जितना हल्का बना सकें उतना अच्छा;
   // ज़्यादातर 15-सेकंड वाले poll में असल में कुछ बदला ही नहीं होता, तो यह लगभग-मुफ़्त हो जाएगा
-  var _pollEtag=null;
+  // ETag अब सबका साझा (localStorage वाला) है — पहले यहां अपना अलग in-memory _pollEtag था, यानी
+  // हर बार polling शुरू होने पर पहला poll हमेशा पूरी list डाउनलोड करता था
   function pollOnce(){
     if(isPending(hq,cat)){if(navigator.onLine)flushPending();return;}
-    var h={"X-Firebase-ETag":"true"};
-    if(_pollEtag) h["if-none-match"]=_pollEtag;
-    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:h})
+    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_etagHeaders(hq,cat)})
       .then(function(r){
         if(r.status===304) return; // कुछ नहीं बदला — यहीं रुक जाओ (असली null value से अलग रखना ज़रूरी)
         if(!r.ok) throw new Error("HTTP "+r.status);
-        _pollEtag=r.headers.get("ETag")||_pollEtag;
-        return r.json().then(applyIncoming);
+        var tag=r.headers.get("ETag");
+        return r.json().then(function(d){ applyIncoming(d); _etagSet(hq,cat,tag); });
       })
       .catch(function(){setSyncStatus(false);});
   }

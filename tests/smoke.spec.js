@@ -3191,7 +3191,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     await loginLineman(page);
     const r = await page.evaluate(() => new Promise((resolve) => {
       cSet(activeHQ, activeCat, [{ acc: '1', status: 'pending', amount: 100 }]);
-      _fbGetEtag[activeHQ + '/' + activeCat] = '"etag-abc"'; // पहले से ETag store है
+      _etagSet(activeHQ, activeCat, '"etag-abc"'); // पहले से ETag store है
       var sawEtag = false, sawIfNoneMatch = false;
       var orig = window.fetch;
       window.fetch = function (url, opts) {
@@ -3410,27 +3410,119 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(opened).toBe(false);
   });
 
-  test('visibilitychange — tab background में जाते ही listen/timer रुकें, वापस दिखने पर फिर जुड़ें (bug: background में पड़ा device घंटों तक चुपचाप bandwidth खर्च करता रहना)', async ({ page }) => {
+  test('visibilitychange — देर तक background में पड़े रहने पर listen/timer रुकें (bug: background में पड़ा device घंटों तक चुपचाप bandwidth खर्च करता रहना)', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
     await page.waitForFunction(() => !!catNamesTimer, null, { timeout: 15000 }); // startListen fbGet callback के बाद async चलता है
     const r = await page.evaluate(() => new Promise((resolve) => {
       _pendingUpdate = false; // नया handler: pending update होने पर reload — यहां यही जांचना नहीं है
+      LISTEN_HIDE_GRACE_MS = 60; // टेस्ट में छोटा करके तुरंत जांच
       var hadTimerBefore = !!catNamesTimer;
       Object.defineProperty(document, 'hidden', { value: true, configurable: true });
       document.dispatchEvent(new Event('visibilitychange'));
-      var timerClearedOnHide = !catNamesTimer;
-      var listenClearedOnHide = !liveSource && !pollTimer;
-      Object.defineProperty(document, 'hidden', { value: false, configurable: true });
-      document.dispatchEvent(new Event('visibilitychange'));
       setTimeout(() => {
-        resolve({ hadTimerBefore: hadTimerBefore, timerClearedOnHide: timerClearedOnHide, listenClearedOnHide: listenClearedOnHide, timerResumedOnShow: !!catNamesTimer });
-      }, 50);
+        var timerClearedOnHide = !catNamesTimer;
+        var listenClearedOnHide = !liveSource && !pollTimer;
+        Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        setTimeout(() => {
+          resolve({ hadTimerBefore: hadTimerBefore, timerClearedOnHide: timerClearedOnHide, listenClearedOnHide: listenClearedOnHide, timerResumedOnShow: !!catNamesTimer });
+        }, 50);
+      }, 200);
     }));
     expect(r.hadTimerBefore).toBe(true);
     expect(r.timerClearedOnHide).toBe(true);
     expect(r.listenClearedOnHide).toBe(true);
     expect(r.timerResumedOnShow).toBe(true);
+  });
+
+  // असली bandwidth bug: startListen() हर बार नया EventSource खोलता है और Firebase जुड़ते ही पहले
+  // "put" event में पूरी list भेज देता है। लाइनमैन दिन भर ऐप से बाहर-अंदर होता रहता है (WhatsApp,
+  // कैमरा, कॉल) — हर बार पूरी "कुल उपभोक्ता" लिस्ट दोबारा उतरती थी
+  test('visibilitychange — थोड़ी देर के लिए ऐप से बाहर जाकर वापस आने पर connection टूटे ही नहीं (वरना हर बार पूरी लिस्ट दोबारा download)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource || !!pollTimer, null, { timeout: 15000 });
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      _pendingUpdate = false;
+      var before = liveSource;
+      var restarted = 0;
+      var origStart = window.startListen;
+      window.startListen = function (h, c) { restarted++; return origStart(h, c); };
+      Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      setTimeout(() => { // grace से बहुत पहले वापस आ गए
+        Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        setTimeout(() => {
+          window.startListen = origStart;
+          resolve({ restarted: restarted, sameSource: liveSource === before, stillLive: !!liveSource || !!pollTimer });
+        }, 100);
+      }, 100);
+    }));
+    expect(r.restarted).toBe(0);   // दोबारा जुड़ने की कोशिश ही न हो
+    expect(r.sameSource).toBe(true); // वही पुराना connection चलता रहे
+    expect(r.stillLive).toBe(true);
+  });
+});
+
+test.describe('Firebase download quota — ETag device पर सहेजा जाए (bug: ऐप बंद/minimize होते ही ETag मिट जाता, हर बार हर list पूरी दोबारा download)', () => {
+  test('fbGet — पहली बार का ETag localStorage में सहेजा जाए और अगली बार if-none-match में भेजा जाए', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      localStorage.removeItem(ETAG_KEY);
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'क', amt: 100 }]);
+      _etagSet('आदेगांव', 'कुल उपभोक्ता', 'etag-abc');
+    });
+    const sent = await page.evaluate(() => new Promise((resolve) => {
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath('आदेगांव', 'कुल उपभोक्ता')) > -1) {
+          window.fetch = orig;
+          resolve((opts && opts.headers && opts.headers['if-none-match']) || null);
+        }
+        return orig(url, opts);
+      };
+      fbGet('आदेगांव', 'कुल उपभोक्ता', function () {});
+      setTimeout(() => resolve('कोई request ही नहीं'), 5000);
+    }));
+    expect(sent).toBe('etag-abc');
+  });
+
+  test('_etagGet — cache खाली हो तो सहेजा ETag इस्तेमाल न हो (वरना 304 पर न नया data मिलेगा न पुराना)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      cSet('जोबा', 'घरेलू', [{ acc: '9', name: 'ख', amt: 5 }]);
+      _etagSet('जोबा', 'घरेलू', 'etag-xyz');
+      var withCache = _etagGet('जोबा', 'घरेलू');
+      cSet('जोबा', 'घरेलू', []); // cache मिट गया (जैसे localStorage quota भरने पर)
+      return { withCache: withCache, withoutCache: _etagGet('जोबा', 'घरेलू') };
+    });
+    expect(r.withCache).toBe('etag-xyz');
+    expect(r.withoutCache).toBeNull();
+  });
+
+  test('prefetchAll — हर list ETag के साथ मांगे (bug: यह ETag इस्तेमाल ही नहीं करता था, रोज़ हर device की सारी श्रेणियां पूरी दोबारा download)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      CU = { role: 'lineman', name: 'प्रीफ़ेच', hq: 'आदेगांव' };
+      localStorage.removeItem(_prefetchKey());
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'क', amt: 100 }]);
+      _etagSet('आदेगांव', 'कुल उपभोक्ता', 'etag-pf');
+      var withEtag = 0, total = 0;
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(FB) === 0 && (!opts || !opts.method)) {
+          total++;
+          if (opts && opts.headers && opts.headers['X-Firebase-ETag']) withEtag++;
+        }
+        return orig(url, opts);
+      };
+      prefetchAll(true);
+      setTimeout(() => { window.fetch = orig; _prefetchRun = false; resolve({ withEtag: withEtag, total: total }); }, 2500);
+    }));
+    expect(r.total).toBeGreaterThan(0);
+    expect(r.withEtag).toBe(r.total); // हर एक request ETag के साथ
   });
 });
 
