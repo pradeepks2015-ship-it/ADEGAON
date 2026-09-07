@@ -4487,3 +4487,97 @@ test.describe('🛑 डेटा बचाओ मोड — Firebase download �
     expect(rules.PAUSE['.write']).toContain('pradeepks2015@gmail.com');
   });
 });
+
+// असली production: मढ़ी/कुल उपभोक्ता एक ही दिन में दो बार array में पलटी (10:40 और 12:57), जबकि
+// सभी devices v9.117 पर थे — यानी संदेश की अपनी वजह ("बहुत पुराना version") ग़लत थी। जड़ यह कि
+// "array लिखूं या per-record" का फ़ैसला पूरी तरह MIGRATED flag पर टिका था, और उस flag की दो अलग
+// हालतें (सचमुच migrated नहीं / flag लोड ही नहीं हुआ) कोड में एक जैसी (false) दिखती थीं
+test.describe('माइग्रेशन पलटने से पक्का बचाव — flag नहीं, सर्वर पर दिखे असली रूप पर भरोसा', () => {
+  test('flag लोड न हुआ हो पर सर्वर पर list per-record हो — तो पूरी array कभी न लिखी जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      MIGRATED = {};                                  // जैसे इस device पर flag लोड ही न हुआ हो
+      localStorage.removeItem(SHAPE_KEY);
+      _noteShape('मढ़ी', 'कुल उपभोक्ता', { '111': { acc: '111' } }); // सर्वर पर object देखी थी
+      var sent = null;
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath('मढ़ी', 'कुल उपभोक्ता')) > -1 && o && o.method === 'PUT') {
+          sent = JSON.parse(o.body);
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+        }
+        return orig(u, o);
+      };
+      _fbPut('मढ़ी', 'कुल उपभोक्ता', [{ acc: '111', name: 'क' }, { acc: '222', name: 'ख' }], function () {
+        window.fetch = orig;
+        resolve({ isArr: Array.isArray(sent), keys: sent ? Object.keys(sent) : null });
+      });
+    }));
+    expect(r.isArr).toBe(false);            // बिना fix के यह array जाता — माइग्रेशन पलट जाती
+    expect(r.keys).toEqual(['111', '222']); // per-record रूप में, acc की key से
+  });
+
+  test('जो list सचमुच migrate नहीं हुई (सर्वर पर array ही है) उस पर पुराना व्यवहार वैसा ही रहे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      MIGRATED = {};
+      localStorage.removeItem(SHAPE_KEY);
+      _noteShape('जोबा', 'सूची-3', [{ acc: '9' }]); // सर्वर पर array ही देखी थी
+      var sent = null;
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath('जोबा', 'सूची-3')) > -1 && o && o.method === 'PUT') {
+          sent = JSON.parse(o.body);
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+        }
+        return orig(u, o);
+      };
+      _fbPut('जोबा', 'सूची-3', [{ acc: '9', name: 'ग' }], function () {
+        window.fetch = orig;
+        resolve({ isArr: Array.isArray(sent) });
+      });
+    }));
+    expect(r.isArr).toBe(true); // यहाँ array लिखना ही सही है — बचाव बेवजह आड़े न आए
+  });
+
+  test('_noteShape — हर पढ़ाई पर रूप याद रहे, और खाली/अजीब जवाब पुरानी याद न मिटाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      localStorage.removeItem(SHAPE_KEY);
+      var out = {};
+      out.none = lastShape('पाटन', 'घरेलू');
+      _noteShape('पाटन', 'घरेलू', [{ acc: '1' }]);      out.arr = lastShape('पाटन', 'घरेलू');
+      _noteShape('पाटन', 'घरेलू', { '1': { acc: '1' } }); out.obj = lastShape('पाटन', 'घरेलू');
+      _noteShape('पाटन', 'घरेलू', null);                 out.afterNull = lastShape('पाटन', 'घरेलू');
+      _noteShape('पाटन', 'घरेलू', 'कचरा');               out.afterJunk = lastShape('पाटन', 'घरेलू');
+      return out;
+    });
+    expect(r.none).toBeNull();
+    expect(r.arr).toBe('arr');
+    expect(r.obj).toBe('obj');
+    expect(r.afterNull).toBe('obj'); // खाली जवाब से कुछ साबित नहीं होता — पुरानी याद बनी रहे
+    expect(r.afterJunk).toBe('obj');
+  });
+
+  test('list पढ़ते ही उसका रूप अपने आप दर्ज हो जाए (fbGet) — इसके लिए कोई अलग call न लगे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      localStorage.removeItem(SHAPE_KEY);
+      cSet('बीबी', 'कृषि', []); // cache खाली — पहली बार वाला रास्ता
+      var calls = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath('बीबी', 'कृषि')) > -1) {
+          calls++;
+          return Promise.resolve({ ok: true, headers: { get: () => null },
+            json: () => Promise.resolve({ '77': { acc: '77', name: 'घ' } }) });
+        }
+        return orig(u, o);
+      };
+      fbGet('बीबी', 'कृषि', function () {});
+      setTimeout(() => { window.fetch = orig; resolve({ shape: lastShape('बीबी', 'कृषि'), calls: calls }); }, 400);
+    }));
+    expect(r.shape).toBe('obj');
+    expect(r.calls).toBe(1); // वही एक पढ़ाई, कोई अतिरिक्त नहीं
+  });
+});

@@ -234,6 +234,7 @@ function prefetchAll(force){
         if(r.status===304){ setTimeout(next,250); return null; } // कुछ नहीं बदला — cache पहले से सही
         _tag=r.headers.get("ETag");
         return _fbJson(r).then(function(d){
+          _noteShape(j.hq,j.cat,d);
           var data=normList(d);
           if(data.length){cSet(j.hq,j.cat,data);_etagSet(j.hq,j.cat,_tag);got++;}
           setTimeout(next,250);
