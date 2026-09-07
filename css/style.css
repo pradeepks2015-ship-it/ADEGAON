@@ -89,7 +89,6 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .sdot{width:8px;height:8px;border-radius:50%;background:#5eead4;box-shadow:0 0 0 3px rgba(94,234,212,.28);animation:pulse 2s infinite;}
 .sdot.off{background:#ff9d9d;box-shadow:0 0 0 3px rgba(255,157,157,.28);animation:none;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
-@keyframes sp{to{transform:rotate(360deg);}}
 @media (max-width:480px){
   .hdr1{flex-wrap:wrap;gap:6px;}
   .hdr-left{flex-shrink:0;}
@@ -234,7 +233,20 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .main-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior-y:contain;}
 .loading-overlay{position:fixed;inset:0;z-index:900;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;}
 .loading-overlay.hidden{display:none;}
-.spinner{width:46px;height:46px;border:3px solid var(--border);border-top-color:var(--gold);border-right-color:var(--gold);border-radius:50%;animation:sp .7s cubic-bezier(.5,0,.5,1) infinite;}
+/* लोडिंग चिह्न — बिजली की लहर, बीच में लाल कड़क। तीनों हिस्से अलग-अलग चलते हैं:
+   घेरा घूमता है, लहर बहती है (जैसे data आ रहा हो), और कड़क धड़कती है */
+.ldr{overflow:visible;filter:drop-shadow(0 0 12px rgba(60,140,255,.45));}
+/* घेरा लगभग पूरा, एक छोटे से अंतराल के साथ — वही अंतराल घूमता हुआ दिखता है */
+.ldr-ring{fill:none;stroke:#2f7ff0;stroke-width:6;stroke-linecap:round;stroke-dasharray:205 46;
+  transform-origin:60px 60px;animation:ldrSpin 1.6s linear infinite;}
+/* लहर टुकड़ों में न कटे — वह बाएं से दाएं खिंचती है, ठहरती है, फिर उसी तरफ़ से मिटती है
+   (जैसे बिजली का संकेत गुज़र रहा हो) */
+.ldr-wave{fill:none;stroke:#1e88f0;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:200;stroke-dashoffset:200;animation:ldrDraw 1.9s ease-in-out infinite;}
+.ldr-bolt{fill:#ff3b2f;transform-origin:60px 60px;animation:ldrBolt .9s ease-in-out infinite;}
+@keyframes ldrSpin{to{transform:rotate(360deg);}}
+@keyframes ldrDraw{0%{stroke-dashoffset:200;}45%,58%{stroke-dashoffset:0;}100%{stroke-dashoffset:-200;}}
+@keyframes ldrBolt{0%,100%{opacity:.85;transform:scale(1);}50%{opacity:1;transform:scale(1.14);}}
 .loading-text{font-size:13px;color:var(--muted);}
 .moverlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .25s;}
 .moverlay.open{opacity:1;pointer-events:all;}
