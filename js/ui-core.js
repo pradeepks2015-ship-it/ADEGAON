@@ -7,14 +7,22 @@ function toast(msg,type){
   clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove("show");},3500);
 }
 
+// पट्टी में अब सिर्फ़ हरी/लाल बत्ती — कोई शब्द नहीं। पहले वाला लंबा वाक्य छोटी स्क्रीन (360px)
+// पर संस्था का नाम काट देता था ("आदेगांव बिजली वि…")।
+// उस वाक्य में एक और जानकारी भी थी — कितने बदलाव अभी भेजे जाने बाक़ी हैं। वह दिखनी बंद हो गई,
+// इसलिए बत्ती के title/aria-label में डाल दी गई है: बत्ती दबाकर रखने पर पूरी बात दिख जाती है,
+// और चौड़ाई भी नहीं घेरती। (रंग-अंधता वालों के लिए भी यही सहारा है, ताकि बत्ती का मतलब अटकल
+// का विषय न रहे।)
 function setSyncStatus(ok){
   var d=document.getElementById("sdot"),t=document.getElementById("stxt");
   if(!d)return;
   var n=pendingCount();
   d.className=ok?"sdot":"sdot off";
-  t.className=ok?"stxt":"stxt off";
-  if(ok) t.textContent=n?("🔄 "+n+" बदलाव sync हो रहे…"):"Live Sync ✓";
-  else t.textContent=n?("📴 ऑफलाइन • "+n+" बदलाव save — नेट पर sync होंगे"):"📴 ऑफलाइन — data device पर save है";
+  var lbl=ok?"ऑनलाइन":"ऑफलाइन — डेटा device पर सुरक्षित है";
+  if(n) lbl+=" • "+n+" बदलाव भेजना बाक़ी";
+  d.setAttribute("title",lbl);
+  d.setAttribute("aria-label",lbl);
+  if(t) t.textContent=""; // जान-बूझकर खाली — पट्टी में सिर्फ़ बत्ती रहे
 }
 
 function updTime(){
