@@ -83,11 +83,17 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .pw-wrap{position:relative;margin-bottom:14px;}
 .pw-wrap .f-input{margin-bottom:0;padding-right:40px;}
 .pw-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:16px;border:none;background:none;}
-.sync-bar{background:var(--grad-brand);padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:var(--shadow-glow);position:relative;z-index:101;}
-.sb-org{font-family:"Baloo 2",cursive;font-weight:800;font-size:13px;color:#fff;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;}
+/* छोटी स्क्रीन (360px जैसी) पर "ऑफलाइन — data device पर save है" जैसा लंबा संदेश आते ही
+   संस्था का नाम कट जाता था ("आदेगांव बिजली वि…") — क्योंकि .sb-sync सिकुड़ता ही नहीं
+   (flex-shrink:0) और सारी कमी नाम पर पड़ती थी। अब जगह कम पड़े तो दोनों एक ही पंक्ति में
+   ठुँसने की बजाय स्थिति नीचे की पंक्ति में चली जाती है — न नाम कटता है, न संदेश */
+.sync-bar{background:var(--grad-brand);padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;row-gap:3px;flex-wrap:wrap;box-shadow:var(--shadow-glow);position:relative;z-index:101;}
+.sb-org{font-family:"Baloo 2",cursive;font-weight:800;font-size:13px;color:#fff;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;flex-shrink:0;max-width:100%;}
 .sb-sync{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;flex-shrink:0;}
-.sdot{width:8px;height:8px;border-radius:50%;background:#5eead4;box-shadow:0 0 0 3px rgba(94,234,212,.28);animation:pulse 2s infinite;}
-.sdot.off{background:#ff9d9d;box-shadow:0 0 0 3px rgba(255,157,157,.28);animation:none;}
+/* जुड़ाव की बत्ती — हरी = ऑनलाइन, लाल = ऑफलाइन। यही अकेले काफ़ी है, इसलिए साथ का लंबा
+   वाक्य हटा दिया (वह छोटी स्क्रीन पर संस्था का नाम काट देता था) */
+.sdot{width:10px;height:10px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 3px rgba(74,222,128,.30);animation:pulse 2s infinite;flex-shrink:0;}
+.sdot.off{background:#f2545b;box-shadow:0 0 0 3px rgba(242,84,91,.32);animation:none;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
 @media (max-width:480px){
   .hdr1{flex-wrap:wrap;gap:6px;}
