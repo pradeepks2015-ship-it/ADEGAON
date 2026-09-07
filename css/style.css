@@ -242,10 +242,11 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 /* लहर टुकड़ों में न कटे — वह बाएं से दाएं खिंचती है, ठहरती है, फिर उसी तरफ़ से मिटती है
    (जैसे बिजली का संकेत गुज़र रहा हो) */
 .ldr-wave{fill:none;stroke:#1e88f0;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;
-  stroke-dasharray:200;stroke-dashoffset:200;animation:ldrDraw 1.9s ease-in-out infinite;}
+  stroke-dasharray:224;stroke-dashoffset:224;animation:ldrDraw 1.9s ease-in-out infinite;}
 .ldr-bolt{fill:#ff3b2f;transform-origin:60px 60px;animation:ldrBolt .9s ease-in-out infinite;}
 @keyframes ldrSpin{to{transform:rotate(360deg);}}
-@keyframes ldrDraw{0%{stroke-dashoffset:200;}45%,58%{stroke-dashoffset:0;}100%{stroke-dashoffset:-200;}}
+/* 224 = लहर की असली लंबाई (getTotalLength से नापी) — इससे खिंचाव ठीक सिरे पर पूरा होता है */
+@keyframes ldrDraw{0%{stroke-dashoffset:224;}45%,58%{stroke-dashoffset:0;}100%{stroke-dashoffset:-224;}}
 @keyframes ldrBolt{0%,100%{opacity:.85;transform:scale(1);}50%{opacity:1;transform:scale(1.14);}}
 .loading-text{font-size:13px;color:var(--muted);}
 .moverlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .25s;}
@@ -471,3 +472,5 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 /* 🛑 डेटा बचाओ मोड की पट्टी — सिर्फ़ तभी दिखती है जब JE ने स्विच दबाया हो */
 #pause-bar{background:linear-gradient(135deg,#c62828,#8e1c1c);color:#fff;font-size:11px;font-weight:700;
   padding:7px 14px;text-align:center;line-height:1.5;position:relative;z-index:101;}
+/* शून्य-रेखा (neutral) — असली तरंग-आरेख की तरह; बहुत हल्की, ताकि लहर ही मुख्य रहे */
+.ldr-axis{stroke:currentColor;stroke-width:1.5;stroke-dasharray:3 4;opacity:.22;color:#2f7ff0;}
