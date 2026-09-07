@@ -112,6 +112,31 @@ function startPausePoll(){
   },PAUSE_POLL_MS);
 }
 
+// ── सर्वर पर लिस्ट किस रूप में है — flag नहीं, असली सबूत ───────────────────────────────────
+// माइग्रेशन बार-बार पलटने की जड़ यह थी कि "पूरी array लिखूं या per-record object" का फ़ैसला पूरी
+// तरह MIGRATED flag पर टिका था — और उस flag की दो बिल्कुल अलग हालतें कोड में एक जैसी (false)
+// दिखती हैं:
+//   (क) "यह श्रेणी सचमुच migrate नहीं हुई"      → array लिखना सही
+//   (ख) "मुझे पता ही नहीं चला, flag लोड न हुआ"  → array लिखना विनाशकारी (माइग्रेशन पलट जाता है)
+// यानी अनिश्चितता में कोड सबसे ख़तरनाक रास्ता चुनता था। (असली production: मढ़ी/कुल उपभोक्ता एक ही
+// दिन में दो बार पलटी, जबकि सभी devices v9.117 पर थे — यानी "पुराना version" वाली वजह ग़लत थी।)
+//
+// अब flag के अलावा असली सबूत भी देखते हैं: ऐप हर बार लिस्ट पढ़ती ही है, तो उसी पढ़ाई से याद रख
+// लेते हैं कि सर्वर पर वह लिस्ट array थी या object। पूरी array लिखने से पहले अगर आख़िरी बार object
+// देखी थी, तो array कभी नहीं लिखते — चाहे flag कुछ भी कहे। इसके लिए एक भी नई network call नहीं।
+var SHAPE_KEY="dc_shape3";
+function _shapeAll(){ try{ return JSON.parse(localStorage.getItem(SHAPE_KEY))||{}; }catch(e){ return {}; } }
+// हर बार जब सर्वर से कच्चा data मिले, उसका रूप दर्ज कर लें
+function _noteShape(hq,cat,raw){
+  if(raw==null||typeof raw!=="object") return; // खाली/अजीब — इससे कुछ नहीं कह सकते, पुरानी याद रहने दो
+  var s=Array.isArray(raw)?"arr":"obj";
+  var a=_shapeAll(), k=hq+"/"+cat;
+  if(a[k]===s) return; // बदला नहीं — localStorage को बेवजह न छेड़ें
+  a[k]=s;
+  try{ localStorage.setItem(SHAPE_KEY,JSON.stringify(a)); }catch(e){}
+}
+function lastShape(hq,cat){ return _shapeAll()[hq+"/"+cat]||null; }
+
 var FB_GET_TIMEOUT_MS=8000; // टेस्ट में छोटा करके तेज़ जांच की जा सकती है
 function fbGet(hq,cat,cb){
   var cached=cGet(hq,cat);
@@ -133,6 +158,7 @@ function fbGet(hq,cat,cb){
         var _tag=r.headers.get("ETag");
         return r.json().then(function(d){
           trackUsageBytes(JSON.stringify(d||"").length);
+          _noteShape(hq,cat,d);
           _checkMigrationRevert(hq,cat,d); // migrated list कहीं पुराने device ने वापस array में तो नहीं बदल दी
           var data=normList(d);
           overlayOps(hq,cat,data);
@@ -158,6 +184,7 @@ function fbGet(hq,cat,cb){
     .then(function(r){ _tag0=r.headers.get("ETag"); return _fbJson(r); })
     .then(function(d){
       trackUsageBytes(JSON.stringify(d||"").length);
+      _noteShape(hq,cat,d);
       _checkMigrationRevert(hq,cat,d);
       var data=normList(d);
       overlayOps(hq,cat,data);
@@ -197,18 +224,29 @@ function fbSet(hq,cat,arr,prevArr,cb){
 // पूरी array PUT करने वाला इकलौता (legacy) रास्ता — इसीलिए यहीं गारंटी दी गई है कि यह किसी
 // migrated (per-record/object) HQ/श्रेणी पर कभी raw array नहीं भेजेगा, चाहे कोई भी caller
 // (कोई भी 'acc missing' fallback वगैरह) इसे बुलाए — वरना माइग्रेशन चुपचाप पलट जाता (असली bug यही था)
+function _asPerRecord(hq,cat,arr){
+  var obj={},skip=0;
+  (arr||[]).forEach(function(x,i){
+    if(!x||x.acc==null||String(x.acc).trim()===""){skip++;return;}
+    var rec=JSON.parse(JSON.stringify(x));
+    if(rec.o==null) rec.o=i;
+    obj[String(x.acc).trim()]=rec;
+  });
+  if(skip) logErr("mig-noacc-skip",skip+" record बिना acc के मिले — उन्हें सेव नहीं किया (मैन्युअल जांच ज़रूरी), बाकी सुरक्षित रूप से per-record फॉर्मेट में सेव किए",hq+"/"+cat);
+  return obj;
+}
 function _fbPut(hq,cat,arr,cb){
   var body;
   if(isMigrated(hq,cat)){
-    var obj={},skip=0;
-    (arr||[]).forEach(function(x,i){
-      if(!x||x.acc==null||String(x.acc).trim()===""){skip++;return;}
-      var rec=JSON.parse(JSON.stringify(x));
-      if(rec.o==null) rec.o=i;
-      obj[String(x.acc).trim()]=rec;
-    });
-    if(skip) logErr("mig-noacc-skip",skip+" record बिना acc के मिले — उन्हें सेव नहीं किया (मैन्युअल जांच ज़रूरी), बाकी सुरक्षित रूप से per-record फॉर्मेट में सेव किए",hq+"/"+cat);
-    body=JSON.stringify(obj);
+    body=JSON.stringify(_asPerRecord(hq,cat,arr));
+  } else if(lastShape(hq,cat)==="obj"){
+    // flag कहता है "migrated नहीं" — पर सर्वर पर आख़िरी बार यही list per-record (object) रूप में
+    // देखी गई थी। दोनों में से सच वही है जो आँखों-देखा है: flag इस device पर लोड न हो पाया होगा।
+    // यहाँ array लिखना पूरी माइग्रेशन पलटा देता (असली production bug — मढ़ी/कुल उपभोक्ता एक दिन में
+    // दो बार पलटी)। इसलिए array नहीं, per-record ही लिखते हैं — यूज़र का बदलाव भी बचता है और
+    // format भी। साथ ही एक बार लॉग कर देते हैं ताकि JE को पता चले कि किस device का flag अटका है
+    logErr("array-put-blocked","इस device का MIGRATED flag इस list के लिए लोड नहीं हुआ था, पर सर्वर पर list per-record रूप में है — पूरी array लिखने से रोका और सही (per-record) रूप में ही सेव किया। माइग्रेशन पलटने से बच गया",hq+"/"+cat);
+    body=JSON.stringify(_asPerRecord(hq,cat,arr));
   } else {
     body=JSON.stringify(arr);
   }
@@ -391,6 +429,7 @@ function startListen(hq,cat){
   if(isDataPaused()) return;
 
   function applyIncoming(d){
+    _noteShape(hq,cat,d);
     _checkMigrationRevert(hq,cat,d); // migrated list कहीं पुराने device ने वापस array में तो नहीं बदल दी
     var data=normList(d);
     overlayOps(hq,cat,data);
