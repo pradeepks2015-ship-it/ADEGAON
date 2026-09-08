@@ -157,6 +157,7 @@ function flushPending(){
     fetch(FB+"/"+fbPath(it.hq,it.cat)+".json?t="+Date.now())
       .then(_fbJson)
       .then(function(d){
+        trackUsageOf(d); // offline बदलाव भेजने से पहले वाली पढ़ाई
         // सर्वर का असली रूप ठीक यहीं, हाथ में है — नीचे _fbPut() से पूरी array लिखने से *पहले*
         // इसे दर्ज करना ज़रूरी है। v9.118 में यही जगह छूट गई थी और असली production में माइग्रेशन
         // फिर पलटा (बीबी/3 month nonpayee, v9.118 वाले device से): dc_shape3 हर device पर खाली
@@ -242,6 +243,7 @@ function prefetchAll(force){
         if(r.status===304){ setTimeout(next,250); return null; } // कुछ नहीं बदला — cache पहले से सही
         _tag=r.headers.get("ETag");
         return _fbJson(r).then(function(d){
+          trackUsageOf(d); // login वाला prefetch — सभी HQ/श्रेणी, यानी एक भारी खर्च; यह भी गिना जाए
           _noteShape(j.hq,j.cat,d);
           var data=normList(d);
           if(data.length){cSet(j.hq,j.cat,data);_etagSet(j.hq,j.cat,_tag);got++;}

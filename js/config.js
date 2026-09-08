@@ -14,7 +14,7 @@ var HQ_AUTH_EMAIL = {
   "बीबी":"hq-bibi@adegaondc.internal",
   "मढ़ी":"hq-madhi@adegaondc.internal"
 };
-var APP_VER = "9.119"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "9.120"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
@@ -84,6 +84,7 @@ function fetchCatNamesFromFB(showToast){
   fetch(FB+"/CAT_NAMES.json?t="+Date.now())
     .then(_fbJson)
     .then(function(d){
+      trackUsageOf(d);
       var changed=applyFBCatNames(d);
       if(changed){
         saveCatNames();

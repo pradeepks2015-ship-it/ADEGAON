@@ -101,7 +101,7 @@ function _applyPause(d){
 }
 function fetchPause(){
   if(!navigator.onLine) return;
-  fetch(FB+"/PAUSE.json?t="+Date.now()).then(_fbJson).then(_applyPause).catch(function(){});
+  fetch(FB+"/PAUSE.json?t="+Date.now()).then(_fbJson).then(function(d){trackUsageOf(d);_applyPause(d);}).catch(function(){});
 }
 // सिर्फ़ तब पूछो जब ऐप सामने खुली हो — छुपे/बंद device को स्विच जानने की ज़रूरत ही नहीं
 function startPausePoll(){
@@ -434,6 +434,7 @@ function startListen(hq,cat){
   if(isDataPaused()) return;
 
   function applyIncoming(d){
+    trackUsageOf(d); // SSE का सबसे भारी हिस्सा — जुड़ते ही पूरी list आती है; पहले यह बिल्कुल नहीं गिनी जाती थी
     _noteShape(hq,cat,d);
     _checkMigrationRevert(hq,cat,d); // migrated list कहीं पुराने device ने वापस array में तो नहीं बदल दी
     var data=normList(d);
@@ -452,6 +453,7 @@ function startListen(hq,cat){
   // पूरी लिस्ट दोबारा मंगाने की ज़रूरत नहीं (bandwidth बचत, वैसे ही जैसे "put" event के लिए ऊपर की गई)
   // migration-revert जांच यहां ज़रूरी नहीं — "patch" event खुद सबूत है कि data अब भी सही per-record रूप में है
   function applyPatchLocal(patchData){
+    trackUsageOf(patchData);
     var merged=_applyPatchToArray(cGet(hq,cat)||[],patchData);
     var data=normList(merged);
     overlayOps(hq,cat,data);

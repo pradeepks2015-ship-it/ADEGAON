@@ -34,6 +34,7 @@ function hscFetch(){
   fetch(FB+"/HOME_SCORECARD.json?t="+Date.now())
     .then(_fbJson)
     .then(function(d){
+      trackUsageOf(d); // होम बोर्ड — हर ऐप खुलने पर आता है
       if(d&&typeof d==="object"){
         // सिर्फ़ JE (supervisor) के device पर local, server से नया हो तो ही असली "अभी तक प्रकाशित न
         // हुआ बदलाव" माना जाए — lineman/login-से-पहले वाले किसी भी device के पुराने cached data को
