@@ -4336,6 +4336,78 @@ test.describe('XSS सुरक्षा — PDF/print export और दिन�
 // JE का सवाल: "यदि मुझे आज का टोटल नेटवर्क कॉस्ट यहीं पर रोकना है तो कोई एक ऐसी मास्टर स्विच
 // बन सकती है क्या" — Firebase का no-cost download quota रोज़ 360 MB का है; किसी दिन वह भरता दिखे
 // तो JE एक ही स्विच से सभी devices पर आगे का download रोक सकें
+// असली production: ऐप का मीटर 15.3 MB दिखा रहा था जबकि Firebase Console पर उसी वक़्त 105 MB था
+// (~7 गुना) — क्योंकि trackUsageBytes सिर्फ़ fbGet की दो जगह लगा था, यानी मीटर सिर्फ़ "लिस्ट खोलना"
+// गिनता था और सबसे भारी खर्च (SSE, prefetch, चरण-3 की पूरी-DB जाँच) बिल्कुल नहीं
+test.describe('डेटा उपयोग का मीटर — हर डाउनलोड गिना जाए, और दिन Firebase की खिड़की से मिले', () => {
+  test('trackUsageOf हर रूप का आकार जोड़े, और खाली जवाब से कुछ न जुड़े', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      _usageBytes = 0;
+      trackUsageOf({ a: 1 });            // JSON = {"a":1} → 7
+      var afterObj = _usageBytes;
+      trackUsageOf('abcde');             // string → 5
+      var afterStr = _usageBytes;
+      trackUsageOf(null); trackUsageOf(undefined);
+      return { afterObj: afterObj, afterStr: afterStr, afterNull: _usageBytes };
+    });
+    expect(r.afterObj).toBe(7);
+    expect(r.afterStr).toBe(12);
+    expect(r.afterNull).toBe(12); // खाली जवाब ने कुछ नहीं जोड़ा
+  });
+
+  test('सभी भारी डाउनलोड रास्तों पर गिनती लगी हो (SSE/prefetch/चरण-3 छूटे नहीं)', async () => {
+    const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    expect(read('js/database.js')).toContain('trackUsageOf(d); // SSE');       // live sync — सबसे भारी
+    expect(read('js/database.js')).toContain('trackUsageOf(patchData)');       // SSE patch
+    expect(read('js/storage.js').match(/trackUsageOf\(d\)/g).length).toBe(2);  // prefetch + flushPending
+    expect(read('js/migration.js').match(/trackUsageOf\(/g).length).toBe(3);   // चरण-3 जाँच + _migrateOne + MIGRATED
+    expect(read('js/home-scorecard.js')).toContain('trackUsageOf(d)');
+  });
+
+  test('दिन Firebase की खिड़की (US-Pacific) से गिना जाए, UTC से नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var la = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      return { day: _usageQuotaDay(0), la: la, utc: new Date().toISOString().slice(0, 10),
+        prevIsEarlier: _usageQuotaDay(1) < _usageQuotaDay(0) };
+    });
+    expect(r.day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(r.day).toBe(r.la);              // Pacific दिन, न कि device का या UTC का
+    expect(r.prevIsEarlier).toBe(true);    // "कल" सचमुच पहले का दिन है
+  });
+
+  test('device-वार टूट-फूट दिखे — सबसे ज़्यादा खाने वाला ऊपर, और नाम टेक्स्ट ही रहे (markup न बने)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      CU = { role: 'supervisor', name: 'जेई', hq: 'आदेगांव' };
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/USAGE/') > -1 && (!o || !o.method || o.method === 'GET')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({
+            k1: { d: 'devA', n: 'lineman|बीबी|<img src=x onerror=alert(1)>', b: 1024 * 1024 },
+            k2: { d: 'devB', n: 'lineman|मढ़ी|सुनील', b: 5 * 1024 * 1024 },
+            k3: { d: 'devB', n: 'lineman|मढ़ी|सुनील', b: 1024 * 1024 }
+          }) });
+        }
+        return orig(u, o);
+      };
+      _usageRender();
+      setTimeout(() => {
+        window.fetch = orig;
+        var el = document.getElementById('usage-content');
+        var rows = [].slice.call(el.querySelectorAll('td.wasc-hq')).map((td) => td.textContent);
+        resolve({ rows: rows, imgs: el.querySelectorAll('img').length, txt: el.textContent });
+      }, 500);
+    }));
+    expect(r.imgs).toBe(0);                                  // नाम में HTML था, पर markup नहीं बना
+    expect(r.txt).toContain('<img src=x onerror=alert(1)>');  // सादे टेक्स्ट के तौर पर दिखा
+    const dev = r.rows.filter((t) => t.indexOf('(') > -1 || t.indexOf('अनजान') > -1);
+    expect(dev[dev.length - 2]).toContain('सुनील');           // 6 MB वाला 1 MB वाले से ऊपर
+    expect(r.txt).toContain('6.0 MB');                        // devB के दोनों टुकड़े जुड़े
+  });
+});
+
 test.describe('🛑 डेटा बचाओ मोड — Firebase download रोकने का मास्टर स्विच (JE only)', () => {
   test('चालू होने पर live sync न जुड़े और prefetch न चले (सबसे बड़े दो खर्च)', async ({ page }) => {
     await openApp(page);

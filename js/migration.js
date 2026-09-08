@@ -60,6 +60,7 @@ function _migRunDryRun(){
     fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
       .then(_fbJson)
       .then(function(d){
+        trackUsageOf(d); // चरण-3 की जाँच पूरा डेटाबेस (सभी 48 सूचियां) उतारती है — सबसे भारी एक क्रिया
         _noteShape(j.hq,j.cat,d); // जाँच में जो रूप दिखा, वही याद रहे — मुफ़्त है, data पहले से हाथ में
         var a=_migAnalyzeList(d);
         // MIGRATED flag "हां" कहता है पर data अब भी array है — किसी पुराने device ने migration पलट दिया
@@ -178,6 +179,7 @@ function loadMigratedFlags(){
   fetch(FB+"/MIGRATED.json?t="+Date.now())
     .then(_fbJson)
     .then(function(d){
+      trackUsageOf(d);
       if(d&&typeof d==="object"){
         MIGRATED=d;
         try{localStorage.setItem(MIG_FLAG_KEY,JSON.stringify(d));}catch(e){}
@@ -242,6 +244,7 @@ function _migrateOne(hq,cat,cb){
   fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
     .then(_fbJson)
     .then(function(raw){
+      trackUsageOf(raw);
       _noteShape(hq,cat,raw);
       if(!raw){ cb({hq:hq,cat:cat,status:"empty"}); return; }
       if(!Array.isArray(raw)){ cb({hq:hq,cat:cat,status:"already"}); return; }
