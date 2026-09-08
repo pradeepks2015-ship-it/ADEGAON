@@ -397,6 +397,10 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .sc-date-table tr:last-child td{border-bottom:none;}
 .sc-date-table tr:hover td{background:rgba(255,255,255,.02);}
 .sc-total-row td{background:rgba(38,128,201,.07);font-weight:700;color:var(--gold2);}
+/* पूरी पंक्ति दबाने लायक — उस दिन के सारे उपभोक्ता/Consumer No अलग स्क्रीन पर खुलते हैं */
+.sc-day-row{cursor:pointer;-webkit-tap-highlight-color:rgba(38,128,201,.25);}
+.sc-day-row:active td{background:rgba(38,128,201,.14);}
+.sc-tap-hint{font-size:10px;color:var(--muted);margin-bottom:7px;padding:5px 8px;border-radius:8px;background:rgba(38,128,201,.07);border:1px solid rgba(38,128,201,.18);}
 .sc-tabs{display:flex;gap:5px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;}
 .sc-tabs::-webkit-scrollbar{display:none;}
 .sc-tab{flex-shrink:0;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:"Noto Sans Devanagari",sans-serif;transition:all .15s;}

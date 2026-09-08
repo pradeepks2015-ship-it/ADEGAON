@@ -413,6 +413,83 @@ test.describe('रोल-आधारित UI', () => {
     });
     expect(txt).toContain('कोई वसूली नहीं'); // acc '99' मास्टर सूची में नहीं — कोई paid record नहीं बचना चाहिए
   });
+
+  // तालिका में "उपभोक्ता"/"Consumer No" दो बार कटते हैं (पहले सिर्फ़ 3, फिर max-width+ellipsis) —
+  // असली रिपोर्ट में एक दिन में 86 उपभोक्ता थे, JE उनमें से 3 भी पूरे नहीं देख पाते थे
+  test('तारीख़ पर टैप → उस दिन के सारे उपभोक्ता और पूरे Consumer No दिखें (एक भी न छूटे)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      var master = [];
+      for (var i = 0; i < 40; i++) master.push({ acc: '11340' + (10000 + i), name: 'उपभोक्ता ' + i, status: 'paid', amount: 100, paydate: '31/8/2026' });
+      master.push({ acc: '9999', name: 'अकेला', status: 'paid', amount: 50, paydate: '1/9/2026' });
+      cSet('आदेगांव', 'कुल उपभोक्ता', master);
+      renderScDateTable(cGet('आदेगांव', 'कुल उपभोक्ता'));
+      var rows = document.querySelectorAll('#sc-body tr.sc-day-row');
+      openScDayModal(SC_DAY_DATES.indexOf('31/8/2026'));
+      var el = document.getElementById('scday-content');
+      var txt = el.textContent;
+      var chips = el.querySelectorAll('.chip-acc').length;
+      var open = document.getElementById('scday-overlay').classList.contains('open');
+      closeScDayModal();
+      return { clickable: rows.length, chips: chips, open: open, txt: txt,
+        title: document.getElementById('scday-title').textContent,
+        sub: document.getElementById('scday-sub').textContent,
+        closed: !document.getElementById('scday-overlay').classList.contains('open') };
+    });
+    expect(r.clickable).toBe(2);            // दोनों तारीख़ें दबाने लायक
+    expect(r.open).toBe(true);
+    expect(r.chips).toBe(40);               // सारे 40 — कोई "+37" नहीं
+    expect(r.txt).toContain('1134010000');  // पहला पूरा नंबर
+    expect(r.txt).toContain('1134010039');  // आख़िरी भी पूरा
+    expect(r.txt).toContain('उपभोक्ता 39');
+    expect(r.title).toContain('31/8/2026');
+    expect(r.sub).toContain('40 उपभोक्ता');
+    expect(r.closed).toBe(true);
+  });
+
+  test('सूची में नाम/नंबर टेक्स्ट ही रहें — HTML हो तो भी markup न बने', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: "5'><img src=x onerror=alert(1)>", name: '<img src=y onerror=alert(2)>', status: 'paid', amount: 10, paydate: '2/9/2026' },
+      ]);
+      renderScDateTable(cGet('आदेगांव', 'कुल उपभोक्ता'));
+      openScDayModal(0);
+      var el = document.getElementById('scday-content');
+      var out = { imgs: el.querySelectorAll('img').length, txt: el.textContent };
+      closeScDayModal();
+      return out;
+    });
+    expect(r.imgs).toBe(0);
+    expect(r.txt).toContain('<img src=y onerror=alert(2)>'); // सादे टेक्स्ट की तरह दिखा
+  });
+
+  test('जिस record में Consumer No न हो वह भी सूची में दिखे (चुपचाप गायब न हो)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '7001', name: 'नंबर वाला', status: 'paid', amount: 10, paydate: '3/9/2026' },
+        { name: 'बिना नंबर वाला', status: 'paid', amount: 20, paydate: '3/9/2026' },
+      ]);
+      renderScDateTable(cGet('आदेगांव', 'कुल उपभोक्ता'));
+      openScDayModal(0);
+      var el = document.getElementById('scday-content');
+      var out = { txt: el.textContent, chips: el.querySelectorAll('.chip-acc').length,
+        rows: el.querySelectorAll('tbody tr').length };
+      closeScDayModal();
+      return out;
+    });
+    expect(r.rows).toBe(2);                       // दोनों दिखे
+    expect(r.txt).toContain('बिना नंबर वाला');
+    expect(r.chips).toBe(1);                      // सिर्फ़ एक के पास नंबर है
+    expect(r.txt).toContain('कॉपी करें (1)');      // कॉपी बटन सिर्फ़ असली नंबरों की गिनती दिखाए
+  });
 });
 
 test.describe('डेटा और वसूली', () => {
