@@ -273,7 +273,7 @@ function _findRecordIdx(d,idx,acc){
 // 1700ms रखा था, पर JE ने बताया कि उतने में जश्न "समझ ही नहीं आ पाता" — पलक झपकते ही चला
 // जाता था। अब इतना कि ताली, अंगूठा और नाम तीनों ठीक से दिख जाएँ, फिर भी काम रुके नहीं
 // (pointer-events:none है, यानी नीचे की लिस्ट पूरे समय दबाई जा सकती है)
-var CELEB_MS=3600;
+var CELEB_MS=3900;
 // आज इस कर्मचारी ने अब तक कितनी वसूली की — सिर्फ़ device के अपने cache से गिनती, कोई fetch नहीं।
 // एक ही उपभोक्ता कई श्रेणियों में होता है (propagateStatus हर जगह status copy कर देता है),
 // इसलिए acc से dedup ज़रूरी — वरना एक वसूली 8 गिनी जाती
@@ -303,9 +303,18 @@ function _dvNameKeySafe(n){
   try{ return _dvNameKey(n); }
   catch(e){ return String(n==null?"":n).trim().toLowerCase(); }
 }
-// ── जश्न की आवाज़ — फ़ोन के अंदर ही बनाई जाती है (Web Audio), कोई mp3/फ़ाइल डाउनलोड नहीं ─────
-// इसलिए इसका आकार शून्य है: न Firebase से कुछ आता है, न Netlify से। ब्राउज़र खुद ध्वनि-तरंगें
-// बनाता है — ताली के लिए तेज़ी से बुझता हुआ शोर (जैसे असली ताली), और साथ में एक छोटी घंटी।
+// ── जश्न की आवाज़ ────────────────────────────────────────────────────────────────────────────
+// पहले सब कुछ फ़ोन के अंदर ही बनाया जाता था (Web Audio), ताकि एक बाइट भी डाउनलोड न हो। पर JE ने
+// सुनकर बताया कि बनाई हुई तालियाँ असली नहीं लगतीं ("तालियां सही नहीं आ रही हैं") — और वह सही था:
+// असली तालियों की बनावट (हर व्यक्ति की अलग ताली, कमरे की गूँज, भीड़ का घनत्व) संश्लेषण से नहीं आती।
+// इसलिए अब तीन असली रिकॉर्डिंग इस्तेमाल होती हैं। JE ने जो फ़ाइलें दीं वे कुल 1.88 MB की थीं
+// (तालियाँ अकेले 54 सेकंड / 1.7 MB) — उन्हें काटकर, mono करके, आवाज़ बराबर करके 63 KB कर दिया गया:
+//   sounds/clap.mp3  4.0s  28 KB   (54s में से सबसे तेज़ 4 सेकंड, दोनों सिरों पर fade)
+//   sounds/wow1.mp3  1.9s  13 KB   (पुरुष स्वर)
+//   sounds/wow2.mp3  3.0s  21 KB   (महिला स्वर)
+// खर्च का हिसाब: ये Netlify से आती हैं, Firebase से नहीं — यानी रोज़ाना 360 MB वाले download
+// quota पर इनका कोई असर नहीं। हर device इन्हें ज़िंदगी में एक बार उतारता है और service worker
+// उन्हें रख लेता है; आवाज़ बंद हो तो उतरती ही नहीं (नीचे _sndWarm देखें)।
 // ध्यान: मोबाइल ब्राउज़र बिना उपयोगकर्ता के छूए आवाज़ नहीं चलने देते — यहां दिक़्क़त नहीं, क्योंकि
 // "✓ वसूल" दबाना खुद एक tap है। फ़ोन silent पर हो तो (ख़ासकर iPhone) आवाज़ नहीं आएगी — यह
 // ब्राउज़र की सीमा है, इसमें कुछ किया नहीं जा सकता
@@ -318,6 +327,45 @@ function _celebAudioCtx(){
     _ac=new C();
   }catch(e){ return null; }
   return _ac;
+}
+// ── असली रिकॉर्डिंग: एक बार उतरे, फिर हमेशा memory से बजे ────────────────────────────────────
+// हर फ़ाइल ज़्यादा से ज़्यादा एक बार माँगी जाती है (चाहे नाकाम ही क्यों न हो) — कमज़ोर नेट पर
+// बार-बार कोशिश करके डेटा बर्बाद न हो। decode किया हुआ AudioBuffer memory में रहता है
+var SND_SRC={clap:"sounds/clap.mp3",wow1:"sounds/wow1.mp3",wow2:"sounds/wow2.mp3"};
+var _sndBuf={}, _sndTried={};
+function _sndLoad(key){
+  if(_sndTried[key]) return;          // एक ही कोशिश — नाकाम रही तो बनी हुई आवाज़ चल जाएगी
+  _sndTried[key]=true;
+  var ctx=_celebAudioCtx(); if(!ctx||!SND_SRC[key]) return;
+  fetch(SND_SRC[key]).then(function(r){
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    return r.arrayBuffer();
+  }).then(function(ab){
+    return new Promise(function(res,rej){
+      // पुराने Safari का decodeAudioData Promise नहीं लौटाता — दोनों तरीक़े संभाले
+      var p=ctx.decodeAudioData(ab,function(b){res(b);},function(e){rej(e);});
+      if(p&&p.then) p.then(res,rej);
+    });
+  }).then(function(b){ _sndBuf[key]=b; }).catch(function(){});
+}
+// आवाज़ चालू हो तभी उतारें — बंद रखने वाले device पर एक बाइट भी खर्च न हो
+function _sndWarm(){
+  try{ if(!celebSoundOn()) return; }catch(e){ return; }
+  Object.keys(SND_SRC).forEach(_sndLoad);
+}
+function _sndPlay(key,t,gain,dur){
+  var ctx=_celebAudioCtx(); if(!ctx) return false;
+  var b=_sndBuf[key];
+  if(!b){ _sndLoad(key); return false; } // अभी तैयार नहीं — caller बनी हुई आवाज़ पर लौट जाए
+  var src=ctx.createBufferSource(); src.buffer=b;
+  var g=ctx.createGain(); g.gain.value=gain;
+  // तय समय पर धीरे-धीरे बंद, ताकि जश्न ख़त्म होने के बाद आवाज़ लटकी न रह जाए
+  var end=t+Math.min(dur,b.duration);
+  g.gain.setValueAtTime(gain,Math.max(t,end-0.5));
+  g.gain.exponentialRampToValueAtTime(0.0001,end);
+  src.connect(g); g.connect(ctx.destination);
+  src.start(t); src.stop(end+0.02);
+  return true;
 }
 // एक ताली = बहुत छोटा शोर का झटका, जो तुरंत बुझ जाए।
 // फ़िल्टर पहले bandpass (1400Hz, Q 0.8) था — वह ताली की ज़्यादातर ऊर्जा छान देता था, इसलिए
@@ -406,18 +454,23 @@ function _celebSound(big){
   if(!ctx) return;
   try{ if(ctx.state==="suspended") ctx.resume(); }catch(e){}
   var t=ctx.currentTime+0.01;
-  var dur=big?3.2:2.6;
-  // 1) भीड़ की गड़गड़ाहट — पूरे जश्न भर चलती रहे
-  _applauseBed(ctx,t,dur,big?0.85:0.7);
-  // 2) आगे की कुछ खनकती तालियाँ, ताकि गड़गड़ाहट में अलग-अलग ताली भी सुनाई दे
-  var claps=big?14:10;
-  for(var i=0;i<claps;i++) _clapAt(ctx,t+0.02+i*0.115+Math.random()*0.035,(big?0.5:0.42)*(1-i/(claps*1.6)));
-  // 3) "वाआआओ" — भीड़ की चीयर, गड़गड़ाहट के साथ-साथ
-  _cheerAt(ctx,t+0.12,dur*0.72,big?0.5:0.42);
-  // 4) चढ़ती घंटी — हर 10वीं वसूली पर एक सुर ज़्यादा
-  _dingAt(ctx,t+0.14,784,0.30,0.13);    // G5
-  _dingAt(ctx,t+0.30,1046.5,0.36,0.12); // C6
-  if(big){ _dingAt(ctx,t+0.46,1318.5,0.48,0.12); _dingAt(ctx,t+0.66,1568,0.6,0.11); } // E6, G6
+  var dur=big?3.4:3.0;
+  // 1) तालियाँ — असली रिकॉर्डिंग; न उतरी हो तो बनी हुई गड़गड़ाहट पर लौट जाओ
+  if(!_sndPlay("clap",t,big?1:0.85,dur)){
+    _applauseBed(ctx,t,dur,big?0.85:0.7);
+    var claps=big?14:10;
+    for(var i=0;i<claps;i++) _clapAt(ctx,t+0.02+i*0.115+Math.random()*0.035,(big?0.5:0.42)*(1-i/(claps*1.6)));
+  }
+  // 2) "वाओ" — दो असली आवाज़ें (पुरुष/महिला), हर बार यादृच्छिक, ताकि रोज़ सुनकर मन न भरे।
+  // दोनों में से जो तैयार हो वही; कोई न हो तो बनी हुई चीयर
+  var pick=Math.random()<0.5?"wow1":"wow2", other=pick==="wow1"?"wow2":"wow1";
+  if(!_sndPlay(pick,t+0.18,0.95,dur-0.18) && !_sndPlay(other,t+0.18,0.95,dur-0.18)){
+    _cheerAt(ctx,t+0.12,dur*0.72,big?0.5:0.42);
+  }
+  // 3) चढ़ती घंटी — हर 10वीं वसूली पर एक सुर ज़्यादा
+  _dingAt(ctx,t+0.14,784,0.30,0.10);    // G5
+  _dingAt(ctx,t+0.30,1046.5,0.36,0.09); // C6
+  if(big){ _dingAt(ctx,t+0.46,1318.5,0.48,0.09); _dingAt(ctx,t+0.66,1568,0.6,0.08); } // E6, G6
 }
 
 // ── एक उपभोक्ता पर दिन में एक ही बार जश्न ─────────────────────────────────────

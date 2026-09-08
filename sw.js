@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v139";
+var CACHE_NAME="adegaon-dc-v140";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -43,7 +43,13 @@ var OPTIONAL=[
   "./icons/apple-touch-icon.png",
   "./icons/tower-decoration.svg",
   "./icons/scorecard-icon.svg",
-  "./icons/mascot.webp"
+  "./icons/mascot.webp",
+  // जश्न की असली आवाज़ें — कुल 63 KB (JE की दी हुई 1.88 MB फ़ाइलों को काटकर/mono करके)।
+  // OPTIONAL में हैं ताकि गाँव में offline रहते हुए भी बजें, पर इनके न मिलने से पूरा install
+  // न रुके — तब ऐप बनी हुई (synthesized) आवाज़ पर लौट जाता है
+  "./sounds/clap.mp3",
+  "./sounds/wow1.mp3",
+  "./sounds/wow2.mp3"
 ];
 self.addEventListener("install",function(e){
   e.waitUntil(
