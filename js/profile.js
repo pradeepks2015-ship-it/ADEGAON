@@ -65,7 +65,10 @@ function toggleCelebSound(){
   var next=!celebSoundOn();
   try{ localStorage.setItem("dc_celebsound", next?"1":"0"); }catch(e){}
   _syncSoundSwitch();
-  if(next) _celebSound(false); // चालू करते ही एक बार सुनाकर दिखाओ कि कैसी लगती है
+  if(next){
+    try{_sndWarm();}catch(e){}      // अभी-अभी चालू हुई — असली आवाज़ें अब उतारी जा सकती हैं
+    _celebSound(false);             // चालू करते ही एक बार सुनाकर दिखाओ कि कैसी लगती है
+  }
 }
 
 // ─── डार्क मोड: सिर्फ़ CSS वेरिएबल स्विच (html[data-theme=dark]) — कमज़ोर रोशनी/रात में आँखों को आराम,

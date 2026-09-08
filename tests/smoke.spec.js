@@ -609,17 +609,91 @@ test.describe('डेटा और वसूली', () => {
     expect(r.mascot).toBe(1);
   });
 
+  // JE ने बनी हुई तालियाँ सुनकर कहा "तालियां सही नहीं आ रही हैं" और असली रिकॉर्डिंग भेजीं
+  test('असली आवाज़ें तैयार हों तो वही बजें — तालियाँ, और दोनों "वाओ" में से कोई एक', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var played = [], synth = 0;
+      var oPlay = window._sndPlay, oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt;
+      window._sndPlay = function (k) { played.push(k); return true; };  // सब तैयार हैं
+      window._applauseBed = function () { synth++; };
+      window._cheerAt = function () { synth++; };
+      window._clapAt = function () { synth++; };
+      var wows = {};
+      try {
+        for (var i = 0; i < 30; i++) { played = []; _celebSound(false); played.forEach((k) => { if (k !== 'clap') wows[k] = 1; }); }
+        played = []; _celebSound(false);
+      } finally {
+        window._sndPlay = oPlay; window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap;
+      }
+      return { first: played[0], count: played.length, wowKinds: Object.keys(wows).sort(), synth: synth };
+    });
+    expect(r.first).toBe('clap');                        // तालियाँ सबसे पहले
+    expect(r.count).toBe(2);                             // तालियाँ + एक "वाओ" (दूसरा नहीं)
+    expect(r.wowKinds).toEqual(['wow1', 'wow2']);        // दोनों आवाज़ें बारी-बारी आती हैं
+    expect(r.synth).toBe(0);                             // असली मिल गईं तो बनी हुई बिल्कुल न बजे
+  });
+
+  test('असली आवाज़ न उतरी हो तो बनी हुई आवाज़ पर लौट जाए (offline पहली बार)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var bed = 0, cheer = 0;
+      var oPlay = window._sndPlay, oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt;
+      window._sndPlay = function () { return false; };   // कोई फ़ाइल तैयार नहीं
+      window._applauseBed = function () { bed++; };
+      window._cheerAt = function () { cheer++; };
+      window._clapAt = function () {};
+      try { _celebSound(false); } finally {
+        window._sndPlay = oPlay; window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap;
+      }
+      return { bed: bed, cheer: cheer };
+    });
+    expect(r.bed).toBe(1);    // बनी हुई गड़गड़ाहट
+    expect(r.cheer).toBe(1);  // बनी हुई चीयर
+  });
+
+  test('आवाज़ बंद हो तो असली फ़ाइलें उतरें ही नहीं (एक बाइट भी खर्च न हो)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var hits = 0;
+      var oLoad = window._sndLoad, oOn = window.celebSoundOn;
+      window._sndLoad = function () { hits++; };
+      window.celebSoundOn = function () { return false; };
+      try { _sndWarm(); } finally { window._sndLoad = oLoad; window.celebSoundOn = oOn; }
+      return hits;
+    });
+    expect(r).toBe(0);
+  });
+
+  test('तीनों आवाज़ फ़ाइलें मौजूद हों, छोटी हों, और service worker उन्हें cache करे', async () => {
+    const root = path.join(__dirname, '..');
+    let total = 0;
+    ['clap.mp3', 'wow1.mp3', 'wow2.mp3'].forEach((n) => {
+      const st = fs.statSync(path.join(root, 'sounds', n));
+      expect(st.size).toBeGreaterThan(1000);
+      total += st.size;
+    });
+    // JE की दी हुई मूल फ़ाइलें 1.88 MB की थीं — काटकर/mono करके इतनी छोटी की गईं
+    expect(total).toBeLessThan(120 * 1024);
+    const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+    ['clap', 'wow1', 'wow2'].forEach((n) => expect(sw).toContain('./sounds/' + n + '.mp3'));
+    // CORE में नहीं — इनके बिना भी ऐप पूरा चलता है (बनी हुई आवाज़ पर लौट जाता है)
+    const core = sw.slice(sw.indexOf('var CORE='), sw.indexOf('var OPTIONAL='));
+    expect(core).not.toContain('sounds/');
+  });
+
   // "जो साउंड आता है उसमें तालियों की गड़गड़ाहट सुनाई ही नहीं देती … wow का साउंड भी आना चाहिए"
   test('आवाज़ में भीड़ की गड़गड़ाहट और "वाओ" चीयर दोनों बनें, अलग-अलग तालियों के साथ', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => {
       var bed = 0, cheer = 0, claps = 0, bedDur = 0, cheerDur = 0;
-      var oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt;
+      var oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt, oPlay = window._sndPlay;
+      window._sndPlay = function () { return false; }; // असली फ़ाइलें हटाकर बनी हुई आवाज़ ही जाँचें
       window._applauseBed = function (c, t, d) { bed++; bedDur = d; };
       window._cheerAt = function (c, t, d) { cheer++; cheerDur = d; };
       window._clapAt = function () { claps++; };
       try { _celebSound(false); } finally {
-        window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap;
+        window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap; window._sndPlay = oPlay;
       }
       return { bed: bed, cheer: cheer, claps: claps, bedDur: bedDur, cheerDur: cheerDur };
     });
@@ -634,13 +708,14 @@ test.describe('डेटा और वसूली', () => {
     await openApp(page);
     const r = await page.evaluate(() => {
       var hits = 0;
-      var oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt, oOn = window.celebSoundOn;
+      var oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt, oOn = window.celebSoundOn, oPlay = window._sndPlay;
       window._applauseBed = function () { hits++; };
       window._cheerAt = function () { hits++; };
       window._clapAt = function () { hits++; };
+      window._sndPlay = function () { hits++; return true; }; // असली आवाज़ भी न बजे
       window.celebSoundOn = function () { return false; };
       try { _celebSound(false); } finally {
-        window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap; window.celebSoundOn = oOn;
+        window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap; window.celebSoundOn = oOn; window._sndPlay = oPlay;
       }
       return hits;
     });
