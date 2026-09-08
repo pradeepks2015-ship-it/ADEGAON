@@ -171,11 +171,16 @@ function renderScDateTable(data){
       var accKey=x.acc||("__noAcc__"+x.name);
       if(seenAcc[accKey]) return; // duplicate acc — skip
       seenAcc[accKey]=true;
-      if(!byDate[dt]) byDate[dt]={count:0,amount:0,names:[],accs:[]};
+      if(!byDate[dt]) byDate[dt]={count:0,amount:0,names:[],accs:[],items:[]};
       byDate[dt].count++;
       byDate[dt].amount+=Number(x.amount)||0;
       byDate[dt].names.push(x.name||"");
       if(x.acc) byDate[dt].accs.push(x.acc);
+      // नाम+नंबर जोड़ी में — तालिका में सिर्फ़ पहले 3 दिखते हैं (और वो भी चौड़ाई से कट जाते हैं),
+      // इसलिए पूरी सूची अलग स्क्रीन पर दिखाने के लिए यहीं जमा कर लेते हैं। names/accs अलग-अलग
+      // arrays हैं और accs में सिर्फ़ acc वाले जाते हैं, इसलिए उनके index आपस में मेल नहीं खाते —
+      // जोड़ी बनाने के लिए यह तीसरी सूची ज़रूरी है
+      byDate[dt].items.push({n:x.name||"",a:x.acc||"",amt:Number(x.amount)||0});
     }
   });
   var dates=Object.keys(byDate).sort(function(a,b){
@@ -185,16 +190,21 @@ function renderScDateTable(data){
     el.innerHTML="<div class='empty'><div class='empty-ico'>📊</div><div class='empty-t'>कोई वसूली नहीं</div><div class='empty-s'>अभी तक कोई भुगतान दर्ज नहीं</div></div>";
     return;
   }
+  // पूरी सूची वाली स्क्रीन के लिए संभालकर रखें (कोई network call नहीं — यही data पहले से हाथ में है)
+  SC_DAY_DATES=dates; SC_DAY_MAP=byDate; SC_DAY_HQ=scActiveHQ;
   var totCount=0,totAmt=0;
-  var rows=dates.map(function(dt){
+  var rows=dates.map(function(dt,di){
     var d=byDate[dt];
     totCount+=d.count; totAmt+=d.amount;
-    return "<tr>"+
+    // पूरी पंक्ति दबाने लायक — index भेजते हैं, तारीख़ का text नहीं: normPayDate() कोई अनजान
+    // format पहचान न पाए तो वह उपभोक्ता का टाइप किया हुआ text ज्यों का त्यों लौटा देता है, जो
+    // onclick में डालने लायक नहीं (index हमेशा संख्या है)
+    return "<tr class='sc-day-row' onclick='openScDayModal("+di+")'>"+
       "<td style='font-weight:600;'>"+escHtml(dt)+"</td>"+
       "<td style='text-align:center;color:var(--green);font-weight:700;'>"+d.count+"</td>"+
       "<td style='text-align:right;color:var(--gold);font-weight:700;'>₹"+d.amount.toLocaleString("hi-IN")+"</td>"+
       "<td style='color:var(--muted);font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+escHtml(d.names.slice(0,3).join(", "))+(d.names.length>3?" +"+(d.names.length-3):"")+"</td>"+
-      "<td style='color:#64b5f6;font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+escHtml(d.accs.slice(0,3).join(", "))+(d.accs.length>3?" +"+(d.accs.length-3):"")+"</td>"+
+      "<td style='color:#64b5f6;font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+escHtml(d.accs.slice(0,3).join(", "))+(d.accs.length>3?" <b>+"+(d.accs.length-3)+"</b>":"")+"</td>"+
     "</tr>";
   }).join("");
   // कुल उपभोक्ता CATS[0] से
@@ -205,6 +215,7 @@ function renderScDateTable(data){
   // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=
     "<div style='font-size:11px;color:var(--muted);margin-bottom:6px;'>📊 कुल उपभोक्ता: <b style=\'color:var(--fg)\'>"+(hqTotal||"-")+"</b> &nbsp;|&nbsp; वसूल: <b style=\'color:var(--green)\'>"+(totCount)+"</b> &nbsp;|&nbsp; बाकी: <b style=\'color:var(--red)\'>"+(hqTotal-totCount)+"</b> &nbsp;|&nbsp; प्रतिशत: <b style=\'color:var(--gold)\'>"+(pct)+"%</b></div>"+
+    "<div class='sc-tap-hint'>👆 किसी तारीख़ पर टैप करें — उस दिन के सारे उपभोक्ता और पूरे Consumer No दिखेंगे</div>"+
     "<table class='sc-date-table'>"+
       "<thead><tr><th>दिनांक</th><th style='text-align:center;'>संख्या</th><th style='text-align:right;'>राशि</th><th>उपभोक्ता</th><th>Consumer No</th></tr></thead>"+
       "<tbody>"+rows+
@@ -217,6 +228,61 @@ function renderScDateTable(data){
         "</tr>"+
       "</tbody>"+
     "</table>";
+}
+
+// ── एक दिन की पूरी सूची ───────────────────────────────────────────────────────────────────
+// तालिका में "उपभोक्ता" और "Consumer No" दोनों खाने दो बार कटते थे: पहले सिर्फ़ 3 नाम/नंबर लिए
+// जाते हैं (बाक़ी "+83"), और फिर max-width+ellipsis से वो 3 भी अधूरे दिखते हैं। असली रिपोर्ट में
+// एक दिन (31/8) में 86 उपभोक्ता थे — JE उनमें से 3 भी पूरे नहीं देख पाते थे। सिर्फ़ खाना चौड़ा
+// करने से बात नहीं बनती (86 नंबर एक पंक्ति में समाएँगे ही नहीं), इसलिए पूरी सूची अलग स्क्रीन पर।
+// सारा data पहले से device के cache में है — इस स्क्रीन पर एक भी network call नहीं लगती।
+var SC_DAY_DATES=[], SC_DAY_MAP=null, SC_DAY_HQ="";
+function openScDayModal(i){
+  var dt=SC_DAY_DATES[i], d=SC_DAY_MAP&&SC_DAY_MAP[dt];
+  if(!d) return;
+  document.getElementById("scday-title").textContent="📅 "+dt+" — "+SC_DAY_HQ;
+  document.getElementById("scday-sub").textContent=d.count+" उपभोक्ता • ₹"+d.amount.toLocaleString("hi-IN")+" वसूल";
+  var accs=d.items.filter(function(x){return x.a;}).map(function(x){return x.a;});
+  var h="";
+  if(accs.length){
+    h+="<button class='btn-save' style='width:100%;margin-bottom:10px;' onclick='copyScDayAccs("+i+")'>📋 सारे Consumer No कॉपी करें ("+accs.length+")</button>";
+  }
+  h+="<table class='wasc-table'><thead><tr><th style='width:34px;'>क्र.</th><th class='wasc-th-left'>उपभोक्ता</th><th>Consumer No</th></tr></thead><tbody>"+
+    d.items.map(function(x,n){
+      // नंबर पर टैप → वही पुराना बिल-वाला popup (कॉपी / MPEZ साइट)
+      var accCell=x.a
+        ? "<span class='chip chip-acc' onclick=\"event.stopPropagation();openAccModal('"+escJsAttr(x.a)+"')\">📄 "+escHtml(x.a)+"</span>"
+        : "<span style='color:var(--muted);'>—</span>";
+      return "<tr><td style='color:var(--muted);'>"+(n+1)+"</td><td class='wasc-hq'>"+escHtml(x.n||"(नाम नहीं)")+"</td><td>"+accCell+"</td></tr>";
+    }).join("")+
+    "</tbody></table>";
+  // audit-verified: सिर्फ़ hardcoded markup + संख्याएं; उपभोक्ता का नाम escHtml() से और
+  // onclick में गया acc escJsAttr() से गुज़रा है (वही तरीक़ा जो list.js की acc-chip में है)
+  // eslint-disable-next-line no-unsanitized/property
+  document.getElementById("scday-content").innerHTML=h;
+  document.getElementById("scday-overlay").classList.add("open");
+}
+function closeScDayModal(){document.getElementById("scday-overlay").classList.remove("open");}
+function copyScDayAccs(i){
+  var dt=SC_DAY_DATES[i], d=SC_DAY_MAP&&SC_DAY_MAP[dt];
+  if(!d) return;
+  // हर नंबर अलग पंक्ति में — Excel में paste करने पर सीधे एक-एक खाने में बैठ जाते हैं,
+  // और WhatsApp में भी पढ़ने लायक रहते हैं
+  var txt=d.items.filter(function(x){return x.a;}).map(function(x){return x.a;}).join("\n");
+  if(!txt){toast("इस दिन किसी का Consumer No दर्ज नहीं है","err");return;}
+  var n=txt.split("\n").length;
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){toast("✅ "+n+" Consumer No कॉपी हो गए","ok");})
+      .catch(function(){_scDayFallbackCopy(txt,n);});
+  } else { _scDayFallbackCopy(txt,n); }
+}
+function _scDayFallbackCopy(txt,n){
+  var ta=document.createElement("textarea");
+  ta.value=txt; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select();
+  try{document.execCommand("copy");toast("✅ "+n+" Consumer No कॉपी हो गए","ok");}
+  catch(e){toast("कॉपी नहीं हो सका","err");}
+  document.body.removeChild(ta);
 }
 
 function downloadScPDF(){

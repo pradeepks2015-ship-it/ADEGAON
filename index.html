@@ -352,6 +352,19 @@ try{
   </div>
 </div>
 
+<!-- एक दिन की पूरी सूची — स्कोरकार्ड की तालिका में सिर्फ़ 3 नाम/नंबर ही आ पाते हैं (वो भी कटे हुए) -->
+<div class="moverlay" id="scday-overlay" style="z-index:600;" onclick="if(event.target===this)closeScDayModal()">
+  <div class="msheet" style="max-height:92vh;">
+    <div class="mhandle"></div>
+    <div class="mtitle" id="scday-title">📅 दिनांक-वार वसूली</div>
+    <div id="scday-sub" style="font-size:11px;color:var(--muted);margin:-4px 0 10px;font-weight:700;"></div>
+    <div id="scday-content"></div>
+    <div class="mfooter">
+      <button class="btn-cancel" onclick="closeScDayModal()">बंद करें</button>
+    </div>
+  </div>
+</div>
+
 
 <!-- PHONE ACTION POPUP -->
 <div class="ph-overlay" id="ph-overlay" onclick="closePhOutside(event)">
