@@ -752,10 +752,13 @@ test.describe('डेटा और वसूली', () => {
       // असली आवाज़ न बजे, सिर्फ़ यह जांचें कि बनाने की कोशिश हुई या नहीं
       window.AudioContext = function () {
         made++;
+        // असली Web Audio जितना ही सतह-क्षेत्र — गड़गड़ाहट/चीयर वाला कोड buffer में सचमुच लिखता है
+        // और filter की frequency को समय के साथ घुमाता है, इसलिए इनका होना ज़रूरी है
         return { currentTime: 0, sampleRate: 44100, state: 'running', destination: {},
-          createBuffer: () => ({ getChannelData: () => new Float32Array(10) }),
-          createBufferSource: () => ({ connect() {}, start() {} }),
-          createBiquadFilter: () => ({ connect() {}, frequency: {}, Q: {} }),
+          createBuffer: (chs, len) => ({ getChannelData: () => new Float32Array(len || 10) }),
+          createBufferSource: () => ({ connect() {}, start() {}, stop() {} }),
+          createBiquadFilter: () => ({ connect() {}, type: '',
+            frequency: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {} }, Q: {} }),
           createGain: () => ({ connect() {}, gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} } }),
           createOscillator: () => ({ connect() {}, start() {}, stop() {}, frequency: {} }) };
       };
