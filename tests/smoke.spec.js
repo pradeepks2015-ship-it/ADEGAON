@@ -578,6 +578,75 @@ test.describe('डेटा और वसूली', () => {
     expect(r.gone).toBe(true);              // अपने आप हट गया
   });
 
+  // JE ने बताया: "सेलिब्रेशन बहुत कम समय के लिए दिखाई देता है, समझ ही नहीं आ पाता"। 1700ms में
+  // पलक झपकते ही चला जाता था — यह test उसे चुपचाप दोबारा छोटा होने से रोकता है
+  test('जश्न इतनी देर टिके कि दिख जाए (कम से कम 3 सेकंड)', async ({ page }) => {
+    await openApp(page);
+    const ms = await page.evaluate(() => CELEB_MS);
+    expect(ms).toBeGreaterThanOrEqual(3000);
+  });
+
+  test('जश्न में अंगूठा, ताली और मैस्कॉट तीनों दिखें', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'सुनील');
+    const r = await page.evaluate(() => {
+      _celebPaid({ amount: 500 });
+      var el = document.getElementById('celeb');
+      var out = {
+        thumb: el.querySelectorAll('.celeb-thumb').length,
+        thumbTxt: (el.querySelector('.celeb-thumb') || {}).textContent,
+        claps: el.querySelectorAll('.celeb-clap').length,
+        clapTxt: (el.querySelector('.celeb-clap') || {}).textContent,
+        mascot: el.querySelectorAll('.celeb-mascot').length
+      };
+      el.parentNode.removeChild(el);
+      return out;
+    });
+    expect(r.thumb).toBe(1);
+    expect(r.thumbTxt).toBe('👍');
+    expect(r.claps).toBe(2);      // दोनों हाथ
+    expect(r.clapTxt).toBe('👏');
+    expect(r.mascot).toBe(1);
+  });
+
+  // "जो साउंड आता है उसमें तालियों की गड़गड़ाहट सुनाई ही नहीं देती … wow का साउंड भी आना चाहिए"
+  test('आवाज़ में भीड़ की गड़गड़ाहट और "वाओ" चीयर दोनों बनें, अलग-अलग तालियों के साथ', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var bed = 0, cheer = 0, claps = 0, bedDur = 0, cheerDur = 0;
+      var oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt;
+      window._applauseBed = function (c, t, d) { bed++; bedDur = d; };
+      window._cheerAt = function (c, t, d) { cheer++; cheerDur = d; };
+      window._clapAt = function () { claps++; };
+      try { _celebSound(false); } finally {
+        window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap;
+      }
+      return { bed: bed, cheer: cheer, claps: claps, bedDur: bedDur, cheerDur: cheerDur };
+    });
+    expect(r.bed).toBe(1);                       // गड़गड़ाहट का बिछावन
+    expect(r.cheer).toBe(1);                     // "वाआआओ"
+    expect(r.claps).toBeGreaterThanOrEqual(8);   // पहले सिर्फ़ 4 थीं — गड़गड़ाहट लगती ही नहीं थी
+    expect(r.bedDur).toBeGreaterThanOrEqual(2);  // पूरे जश्न भर चले, आधे सेकंड में ख़त्म न हो
+    expect(r.cheerDur).toBeGreaterThan(1);
+  });
+
+  test('आवाज़ बंद हो तो कुछ न बजे (JE का switch)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var hits = 0;
+      var oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt, oOn = window.celebSoundOn;
+      window._applauseBed = function () { hits++; };
+      window._cheerAt = function () { hits++; };
+      window._clapAt = function () { hits++; };
+      window.celebSoundOn = function () { return false; };
+      try { _celebSound(false); } finally {
+        window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap; window.celebSoundOn = oOn;
+      }
+      return hits;
+    });
+    expect(r).toBe(0);
+  });
+
   // JE की चिंता: "यदि कोई जानबूझकर बार-बार वसूल मार्क करे और फिर वापस करके फिर वसूल मार्क करे तो
   // एक्युमुलेटेड नेटवर्क कॉस्ट बहुत ज़्यादा हो जाएगी"। जश्न खुद एक बाइट खर्च नहीं करता, पर वह
   // टॉगल करने का लालच पैदा करता है — और हर मार्क Firebase पर लिखा जाकर बाक़ी फ़ोनों पर push होता है
