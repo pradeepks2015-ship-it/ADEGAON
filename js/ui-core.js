@@ -251,12 +251,12 @@ function _pauseRender(){
   h+="<div style='background:"+(on?"rgba(240,80,80,.10)":"rgba(0,200,150,.08)")+";border:1px solid "+(on?"rgba(240,80,80,.35)":"rgba(0,200,150,.3)")+";border-radius:12px;padding:12px;margin-bottom:10px;'>";
   h+="<div style='font-size:15px;font-weight:800;color:"+(on?"var(--red)":"var(--green)")+";'>"+(on?"🛑 अभी चालू है — डाउनलोड रुका हुआ है":"✅ अभी बंद है — सब सामान्य चल रहा है")+"</div>";
   if(on&&(who||when)) h+="<div style='font-size:11px;color:var(--muted);margin-top:5px;'>"+escHtml(who?(who+" ने"):"")+(when?(" "+escHtml(when)+" को"):"")+" चालू किया</div>";
-  if(on) h+="<div style='font-size:11px;color:var(--gold2);font-weight:700;margin-top:5px;'>⏱ आज रात अपने आप हट जाएगा — भूल जाने पर भी टीम कल पुराने डेटा पर नहीं रहेगी</div>";
+  if(on) h+="<div style='font-size:11px;color:var(--gold2);font-weight:700;margin-top:5px;'>⏱ अपने आप नहीं हटेगा — जब तक नीचे के बटन से वापस सामान्य न करें, बचत चलती रहेगी</div>";
   h+="</div>";
   h+="<div style='font-size:12px;line-height:1.75;color:var(--muted);margin-bottom:12px;'>"+
      "<b style='color:var(--text);'>चालू करने पर क्या रुकता है:</b> live sync, सभी लिस्ट का background refresh, prefetch, स्कोरकार्ड का ताज़ा डेटा।<br>"+
      "<b style='color:var(--green);'>क्या चलता रहता है:</b> पूरी ऐप device के अपने डेटा से, और सबसे ज़रूरी — <b>वसूली दर्ज करना</b> (वह upload है, quota में नहीं गिनता)।<br>"+
-     "<b style='color:var(--gold2);'>ध्यान रखें:</b> चालू रहने तक आपको दूसरों की वसूली दिखना बंद हो जाएगी। बाक़ी devices तक यह ~5 मिनट में पहुँचता है।"+
+     "<b style='color:var(--gold2);'>ध्यान रखें:</b> चालू रहने तक आपको दूसरों की वसूली दिखना बंद हो जाएगी। बाक़ी devices तक यह ~5 मिनट में पहुँचता है। यह अपने आप कभी बंद नहीं होता — काम हो जाने पर ख़ुद वापस सामान्य करना याद रखें (लाल पट्टी याद दिलाती रहेगी)।"+
      "</div>";
   h+="<button class='btn-save' style='width:100%;background:"+(on?"var(--green)":"var(--red)")+";' onclick='_pauseToggle()'>"+
      (on?"✅ वापस सामान्य करें":"🛑 अभी डाउनलोड रोकें")+"</button>";

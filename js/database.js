@@ -68,25 +68,18 @@ function loadPauseLocal(){
     var s=JSON.parse(localStorage.getItem(PAUSE_KEY));
     if(s&&typeof s==="object"){
       PAUSE_INFO=s.i||null;
-      // device पर सहेजी हालत पर भी वही "आज तक" वाली शर्त लगती है — वरना कल का रुका हुआ स्विच
-      // ऐप खुलते ही फिर से लागू हो जाता, जबकि quota तब तक रीसेट हो चुका होता है
-      DATA_PAUSED=PAUSE_INFO?_pauseStillValid(PAUSE_INFO):!!s.on;
+      DATA_PAUSED=PAUSE_INFO?!!PAUSE_INFO.on:!!s.on;
     }
   }catch(e){}
 }
-// स्विच अपने आप उसी दिन तक चलता है — आधी रात के बाद अपने आप हट जाता है।
-// वजह दो हैं: (1) Firebase का quota वैसे भी रोज़ रीसेट होता है, तो कल इसे चालू रखने का कोई
-// मतलब ही नहीं; (2) सबसे संभावित गड़बड़ी यही है कि JE शाम को दबाकर भूल जाएँ और पूरी टीम कई दिन
-// पुराने डेटा पर चलती रहे। समय की तुलना serverNow() से होती है (device की घड़ी ग़लत हो सकती है)
-function _pauseStillValid(d){
-  if(!d||!d.on) return false;
-  var at=Number(d.at)||0;
-  if(!at) return true; // कब दबाया पता ही नहीं — भरोसा कर लो, चालू मानो
-  var s=new Date(serverNow()); s.setHours(0,0,0,0);
-  return at>=s.getTime(); // आज ही दबाया गया हो, तभी
-}
+// स्विच पूरी तरह मैन्युअल है — दबाने के बाद जब तक JE ख़ुद वापस सामान्य न करें, बचत चलती रहती है।
+// पहले यह आधी रात को अपने आप हट जाता था, पर वह ग़लत था: Firebase का quota आधी रात को नहीं,
+// दोपहर ~12:30 बजे (US Pacific की आधी रात) रीसेट होता है — यानी रात 12 से दोपहर 12:30 तक डेटा
+// फिर उसी पुराने quota पर खर्च होने लगता था और बचत का मक़सद अधूरा रह जाता था। अब जब तक बटन से
+// बंद न करें तब तक रुका ही रहेगा; भूल न जाएँ इसके लिए ऐप में लाल पट्टी हर समय दिखती रहती है।
+// PAUSE_INFO.at अब भी सहेजा जाता है — सिर्फ़ यह दिखाने के लिए कि किसने, कब चालू किया।
 function _applyPause(d){
-  var on=_pauseStillValid(d);
+  var on=!!(d&&d.on);
   var was=DATA_PAUSED;
   DATA_PAUSED=on;
   PAUSE_INFO=(d&&typeof d==="object")?d:null;

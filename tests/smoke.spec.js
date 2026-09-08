@@ -4440,44 +4440,58 @@ test.describe('🛑 डेटा बचाओ मोड — Firebase download �
     expect(r.opened).toBe(false);
   });
 
-  // सबसे संभावित गड़बड़ी यही है कि JE शाम को स्विच दबाकर भूल जाएँ और पूरी टीम कई दिन पुराने डेटा
-  // पर चलती रहे। Firebase का quota वैसे भी रोज़ रीसेट होता है, तो कल इसे चालू रखने का मतलब ही नहीं
-  test('स्विच आज रात अपने आप हट जाए — कल का दबाया हुआ आज लागू न हो', async ({ page }) => {
+  // JE का साफ़ फ़ैसला: स्विच पूरी तरह मैन्युअल रहे। पहले यह आधी रात को अपने आप हट जाता था, जो
+  // ग़लत था — Firebase का quota आधी रात को नहीं, दोपहर ~12:30 (US Pacific की आधी रात) रीसेट
+  // होता है, यानी रात 12 से दोपहर 12:30 तक बचत बेकार चली जाती थी
+  test('स्विच अपने आप कभी न हटे — कितना भी पुराना दबाया हुआ हो, तब तक चालू रहे जब तक ख़ुद बंद न करें', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => {
-      var todayStart = new Date(serverNow()); todayStart.setHours(0, 0, 0, 0);
       _applyPause({ on: true, by: 'जेई', at: serverNow() });
       var today = isDataPaused();
-      _applyPause({ on: true, by: 'जेई', at: todayStart.getTime() - 3600000 }); // कल शाम
-      var yesterday = isDataPaused();
-      // कब दबाया पता ही न हो (पुराना रूप) — तब भरोसा करके चालू ही मानें
+      _applyPause({ on: true, by: 'जेई', at: serverNow() - 3 * 24 * 3600000 }); // तीन दिन पुराना
+      var old = isDataPaused();
+      // कब दबाया पता ही न हो (पुराना रूप) — तब भी चालू ही मानें
       _applyPause({ on: true, by: 'जेई' });
       var noTime = isDataPaused();
-      _applyPause({ on: false });
-      return { today: today, yesterday: yesterday, noTime: noTime };
+      _applyPause({ on: false, by: 'जेई', at: serverNow() }); // सिर्फ़ बटन से ही बंद
+      var offAfterToggle = isDataPaused();
+      return { today: today, old: old, noTime: noTime, offAfterToggle: offAfterToggle };
     });
     expect(r.today).toBe(true);
-    expect(r.yesterday).toBe(false); // भूल जाने पर भी कल अपने आप हट गया
+    expect(r.old).toBe(true);      // कोई अपने आप हटना नहीं
     expect(r.noTime).toBe(true);
+    expect(r.offAfterToggle).toBe(false); // बंद सिर्फ़ तभी जब सचमुच बंद किया जाए
   });
 
-  test('device पर सहेजे स्विच पर भी वही "आज तक" वाली शर्त लगे (कल का रुका हुआ ऐप खुलते ही फिर लागू न हो)', async ({ page }) => {
+  test('device पर सहेजा स्विच भी उम्र देखे बिना लागू रहे (कई दिन पुराना हो तो भी ऐप खुलते ही रुका मिले)', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => {
-      var todayStart = new Date(serverNow()); todayStart.setHours(0, 0, 0, 0);
-      localStorage.setItem(PAUSE_KEY, JSON.stringify({ on: true, i: { on: true, by: 'जेई', at: todayStart.getTime() - 7200000 } }));
+      localStorage.setItem(PAUSE_KEY, JSON.stringify({ on: true, i: { on: true, by: 'जेई', at: serverNow() - 5 * 24 * 3600000 } }));
       DATA_PAUSED = false;
       loadPauseLocal();
-      var stale = isDataPaused();
-      localStorage.setItem(PAUSE_KEY, JSON.stringify({ on: true, i: { on: true, by: 'जेई', at: serverNow() } }));
-      DATA_PAUSED = false;
+      var oldSaved = isDataPaused();
+      localStorage.setItem(PAUSE_KEY, JSON.stringify({ on: false, i: { on: false, by: 'जेई', at: serverNow() } }));
+      DATA_PAUSED = true;
       loadPauseLocal();
-      var fresh = isDataPaused();
+      var savedOff = isDataPaused();
       _applyPause({ on: false });
-      return { stale: stale, fresh: fresh };
+      return { oldSaved: oldSaved, savedOff: savedOff };
     });
-    expect(r.stale).toBe(false);
-    expect(r.fresh).toBe(true);
+    expect(r.oldSaved).toBe(true);  // पुराना होने से हटता नहीं
+    expect(r.savedOff).toBe(false); // बंद सहेजा हो तो बंद ही रहे
+  });
+
+  test('मॉडल में साफ़ लिखा हो कि यह अपने आप नहीं हटेगा (JE भूलें नहीं)', async ({ page }) => {
+    await openApp(page);
+    const txt = await page.evaluate(() => {
+      CU = { role: 'supervisor', name: 'जेई', hq: 'आदेगांव' };
+      _applyPause({ on: true, by: 'जेई', at: serverNow() });
+      _pauseRender();
+      var t = document.getElementById('pause-content').textContent;
+      _applyPause({ on: false });
+      return t;
+    });
+    expect(txt).toContain('अपने आप नहीं हटेगा');
   });
 
   test('database.rules.json — PAUSE सिर्फ़ JE लिख सके, बाक़ी सब पढ़ सकें', async () => {
