@@ -60,6 +60,7 @@ function _migRunDryRun(){
     fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
       .then(_fbJson)
       .then(function(d){
+        _noteShape(j.hq,j.cat,d); // जाँच में जो रूप दिखा, वही याद रहे — मुफ़्त है, data पहले से हाथ में
         var a=_migAnalyzeList(d);
         // MIGRATED flag "हां" कहता है पर data अब भी array है — किसी पुराने device ने migration पलट दिया
         a.reverted=isMigrated(j.hq,j.cat)&&!a.alreadyObj;
@@ -241,6 +242,7 @@ function _migrateOne(hq,cat,cb){
   fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
     .then(_fbJson)
     .then(function(raw){
+      _noteShape(hq,cat,raw);
       if(!raw){ cb({hq:hq,cat:cat,status:"empty"}); return; }
       if(!Array.isArray(raw)){ cb({hq:hq,cat:cat,status:"already"}); return; }
       var a=_migAnalyzeList(raw);
@@ -249,6 +251,7 @@ function _migrateOne(hq,cat,cb){
       fetch(FB+"/"+fbPath(hq,cat)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(obj)})
         .then(function(r){
           if(!r.ok) throw new Error("HTTP "+r.status);
+          _noteShape(hq,cat,obj); // अब सर्वर पर per-record है — याद रख लो, भले MIGRATED flag न लिख पाएं
           // असली data convert हो चुका (सबसे ज़रूरी हिस्सा) — MIGRATED flag अक्सर पहले से ही "true"
           // होता है (जैसे _checkMigrationRevert के self-heal में, जो isMigrated()===true होने पर
           // ही चलता है) और अब सिर्फ़ JE लिख सकता है (database.rules.json) — तो लाइनमैन के लिए यह

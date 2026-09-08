@@ -236,9 +236,10 @@ function _asPerRecord(hq,cat,arr){
   return obj;
 }
 function _fbPut(hq,cat,arr,cb){
-  var body;
+  var body,wrote;
   if(isMigrated(hq,cat)){
-    body=JSON.stringify(_asPerRecord(hq,cat,arr));
+    wrote=_asPerRecord(hq,cat,arr);
+    body=JSON.stringify(wrote);
   } else if(lastShape(hq,cat)==="obj"){
     // flag कहता है "migrated नहीं" — पर सर्वर पर आख़िरी बार यही list per-record (object) रूप में
     // देखी गई थी। दोनों में से सच वही है जो आँखों-देखा है: flag इस device पर लोड न हो पाया होगा।
@@ -246,8 +247,10 @@ function _fbPut(hq,cat,arr,cb){
     // दो बार पलटी)। इसलिए array नहीं, per-record ही लिखते हैं — यूज़र का बदलाव भी बचता है और
     // format भी। साथ ही एक बार लॉग कर देते हैं ताकि JE को पता चले कि किस device का flag अटका है
     logErr("array-put-blocked","इस device का MIGRATED flag इस list के लिए लोड नहीं हुआ था, पर सर्वर पर list per-record रूप में है — पूरी array लिखने से रोका और सही (per-record) रूप में ही सेव किया। माइग्रेशन पलटने से बच गया",hq+"/"+cat);
-    body=JSON.stringify(_asPerRecord(hq,cat,arr));
+    wrote=_asPerRecord(hq,cat,arr);
+    body=JSON.stringify(wrote);
   } else {
+    wrote=arr;
     body=JSON.stringify(arr);
   }
   fetch(FB+"/"+fbPath(hq,cat)+".json",{
@@ -256,6 +259,8 @@ function _fbPut(hq,cat,arr,cb){
     body:body
   }).then(function(r){
     if(!r.ok) throw new Error("HTTP "+r.status);
+    // अभी-अभी हमने सर्वर पर जो रूप लिखा, अब सर्वर पर वही है — याद रख लो (कोई network call नहीं)
+    _noteShape(hq,cat,wrote);
     clearPendingKey(cKey(hq,cat));
     updTime(); setSyncStatus(true);
     if(cb) cb(true);

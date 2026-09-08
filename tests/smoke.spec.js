@@ -4580,4 +4580,40 @@ test.describe('माइग्रेशन पलटने से पक्क�
     expect(r.shape).toBe('obj');
     expect(r.calls).toBe(1); // वही एक पढ़ाई, कोई अतिरिक्त नहीं
   });
+
+  // असली production (8 सितंबर, बीबी/3 month nonpayee, 306 records) — पलटाने वाला device v9.118
+  // यानी बचाव वाले version पर ही था। जड़: dc_shape3 हर device पर खाली से शुरू होता है, और
+  // flushPending() ऐप खुलते ही (main.js) चल जाता है — उस वक़्त इस device ने वह list एक बार भी
+  // पढ़ी नहीं होती, तो lastShape() कुछ नहीं जानता और guard array लिखने दे देता। यह रास्ता सर्वर
+  // का असली रूप ठीक अपने हाथ में लिए बैठा था (fetch का जवाब), बस उसे दर्ज नहीं करता था
+  test('offline बदलाव sync होते समय भी सर्वर का रूप दर्ज हो — flag खाली हो तो भी array वापस न लिखे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      localStorage.removeItem(SHAPE_KEY);
+      MIGRATED = {};                       // जैसे flag अभी लोड ही न हुआ हो (ऐप अभी-अभी खुली)
+      var hq = 'बीबी', cat = 'कृषि';
+      cSet(hq, cat, [{ acc: '5', name: 'क', amount: 10, status: 'paid' }]);
+      markPending(hq, cat, 'put');         // offline में किया गया एक बदलाव क़तार में (पुराना array रास्ता)
+      var putBody = null;
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath(hq, cat)) > -1) {
+          if (o && o.method === 'PUT') { putBody = JSON.parse(o.body); return Promise.resolve({ ok: true, json: () => Promise.resolve(null) }); }
+          // सर्वर पर list per-record (object) रूप में है
+          return Promise.resolve({ ok: true, headers: { get: () => null },
+            json: () => Promise.resolve({ '5': { acc: '5', name: 'क', amount: 10, status: 'pending' } }) });
+        }
+        return orig(u, o);
+      };
+      flushPending();
+      setTimeout(() => {
+        window.fetch = orig;
+        clearPendingKey(cKey(hq, cat));
+        resolve({ shape: lastShape(hq, cat), wroteArray: Array.isArray(putBody), body: putBody });
+      }, 700);
+    }));
+    expect(r.shape).toBe('obj');       // पढ़ते ही रूप दर्ज हुआ
+    expect(r.wroteArray).toBe(false);  // और इसीलिए array वापस नहीं लिखी गई — माइग्रेशन बचा
+    expect(r.body['5']).toBeTruthy();  // per-record रूप में ही सेव हुआ, बदलाव भी बचा
+  });
 });

@@ -157,6 +157,14 @@ function flushPending(){
     fetch(FB+"/"+fbPath(it.hq,it.cat)+".json?t="+Date.now())
       .then(_fbJson)
       .then(function(d){
+        // सर्वर का असली रूप ठीक यहीं, हाथ में है — नीचे _fbPut() से पूरी array लिखने से *पहले*
+        // इसे दर्ज करना ज़रूरी है। v9.118 में यही जगह छूट गई थी और असली production में माइग्रेशन
+        // फिर पलटा (बीबी/3 month nonpayee, v9.118 वाले device से): dc_shape3 हर device पर खाली
+        // से शुरू होता है, और यह रास्ता ऐप खुलते ही (main.js का flushPending) चल जाता है — यानी
+        // उस list को इस device ने अभी तक एक बार भी पढ़ा नहीं होता, इसलिए lastShape() कुछ नहीं
+        // जानता और guard चुपचाप array लिखने दे देता। normList() नीचे रूप मिटा देता है (object हो
+        // या array, दोनों से सादी array बनाता है), इसलिए दर्ज करने का मौक़ा बस यही एक है।
+        _noteShape(it.hq,it.cat,d);
         var server=normList(d);
         var merged=mergeArrays(cGet(it.hq,it.cat),server);
         cSet(it.hq,it.cat,merged);
