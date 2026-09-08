@@ -449,35 +449,42 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .celeb{position:fixed;inset:0;z-index:998;pointer-events:none;overflow:hidden;}
 .celeb-card{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);text-align:center;
   background:var(--card);border:1px solid rgba(0,200,150,.45);border-radius:18px;padding:14px 22px;
-  box-shadow:0 18px 44px rgba(0,0,0,.34);animation:celebPop 1.7s cubic-bezier(.2,1.3,.5,1) forwards;}
-.celeb-emoji{font-size:34px;line-height:1;}
+  box-shadow:0 18px 44px rgba(0,0,0,.34);animation:celebPop 3.6s cubic-bezier(.2,1.3,.5,1) forwards;}
+.celeb-emoji{font-size:34px;line-height:1;display:flex;align-items:center;justify-content:center;gap:8px;}
 .celeb-name{font-size:15px;font-weight:800;color:var(--green);margin-top:5px;}
 .celeb-sub{font-size:11px;font-weight:700;color:var(--muted);margin-top:3px;}
+/* जश्न 1.7s का था — JE ने बताया कि उतने में "समझ ही नहीं आ पाता"। अब 3.6s, और चढ़ने-उतरने के
+   हिस्से उतने ही तेज़ रखे गए हैं (सिर्फ़ बीच का ठहराव लंबा हुआ), ताकि सुस्त न लगे */
 @keyframes celebPop{
   0%{opacity:0;transform:translate(-50%,-50%) scale(.6);}
-  14%{opacity:1;transform:translate(-50%,-50%) scale(1.06);}
-  24%{transform:translate(-50%,-50%) scale(1);}
-  78%{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  7%{opacity:1;transform:translate(-50%,-50%) scale(1.06);}
+  11%{transform:translate(-50%,-50%) scale(1);}
+  89%{opacity:1;transform:translate(-50%,-50%) scale(1);}
   100%{opacity:0;transform:translate(-50%,-64%) scale(.96);}
 }
 .celeb-bit{position:absolute;top:-14px;width:8px;height:12px;border-radius:2px;opacity:0;
-  animation:celebFall 1.6s ease-in forwards;}
+  animation:celebFall 2.9s ease-in forwards;}
 @keyframes celebFall{
   0%{opacity:0;transform:translateY(0) rotate(0deg);}
-  10%{opacity:1;}
+  8%{opacity:1;}
   100%{opacity:0;transform:translateY(105vh) rotate(540deg);}
 }
 /* मैस्कॉट + ताली — 👏 इमोजी फ़ोन के अपने font से आता है (शून्य डाउनलोड), और "ताली बजाना"
    सिर्फ़ CSS से बनाया गया है: दोनों हाथ बीच की तरफ़ आते-जाते हैं। कोई animated GIF/video नहीं */
 .celeb-mrow{display:flex;align-items:center;justify-content:center;gap:2px;margin-bottom:2px;}
 .celeb-mascot{width:76px;height:76px;border-radius:50%;background:#fff;
-  box-shadow:0 3px 12px rgba(0,0,0,.18);animation:celebBob .42s ease-in-out 4 alternate;}
-.celeb-clap{font-size:22px;display:inline-block;}
-.celeb-clap.l{animation:clapL .21s ease-in-out 8 alternate;}
-.celeb-clap.r{animation:clapR .21s ease-in-out 8 alternate;}
+  box-shadow:0 3px 12px rgba(0,0,0,.18);animation:celebBob .42s ease-in-out 8 alternate;}
+/* ताली पहले 22px की थी और सिर्फ़ 9px चलती थी — JE को "ताली बजती" दिखी ही नहीं। अब हाथ बड़े हैं,
+   दूर तक आते-जाते हैं, और पूरे 3.6s तक बजते रहते हैं (18 फेरे × .19s ≈ 3.4s) */
+.celeb-clap{font-size:30px;display:inline-block;}
+.celeb-clap.l{animation:clapL .19s ease-in-out 18 alternate;}
+.celeb-clap.r{animation:clapR .19s ease-in-out 18 alternate;}
+/* अंगूठा — उठता-गिरता रहे ताकि नज़र में आए */
+.celeb-thumb{display:inline-block;animation:celebThumb .5s ease-in-out 7 alternate;}
 @keyframes celebBob{from{transform:translateY(0) rotate(-4deg);}to{transform:translateY(-6px) rotate(4deg);}}
-@keyframes clapL{from{transform:translateX(0) rotate(-18deg);}to{transform:translateX(9px) rotate(6deg);}}
-@keyframes clapR{from{transform:translateX(0) rotate(18deg) scaleX(-1);}to{transform:translateX(-9px) rotate(-6deg) scaleX(-1);}}
+@keyframes clapL{from{transform:translateX(0) rotate(-22deg);}to{transform:translateX(15px) rotate(8deg);}}
+@keyframes clapR{from{transform:translateX(0) rotate(22deg) scaleX(-1);}to{transform:translateX(-15px) rotate(-8deg) scaleX(-1);}}
+@keyframes celebThumb{from{transform:translateY(2px) rotate(-12deg) scale(.94);}to{transform:translateY(-7px) rotate(10deg) scale(1.12);}}
 
 /* 🛑 डेटा बचाओ मोड की पट्टी — सिर्फ़ तभी दिखती है जब JE ने स्विच दबाया हो */
 #pause-bar{background:linear-gradient(135deg,#c62828,#8e1c1c);color:#fff;font-size:11px;font-weight:700;
