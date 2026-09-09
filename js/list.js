@@ -203,7 +203,7 @@ function propagateStatus(acc,srcCat,status,paydate,dtStr,ts){
   if(!acc) return;
   recOp(activeHQ,acc,status,paydate,CU&&CU.name||"",dtStr,ts);
   for(var i=0;i<CATS_DEFAULT.length;i++){
-    var cat=(i>=4)?getCatName(activeHQ,i):CATS_DEFAULT[i];
+    var cat=isCatEditable(i)?getCatName(activeHQ,i):CATS_DEFAULT[i];
     if(cat===srcCat) continue;
     var d=cGet(activeHQ,cat);
     if(!d||!d.length) continue;
@@ -224,7 +224,7 @@ function propagateStatus(acc,srcCat,status,paydate,dtStr,ts){
 // ── पुराने mismatch ठीक करें: किसी भी tab में paid → हर tab में paid ──
 function reconcileHQ(hq){
   var cats=[];
-  for(var i=0;i<CATS_DEFAULT.length;i++) cats.push((i>=4)?getCatName(hq,i):CATS_DEFAULT[i]);
+  for(var i=0;i<CATS_DEFAULT.length;i++) cats.push(isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i]);
   var paidMap={};
   cats.forEach(function(cat){
     cGet(hq,cat).forEach(function(x){
@@ -282,7 +282,7 @@ function _celebTodayCount(hq){
   var me=_dvNameKeySafe(CU&&CU.name);
   var seen={},n=0;
   for(var i=0;i<CATS_DEFAULT.length;i++){
-    var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+    var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
     var d=cGet(hq,cat);
     if(!d||!d.length) continue;
     for(var j=0;j<d.length;j++){
@@ -658,7 +658,7 @@ function clearOldCategoriesData(){
   var jobs=[];
   HQS.forEach(function(hq){
     for(var i=0;i<CATS_DEFAULT.length;i++){
-      var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+      var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
       if(CLEAR_OLD_CATS.indexOf(cat)>-1) jobs.push({hq:hq,cat:cat});
     }
   });

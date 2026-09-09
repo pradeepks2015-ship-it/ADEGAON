@@ -14,7 +14,7 @@ var HQ_AUTH_EMAIL = {
   "बीबी":"hq-bibi@adegaondc.internal",
   "मढ़ी":"hq-madhi@adegaondc.internal"
 };
-var APP_VER = "9.123"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "9.124"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
@@ -23,15 +23,19 @@ function getMaxRecords(cat){
   if(cat==="कुल उपभोक्ता") return 3500;
   return 1000;
 }
-// Editable cat names stored here (keys are fixed slots 5,6,7)
 // ── CAT_NAMES System ─────────────────────────────────────────
 // Firebase path: /CAT_NAMES/{HQ_key}/{cat_index} = "नाम"
-// Non-editable: index 0,1,2,3 | Editable: 4,5,6,7
+// पहले सिर्फ़ 4-7 बदले जा सकते थे। JE ने घरेलू/व्यवसाय/कृषि भी बदलने लायक चाहे, इसलिए अब 1 से
+// आगे सब बदले जा सकते हैं। सिर्फ़ 0 (कुल उपभोक्ता) बाहर है — वह मास्टर सूची है जिस पर गाँव-वार
+// गिनती, स्कोरकार्ड और acc-dedup सब टिके हैं (कोड में हर जगह सीधे CATS[0] लिखा है)।
+// ध्यान: नाम बदलना = Firebase पर डेटा का पता बदलना (fbPath नाम से ही बनता है) — इसीलिए
+// openEditCat अब renameCatData() से पूरा डेटा नए पते पर ले जाता है, देखें js/database.js
 var CATS_DEFAULT = ["कुल उपभोक्ता","घरेलू","व्यवसाय","कृषि","गवर्नमेंट","इंडस्ट्रियल","सूची-2","सूची-3"];
 var CAT_NAMES = {}; // {HQ: {4:"नाम", 5:"नाम", 6:"नाम", 7:"नाम"}}
 
 function hqKey(hq){ return (hq||activeHQ).replace(/[\s.#$\[\]\/]/g,"_"); }
 function catKey(cat){ return (cat||"").replace(/[\s.#$\[\]\/]/g,"_"); }
+function isCatEditable(i){ return i>=1; }
 
 function getCatName(hq,i){
   return (CAT_NAMES[hq]&&CAT_NAMES[hq][i]!=null) ? CAT_NAMES[hq][i] : CATS_DEFAULT[i];
@@ -40,7 +44,7 @@ function getCatName(hq,i){
 function rebuildCatsForHQ(hq){
   if(!hq) hq=activeHQ;
   for(var i=0;i<CATS_DEFAULT.length;i++){
-    CATS[i] = (i>=4) ? getCatName(hq,i) : CATS_DEFAULT[i];
+    CATS[i] = isCatEditable(i) ? getCatName(hq,i) : CATS_DEFAULT[i];
   }
 }
 
@@ -54,7 +58,8 @@ function applyFBCatNames(d){
   Object.keys(d).forEach(function(hk){
     var hq=HQS.find(function(h){return hqKey(h)===hk;})||hk;
     if(!CAT_NAMES[hq]) CAT_NAMES[hq]={};
-    [4,5,6,7].forEach(function(i){
+    CATS_DEFAULT.forEach(function(_,i){
+      if(!isCatEditable(i)) return;
       if(d[hk][i]!=null&&CAT_NAMES[hq][i]!==d[hk][i]){
         CAT_NAMES[hq][i]=d[hk][i]; changed=true;
       }

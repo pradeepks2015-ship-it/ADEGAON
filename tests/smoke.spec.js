@@ -3196,6 +3196,18 @@ test.describe('error logging', () => {
   });
 });
 
+// Firebase का दैनिक quota US-Pacific आधी रात को रीसेट होता है, इसलिए v9.120 से ऐप उसी खिड़की का
+// दिन इस्तेमाल करता है (_usageQuotaDay), UTC का नहीं। ये टेस्ट पहले UTC दिन मानकर चलते थे और
+// इसीलिए सिर्फ़ घड़ी की मेहरबानी से पास होते थे — रोज़ 00:00 UTC से ~08:00 UTC के बीच (भारत में
+// सुबह 5:30 से दोपहर 1:30) दोनों तारीख़ें अलग होतीं और stub मेल न खाता। असली CI failure यही थी।
+// यहाँ वही दिन जान-बूझकर एक *अलग* रास्ते से निकाला गया है (toLocaleDateString), ताकि जाँच ऐप के
+// अपने function को दोहराकर गोल-गोल न हो जाए
+function quotaDay(offset) {
+  const d = new Date();
+  if (offset) d.setDate(d.getDate() - offset);
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+}
+
 test.describe('डेटा उपयोग (Firebase Blaze plan) — अनुमानित ट्रेंड ट्रैकिंग', () => {
   test('trackUsageBytes जमा होता है और _usageFlush /USAGE/{तारीख़} पर POST करके काउंटर रीसेट कर देता है', async ({ page }) => {
     await openApp(page);
@@ -3215,8 +3227,7 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
       _usageFlush();
       setTimeout(() => { window.fetch = orig; resolve({ posted: posted, remaining: _usageBytes }); }, 200);
     }));
-    const curDay = new Date().toISOString().slice(0, 10);
-    expect(result.posted.url).toContain('/USAGE/' + curDay);
+    expect(result.posted.url).toContain('/USAGE/' + quotaDay(0));
     expect(result.posted.body.b).toBe(800);
     expect(result.remaining).toBe(0);
   });
@@ -3232,11 +3243,10 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
   test('_usageRender — पिछले दिन से 50% से ज़्यादा बढ़ोतरी हो तो चेतावनी दिखे', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
-    await page.evaluate(() => new Promise((resolve) => {
+    await page.evaluate((curDay) => new Promise((resolve) => {
       const orig = window.fetch;
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('/USAGE/') > -1 && (!opts || !opts.method)) {
-          var curDay = new Date().toISOString().slice(0, 10);
           var isCur = url.indexOf('/USAGE/' + curDay) > -1;
           var data = isCur ? { a: { d: 'dev1', b: 3000000, t: Date.now() } } : { a: { d: 'dev1', b: 1000000, t: Date.now() } };
           return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
@@ -3245,7 +3255,7 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
       };
       _usageRender();
       setTimeout(() => { window.fetch = orig; resolve(); }, 300);
-    }));
+    }), quotaDay(0));
     await expect(page.locator('#usage-content')).toContainText('ज़्यादा डेटा इस्तेमाल हुआ');
   });
 
@@ -4326,6 +4336,117 @@ test.describe('श्रेणी/HQ नाम में "/" — नेस्ट
     await page.evaluate(() => openEditCat(4, 'cat4'));
     await expect(page.locator('#toast')).toContainText('. # $ [ ] /');
     expect(await page.evaluate(() => CATS[4])).toBe(before);
+  });
+
+  // JE का अनुरोध: घरेलू/व्यवसाय/कृषि भी बदले जा सकें। "कुल उपभोक्ता" जान-बूझकर बाहर है —
+  // वह मास्टर सूची है जिस पर गाँव-वार गिनती, स्कोरकार्ड और acc-dedup सब टिके हैं
+  test('कुल उपभोक्ता को छोड़कर हर श्रेणी बदली जा सके — पेंसिल भी उसी हिसाब से दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var flags = [0, 1, 2, 3, 4, 5, 6, 7].map(isCatEditable);
+      buildCatTabs();
+      var pencils = document.querySelectorAll('#cat-tabs button[title="नाम बदलें"]').length;
+      return { flags: flags, pencils: pencils, tabs: document.querySelectorAll('#cat-tabs .cat-tab').length };
+    });
+    expect(r.flags).toEqual([false, true, true, true, true, true, true, true]);
+    expect(r.tabs).toBe(8);
+    expect(r.pencils).toBe(7); // 8 में से 7 — "कुल उपभोक्ता" पर पेंसिल नहीं
+  });
+
+  test('कुल उपभोक्ता का नाम सीधे function बुलाकर भी न बदले (defense-in-depth)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var asked = 0;
+      var oP = window.prompt; window.prompt = function () { asked++; return 'कुछ और'; };
+      try { openEditCat(0, 'cat0'); } finally { window.prompt = oP; }
+      return { asked: asked, name: CATS[0] };
+    });
+    expect(r.asked).toBe(0);          // पूछा तक नहीं
+    expect(r.name).toBe('कुल उपभोक्ता');
+  });
+
+  // असली ख़तरा: fbPath श्रेणी के *नाम* से बनता है, इसलिए नाम बदलना = डेटा का पता बदलना।
+  // पहले rename सिर्फ़ cache+CAT_NAMES में होता था और सर्वर पर डेटा पुराने पते पर रह जाता —
+  // फिर पहली ही पढ़ाई में खाली सूची cache पर लिख जाती, यानी सबकी स्क्रीन से डेटा ग़ायब
+  test('नाम बदलने पर डेटा नए पते पर जाए, MIGRATED flag साथ चले, और पुराना *उसके बाद* हटे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'बीबी', oldC = 'कृषि', newC = 'कृषि-नई';
+      MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(oldC)] = true;
+      var calls = [];
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        var m = (o && o.method) || 'GET';
+        var s = String(u);
+        calls.push(m + ' ' + s.replace(FB, ''));
+        if (m === 'GET' && s.indexOf(fbPath(hq, oldC)) > -1) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ '7': { acc: '7', name: 'क' } }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      renameCatData(hq, oldC, newC, function (res) {
+        window.fetch = orig;
+        var iPut = calls.findIndex((c) => c.indexOf('PUT') === 0 && c.indexOf(fbPath(hq, newC)) > -1);
+        var iDel = calls.findIndex((c) => c.indexOf('DELETE') === 0 && c.indexOf(fbPath(hq, oldC)) > -1);
+        resolve({ res: res, iPut: iPut, iDel: iDel,
+          migNew: !!(MIGRATED[hqKey(hq)] || {})[catKey(newC)],
+          migOld: !!(MIGRATED[hqKey(hq)] || {})[catKey(oldC)],
+          flagPut: calls.some((c) => c.indexOf('PUT /MIGRATED/') === 0 && c.indexOf(catKey(newC)) > -1) });
+      });
+    }));
+    expect(r.res.ok).toBe(true);
+    expect(r.res.moved).toBe(1);
+    expect(r.iPut).toBeGreaterThanOrEqual(0);
+    expect(r.iDel).toBeGreaterThan(r.iPut); // पहले लिखो, *तब* पुराना हटाओ — बीच में नेट टूटे तो डेटा दोनों जगह रहे, कहीं नहीं ऐसा न हो
+    expect(r.flagPut).toBe(true);
+    expect(r.migNew).toBe(true);
+    expect(r.migOld).toBe(false);
+  });
+
+  test('डेटा नए पते पर न पहुँच पाए तो नाम बदले ही नहीं (आधा-अधूरा rename न हो)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'बीबी', oldC = 'व्यवसाय', newC = 'व्यवसाय-नया';
+      var deleted = false;
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        var m = (o && o.method) || 'GET';
+        if (m === 'DELETE') deleted = true;
+        if (m === 'GET' && String(u).indexOf(fbPath(hq, oldC)) > -1) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ '9': { acc: '9' } }) });
+        }
+        if (m === 'PUT') return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve(null) });
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      renameCatData(hq, oldC, newC, function (res) {
+        window.fetch = orig;
+        resolve({ ok: res.ok, deleted: deleted });
+      });
+    }));
+    expect(r.ok).toBe(false);
+    expect(r.deleted).toBe(false); // लिखाई नाकाम रही तो पुराना डेटा हाथ भी न लगे
+  });
+
+  test('ऑफ़लाइन नाम बदलने की कोशिश रुक जाए — डेटा हिलाया ही नहीं जा सकता', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var asked = 0;
+      var oP = window.prompt, oOn = Object.getOwnPropertyDescriptor(Navigator.prototype, 'onLine');
+      window.prompt = function () { asked++; return 'नया नाम'; };
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+      var before = CATS[1];
+      try { openEditCat(1, 'cat1'); } finally {
+        window.prompt = oP;
+        if (oOn) Object.defineProperty(Navigator.prototype, 'onLine', oOn);
+        delete navigator.onLine;
+      }
+      return { asked: asked, same: CATS[1] === before };
+    });
+    expect(r.asked).toBe(0);   // पूछने से पहले ही रोक दिया
+    expect(r.same).toBe(true);
   });
 });
 

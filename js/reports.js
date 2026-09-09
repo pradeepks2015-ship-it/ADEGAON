@@ -124,7 +124,7 @@ function buildScOverview(hqs){
 function _scBodyFromCache(){
   var combined=[];
   for(var i=0;i<CATS_DEFAULT.length;i++){
-    var cat=(i>=4)?getCatName(scActiveHQ,i):CATS_DEFAULT[i];
+    var cat=isCatEditable(i)?getCatName(scActiveHQ,i):CATS_DEFAULT[i];
     combined=combined.concat(cGet(scActiveHQ,cat));
   }
   renderScDateTable(combined);
@@ -465,7 +465,7 @@ function downloadFullBackup(){
         var totalRecs=0;
         HQS.forEach(function(hq){
           for(var i=0;i<CATS_DEFAULT.length;i++){
-            var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+            var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
             var d=cGet(hq,cat);
             if(!d||!d.length)continue;
             var paid=0,pendAmt=0;
@@ -545,7 +545,7 @@ function _waScRow(hq){
   });
   var seenPaid={},paid=0,paidAmt=0;
   for(var i=0;i<CATS_DEFAULT.length;i++){
-    var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+    var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
     var d=cGet(hq,cat)||[];
     d.forEach(function(x){
       if(!x||x.status!=="paid")return;
@@ -625,7 +625,7 @@ function _todayScRow(hq){
   master.forEach(function(x){ if(x&&x.acc) masterAcc[String(x.acc)]=1; });
   var seen={},count=0,amt=0;
   for(var i=0;i<CATS_DEFAULT.length;i++){
-    var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+    var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
     var d=cGet(hq,cat)||[];
     d.forEach(function(x){
       if(!x||x.status!=="paid"||!x.paydate)return;

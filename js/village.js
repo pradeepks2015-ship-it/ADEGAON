@@ -85,7 +85,7 @@ function _vgBuildHQTabs(){
 function _vgPaidMap(hq){
   var seen={},map={};
   for(var i=0;i<CATS_DEFAULT.length;i++){
-    var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+    var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
     var d=cGet(hq,cat)||[];
     d.forEach(function(x){
       if(!x||x.status!=="paid"||!x.acc)return;

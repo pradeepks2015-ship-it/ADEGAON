@@ -136,6 +136,85 @@ function _noteShape(hq,cat,raw){
   try{ localStorage.setItem(SHAPE_KEY,JSON.stringify(a)); }catch(e){}
 }
 function lastShape(hq,cat){ return _shapeAll()[hq+"/"+cat]||null; }
+// श्रेणी का नाम बदलने पर device की तीनों यादें भी साथ चलें — वरना नए नाम की पहली पढ़ाई में
+// ETag/shape दोनों अनजान रहते, और shape अनजान होने का मतलब है _fbPut का माइग्रेशन-बचाव अंधा
+function _moveLocalKeys(hq,oldCat,newCat){
+  try{
+    var e=_etagAll(); if(e[hq+"/"+oldCat]!=null){ e[hq+"/"+newCat]=e[hq+"/"+oldCat]; delete e[hq+"/"+oldCat]; localStorage.setItem(ETAG_KEY,JSON.stringify(e)); }
+  }catch(err){}
+  try{
+    var s=_shapeAll(); if(s[hq+"/"+oldCat]!=null){ s[hq+"/"+newCat]=s[hq+"/"+oldCat]; delete s[hq+"/"+oldCat]; localStorage.setItem(SHAPE_KEY,JSON.stringify(s)); }
+  }catch(err2){}
+}
+
+// ── श्रेणी का नाम बदलना = Firebase पर उसका पता बदलना ─────────────────────────────────────────
+// fbPath(hq,cat) श्रेणी के *नाम* से ही बनता है, इसलिए नाम बदलते ही डेटा का पता बदल जाता है।
+// पहले rename सिर्फ़ device के cache और CAT_NAMES में होता था — सर्वर पर डेटा पुराने पते पर ही
+// पड़ा रहता और नया पता खाली रहता। कुछ ही सेकंड में fbGet उस खाली पते से जवाब लाकर
+// cSet(hq,cat,[]) कर देता, यानी सूची सबकी स्क्रीन से ग़ायब (डेटा Firebase पर बचा रहता, पर ऐप में
+// कुछ न दिखता) और पुराना नोड हमेशा के लिए अनाथ पड़ा रह जाता। अब पूरा सामान साथ ले जाया जाता है।
+//
+// क्रम जान-बूझकर ऐसा है कि किसी भी क़दम पर रुक जाने से डेटा न मरे:
+//   पढ़ो → नए पते पर लिखो → MIGRATED flag ले जाओ → *तब* पुराना हटाओ
+// यानी बीच में नेट टूटे तो सबसे बुरी हालत यह है कि डेटा दोनों पतों पर है (दिखता रहेगा) —
+// कभी किसी पते पर नहीं, ऐसा नहीं हो सकता
+function renameCatData(hq,oldCat,newCat,cb){
+  if(!navigator.onLine){ cb({ok:false,why:"offline"}); return; }
+  fetch(FB+"/"+fbPath(hq,oldCat)+".json?t="+Date.now())
+    .then(_fbJson)
+    .then(function(raw){
+      trackUsageOf(raw);
+      var n=raw?(Array.isArray(raw)?raw.filter(Boolean).length:Object.keys(raw).length):0;
+      if(!raw||!n){ // खाली श्रेणी — ले जाने को कुछ नहीं, सिर्फ़ नाम बदलेगा
+        _moveLocalKeys(hq,oldCat,newCat);
+        cb({ok:true,moved:0});
+        return null;
+      }
+      _noteShape(hq,oldCat,raw);
+      var wasObj=!Array.isArray(raw);
+      return fetch(FB+"/"+fbPath(hq,newCat)+".json",{
+        method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(raw)
+      }).then(function(r){
+        if(!r.ok) throw new Error("HTTP "+r.status);
+        // MIGRATED flag भी नए नाम पर — वरना नए पते की per-record list "माइग्रेट नहीं हुई" मानी
+        // जाती और पहली ही पूरी लिखाई उसे वापस array बना देती (वही पुराना पलटने वाला bug)
+        if(!isMigrated(hq,oldCat)) return null;
+        return fetch(FB+"/MIGRATED/"+hqKey(hq)+"/"+catKey(newCat)+".json",{
+          method:"PUT",headers:{"Content-Type":"application/json"},body:"true"
+        }).catch(function(){}); // सिर्फ़ JE लिख सकता है; न लिख पाए तो भी डेटा तो पहुँच ही चुका
+      }).then(function(){
+        // अब पुराना हटाना सुरक्षित है — डेटा नए पते पर पहुँच चुका
+        return fetch(FB+"/"+fbPath(hq,oldCat)+".json",{method:"DELETE"}).catch(function(){});
+      }).then(function(){
+        if(isMigrated(hq,oldCat)){
+          fetch(FB+"/MIGRATED/"+hqKey(hq)+"/"+catKey(oldCat)+".json",{method:"DELETE"}).catch(function(){});
+          if(!MIGRATED[hqKey(hq)]) MIGRATED[hqKey(hq)]={};
+          MIGRATED[hqKey(hq)][catKey(newCat)]=true;
+          delete MIGRATED[hqKey(hq)][catKey(oldCat)];
+          try{localStorage.setItem(MIG_FLAG_KEY,JSON.stringify(MIGRATED));}catch(e){}
+        }
+        _moveLocalKeys(hq,oldCat,newCat);
+        _noteShape(hq,newCat,wasObj?{}:[]); // जो रूप भेजा वही अब सर्वर पर है
+        cb({ok:true,moved:n});
+      });
+    })
+    .catch(function(e){
+      logErr("catrename-move",e,hq+"/"+oldCat+" → "+newCat);
+      cb({ok:false,why:"net"});
+    });
+}
+// नाम बदलने से पहले JE को गिनती दिखा सकें — सिर्फ़ गिनती चाहिए, पूरा data नहीं, इसलिए
+// shallow=true: Firebase तब हर record की जगह सिर्फ़ {key:true} भेजता है (कहीं हल्का)
+function catRecordCount(hq,cat,cb){
+  if(!navigator.onLine){ cb(null); return; }
+  fetch(FB+"/"+fbPath(hq,cat)+".json?shallow=true&t="+Date.now())
+    .then(_fbJson)
+    .then(function(d){
+      trackUsageOf(d);
+      cb(!d?0:(Array.isArray(d)?d.filter(Boolean).length:Object.keys(d).length));
+    })
+    .catch(function(){ cb(null); });
+}
 
 var FB_GET_TIMEOUT_MS=8000; // टेस्ट में छोटा करके तेज़ जांच की जा सकती है
 function fbGet(hq,cat,cb){

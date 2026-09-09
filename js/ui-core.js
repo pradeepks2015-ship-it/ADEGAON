@@ -111,8 +111,9 @@ function goBack(){
     fbGet(activeHQ,activeCat,function(d){renderListWith(d);});
     return;
   }
-  if(activeCat!=="घरेलू"){
-    activeCat="घरेलू"; activeFilter="all";
+  // slot 1 का नाम अब JE बदल सकता है, इसलिए "घरेलू" hardcoded नहीं — मौजूदा नाम CATS[1] से लो
+  if(activeCat!==CATS[1]){
+    activeCat=CATS[1]; activeFilter="all";
     buildCatTabs();
     fbGet(activeHQ,activeCat,function(d){renderSummaryWith(d);renderListWith(d);});
     startListen(activeHQ,activeCat);
@@ -578,8 +579,9 @@ function buildCatTabs(){
     };
     b.textContent=CICO[i]+" "+cat;
     wrap.appendChild(b);
-    // Edit button — सिर्फ JE (supervisor) को, घरेलू/व्यवसाय/कृषि/कुल उपभोक्ता fixed
-    if(i!==0&&i!==1&&i!==2&&i!==3&&CU&&CU.role==="supervisor"){
+    // Edit button — सिर्फ JE (supervisor) को। सिर्फ़ "कुल उपभोक्ता" (0) fixed है, बाक़ी सब बदली
+    // जा सकती हैं (JE का अनुरोध: घरेलू/व्यवसाय/कृषि भी बदलने लायक हों)
+    if(isCatEditable(i)&&CU&&CU.role==="supervisor"){
       var slotKey="cat"+i;
       var e2=document.createElement("button");
       e2.textContent="✏️";
@@ -596,6 +598,11 @@ function buildCatTabs(){
 
 function openEditCat(i, slotKey){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE नाम बदल सकते हैं","err");return;}
+  if(!isCatEditable(i)){toast("यह श्रेणी बदली नहीं जा सकती","err");return;}
+  // नाम बदलना = Firebase पर डेटा का पता बदलना, और वह सिर्फ़ नेट रहते ही सुरक्षित हो सकता है।
+  // ऑफ़लाइन नाम बदलने देना सबसे ख़तरनाक है: नाम बदल जाता पर डेटा पुराने पते पर रह जाता, और
+  // अगली पढ़ाई में खाली सूची cache पर लिख जाती — इसलिए यहीं रोक देते हैं
+  if(!navigator.onLine){toast("📴 नाम बदलने के लिए नेट ज़रूरी है — डेटा भी नए नाम पर ले जाना पड़ता है","err");return;}
   var cur=CATS[i];
   var newName=prompt(activeHQ+" — श्रेणी का नया नाम डालें:",cur);
   if(!newName||!newName.trim()||newName.trim()===cur) return;
@@ -606,7 +613,33 @@ function openEditCat(i, slotKey){
     toast("⚠️ नाम में ये चिह्न न लिखें: . # $ [ ] /","err");
     return;
   }
-  var oldCat=CATS[i];
+  if(CATS.indexOf(newName)>-1){
+    toast("⚠️ इसी नाम की श्रेणी पहले से है — दोनों का डेटा एक ही जगह मिल जाएगा","err");
+    return;
+  }
+  var oldCat=cur;
+  // पहले गिनती दिखाकर पक्का पूछो — JE को पता रहे कि कितना डेटा हिलने वाला है
+  showLoader("गिनती देख रहे हैं...");
+  catRecordCount(activeHQ,oldCat,function(n){
+    hideLoader();
+    var msg=activeHQ+" — \""+oldCat+"\" का नाम \""+newName+"\" करें?\n\n";
+    msg+=(n==null?"⚠️ गिनती नहीं मिल पाई (नेट)।":(n?("इस श्रेणी के "+n+" records नए नाम पर ले जाए जाएँगे।"):"यह श्रेणी खाली है।"));
+    msg+="\n\nडेटा एक बार पढ़ा और एक बार लिखा जाएगा, और सभी फ़ोनों पर नई सूची जाएगी — इसलिए यह काम कम-ट्रैफ़िक समय पर करें (दोपहर 12:30 के बाद)।";
+    if(!confirm(msg)) return;
+    showLoader("डेटा नए नाम पर ले जाया जा रहा है...");
+    renameCatData(activeHQ,oldCat,newName,function(res){
+      hideLoader();
+      if(!res.ok){
+        toast(res.why==="offline"?"📴 नेट नहीं है — नाम नहीं बदला (डेटा सुरक्षित है)":"⚠️ डेटा नहीं ले जाया जा सका — नाम नहीं बदला, कुछ नहीं बिगड़ा","err");
+        return;
+      }
+      _finishCatRename(i,oldCat,newName,res.moved);
+    });
+  });
+}
+// डेटा नए पते पर पहुँच जाने के बाद ही नाम की अदला-बदली — तभी कोई भी device नए नाम पर
+// जाकर खाली सूची नहीं पाएगा
+function _finishCatRename(i,oldCat,newName,moved){
   // 1. Cache rename
   var d=cGet(activeHQ,oldCat);
   if(d&&d.length) cSet(activeHQ,newName,d);
@@ -617,12 +650,15 @@ function openEditCat(i, slotKey){
   saveCatNames();
   // 3. CATS rebuild + UI update immediately
   rebuildCatsForHQ(activeHQ);
-  if(activeCat===oldCat) activeCat=newName;
+  if(activeCat===oldCat){
+    activeCat=newName;
+    stopListen(); startListen(activeHQ,activeCat); // पुराने पते की live-लाइन बंद, नए की चालू
+  }
   buildCatTabs();
-  // 4. Firebase save — single PUT for this HQ's all cat names
+  // 4. Firebase save — इस HQ के सभी बदले हुए नाम एक ही PUT में
   var hqData={};
-  [4,5,6,7].forEach(function(idx){
-    if(CAT_NAMES[activeHQ]&&CAT_NAMES[activeHQ][idx]!=null){
+  CATS_DEFAULT.forEach(function(_,idx){
+    if(isCatEditable(idx)&&CAT_NAMES[activeHQ]&&CAT_NAMES[activeHQ][idx]!=null){
       hqData[idx]=CAT_NAMES[activeHQ][idx];
     }
   });
@@ -631,7 +667,7 @@ function openEditCat(i, slotKey){
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify(hqData)
   }).then(function(r){
-    if(r.ok){toast("✅ नाम बदला: "+newName+" (सभी को दिखेगा)","ok");return;}
+    if(r.ok){toast("✅ नाम बदला: "+newName+(moved?(" • "+moved+" records साथ गए"):"")+" (सभी को दिखेगा)","ok");return;}
     logErr("catname-save",new Error("HTTP "+r.status));
     if(r.status===401||r.status===403)
       toast("🔐 नाम server पर नहीं गया — JE नेट चालू रखकर logout करके दोबारा login करें","err");
