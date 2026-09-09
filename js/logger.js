@@ -218,6 +218,7 @@ function _dvRender(){
   fetch(FB+"/DEVICE_VERSIONS.json?t="+Date.now())
     .then(_fbJson)
     .then(function(d){
+      trackUsageOf(d);
       _DV_RAW=(d&&typeof d==="object")?d:{};
       _dvPaint();
       _dvAutoClean();
@@ -359,7 +360,7 @@ function refreshLogBadge(){
   var seen=_logSeenTs();
   var days=[0,1].map(function(off){return new Date(Date.now()-off*86400000).toISOString().slice(0,10);});
   Promise.all(days.map(function(day){
-    return fetch(FB+"/LOGS/"+day+".json?t="+Date.now()).then(_fbJson).catch(function(){return null;});
+    return fetch(FB+"/LOGS/"+day+".json?t="+Date.now()).then(_fbJson).then(function(d){trackUsageOf(d);return d;}).catch(function(){return null;});
   })).then(function(res){
     var count=0;
     res.forEach(function(d){
@@ -449,6 +450,7 @@ function fetchServerLogs(){
   Promise.all(days.map(function(day){
     return fetch(FB+"/LOGS/"+day+".json?t="+Date.now())
       .then(_fbJson)
+      .then(function(d){trackUsageOf(d);return d;})
       .catch(function(){return null;});
   })).then(function(res){
     var all=[];
@@ -465,6 +467,7 @@ function cleanupOldServerLogs(){
   fetch(FB+"/LOGS.json?shallow=true&t="+Date.now())
     .then(_fbJson)
     .then(function(d){
+      trackUsageOf(d);
       if(!d)return;
       var cutoff=new Date(Date.now()-15*86400000).toISOString().slice(0,10);
       Object.keys(d).forEach(function(day){

@@ -211,6 +211,7 @@
   "_usageRender",
   "_usageSumDay",
   "_usageWho",
+  "_utf8Len",
   "_vgBuildHQTabs",
   "_vgComputeRows",
   "_vgFiltered",

@@ -32,6 +32,7 @@ function loadProfilePhoto(cb){
   fetch(FB+"/PROFILE_PHOTOS/"+key+".json")
     .then(_fbJson)
     .then(function(d){
+      trackUsageOf(d); // फ़ोटो base64 में सहेजी जाती है, यानी कुछ दसियों KB — गिनना ज़रूरी
       _profilePhotoCache = d && d.photo ? d.photo : null;
       var dot=document.getElementById("udot");
       if(dot) _renderAvatarInto(dot);

@@ -334,6 +334,7 @@ function _cashRefreshAll(hqs,cb,force){
       .then(_fbJson)
       .then(function(d){
         clearTimeout(tm);
+        trackUsageOf(d); // स्कोरकार्ड/कैश का refresh — एक HQ की सभी 8 श्रेणियाँ, वह भी बिना ETag; सबसे भारी बचा हुआ रास्ता
         var data=normList(d);
         overlayOps(j.hq,j.cat,data);
         cSet(j.hq,j.cat,data);
