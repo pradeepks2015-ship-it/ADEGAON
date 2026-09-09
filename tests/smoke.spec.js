@@ -4429,6 +4429,112 @@ test.describe('श्रेणी/HQ नाम में "/" — नेस्ट
     expect(r.deleted).toBe(false); // लिखाई नाकाम रही तो पुराना डेटा हाथ भी न लगे
   });
 
+  // JE: "जो लिस्ट का नाम रीनेम कर रहा है वह अन्य 6 मुख्यालय में नहीं हो रहा" — नाम हर HQ का अपना
+  // है (/CAT_NAMES/{HQ}/{index}), इसलिए अब पूछकर सभी छह में लगाया जा सकता है
+  test('सभी मुख्यालयों में नाम लगे — हर HQ का अपना पुराना नाम अलग हो तो भी', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      // दो HQ में इस slot का नाम पहले से अलग-अलग है
+      CAT_NAMES['पिंडरई'] = { 6: 'पुराना-पिंडरई' };
+      CAT_NAMES['जोबा'] = { 6: 'सूची-2' };
+      rebuildCatsForHQ(activeHQ);
+      var moves = [], puts = [];
+      var oF = window.fetch, oP = window.prompt, oC = window.confirm, oCnt = window.catRecordCount, oMv = window.renameCatData;
+      window.prompt = () => 'एक-जैसा-नाम';
+      window.confirm = () => true;                      // "सभी 6 में" + पक्का, दोनों हाँ
+      window.catRecordCount = (hq, cat, cb) => cb(5);
+      window.renameCatData = (hq, oldCat, newCat, cb) => { moves.push(hq + '|' + oldCat); cb({ ok: true, moved: 5 }); };
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/CAT_NAMES/') > -1 && o && o.method === 'PUT') {
+          puts.push(String(u).replace(FB, ''));
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+        }
+        return oF(u, o);
+      };
+      openEditCat(6, 'cat6');
+      setTimeout(() => {
+        window.fetch = oF; window.prompt = oP; window.confirm = oC;
+        window.catRecordCount = oCnt; window.renameCatData = oMv;
+        resolve({ moves: moves, puts: puts.length,
+          names: HQS.map((h) => getCatName(h, 6)) });
+      }, 600);
+    }));
+    expect(r.moves.length).toBe(6);                                  // छहों का डेटा हिला
+    expect(r.moves).toContain('पिंडरई|पुराना-पिंडरई');                  // हर HQ का अपना पुराना नाम
+    expect(r.moves).toContain('जोबा|सूची-2');
+    expect(r.puts).toBe(6);                                          // हर HQ का अपना CAT_NAMES PUT
+    expect(r.names).toEqual(Array(6).fill('एक-जैसा-नाम'));            // छहों में एक ही नाम
+  });
+
+  test('"सिर्फ़ इस मुख्यालय में" चुनें तो बाक़ी पाँच को हाथ न लगे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var moves = [];
+      var oP = window.prompt, oC = window.confirm, oCnt = window.catRecordCount, oMv = window.renameCatData, oF = window.fetch;
+      var asked = 0;
+      window.prompt = () => 'सिर्फ-यहाँ';
+      window.confirm = () => (++asked === 1 ? false : true); // पहला सवाल (सभी 6?) = नहीं
+      window.catRecordCount = (hq, cat, cb) => cb(2);
+      window.renameCatData = (hq, oldCat, newCat, cb) => { moves.push(hq); cb({ ok: true, moved: 2 }); };
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/CAT_NAMES/') > -1 && o && o.method === 'PUT') return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+        return oF(u, o);
+      };
+      openEditCat(7, 'cat7');
+      setTimeout(() => {
+        window.prompt = oP; window.confirm = oC; window.catRecordCount = oCnt; window.renameCatData = oMv; window.fetch = oF;
+        resolve({ moves: moves, others: HQS.filter((h) => h !== activeHQ).map((h) => getCatName(h, 7)) });
+      }, 600);
+    }));
+    expect(r.moves).toEqual(['आदेगांव']);
+    expect(r.others).toEqual(Array(5).fill('सूची-3')); // बाक़ी पाँच जस के तस
+  });
+
+  test('किसी एक HQ में डेटा न पहुँचे तो सिर्फ़ उसी का नाम पुराना रहे (बाक़ी बदल जाएँ)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var oP = window.prompt, oC = window.confirm, oCnt = window.catRecordCount, oMv = window.renameCatData, oF = window.fetch;
+      window.prompt = () => 'नया-सबमें';
+      window.confirm = () => true;
+      window.catRecordCount = (hq, cat, cb) => cb(3);
+      window.renameCatData = (hq, oldCat, newCat, cb) => cb(hq === 'मढ़ी' ? { ok: false, why: 'net' } : { ok: true, moved: 3 });
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/CAT_NAMES/') > -1 && o && o.method === 'PUT') return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+        return oF(u, o);
+      };
+      openEditCat(6, 'cat6');
+      setTimeout(() => {
+        window.prompt = oP; window.confirm = oC; window.catRecordCount = oCnt; window.renameCatData = oMv; window.fetch = oF;
+        resolve({ madhi: getCatName('मढ़ी', 6), others: HQS.filter((h) => h !== 'मढ़ी').map((h) => getCatName(h, 6)) });
+      }, 700);
+    }));
+    expect(r.madhi).toBe('सूची-2');                          // नाकाम HQ का नाम नहीं बदला — डेटा दिखता रहेगा
+    expect(r.others).toEqual(Array(5).fill('नया-सबमें'));
+  });
+
+  test('किसी HQ में उसी नाम की दूसरी श्रेणी हो तो रुक जाए (दो सूचियाँ मिलने से बचाव)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      CAT_NAMES['बीबी'] = { 5: 'टकराव-नाम' };
+      var moved = 0;
+      var oP = window.prompt, oC = window.confirm, oMv = window.renameCatData;
+      window.prompt = () => 'टकराव-नाम';
+      window.confirm = () => true;                       // सभी 6 में
+      window.renameCatData = (hq, o2, n2, cb) => { moved++; cb({ ok: true, moved: 1 }); };
+      openEditCat(6, 'cat6');
+      setTimeout(() => {
+        window.prompt = oP; window.confirm = oC; window.renameCatData = oMv;
+        resolve({ moved: moved, txt: document.getElementById('toast').textContent });
+      }, 400);
+    }));
+    expect(r.moved).toBe(0);
+    expect(r.txt).toContain('पहले से है');
+  });
+
   test('ऑफ़लाइन नाम बदलने की कोशिश रुक जाए — डेटा हिलाया ही नहीं जा सकता', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
