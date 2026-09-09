@@ -172,6 +172,7 @@
   "_renderLimit",
   "_resetAuthFailForHQ",
   "_revertFixing",
+  "_runCatRenames",
   "_saveFailToast",
   "_saveJEHash",
   "_scBodyFromCache",
