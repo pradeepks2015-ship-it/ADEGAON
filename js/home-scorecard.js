@@ -314,7 +314,7 @@ function _cashRefreshAll(hqs,cb,force){
   var now=Date.now();
   hqs.forEach(function(hq){
     for(var i=0;i<CATS_DEFAULT.length;i++){
-      var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+      var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
       if(isPending(hq,cat)) continue; // pending offline बदलाव हों तो overwrite मत करो
       var key=hq+"/"+cat;
       if(!force&&_lastRefreshAt[key]&&(now-_lastRefreshAt[key])<_CASH_REFRESH_COOLDOWN_MS) continue; // हाल ही में ताज़ा हो चुका
@@ -360,7 +360,7 @@ function _applyCashMatched(hqs){
   var matched={},newly=0,already=0,tabsChanged=0,reconciled=0;
   hqs.forEach(function(hq){
     for(var i=0;i<CATS_DEFAULT.length;i++){
-      var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+      var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
       var d=cGet(hq,cat);
       if(!d||!d.length)continue;
       var prevSnap=JSON.parse(JSON.stringify(d));

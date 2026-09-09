@@ -113,7 +113,7 @@ function _dvActivity(sinceTs){
   };
   HQS.forEach(function(hq){
     for(var i=0;i<CATS_DEFAULT.length;i++){
-      var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+      var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
       (cGet(hq,cat)||[]).forEach(function(x){
         if(!x) return;
         // रिमार्क हर श्रेणी में अलग होते हैं — propagateStatus सिर्फ़ status/paydate copy करता है,

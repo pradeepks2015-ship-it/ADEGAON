@@ -179,7 +179,7 @@ function flushPending(){
   if(needCat){
     var reqs=Object.keys(CAT_NAMES).map(function(hq){
       var hqData={};
-      [4,5,6,7].forEach(function(i){if(CAT_NAMES[hq]&&CAT_NAMES[hq][i]!=null)hqData[i]=CAT_NAMES[hq][i];});
+      CATS_DEFAULT.forEach(function(_,i){if(isCatEditable(i)&&CAT_NAMES[hq]&&CAT_NAMES[hq][i]!=null)hqData[i]=CAT_NAMES[hq][i];});
       return fetch(FB+"/CAT_NAMES/"+hqKey(hq)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(hqData)});
     });
     Promise.all(reqs).then(function(){
@@ -219,7 +219,7 @@ function prefetchAll(force){
   var jobs=[];
   hqs.forEach(function(hq){
     for(var i=0;i<CATS_DEFAULT.length;i++){
-      jobs.push({hq:hq,cat:(i>=4)?getCatName(hq,i):CATS_DEFAULT[i]});
+      jobs.push({hq:hq,cat:isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i]});
     }
   });
   var idx=0,got=0;

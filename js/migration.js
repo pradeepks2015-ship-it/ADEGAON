@@ -51,7 +51,7 @@ function _migRunDryRun(){
   var jobs=[];
   HQS.forEach(function(hq){
     for(var i=0;i<CATS_DEFAULT.length;i++){
-      var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+      var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
       jobs.push({hq:hq,cat:cat});
     }
   });
