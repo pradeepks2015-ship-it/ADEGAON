@@ -234,17 +234,15 @@ try{
     <button class="tmpl-btn" onclick="dlTemplate()">&#11015; Template CSV डाउनलोड करें</button>
     <div class="up-sel2">
       <div class="fg" style="margin:0;"><label>HQ *</label>
-        <div class="sel-wrap" style="margin:0;"><select class="fs" id="up-hq" onchange="updateUpCounter()"></select></div>
+        <div class="sel-wrap" style="margin:0;"><select class="fs" id="up-hq" onchange="onUpHqChange()"></select></div>
       </div>
       <div class="fg" style="margin:0;"><label>Category *</label>
         <div class="sel-wrap" style="margin:0;">
-          <select class="fs" id="up-cat" onchange="updateUpCounter();onCatChange()">
-            <option value="">-- चुनें --</option>
-            <option>कुल उपभोक्ता</option>
-            <option>घरेलू</option><option>व्यवसाय</option><option>कृषि</option>
-            <option id="up-cat-4">गवर्नमेंट</option><option id="up-cat-5">इंडस्ट्रियल</option>
-            <option id="up-cat-6">सूची-2</option><option id="up-cat-7">सूची-3</option>
-          </select>
+          <!-- खाली — विकल्प js/upload.js का _buildUpCatOptions() चुने हुए मुख्यालय के मौजूदा
+               नामों से बनाता है। पहले ये यहीं hardcoded थे और सिर्फ़ 4-7 सिंक होते थे, इसलिए
+               बदले हुए घरेलू/व्यवसाय/कृषि यहाँ पुराने नाम से दिखते रहते थे, और HQ बदलने पर तो
+               किसी और मुख्यालय के नाम दिख जाते — यानी ग़लत पते पर अपलोड होने का ख़तरा -->
+          <select class="fs" id="up-cat" onchange="updateUpCounter();onCatChange()"></select>
         </div>
       </div>
     </div>
