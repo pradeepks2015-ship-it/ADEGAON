@@ -3196,6 +3196,18 @@ test.describe('error logging', () => {
   });
 });
 
+// Firebase का दैनिक quota US-Pacific आधी रात को रीसेट होता है, इसलिए v9.120 से ऐप उसी खिड़की का
+// दिन इस्तेमाल करता है (_usageQuotaDay), UTC का नहीं। ये टेस्ट पहले UTC दिन मानकर चलते थे और
+// इसीलिए सिर्फ़ घड़ी की मेहरबानी से पास होते थे — रोज़ 00:00 UTC से ~08:00 UTC के बीच (भारत में
+// सुबह 5:30 से दोपहर 1:30) दोनों तारीख़ें अलग होतीं और stub मेल न खाता। असली CI failure यही थी।
+// यहाँ वही दिन जान-बूझकर एक *अलग* रास्ते से निकाला गया है (toLocaleDateString), ताकि जाँच ऐप के
+// अपने function को दोहराकर गोल-गोल न हो जाए
+function quotaDay(offset) {
+  const d = new Date();
+  if (offset) d.setDate(d.getDate() - offset);
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+}
+
 test.describe('डेटा उपयोग (Firebase Blaze plan) — अनुमानित ट्रेंड ट्रैकिंग', () => {
   test('trackUsageBytes जमा होता है और _usageFlush /USAGE/{तारीख़} पर POST करके काउंटर रीसेट कर देता है', async ({ page }) => {
     await openApp(page);
@@ -3215,8 +3227,7 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
       _usageFlush();
       setTimeout(() => { window.fetch = orig; resolve({ posted: posted, remaining: _usageBytes }); }, 200);
     }));
-    const curDay = new Date().toISOString().slice(0, 10);
-    expect(result.posted.url).toContain('/USAGE/' + curDay);
+    expect(result.posted.url).toContain('/USAGE/' + quotaDay(0));
     expect(result.posted.body.b).toBe(800);
     expect(result.remaining).toBe(0);
   });
@@ -3232,11 +3243,10 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
   test('_usageRender — पिछले दिन से 50% से ज़्यादा बढ़ोतरी हो तो चेतावनी दिखे', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
-    await page.evaluate(() => new Promise((resolve) => {
+    await page.evaluate((curDay) => new Promise((resolve) => {
       const orig = window.fetch;
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('/USAGE/') > -1 && (!opts || !opts.method)) {
-          var curDay = new Date().toISOString().slice(0, 10);
           var isCur = url.indexOf('/USAGE/' + curDay) > -1;
           var data = isCur ? { a: { d: 'dev1', b: 3000000, t: Date.now() } } : { a: { d: 'dev1', b: 1000000, t: Date.now() } };
           return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
@@ -3245,7 +3255,7 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
       };
       _usageRender();
       setTimeout(() => { window.fetch = orig; resolve(); }, 300);
-    }));
+    }), quotaDay(0));
     await expect(page.locator('#usage-content')).toContainText('ज़्यादा डेटा इस्तेमाल हुआ');
   });
 
