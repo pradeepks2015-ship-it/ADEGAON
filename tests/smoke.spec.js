@@ -4130,6 +4130,89 @@ test.describe('लिस्ट अपलोड — सिर्फ़ JE का 
     expect(linemanBtns).not.toContain('अपलोड');
   });
 
+  // JE: "कैटेगरी में नए एडिट टेबल नाम तुरंत नहीं आ रहे हैं जिससे अपन उसमें अपलोड नहीं कर पा रहे"
+  // विकल्प index.html में hardcoded थे और सिर्फ़ slots 4-7 सिंक होते थे
+  test('अपलोड की श्रेणी-सूची बदले हुए नाम तुरंत दिखाए — घरेलू/व्यवसाय/कृषि समेत', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 1: 'घरेलू-नया', 3: 'कृषि-नई', 6: '3 MONTH NON PAYEE' };
+      rebuildCatsForHQ('आदेगांव');
+      activeHQ = 'आदेगांव';
+      openUpModal();
+      var opts = [].slice.call(document.querySelectorAll('#up-cat option')).map((o) => o.value);
+      closeUpModal();
+      return opts;
+    });
+    expect(r).toEqual(['', 'कुल उपभोक्ता', 'घरेलू-नया', 'व्यवसाय', 'कृषि-नई',
+      'गवर्नमेंट', 'इंडस्ट्रियल', '3 MONTH NON PAYEE', 'सूची-3']);
+  });
+
+  // इससे भी ख़तरनाक: modal के अपने HQ-चयन से दूसरा मुख्यालय चुनने पर नाम पिछले HQ के ही रहते —
+  // यानी "मढ़ी" चुनकर आदेगांव के नाम पर अपलोड हो जाता, यानी बिलकुल ग़लत पते पर
+  test('modal में मुख्यालय बदलते ही श्रेणी-नाम भी उसी मुख्यालय के हो जाएँ', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 6: 'आदेगांव-वाली' };
+      CAT_NAMES['मढ़ी'] = { 6: 'मढ़ी-वाली' };
+      activeHQ = 'आदेगांव'; rebuildCatsForHQ(activeHQ);
+      openUpModal();
+      var before = [].slice.call(document.querySelectorAll('#up-cat option')).map((o) => o.value);
+      document.getElementById('up-hq').value = 'मढ़ी';
+      onUpHqChange();
+      var after = [].slice.call(document.querySelectorAll('#up-cat option')).map((o) => o.value);
+      closeUpModal();
+      return { before: before, after: after };
+    });
+    expect(r.before).toContain('आदेगांव-वाली');
+    expect(r.after).toContain('मढ़ी-वाली');
+    expect(r.after).not.toContain('आदेगांव-वाली'); // पिछले HQ का नाम बचा न रह जाए
+  });
+
+  test('मुख्यालय बदलने पर वह चुनाव छूट जाए जो नए मुख्यालय में है ही नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 6: 'सिर्फ-आदेगांव' };
+      CAT_NAMES['बीबी'] = {};
+      activeHQ = 'आदेगांव'; rebuildCatsForHQ(activeHQ);
+      openUpModal();
+      document.getElementById('up-cat').value = 'सिर्फ-आदेगांव';
+      var picked = document.getElementById('up-cat').value;
+      document.getElementById('up-hq').value = 'बीबी';
+      onUpHqChange();
+      var after = document.getElementById('up-cat').value;
+      // पर जो नाम दोनों में एक जैसा है वह बचा रहना चाहिए
+      document.getElementById('up-cat').value = 'कृषि';
+      document.getElementById('up-hq').value = 'जोबा';
+      onUpHqChange();
+      var kept = document.getElementById('up-cat').value;
+      closeUpModal();
+      return { picked: picked, after: after, kept: kept };
+    });
+    expect(r.picked).toBe('सिर्फ-आदेगांव');
+    expect(r.after).toBe('');       // बीबी में वह श्रेणी है ही नहीं — चुनाव साफ़
+    expect(r.kept).toBe('कृषि');     // दोनों में है — बचा रहा
+  });
+
+  test('श्रेणी का नाम HTML जैसा हो तो भी सूची में टेक्स्ट ही रहे (markup न बने)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 6: '<img src=x onerror=alert(1)>' };
+      activeHQ = 'आदेगांव'; rebuildCatsForHQ(activeHQ);
+      openUpModal();
+      var sel = document.getElementById('up-cat');
+      var out = { imgs: sel.querySelectorAll('img').length,
+        txt: [].slice.call(sel.options).map((o) => o.textContent).join('|') };
+      closeUpModal();
+      return out;
+    });
+    expect(r.imgs).toBe(0);
+    expect(r.txt).toContain('<img src=x onerror=alert(1)>');
+  });
+
   test('openUpModal — lineman सीधे function बुलाए तो भी न खुले (defense-in-depth)', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);

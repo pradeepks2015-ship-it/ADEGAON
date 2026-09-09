@@ -27,21 +27,44 @@ function updateUpCounter(){
   }
 }
 
+// अपलोड वाली श्रेणी-सूची हमेशा *चुने हुए* मुख्यालय के मौजूदा नामों से बनाओ।
+// पहले ये विकल्प index.html में hardcoded थे और सिर्फ़ slots 4-7 सिंक होते थे — दो नतीजे:
+//   (क) v9.124 से घरेलू/व्यवसाय/कृषि भी बदले जा सकते हैं, पर यहाँ पुराने नाम ही दिखते रहते,
+//       इसलिए JE बदली हुई श्रेणी में लिस्ट अपलोड ही नहीं कर पाते थे;
+//   (ख) modal के अपने HQ-चयन से दूसरा मुख्यालय चुनने पर भी नाम पिछले HQ के ही रहते — यानी
+//       "मढ़ी" चुनकर आदेगांव के नाम पर अपलोड हो जाता, यानी ग़लत पते पर (यह ज़्यादा ख़तरनाक था)
+function _buildUpCatOptions(){
+  var hqSel=document.getElementById("up-hq");
+  var hq=(hqSel&&hqSel.value)||activeHQ;
+  var sel=document.getElementById("up-cat");
+  if(!sel) return;
+  var prev=sel.value;
+  sel.innerHTML="";
+  var o0=document.createElement("option"); o0.value=""; o0.textContent="-- चुनें --";
+  sel.appendChild(o0);
+  CATS_DEFAULT.forEach(function(_,i){
+    var name=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
+    var o=document.createElement("option");
+    // textContent/value — नाम JE का टाइप किया हुआ है, कभी HTML बनकर न जाए
+    o.value=name; o.textContent=name;
+    sel.appendChild(o);
+  });
+  // HQ बदलने पर पुराना चुनाव तभी बचाओ जब नए मुख्यालय में भी वही नाम मौजूद हो
+  sel.value=prev;
+  if(sel.value!==prev) sel.value="";
+}
+function onUpHqChange(){
+  _buildUpCatOptions();
+  onCatChange();
+  updateUpCounter();
+}
 function openUpModal(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE लिस्ट अपलोड कर सकते हैं","err");return;}
-  // Sync editable category names in upload dropdown
-  var o4=document.getElementById("up-cat-4");
-  var o5=document.getElementById("up-cat-5");
-  var o6=document.getElementById("up-cat-6");
-  var o7=document.getElementById("up-cat-7");
-  if(o4){ o4.textContent=CATS[4]; o4.value=CATS[4]; }
-  if(o5){ o5.textContent=CATS[5]; o5.value=CATS[5]; }
-  if(o6){ o6.textContent=CATS[6]; o6.value=CATS[6]; }
-  if(o7){ o7.textContent=CATS[7]; o7.value=CATS[7]; }
   var sel=document.getElementById("up-hq"); sel.innerHTML="";
   var hqs=CU.role==="supervisor"?HQS:[CU.hq];
   hqs.forEach(function(hq){var o=document.createElement("option");o.value=hq;o.textContent=hq;sel.appendChild(o);});
   sel.value=activeHQ;
+  _buildUpCatOptions(); // HQ तय होने के *बाद* — तभी सही मुख्यालय के नाम बनेंगे
   document.getElementById("up-cat").value=activeCat;
   var hint=document.getElementById("cat-hint");
   if(hint) hint.style.display="none";
@@ -101,19 +124,28 @@ function _upKeepCutoff(){
 function onCatChange(){
   var cat=document.getElementById("up-cat").value;
   var hint=document.getElementById("cat-hint");
+  // कौन-सा slot चुना गया — नाम से नहीं, *चुने हुए मुख्यालय* के नामों में ढूंढकर। पहले यहाँ
+  // CATS[6]/CATS[7] से तुलना होती थी, जो हमेशा मौजूदा HQ के नाम होते हैं; modal में दूसरा
+  // मुख्यालय चुना हो तो वह तुलना ग़लत slot बताती
+  var hqSel=document.getElementById("up-hq");
+  var hq=(hqSel&&hqSel.value)||activeHQ;
+  var slot=-1;
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    if((isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i])===cat){ slot=i; break; }
+  }
   // कुल उपभोक्ता के लिए auto Replace mode
-  if(cat==="कुल उपभोक्ता"||cat===CATS[0]){
+  if(slot===0){
     setUpMode("replace");
   }
   if(!hint) return;
-  if(cat==="कुल उपभोक्ता"){
+  if(slot===0){
     hint.style.display="block";
     hint.innerHTML="👥 <b>कुल उपभोक्ता</b> — अधिकतम <b>3500</b> records | <b>Net Bill/Amount optional</b> है<br>"+
       "जरूरी columns: <b>Consumer No</b> और <b>Consumer Name</b> बस काफी है";
-  } else if(cat==="सूची-2"||cat===CATS[6]){
+  } else if(slot===6){
     hint.style.display="block";
     hint.innerHTML="📋 <b>"+escHtml(cat)+"</b> — अधिकतम <b>1000</b> records | Consumer No, Name और Net Bill जरूरी";
-  } else if(cat==="सूची-3"||cat===CATS[7]){
+  } else if(slot===7){
     hint.style.display="block";
     hint.innerHTML="📌 <b>"+escHtml(cat)+"</b> — अधिकतम <b>1000</b> records | Consumer No, Name और Net Bill जरूरी";
   } else if(cat){
