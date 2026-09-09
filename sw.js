@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v144";
+var CACHE_NAME="adegaon-dc-v145";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -77,8 +77,18 @@ self.addEventListener("fetch",function(e){
       if(res && res.ok){
         var copy=res.clone();
         caches.open(CACHE_NAME).then(function(c){c.put(e.request,copy);});
+        return res;
       }
-      return res;
+      // सर्वर ने जवाब तो दिया, पर ग़लत (404/5xx) — पहले यह जवाब ज्यों का त्यों लौटा दिया जाता था,
+      // यानी वह error-पन्ना ही script बनकर चलता। नतीजा: उस फ़ाइल का कोई function बनता ही नहीं और
+      // बाक़ी ऐप "X is not defined" पर टूट जाती (असली production: v9.127 के deploy के दौरान
+      // "setSyncStatus is not defined")। नीचे वाला catch सिर्फ़ network *टूटने* पर चलता है, ग़लत
+      // status पर नहीं — यही छेद था। अब cache में जो सही प्रति पड़ी है वही दे देते हैं
+      return caches.match(e.request).then(function(m){
+        if(m) return m;
+        if(e.request.mode==="navigate") return caches.match("./").then(function(h){ return h||res; });
+        return res; // cache में भी कुछ नहीं — तब असली जवाब ही लौटाना पड़ेगा
+      });
     }).catch(function(){
       return caches.match(e.request).then(function(m){
         if(m) return m;

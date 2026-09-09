@@ -3059,6 +3059,49 @@ test.describe('PWA installable — manifest + icons', () => {
     expect(storageContent).toContain('vendor/papaparse.min.js');
   });
 
+  // असली production (v9.127 के deploy के दौरान): "setSyncStatus is not defined" — सर्वर ने
+  // js/ui-core.js के बदले कोई ग़लत जवाब (404/5xx) दिया और service worker उसे ज्यों का त्यों
+  // script बनाकर लौटा देता था, इसलिए उस फ़ाइल का कोई function बनता ही नहीं। नीचे वाला catch
+  // सिर्फ़ network *टूटने* पर चलता है, ग़लत status पर नहीं — यही छेद था।
+  // यहाँ sw.js का असली fetch-handler एक नक़ली scope में चलाकर उसका व्यवहार जांचा जाता है
+  // (सिर्फ़ source में शब्द ढूंढना काफ़ी नहीं — वह असल बर्ताव नहीं बताता)
+  test('sw.js — सर्वर ग़लत जवाब (404/5xx) दे तो cache वाली सही प्रति मिले, error-पन्ना script बनकर न चले', async () => {
+    const swSrc = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+    // नक़ली service-worker दुनिया
+    function run(netRes, cached, mode) {
+      let handler = null, answered = null;
+      const scope = {
+        addEventListener: (t, fn) => { if (t === 'fetch') handler = fn; },
+        skipWaiting: () => Promise.resolve(),
+        clients: { claim: () => Promise.resolve() },
+      };
+      const cachesStub = {
+        open: () => Promise.resolve({ put: () => Promise.resolve(), add: () => Promise.resolve() }),
+        keys: () => Promise.resolve([]),
+        match: (req) => Promise.resolve(cached[typeof req === 'string' ? req : req.url] || undefined),
+      };
+      new Function('self', 'caches', 'fetch', swSrc)(scope, cachesStub,
+        () => (netRes instanceof Error ? Promise.reject(netRes) : Promise.resolve(netRes)));
+      handler({
+        request: { url: 'https://x/js/ui-core.js', method: 'GET', mode: mode || 'no-cors' },
+        respondWith: (p) => { answered = p; },
+      });
+      return answered;
+    }
+    const good = { ok: true, body: 'सही script', clone: () => ({}) };
+    const bad = { ok: false, status: 404, body: 'ग़लत — error पन्ना' };
+    const cachedCopy = { ok: true, body: 'cache वाली सही प्रति' };
+
+    // 1. ठीक जवाब — वही मिले
+    expect((await run(good, {})).body).toBe('सही script');
+    // 2. ग़लत status पर cache वाली सही प्रति मिले (यही असली fix है)
+    expect((await run(bad, { 'https://x/js/ui-core.js': cachedCopy })).body).toBe('cache वाली सही प्रति');
+    // 3. cache में भी कुछ न हो — तब असली जवाब लौटे (चुपचाप undefined नहीं)
+    expect((await run(bad, {})).body).toBe('ग़लत — error पन्ना');
+    // 4. network पूरी तरह टूटे — पहले जैसा cache-fallback चलता रहे
+    expect((await run(new Error('offline'), { 'https://x/js/ui-core.js': cachedCopy })).body).toBe('cache वाली सही प्रति');
+  });
+
   test('sw.js — install atomic रहे: कोई भी CORE (js/*.js) फ़ाइल cache होने में नाकाम रहे तो पूरा install नाकाम माना जाए, सिर्फ़ OPTIONAL (icons/manifest) चुपचाप skip हों (bug: partial cache — कुछ js file cache हो जातीं कुछ नहीं, बाद में offline पड़े device पर "X is not defined" जैसी errors)', () => {
     const swContent = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
     const coreBlock = swContent.slice(swContent.indexOf('var CORE='), swContent.indexOf('var OPTIONAL='));
