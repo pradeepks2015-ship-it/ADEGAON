@@ -4816,6 +4816,45 @@ test.describe('डेटा उपयोग का मीटर — हर ड�
     expect(read('js/home-scorecard.js')).toContain('trackUsageOf(d)');
   });
 
+  // असली नाप: 12:29 IST पर ऐप 57.0 MB दिखा रहा था और Firebase Console 199.6 MB (एक ही
+  // quota-खिड़की का)। बचे हुए रास्ते यहाँ पकड़े गए — कोई भी दोबारा छूटे तो CI बता देगा
+  test('कोई भी पढ़ाई बिना गिनती के न बचे — हर fetch-GET पर trackUsageOf हो', async () => {
+    const root = path.join(__dirname, '..');
+    const need = {
+      'js/home-scorecard.js': ['trackUsageOf(d); // स्कोरकार्ड'], // सभी 8 श्रेणियाँ, बिना ETag
+      'js/profile.js': ['trackUsageOf(d); // फ़ोटो'],             // base64 फ़ोटो, दसियों KB
+      'js/config.js': ['trackUsageOf(d)'],                        // CAT_NAMES
+      'js/ui-core.js': ['trackUsageOf(d)'],                       // HQ_PIN
+    };
+    Object.keys(need).forEach((f) => {
+      const src = fs.readFileSync(path.join(root, f), 'utf8');
+      need[f].forEach((snip) => expect(src, f + ' में गिनती छूट गई').toContain(snip));
+    });
+    // LOGS की दोनों पढ़ाइयाँ + DEVICE_VERSIONS + LOGS-shallow
+    const lg = fs.readFileSync(path.join(root, 'js/logger.js'), 'utf8');
+    expect(lg.match(/trackUsageOf\(/g).length).toBeGreaterThanOrEqual(4);
+  });
+
+  // JS की .length UTF-16 इकाइयाँ गिनती है; देवनागरी का हर अक्षर UTF-8 में 3 बाइट लेता है।
+  // हमारे records नाम/पता/रिमार्क सब हिंदी में रखते हैं, इसलिए पुरानी गिनती असली आकार का
+  // ~60% ही दिखाती थी — मीटर के कम पड़ने की सबसे बड़ी अकेली वजह
+  test('गिनती असली UTF-8 बाइट की हो, JS अक्षरों की नहीं (हिंदी 3 गुना भारी है)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var out = {};
+      _usageBytes = 0; trackUsageOf('abc');            out.ascii = _usageBytes;
+      _usageBytes = 0; trackUsageOf('अआइ');            out.hindi = _usageBytes;
+      _usageBytes = 0; trackUsageOf({ n: 'आनंद' });     out.obj = _usageBytes;
+      out.objLen = JSON.stringify({ n: 'आनंद' }).length;
+      out.fn = _utf8Len('अ');
+      return out;
+    });
+    expect(r.ascii).toBe(3);       // ASCII — पहले जैसा
+    expect(r.hindi).toBe(9);       // 3 अक्षर × 3 बाइट, पहले 3 गिने जाते थे
+    expect(r.fn).toBe(3);
+    expect(r.obj).toBeGreaterThan(r.objLen); // object में भी असली आकार, .length से ज़्यादा
+  });
+
   test('दिन Firebase की खिड़की (US-Pacific) से गिना जाए, UTC से नहीं', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => {

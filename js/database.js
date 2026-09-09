@@ -236,7 +236,7 @@ function fbGet(hq,cat,cb){
         if(!r.ok) throw new Error("HTTP "+r.status);
         var _tag=r.headers.get("ETag");
         return r.json().then(function(d){
-          trackUsageBytes(JSON.stringify(d||"").length);
+          trackUsageOf(d);
           _noteShape(hq,cat,d);
           _checkMigrationRevert(hq,cat,d); // migrated list कहीं पुराने device ने वापस array में तो नहीं बदल दी
           var data=normList(d);
@@ -262,7 +262,7 @@ function fbGet(hq,cat,cb){
   fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:{"X-Firebase-ETag":"true"}})
     .then(function(r){ _tag0=r.headers.get("ETag"); return _fbJson(r); })
     .then(function(d){
-      trackUsageBytes(JSON.stringify(d||"").length);
+      trackUsageOf(d);
       _noteShape(hq,cat,d);
       _checkMigrationRevert(hq,cat,d);
       var data=normList(d);

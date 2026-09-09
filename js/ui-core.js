@@ -212,6 +212,7 @@ function fetchHQPinsFromFB(){
   fetch(FB+"/HQ_PIN.json?t="+Date.now())
     .then(_fbJson)
     .then(function(d){
+      trackUsageOf(d);
       if(d&&typeof d==="object"){
         var oldPin=CU?HQ_PINS[hqKey(CU.hq)]:null;
         HQ_PINS=d;
