@@ -330,14 +330,36 @@ function _cashRefreshAll(hqs,cb,force){
     var finned=false;
     function safeFin(){ if(finned)return; finned=true; fin(); }
     var tm=setTimeout(safeFin,_CASH_REFRESH_TIMEOUT_MS);
-    fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
-      .then(_fbJson)
+    // ETag के साथ — यह रास्ता एक HQ की सभी 8 श्रेणियाँ पढ़ता है और स्कोरकार्ड खोलने/HQ-tab बदलने
+    // पर बार-बार चलता है। JE को सभी 6 मुख्यालय दिखते हैं, इसलिए उनके device पर यही सबसे भारी खर्च
+    // था (असली नाप: JE के तीन device मिलकर पूरे DC का 36%)। ETag से जिस सूची में कुछ नहीं बदला
+    // उस पर Firebase खाली 304 भेजता है — डेटा पुराना नहीं होता, फ़ैसला सर्वर करता है: बदला हो तो
+    // पूरी नई सूची आती ही है। fbGet और prefetchAll में यह पहले से लगा था, बस यहाँ रह गया था
+    var _tag=null,_done304=false;
+    fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now(),{headers:_etagHeaders(j.hq,j.cat)})
+      .then(function(r){
+        if(r.status===304){ // कुछ नहीं बदला — cache पहले से सही है
+          _done304=true;
+          clearTimeout(tm);
+          _lastRefreshAt[j.key]=Date.now();
+          safeFin();
+          return null;
+        }
+        _tag=r.headers.get("ETag");
+        return _fbJson(r);
+      })
       .then(function(d){
+        // अलग झंडे से — "d खाली है" से नहीं। सूची सचमुच खाली हो जाए (सब records हटा दिए गए) तो
+        // Firebase 200 के साथ null भेजता है, और वह हालत 304 से बिल्कुल अलग है: तब cache खाली
+        // करना ज़रूरी है, वरना हटाई हुई सूची स्क्रीन पर बनी रहती
+        if(_done304) return;
         clearTimeout(tm);
-        trackUsageOf(d); // स्कोरकार्ड/कैश का refresh — एक HQ की सभी 8 श्रेणियाँ, वह भी बिना ETag; सबसे भारी बचा हुआ रास्ता
+        trackUsageOf(d);
+        _noteShape(j.hq,j.cat,d);
         var data=normList(d);
         overlayOps(j.hq,j.cat,data);
         cSet(j.hq,j.cat,data);
+        _etagSet(j.hq,j.cat,_tag); // cache लिखने के *बाद* ही — तभी अगली बार 304 पर भरोसा किया जा सकता है
         _lastRefreshAt[j.key]=Date.now();
         safeFin();
       })

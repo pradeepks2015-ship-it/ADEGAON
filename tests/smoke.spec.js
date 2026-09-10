@@ -2939,7 +2939,7 @@ test.describe('_cashRefreshAll — कमज़ोर नेटवर्क प�
           return new Promise(() => {}); // कभी resolve/reject नहीं होगा — अटकी हुई श्रेणी
         }
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ8') > -1) {
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };
@@ -3935,7 +3935,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ9') > -1) {
           fetchCount++;
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };
@@ -3959,7 +3959,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ10') > -1) {
           fetchCount++;
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };
@@ -4013,7 +4013,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('आदेगांव') > -1 && (!opts || !opts.method)) {
           fetchCount++;
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([]) }); // असली fetch जैसा सफल जवाब — तभी cooldown रिकॉर्ड होगा
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([]) }); // असली fetch जैसा सफल जवाब — तभी cooldown रिकॉर्ड होगा
         }
         return orig(url, opts);
       };
@@ -4933,6 +4933,82 @@ test.describe('डेटा उपयोग का मीटर — हर ड�
     expect(r.afterNull).toBe(12); // खाली जवाब ने कुछ नहीं जोड़ा
   });
 
+  // असली नाप (10 सितंबर, 07:15): JE के तीन device मिलकर पूरे DC का 36% — क्योंकि JE को सभी
+  // 6 मुख्यालय दिखते हैं और स्कोरकार्ड का हर HQ-tab उस HQ की आठों श्रेणियाँ पढ़ता है, वह भी
+  // बिना ETag। fbGet/prefetchAll में ETag पहले से था, बस यही रास्ता छूटा हुआ था
+  test('स्कोरकार्ड/कैश का refresh ETag भेजे, और 304 पर cache न छेड़े (डेटा पुराना भी न पड़े)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'आदेगांव', cat = 'कृषि';
+      cSet(hq, cat, [{ acc: '1', name: 'पुराना', amount: 5, status: 'pending' }]);
+      _etagSet(hq, cat, 'W/"tag-1"');
+      _lastRefreshAt = {};
+      var sent = null, mode = '304';
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath(hq, cat)) > -1) {
+          sent = (o && o.headers) ? o.headers['if-none-match'] : null;
+          if (mode === '304') return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+          return Promise.resolve({ status: 200, ok: true, headers: { get: () => 'W/"tag-2"' },
+            json: () => Promise.resolve([{ acc: '1', name: 'नया', amount: 9, status: 'paid' }]) });
+        }
+        return orig(u, o);
+      };
+      _cashRefreshAll([hq], function () {
+        var after304 = { sent: sent, name: (cGet(hq, cat)[0] || {}).name };
+        // अब सर्वर पर सचमुच बदलाव — पूरी नई सूची आनी ही चाहिए
+        mode = '200'; _lastRefreshAt = {};
+        _cashRefreshAll([hq], function () {
+          window.fetch = orig;
+          resolve({ after304: after304,
+            after200: { name: (cGet(hq, cat)[0] || {}).name, status: (cGet(hq, cat)[0] || {}).status },
+            newTag: _etagAll()[hq + '/' + cat] });
+        }, true);
+      }, true);
+    }));
+    expect(r.after304.sent).toBe('W/"tag-1"'); // निशान भेजा गया
+    expect(r.after304.name).toBe('पुराना');     // 304 — cache जस की तस, बेवजह नहीं छेड़ी
+    expect(r.after200.name).toBe('नया');        // बदला हो तो ताज़ा डेटा आता ही है
+    expect(r.after200.status).toBe('paid');
+    expect(r.newTag).toBe('W/"tag-2"');         // और नया निशान सहेजा गया
+  });
+
+  test('सूची सचमुच खाली हो जाए तो cache भी खाली हो (304 और "खाली जवाब" अलग-अलग पहचाने जाएँ)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'बीबी', cat = 'कृषि';
+      cSet(hq, cat, [{ acc: '1', name: 'क', amount: 5, status: 'pending' }]);
+      _lastRefreshAt = {};
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath(hq, cat)) > -1) {
+          // सब records हटा दिए गए — Firebase 200 के साथ null भेजता है (304 नहीं)
+          return Promise.resolve({ status: 200, ok: true, headers: { get: () => null }, json: () => Promise.resolve(null) });
+        }
+        return orig(u, o);
+      };
+      _cashRefreshAll([hq], function () {
+        window.fetch = orig;
+        resolve({ len: cGet(hq, cat).length });
+      }, true);
+    }));
+    expect(r.len).toBe(0); // हटाई हुई सूची स्क्रीन पर बनी न रहे
+  });
+
+  // चरण 3 पर ETag जान-बूझकर नहीं — 304 का मतलब होता cache से जांचना, पर cache normList() से
+  // गुज़री सादी array है: उससे न "सर्वर पर array था या object" पक्का होता, न duplicate acc
+  // (object दोबारा बनाने पर वे आपस में मिलकर ग़ायब हो जाते)। यानी चरण 3 ठीक वही गड़बड़ी छिपा
+  // देता जिसे पकड़ने के लिए वह बना है
+  test('चरण 3 की जांच हमेशा सर्वर का कच्चा सच पढ़े — वहाँ ETag न लगे', async () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'migration.js'), 'utf8');
+    const dry = src.slice(src.indexOf('function _migRunDryRun'), src.indexOf('function _migRender'));
+    expect(dry).not.toContain('_etagHeaders');
+    expect(dry).not.toContain('if-none-match');
+    expect(dry).toContain('trackUsageOf(d)'); // भारी है, पर मीटर में गिना जाता है — छिपा नहीं
+  });
+
   test('सभी भारी डाउनलोड रास्तों पर गिनती लगी हो (SSE/prefetch/चरण-3 छूटे नहीं)', async () => {
     const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
     expect(read('js/database.js')).toContain('trackUsageOf(d); // SSE');       // live sync — सबसे भारी
@@ -4947,7 +5023,7 @@ test.describe('डेटा उपयोग का मीटर — हर ड�
   test('कोई भी पढ़ाई बिना गिनती के न बचे — हर fetch-GET पर trackUsageOf हो', async () => {
     const root = path.join(__dirname, '..');
     const need = {
-      'js/home-scorecard.js': ['trackUsageOf(d); // स्कोरकार्ड'], // सभी 8 श्रेणियाँ, बिना ETag
+      'js/home-scorecard.js': ['trackUsageOf(d); // होम बोर्ड'], // होम बोर्ड की पढ़ाई (कैश-refresh वाली अब ETag के साथ है, नीचे अलग टेस्ट में जांची जाती है)
       'js/profile.js': ['trackUsageOf(d); // फ़ोटो'],             // base64 फ़ोटो, दसियों KB
       'js/config.js': ['trackUsageOf(d)'],                        // CAT_NAMES
       'js/ui-core.js': ['trackUsageOf(d)'],                       // HQ_PIN
