@@ -4778,16 +4778,109 @@ test.describe('database.rules.json — DEVICE_VERSIONS को पूरी त�
 });
 
 test.describe('database.rules.json — $other catch-all बहुत ढीला था (bug: LOGS/USAGE/PROFILE_PHOTOS कहीं explicit नहीं थे, "$other": auth != null के तहत कोई भी anonymous device मनमाना नया top-level path बनाकर junk data भर सकता था — storage/bandwidth abuse का खतरा)', () => {
-  test('LOGS/USAGE/PROFILE_PHOTOS का अपना explicit rule हो (हर लॉगिन-किया device खुद अपना diagnostic/profile data लिख सके), और $other पूरी तरह बंद (false) हो', () => {
+  test('LOGS/USAGE/PROFILE_PHOTOS का अपना explicit rule हो, और $other पूरी तरह बंद (false) हो', () => {
     const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
     ['LOGS', 'USAGE', 'PROFILE_PHOTOS'].forEach((key) => {
       const rule = rules.rules[key];
       expect(rule, key + ' का अपना top-level rule होना चाहिए — $other के भरोसे नहीं').toBeTruthy();
-      expect(rule['.read']).toBe('auth != null');
-      expect(rule['.write']).toBe('auth != null');
     });
     expect(rules.rules.$other['.read']).toBe(false);
     expect(rules.rules.$other['.write']).toBe(false);
+  });
+});
+
+// पहले तीनों rules सिर्फ़ ".read"/".write": "auth != null" थीं — यानी हर device (anonymous समेत)
+// इन तीनों पूरे पेड़ों का मालिक था: LOGS/USAGE की कोई भी दिन-फ़ाइल मिटा सकता था (JE का पूरा
+// diagnostic इतिहास एक DELETE में ग़ायब), किसी और की profile-फ़ोटो उसकी key पर लिखकर बदल सकता
+// था (JE_... समेत), और चूंकि कोई size-cap नहीं था, एक ही record में मनमाने MB भरकर free plan की
+// 1 GB जगह/360 MB रोज़ाना quota चूस सकता था — यानी सबके लिए ऐप बंद। अब: बनाना सबके लिए खुला
+// (नई log/usage entry), पर बदलना/मिटाना सिर्फ़ JE के लिए, और हर field पर लंबाई की सीमा।
+test.describe('database.rules.json — LOGS/USAGE अब append-only हों (bug: कोई भी anonymous device पूरे LOGS/USAGE मिटा सकता था और असीमित बड़ा record लिखकर free-plan की जगह भर सकता था)', () => {
+  const readRules = () => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+  const JE = "auth.token.email === 'pradeepks2015@gmail.com'";
+
+  ['LOGS', 'USAGE'].forEach((key) => {
+    test(key + ' — पेड़ के ऊपर सिर्फ़ JE (मिटाना/बदलना), नई entry हर device बना सके पर मौजूदा को छू न सके', () => {
+      const rule = readRules()[key];
+      // पूरा दिन मिटाना (cleanupOldServerLogs / clearServerLogs / _usageCleanupOld) — तीनों
+      // सिर्फ़ JE-only modal से चलते हैं, इसलिए ऊपर का .write JE तक सीमित करना सुरक्षित है
+      expect(rule['.write']).toBe(JE);
+      expect(rule['.read']).toBe(JE); // पढ़ने वाले सारे रास्ते (log/usage viewer) पहले से JE-only हैं
+      const idRule = rule.$day && rule.$day.$id;
+      expect(idRule, key + '/$day/$id का rule होना चाहिए — POST यहीं गिरता है').toBeTruthy();
+      // "auth != null" ही रहे (non-anonymous नहीं) — logErr login से पहले भी चलता है, तब device
+      // firebase.js के signInAnonymously वाले session पर होता है; वरना असली शुरुआती errors छूट जातीं
+      expect(idRule['.write']).toContain('auth != null');
+      expect(idRule['.write']).toContain('!data.exists()');  // मौजूदा entry पर दोबारा न लिख सके
+      expect(idRule['.write']).toContain('newData.exists()'); // और अकेली entry मिटा भी न सके
+    });
+  });
+
+  test('LOGS की हर entry के हर field पर लंबाई की सीमा हो (logErr खुद m को 300 और x को 200 पर काटता है — rule उससे ढीली न हो जाए)', () => {
+    const f = readRules().LOGS.$day.$id.$f;
+    expect(f, 'LOGS/$day/$id/$f पर .validate होना चाहिए').toBeTruthy();
+    expect(f['.validate']).toContain('newData.isString()');
+    const cap = /length <= (\d+)/.exec(f['.validate']);
+    expect(cap, 'field की लंबाई पर स्पष्ट सीमा होनी चाहिए').toBeTruthy();
+    expect(Number(cap[1])).toBeGreaterThanOrEqual(300); // logErr का सबसे बड़ा field (m) कट कर 300 का होता है
+    expect(Number(cap[1])).toBeLessThanOrEqual(1000);
+  });
+
+  test('USAGE की entry में सिर्फ़ d/n/b/t चलें (b संख्या हो, ऋणात्मक नहीं) — बाक़ी कोई field न घुस सके', () => {
+    const idRule = readRules().USAGE.$day.$id;
+    expect(idRule['.validate']).toContain("newData.hasChildren(['b'])");
+    expect(idRule.b['.validate']).toContain('isNumber');
+    expect(idRule.b['.validate']).toContain('>= 0'); // ऋणात्मक bytes डालकर JE का कोटा-मीटर झूठा न कर सके
+    expect(idRule.t['.validate']).toContain('isNumber');
+    expect(idRule.d['.validate']).toContain('length <=');
+    expect(idRule.n['.validate']).toContain('length <=');
+    expect(idRule.$f['.validate']).toBe(false); // अनजान field = सीधे मना
+  });
+});
+
+test.describe('database.rules.json — PROFILE_PHOTOS पर मालिकाना और size-cap (bug: कोई भी device किसी की भी फ़ोटो-key पर लिख सकता था — JE_... समेत — और base64 में कितने भी MB भर सकता था)', () => {
+  const readRules = () => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+
+  test('हर HQ का account सिर्फ़ अपने ही HQ के prefix वाली key लिख सके (लाइनमैन-खाते HQ-वार साझा हैं, इसलिए इससे बारीक पहचान संभव ही नहीं) — पढ़ना सबके लिए खुला रहे', () => {
+    const rules = readRules();
+    const pp = rules.PROFILE_PHOTOS;
+    expect(pp['.read']).toBe('auth != null'); // हर device app खुलते ही अपनी फ़ोटो पढ़ता है
+    expect(pp['.write'], 'पूरे PROFILE_PHOTOS पर खुला .write नहीं रहना चाहिए').toBeUndefined();
+    const w = pp.$key && pp.$key['.write'];
+    expect(w, 'PROFILE_PHOTOS/$key पर .write होना चाहिए').toBeTruthy();
+    expect(w).toContain("auth.token.email === 'pradeepks2015@gmail.com'"); // JE सब ठीक कर सके
+    // हर HQ के लिए एक जोड़ी: उसी HQ का uid + उसी HQ के नाम वाला key-prefix
+    const HQS = ['आदेगांव', 'पिंडरई', 'जोबा', 'पाटन', 'बीबी', 'मढ़ी'];
+    HQS.forEach((hq) => {
+      const uid = /auth\.uid === '([^']+)'/.exec(rules[hq]['.read'])[1];
+      expect(w, hq + ' के uid + prefix की जोड़ी होनी चाहिए')
+        .toContain("(auth.uid === '" + uid + "' && $key.beginsWith('" + hq + "_'))");
+    });
+    // profile.js का _profileKey() JE के लिए "JE_" prefix बनाता है — किसी HQ-prefix से मेल नहीं
+    // खाता, इसलिए कोई लाइनमैन-खाता JE की फ़ोटो नहीं बदल सकता
+    expect(w).not.toContain("$key.beginsWith('JE_')");
+  });
+
+  test('फ़ोटो का आकार rule से बंधा हो — profile.js 160×160 JPEG (कुछ KB) भेजता है, सीमा उससे कहीं ऊपर पर फिर भी सीमित', () => {
+    const k = readRules().PROFILE_PHOTOS.$key;
+    expect(k['.validate']).toContain("newData.hasChildren(['photo'])");
+    const cap = /length <= (\d+)/.exec(k.photo['.validate']);
+    expect(cap, 'photo पर स्पष्ट लंबाई-सीमा होनी चाहिए').toBeTruthy();
+    expect(Number(cap[1])).toBeLessThanOrEqual(200000); // ~200 KB base64 से ज़्यादा कभी नहीं
+    expect(Number(cap[1])).toBeGreaterThanOrEqual(20000); // असली फ़ोटो (~10 KB base64) आराम से आ जाए
+    expect(k.ts['.validate']).toContain('isNumber');
+    expect(k.$f['.validate']).toBe(false);
+  });
+
+  test('profile.js जो fields भेजता है वही rule में allowed हों (कोई field छूट जाए तो पूरा PUT rule से रुक जाएगा)', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'profile.js'), 'utf8');
+    const body = /JSON\.stringify\(\{([^}]*)\}\)/.exec(src.slice(src.indexOf('PROFILE_PHOTOS/"+key')));
+    expect(body, 'profile.js में PUT का body मिलना चाहिए').toBeTruthy();
+    const fields = body[1].split(',').map((s) => s.split(':')[0].trim());
+    const k = readRules().PROFILE_PHOTOS.$key;
+    fields.forEach((f) => {
+      expect(k[f], 'rule में "' + f + '" के लिए .validate होना चाहिए, वरना $f: false इसे रोक देगा').toBeTruthy();
+    });
   });
 });
 
