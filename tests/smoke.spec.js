@@ -4902,6 +4902,98 @@ test.describe('Firebase Rules — auto-deploy पाइपलाइन (bug: JE 
   });
 });
 
+test.describe('downloadPDF/downloadExcel — ऊपर चुना filter (सभी/बाकी/वसूल) मानें (bug: "कुल उपभोक्ता" tab पर "बाकी" filter चुने होने पर भी PDF/Excel में पूरी unfiltered list उतरती थी — स्क्रीन पर जो दिख रहा था उससे download मेल नहीं खाता था)', () => {
+  test('downloadPDF — "बाकी" filter चुना हो तो सिर्फ़ pending records PDF में जाएं, "वसूल" वाले छूट जाएं', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', amount: 100 },
+        { acc: '2', name: 'श्याम', status: 'pending', amount: 200 },
+      ]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'pending';
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadPDF();
+    }));
+    expect(html).toContain('श्याम');
+    expect(html).not.toContain('राम');
+    expect(html).toContain('सूची: <b>बाकी</b>'); // हेडर में साफ़ दिखे कि यह पूरी सूची नहीं, फ़िल्टर की हुई है
+  });
+
+  test('downloadPDF — "वसूल" filter चुना हो तो सिर्फ़ paid records आएं', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', amount: 100 },
+        { acc: '2', name: 'श्याम', status: 'pending', amount: 200 },
+      ]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'paid';
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadPDF();
+    }));
+    expect(html).toContain('राम');
+    expect(html).not.toContain('श्याम');
+  });
+
+  test('downloadPDF — "सभी" filter में पुराना व्यवहार वैसा ही रहे (सब records आएं, हेडर में filter-लेबल न जुड़े)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', amount: 100 },
+        { acc: '2', name: 'श्याम', status: 'pending', amount: 200 },
+      ]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'all';
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadPDF();
+    }));
+    expect(html).toContain('राम');
+    expect(html).toContain('श्याम');
+    expect(html).not.toContain('सूची: <b>');
+  });
+
+  test('downloadExcel — फ़िल्टर की हुई rows ही sheet में जाएं, filter नाम फ़ाइल/sheet-नाम में जुड़े', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', amount: 100 },
+        { acc: '2', name: 'श्याम', status: 'pending', amount: 200 },
+      ]);
+    });
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'pending';
+      var sheet = null;
+      window.XLSX = {
+        utils: {
+          book_new: function () { return { SheetNames: [], Sheets: {} }; },
+          aoa_to_sheet: function (a) { sheet = a; return { rows: a }; },
+          book_append_sheet: function (wb, ws, nm) { wb.SheetNames.push(nm); wb.Sheets[nm] = ws; },
+        },
+        writeFile: function (wb, fname) { resolve({ sheetName: wb.SheetNames[0], fname: fname, rows: sheet }); },
+      };
+      downloadExcel();
+    }));
+    expect(r.rows.length).toBe(2); // header + 1 filtered record
+    expect(r.rows[1][3]).toBe('2'); // श्याम का acc — राम (paid) नहीं आया
+    expect(r.sheetName).toContain('बाकी');
+    expect(r.fname).toContain('बाकी');
+  });
+});
+
 test.describe('XSS सुरक्षा — PDF/print export और दिनांक-वार तालिका (bug: consumer name/remarks — जिसमें remarks लाइनमैन का free-typed text है — बिना escHtml के document.write()/innerHTML में जाकर असली स्क्रिप्ट चला सकते थे)', () => {
   test('downloadPDF (upload.js) — consumer name और remarks में स्क्रिप्ट-जैसा टेक्स्ट हो तो PDF-HTML में escape होकर जाए, असली <script>/<img onerror> न बचे', async ({ page }) => {
     await openApp(page);

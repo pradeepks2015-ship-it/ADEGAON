@@ -425,8 +425,18 @@ function _doSave(hq,cat,arr){
   },300);
 }
 
-function downloadExcel(){
+// ऊपर जो filter बटन (सभी/बाकी/वसूल) चुना है, download भी उसी को माने — पहले यहां हमेशा
+// activeCat की पूरी (unfiltered) list जाती थी, यानी "बाकी" पर होते हुए भी PDF/Excel में
+// वसूल-वाले भी आ जाते थे। असली bug यही था — स्क्रीन पर जो दिख रहा है वही download होना चाहिए।
+function _filteredForDownload(){
   var data=cGet(activeHQ,activeCat);
+  if(activeFilter==="all") return data;
+  return data.filter(function(x){return x.status===activeFilter;});
+}
+var _FILTER_LABEL={all:"सभी",pending:"बाकी",paid:"वसूल"};
+
+function downloadExcel(){
+  var data=_filteredForDownload();
   if(!data.length){toast("कोई data नहीं","err");return;}
   if(typeof XLSX==="undefined"){ensureLibs();toast("📴 Excel download के लिए इन्टरनेट चाहिए","err");return;}
   var rows=[["क्र.","नाम","पिता/पति","Consumer No","बकाया","Tariff","Load","Unit","Mobile","पता","स्थिति","भुगतान तिथि","पिछला भुगतान","पिछला तिथि","रिमार्क (सभी)","अपडेट by"]];
@@ -437,13 +447,14 @@ function downloadExcel(){
   var ws=XLSX.utils.aoa_to_sheet(rows);
   ws["!cols"]=[{wch:4},{wch:20},{wch:18},{wch:14},{wch:10},{wch:8},{wch:8},{wch:6},{wch:13},{wch:18},{wch:8},{wch:13},{wch:12},{wch:13},{wch:35},{wch:14}];
   var wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,activeHQ+"_"+activeCat);
-  XLSX.writeFile(wb,activeHQ+"_"+activeCat+"_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx");
+  var tag=activeHQ+"_"+activeCat+(activeFilter!=="all"?"_"+_FILTER_LABEL[activeFilter]:"");
+  XLSX.utils.book_append_sheet(wb,ws,tag.slice(0,31)); // sheet-नाम 31 अक्षर से ज़्यादा नहीं हो सकता
+  XLSX.writeFile(wb,tag+"_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx");
   toast("📊 Excel download!","ok");
 }
 
 function downloadPDF(){
-  var data=cGet(activeHQ,activeCat);
+  var data=_filteredForDownload();
   if(!data.length){toast("कोई data नहीं","err");return;}
   var paid=data.filter(function(x){return x.status==="paid";});
   var pending=data.filter(function(x){return x.status!=="paid";});
@@ -477,7 +488,9 @@ function downloadPDF(){
     "table{width:100%;border-collapse:collapse;}th{background:#1a237e;color:#fff;padding:5px;}"+
     "@media print{.np{display:none}}</style></head><body>"+
     "<h2>आदेगांव DC वसूली रिपोर्ट</h2>"+
-    "<p>HQ: <b>"+escHtml(activeHQ)+"</b> | Category: <b>"+escHtml(activeCat)+"</b> | दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+escHtml(CU.name)+"</p>"+
+    "<p>HQ: <b>"+escHtml(activeHQ)+"</b> | Category: <b>"+escHtml(activeCat)+"</b>"+
+      (activeFilter!=="all"?" | सूची: <b>"+_FILTER_LABEL[activeFilter]+"</b>":"")+
+      " | दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+escHtml(CU.name)+"</p>"+
     "<div class='info'>"+
       "<div class='ib'><b>"+data.length+"</b>कुल</div>"+
       "<div class='ib'><b style='color:green'>"+paid.length+"</b>वसूल</div>"+
