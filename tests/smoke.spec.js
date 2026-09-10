@@ -4994,6 +4994,36 @@ test.describe('downloadPDF/downloadExcel — ऊपर चुना filter (स�
   });
 });
 
+test.describe('downloadPDF — कॉलम एलाइनमेंट (bug: table-layout auto होने से content के हिसाब से हर कॉलम की चौड़ाई पेज-दर-पेज बदलती थी, नाम/मोबाइल जैसे कॉलम header से मेल नहीं खाते दिखते थे)', () => {
+  test('table-layout:fixed हो, हर <th> पर width% तय हो, रिमार्क को सबसे ज़्यादा चौड़ाई मिले, और नाम/मोबाइल जैसे कॉलम center-aligned हों', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', phone: '9999999999', father: 'श्याम', status: 'pending', amount: 100 }]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'all';
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadPDF();
+    }));
+    expect(html).toContain('table-layout:fixed');
+    expect(html).toMatch(/<th style='width:13%'>नाम<\/th>/);
+    expect(html).toMatch(/<th style='width:10%'>Mobile<\/th>/);
+    // रिमार्क की चौड़ाई बाक़ी किसी भी data-कॉलम से ज़्यादा हो
+    const widths = [...html.matchAll(/<th style='width:(\d+)%'>/g)].map((m) => Number(m[1]));
+    const rmkWidth = /<th style='width:(\d+)%'>रिमार्क<\/th>/.exec(html);
+    expect(rmkWidth).toBeTruthy();
+    expect(Number(rmkWidth[1])).toBe(Math.max(...widths));
+    // data row में नाम/मोबाइल सेल center-aligned हों (header से मेल खाकर दिखें)
+    expect(html).toContain("text-align:center;font-weight:600;'>राम<");
+    expect(html).toContain("text-align:center;color:#333;'>9999999999<");
+    // दो-लाइन वाले सेल पड़ोसी row में न घुसें, इसलिए हर td top-aligned हो
+    expect(html).toContain('vertical-align:top');
+  });
+});
+
 test.describe('XSS सुरक्षा — PDF/print export और दिनांक-वार तालिका (bug: consumer name/remarks — जिसमें remarks लाइनमैन का free-typed text है — बिना escHtml के document.write()/innerHTML में जाकर असली स्क्रिप्ट चला सकते थे)', () => {
   test('downloadPDF (upload.js) — consumer name और remarks में स्क्रिप्ट-जैसा टेक्स्ट हो तो PDF-HTML में escape होकर जाए, असली <script>/<img onerror> न बचे', async ({ page }) => {
     await openApp(page);

@@ -467,25 +467,33 @@ function downloadPDF(){
     var allRmk=(x.remarksArr||[]).map(function(r){return escHtml(r.text)+" <small>("+escHtml(r.by)+")</small>";}).join("<br>");
     return "<tr style='border-bottom:1px solid #ddd;background:"+(i%2===0?"#fff":"#f9f9f9")+";'>"+
       "<td style='padding:5px;text-align:center;'>"+(i+1)+"</td>"+
-      "<td style='padding:5px;font-weight:600;'>"+escHtml(x.name)+"</td>"+
-      "<td style='padding:5px;color:#555;'>"+escHtml(x.father||"-")+"</td>"+
-      "<td style='padding:5px;color:#1565c0;'>"+escHtml(x.acc)+"</td>"+
-      "<td style='padding:5px;color:#333;'>"+escHtml(x.phone||"-")+"</td>"+
+      "<td style='padding:5px;text-align:center;font-weight:600;'>"+escHtml(x.name)+"</td>"+
+      "<td style='padding:5px;text-align:center;color:#555;'>"+escHtml(x.father||"-")+"</td>"+
+      "<td style='padding:5px;text-align:center;color:#1565c0;'>"+escHtml(x.acc)+"</td>"+
+      "<td style='padding:5px;text-align:center;color:#333;'>"+escHtml(x.phone||"-")+"</td>"+
       "<td style='padding:5px;text-align:right;font-weight:700;'>₹"+Number(x.amount).toLocaleString("hi-IN")+"</td>"+
-      "<td style='padding:5px;'>"+escHtml(x.tariff||"-")+"</td>"+
-      "<td style='padding:5px;'>"+escHtml(x.load||"-")+"</td>"+
+      "<td style='padding:5px;text-align:center;'>"+escHtml(x.tariff||"-")+"</td>"+
+      "<td style='padding:5px;text-align:center;'>"+escHtml(x.load||"-")+"</td>"+
       "<td style='padding:5px;text-align:center;font-weight:700;color:"+(isPaid?"#2e7d32":"#c62828")+"'>"+
         (isPaid?"✓ वसूल":"✗ बाकी")+(x.paydate?"<br><small>"+escHtml(x.paydate)+"</small>":"")+
       "</td>"+
-      "<td style='padding:5px;background:"+(allRmk?"#fff8e1":"")+"'>"+(allRmk||"-")+"</td>"+
-      "<td style='padding:5px;font-size:10px;color:#555;'>"+(x.lastPaidAmt?"₹"+escHtml(String(x.lastPaidAmt))+(x.lastPayDate?"<br>"+escHtml(x.lastPayDate):""): "-")+"</td>"+
+      "<td style='padding:5px;text-align:left;background:"+(allRmk?"#fff8e1":"")+"'>"+(allRmk||"-")+"</td>"+
+      "<td style='padding:5px;text-align:center;font-size:10px;color:#555;'>"+(x.lastPaidAmt?"₹"+escHtml(String(x.lastPaidAmt))+(x.lastPayDate?"<br>"+escHtml(x.lastPayDate):""): "-")+"</td>"+
     "</tr>";
   }).join("");
+  // table-layout:fixed + हर कॉलम की तय चौड़ाई (नीचे <th> पर width%) — पहले चौड़ाई content के
+  // हिसाब से अपने-आप बनती थी, तो नाम/मोबाइल जैसे कॉलम पेज-दर-पेज अलग-अलग जगह खिसक जाते थे
+  // (जिस वजह से नीचे का data ऊपर के header से मेल नहीं खाता दिखता था) — असली bug यही था।
+  // साथ में vertical-align:top ताकि रिमार्क/पिछला-भुगतान जैसे दो-लाइन वाले सेल पड़ोसी row में
+  // घुसते हुए न दिखें, और रिमार्क को सबसे ज़्यादा चौड़ाई (18%) दी — वही सबसे लंबा free-text है
   var html="<!DOCTYPE html><html><head><meta charset='UTF-8'>"+
     "<style>body{font-family:Arial,sans-serif;font-size:11px;margin:15px;}h2{color:#1a237e;}"+
     ".info{display:flex;gap:12px;flex-wrap:wrap;background:#f5f5f5;padding:8px;border-radius:6px;margin:8px 0;}"+
     ".ib{text-align:center;}.ib b{font-size:15px;display:block;}"+
-    "table{width:100%;border-collapse:collapse;}th{background:#1a237e;color:#fff;padding:5px;}"+
+    "table{width:100%;border-collapse:collapse;table-layout:fixed;}"+
+    "th{background:#1a237e;color:#fff;padding:5px;text-align:center;}"+
+    "td{vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;}"+
+    "tr{page-break-inside:avoid;}"+
     "@media print{.np{display:none}}</style></head><body>"+
     "<h2>आदेगांव DC वसूली रिपोर्ट</h2>"+
     "<p>HQ: <b>"+escHtml(activeHQ)+"</b> | Category: <b>"+escHtml(activeCat)+"</b>"+
@@ -500,7 +508,10 @@ function downloadPDF(){
     "</div>"+
     "<button class='np' onclick='window.print()' style='margin-bottom:8px;padding:6px 14px;background:#1a237e;color:#fff;border:none;border-radius:5px;cursor:pointer;'>Print / PDF Save</button>"+
     "<table><thead><tr>"+
-      "<th>#</th><th>नाम</th><th>पिता/पति</th><th>Consumer No</th><th>Mobile</th><th>बकाया</th><th>Tariff</th><th>Load</th><th>स्थिति</th><th>रिमार्क</th><th>पिछला भुगतान</th>"+
+      "<th style='width:3%'>#</th><th style='width:13%'>नाम</th><th style='width:12%'>पिता/पति</th>"+
+      "<th style='width:10%'>Consumer No</th><th style='width:10%'>Mobile</th><th style='width:8%'>बकाया</th>"+
+      "<th style='width:6%'>Tariff</th><th style='width:5%'>Load</th><th style='width:9%'>स्थिति</th>"+
+      "<th style='width:18%'>रिमार्क</th><th style='width:6%'>पिछला भुगतान</th>"+
     "</tr></thead><tbody>"+rows+"</tbody></table></body></html>";
   var w=window.open("","_blank");
   // audit-verified: rows ऊपर .map().join() से बना (हर field escHtml() से गुज़रा — देखें ऊपर
