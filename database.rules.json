@@ -27,46 +27,121 @@
       }
     },
     "LOGS": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": "auth.token.email === 'pradeepks2015@gmail.com'",
+      ".write": "auth.token.email === 'pradeepks2015@gmail.com'",
+      "$day": {
+        "$id": {
+          ".write": "auth != null && !data.exists() && newData.exists()",
+          ".validate": "newData.hasChildren(['t']) && newData.child('t').isString()",
+          "$f": {
+            ".validate": "newData.isString() && newData.val().length <= 400"
+          }
+        }
+      }
     },
     "USAGE": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": "auth.token.email === 'pradeepks2015@gmail.com'",
+      ".write": "auth.token.email === 'pradeepks2015@gmail.com'",
+      "$day": {
+        "$id": {
+          ".write": "auth != null && !data.exists() && newData.exists()",
+          ".validate": "newData.hasChildren(['b'])",
+          "b": {
+            ".validate": "newData.isNumber() && newData.val() >= 0"
+          },
+          "t": {
+            ".validate": "newData.isNumber()"
+          },
+          "d": {
+            ".validate": "newData.isString() && newData.val().length <= 64"
+          },
+          "n": {
+            ".validate": "newData.isString() && newData.val().length <= 120"
+          },
+          "$f": {
+            ".validate": false
+          }
+        }
+      }
     },
     "PROFILE_PHOTOS": {
       ".read": "auth != null",
-      ".write": "auth != null"
+      "$key": {
+        ".write": "auth.token.email === 'pradeepks2015@gmail.com' || (auth.uid === 'Jm8txywdH1gmNmvODYPMpNO3at33' && $key.beginsWith('आदेगांव_')) || (auth.uid === '15ABFlksdpf0gh7eXNjcJNgaOEy2' && $key.beginsWith('पिंडरई_')) || (auth.uid === 'mH467iTWo8cZH8vl9efBaTfpp7r2' && $key.beginsWith('जोबा_')) || (auth.uid === 'qitd6m0UWzRvEHiYpna1XOYz3yq2' && $key.beginsWith('पाटन_')) || (auth.uid === 'e0UGSD4Aa6drRkkwWTIKAYwjYq62' && $key.beginsWith('बीबी_')) || (auth.uid === 'elaQYR70BJc49A4jBrljiTMmCqw2' && $key.beginsWith('मढ़ी_'))",
+        ".validate": "newData.hasChildren(['photo'])",
+        "photo": {
+          ".validate": "newData.isString() && newData.val().length <= 100000"
+        },
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "role": {
+          ".validate": "newData.isString() && newData.val().length <= 20"
+        },
+        "hq": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "ts": {
+          ".validate": "newData.isNumber()"
+        },
+        "$f": {
+          ".validate": false
+        }
+      }
     },
     "आदेगांव": {
       ".read": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'Jm8txywdH1gmNmvODYPMpNO3at33'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'Jm8txywdH1gmNmvODYPMpNO3at33'",
-      "$cat": { "$acc": { ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''" } }
+      "$cat": {
+        "$acc": {
+          ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''"
+        }
+      }
     },
     "पिंडरई": {
       ".read": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === '15ABFlksdpf0gh7eXNjcJNgaOEy2'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === '15ABFlksdpf0gh7eXNjcJNgaOEy2'",
-      "$cat": { "$acc": { ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''" } }
+      "$cat": {
+        "$acc": {
+          ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''"
+        }
+      }
     },
     "जोबा": {
       ".read": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'mH467iTWo8cZH8vl9efBaTfpp7r2'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'mH467iTWo8cZH8vl9efBaTfpp7r2'",
-      "$cat": { "$acc": { ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''" } }
+      "$cat": {
+        "$acc": {
+          ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''"
+        }
+      }
     },
     "पाटन": {
       ".read": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'qitd6m0UWzRvEHiYpna1XOYz3yq2'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'qitd6m0UWzRvEHiYpna1XOYz3yq2'",
-      "$cat": { "$acc": { ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''" } }
+      "$cat": {
+        "$acc": {
+          ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''"
+        }
+      }
     },
     "बीबी": {
       ".read": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'e0UGSD4Aa6drRkkwWTIKAYwjYq62'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'e0UGSD4Aa6drRkkwWTIKAYwjYq62'",
-      "$cat": { "$acc": { ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''" } }
+      "$cat": {
+        "$acc": {
+          ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''"
+        }
+      }
     },
     "मढ़ी": {
       ".read": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'elaQYR70BJc49A4jBrljiTMmCqw2'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' || auth.uid === 'elaQYR70BJc49A4jBrljiTMmCqw2'",
-      "$cat": { "$acc": { ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''" } }
+      "$cat": {
+        "$acc": {
+          ".validate": "newData.child('acc').exists() && newData.child('acc').val() != ''"
+        }
+      }
     },
     "$other": {
       ".read": false,
