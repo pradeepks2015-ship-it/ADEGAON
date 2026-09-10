@@ -2939,7 +2939,7 @@ test.describe('_cashRefreshAll — कमज़ोर नेटवर्क प�
           return new Promise(() => {}); // कभी resolve/reject नहीं होगा — अटकी हुई श्रेणी
         }
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ8') > -1) {
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };
@@ -3935,7 +3935,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ9') > -1) {
           fetchCount++;
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };
@@ -3959,7 +3959,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ10') > -1) {
           fetchCount++;
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };
@@ -4013,7 +4013,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('आदेगांव') > -1 && (!opts || !opts.method)) {
           fetchCount++;
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([]) }); // असली fetch जैसा सफल जवाब — तभी cooldown रिकॉर्ड होगा
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([]) }); // असली fetch जैसा सफल जवाब — तभी cooldown रिकॉर्ड होगा
         }
         return orig(url, opts);
       };
@@ -5023,7 +5023,7 @@ test.describe('डेटा उपयोग का मीटर — हर ड�
   test('कोई भी पढ़ाई बिना गिनती के न बचे — हर fetch-GET पर trackUsageOf हो', async () => {
     const root = path.join(__dirname, '..');
     const need = {
-      'js/home-scorecard.js': ['trackUsageOf(d); // स्कोरकार्ड'], // सभी 8 श्रेणियाँ, बिना ETag
+      'js/home-scorecard.js': ['trackUsageOf(d); // होम बोर्ड'], // होम बोर्ड की पढ़ाई (कैश-refresh वाली अब ETag के साथ है, नीचे अलग टेस्ट में जांची जाती है)
       'js/profile.js': ['trackUsageOf(d); // फ़ोटो'],             // base64 फ़ोटो, दसियों KB
       'js/config.js': ['trackUsageOf(d)'],                        // CAT_NAMES
       'js/ui-core.js': ['trackUsageOf(d)'],                       // HQ_PIN
