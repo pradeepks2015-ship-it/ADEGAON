@@ -506,6 +506,31 @@ function _sseFullPutData(evData){
   return {ok:false};
 }
 
+// ── TOKEN-EXPIRY RECONNECT से पहले हल्की ETag जांच ──────────────────────────────────────────
+// Firebase ID token हर ~1 घंटे expire होता है, तो EventSource बंद (readyState=2) होकर दोबारा
+// जुड़ता है — और हर बार जुड़ते ही SSE पूरी list भेजता है (ETag जैसा कुछ नहीं)। JE का सवाल: "ऐप
+// खुला छोड़ने पर cost बढ़ती है क्या?" — जवाब था हां, ठीक इसी वजह से। असल में list ज़्यादातर बार
+// उस एक घंटे में बदली ही नहीं होती (खासकर देर रात या device बस स्क्रीन जगाए पड़ा हो), इसलिए यहां
+// भारी reconnect से पहले पहले एक हल्की (304 पर लगभग-मुफ़्त) जांच कर लेते हैं।
+// कुछ नहीं बदला: अभी भारी reconnect मत करो, TOKEN_RECHECK_MS बाद फिर जांच लो — तब तक SSE बंद रहेगा
+// (किसी और device का इसी बीच का बदलाव थोड़ी देर बाद दिखेगा, live नहीं — पर कुछ खोता नहीं)।
+// कुछ बदला निकले, जांच ही नाकाम हो, या offline/pause हो — पुराने, हमेशा-safe रास्ते पर लौट जाओ
+var TOKEN_RECHECK_MS=2*60*1000;
+var ES_RECONNECT_DELAY_MS=2000; // token-expiry के बाद जांच से पहले थोड़ा रुकना — token सर्वर-साइड settle हो जाए
+function _tokenExpiryRecheck(hq,cat){
+  if(!(CU&&activeHQ===hq&&activeCat===cat)) return; // यह tab अब सक्रिय ही नहीं — असली tab की अपनी startListen संभाल लेगी
+  if(!navigator.onLine||isDataPaused()){
+    setTimeout(function(){_tokenExpiryRecheck(hq,cat);},TOKEN_RECHECK_MS);
+    return;
+  }
+  fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_etagHeaders(hq,cat)})
+    .then(function(r){
+      if(r.status===304){ setTimeout(function(){_tokenExpiryRecheck(hq,cat);},TOKEN_RECHECK_MS); return; }
+      startListen(hq,cat); // कुछ बदला — असली (पूरा) reconnect करो
+    })
+    .catch(function(){ startListen(hq,cat); }); // जांच नाकाम — पुराने रास्ते पर लौट जाओ
+}
+
 function startListen(hq,cat){
   stopListen();
   // 🛑 डेटा बचाओ मोड — live sync ही सबसे बड़ा download खर्च है, इसलिए जुड़ें ही नहीं।
@@ -602,9 +627,11 @@ function startListen(hq,cat){
           if(liveSource===es) liveSource=null;
           if(_esReconnectAttempts<3){
             // पहले ताज़ा ID_TOKEN के साथ सस्ता live-sync दोबारा जोड़ने की कोशिश — token expire होना
-            // सामान्य बात है (हर ~1 घंटे), भारी polling पर जाने की ज़रूरत नहीं
+            // सामान्य बात है (हर ~1 घंटे), भारी polling पर जाने की ज़रूरत नहीं। सीधे startListen नहीं —
+            // पहले _tokenExpiryRecheck की हल्की ETag जांच (देखें ऊपर) ताकि कुछ न बदला हो तो भारी
+            // पूरी-list reconnect टाला जा सके
             _esReconnectAttempts++;
-            setTimeout(function(){ startListen(hq,cat); },2000);
+            setTimeout(function(){ _tokenExpiryRecheck(hq,cat); },ES_RECONNECT_DELAY_MS);
           } else {
             // लगातार 3 बार तुरंत बंद हो रहा है (शायद असली permission समस्या) — तभी polling पर जाओ
             startPolling();
