@@ -679,14 +679,12 @@ function loadTodayScorecard(){
   }
 }
 
-// ── वॉइस रिपोर्ट: मुख्यालय-वार, टैरिफ-श्रेणी-वार (LV1/LV3/...) कनेक्शन/बकाया/वसूल — बोलकर ──
+// ── मुख्यालय व टैरिफ रिपोर्ट: मुख्यालय-वार, टैरिफ-श्रेणी-वार (LV1/LV3/...) कनेक्शन/बकाया/वसूल ──
 // JE का सवाल: "बिना कोई नेटवर्क कॉल किए या डेटा कास्ट बढ़ाए क्या ऐसा बटन बन सकता है"। जवाब: हां —
 // _voiceHQBreakdown() सिर्फ़ cGet() (device पर पहले से मौजूद cache) पढ़ता है, कोई fetch() यहां
-// कहीं नहीं है; और बोलना ब्राउज़र का अपना Web Speech API (speechSynthesis) करता है, जो टेक्स्ट
-// किसी सर्वर को भेजता नहीं — ज़्यादातर Android/iPhone पर आवाज़ device पर ही बनती है। अपवाद: कुछ
-// बहुत पुराने/कम-मेमोरी वाले Android पर पहली बार किसी भाषा का voice-data OS खुद माँग सकता है —
-// वह हमारे ऐप के नियंत्रण में नहीं और हमारी Firebase usage में भी नहीं गिनता।
-// तय क्रम नहीं, tot के घटते क्रम में — जिस टैरिफ में सबसे ज़्यादा कनेक्शन वह पहले बोला/दिखाया जाए
+// कहीं नहीं है। (v9.132 में यह बोलकर भी सुनाता था — Web Speech API से — पर JE ने कहा "सिर्फ़
+// लिस्ट चाहिए, बोलने वाला बटन नहीं", इसलिए v9.133 में वह हिस्सा हटा दिया, बाक़ी यथावत)
+// तय क्रम नहीं, tot के घटते क्रम में — जिस टैरिफ में सबसे ज़्यादा कनेक्शन वह पहले दिखाया जाए
 function _voiceHQBreakdown(hq){
   var master=cGet(hq,CATS_DEFAULT[0])||[];
   var seen={},masterTariff={},rows={};
@@ -741,44 +739,5 @@ function openVoiceScorecard(){
   _voiceScRender();
 }
 function closeVoiceScorecard(){
-  _voiceStop();
   document.getElementById("voicesc-overlay").classList.remove("open");
-}
-
-// हर HQ का अलग वाक्य/utterance — एक साथ बहुत लंबा टेक्स्ट देने से कुछ browsers बीच में चुप हो
-// जाते हैं, और अलग-अलग utterance से "रोकें" दबाते ही तुरंत रुकना भी पक्का रहता है
-function _voiceLines(){
-  var lines=[];
-  HQS.forEach(function(hq){
-    var rows=_voiceHQBreakdown(hq);
-    if(!rows.length)return;
-    var s=hq+" मुख्यालय। ";
-    rows.forEach(function(r){
-      s+=r.tariff+" श्रेणी — कुल "+r.tot+" कनेक्शन, बकाया राशि "+Math.round(r.due)+" रुपये, वसूल "+r.paid+" कनेक्शन, वसूल राशि "+Math.round(r.paidAmt)+" रुपये। ";
-    });
-    lines.push(s);
-  });
-  return lines;
-}
-function _voiceStop(){
-  try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
-  var btn=document.getElementById("voicesc-playbtn");
-  if(btn) btn.textContent="▶ बोलकर सुनाएं";
-}
-function playVoiceScorecard(){
-  if(typeof window.speechSynthesis==="undefined"||typeof window.SpeechSynthesisUtterance==="undefined"){
-    toast("इस browser में बोलने की सुविधा नहीं है","err");return;
-  }
-  var btn=document.getElementById("voicesc-playbtn");
-  if(window.speechSynthesis.speaking||window.speechSynthesis.pending){_voiceStop();return;} // टॉगल: दोबारा दबाने पर रुक जाए
-  var lines=_voiceLines();
-  if(!lines.length){toast("कोई cache data नहीं — पहले सूचियाँ खोलें","err");return;}
-  window.speechSynthesis.cancel(); // पुराना कुछ बाक़ी न रह जाए
-  lines.forEach(function(text,i){
-    var u=new SpeechSynthesisUtterance(text);
-    u.lang="hi-IN"; u.rate=0.95;
-    if(i===lines.length-1) u.onend=function(){ if(btn) btn.textContent="▶ बोलकर सुनाएं"; };
-    window.speechSynthesis.speak(u);
-  });
-  if(btn) btn.textContent="⏹ रोकें";
 }

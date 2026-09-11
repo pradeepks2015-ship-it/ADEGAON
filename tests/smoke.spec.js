@@ -4445,7 +4445,7 @@ test.describe('आज की वसूली — मुख्यालय-वा
   });
 });
 
-test.describe('वॉइस रिपोर्ट — मुख्यालय-वार, टैरिफ-श्रेणी-वार बोलकर बताए (JE only, बिना नेटवर्क कॉल के)', () => {
+test.describe('मुख्यालय व टैरिफ रिपोर्ट — मुख्यालय-वार, टैरिफ-श्रेणी-वार सूची (JE only, बिना नेटवर्क कॉल के)', () => {
   test('openVoiceScorecard — खोलते ही network fetch न हो, सिर्फ़ cache से बने (JE का सवाल: "network cost बढ़ाए बिना ऐसा बटन बन सकता है क्या")', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
@@ -4512,67 +4512,6 @@ test.describe('वॉइस रिपोर्ट — मुख्यालय-�
     expect(html).toContain('आदेगांव');
     expect(html).toContain('LV1');
     expect(html).not.toContain('पिंडरई'); // उस HQ का data cache में नहीं डाला
-  });
-
-  test('playVoiceScorecard — कोई network fetch नहीं करता, सिर्फ़ cache से टैरिफ-वार वाक्य बोलता है, खाली HQ की कोई पंक्ति नहीं जोड़ता', async ({ page }) => {
-    await openApp(page);
-    await loginJE(page);
-    const r = await page.evaluate(() => new Promise((resolve) => {
-      cSet('आदेगांव', 'कुल उपभोक्ता', [
-        { acc: '1', name: 'राम', tariff: 'LV1', status: 'paid', amount: 100 },
-        { acc: '2', name: 'श्याम', tariff: 'LV1', status: 'pending', amount: 200 },
-        { acc: '3', name: 'गीता', tariff: 'LV3', status: 'pending', amount: 300 },
-      ]);
-      var fetchCalled = false;
-      var origFetch = window.fetch;
-      window.fetch = function () { fetchCalled = true; return origFetch.apply(window, arguments); };
-      var spoken = [];
-      window.SpeechSynthesisUtterance = function (text) { this.text = text; };
-      // window.speechSynthesis असली browser में read-only accessor है — सीधा "=" चुपचाप fail हो
-      // जाता है (native singleton ही बना रहता है); defineProperty से own-property बनाकर shadow करें
-      Object.defineProperty(window, 'speechSynthesis', {
-        configurable: true,
-        value: {
-          speaking: false, pending: false,
-          cancel: function () {},
-          // असली browser में speak() हमेशा async होता है (onend कभी उसी call-stack में नहीं आता) —
-          // setTimeout से वही असली क्रम नकल करते हैं: पहले "⏹ रोकें" लगे, बाद में बोलना खत्म होने पर "▶"
-          speak: function (u) { spoken.push(u.text); if (u.onend) setTimeout(u.onend, 0); },
-        },
-      });
-      playVoiceScorecard();
-      window.fetch = origFetch;
-      setTimeout(() => resolve({ spoken: spoken, fetchCalled: fetchCalled, btnText: document.getElementById('voicesc-playbtn').textContent }), 50);
-    }));
-    expect(r.fetchCalled).toBe(false);
-    expect(r.spoken.length).toBe(1); // सिर्फ़ आदेगांव में data है, बाक़ी 5 HQ खाली — उनकी कोई लाइन नहीं
-    expect(r.spoken[0]).toContain('आदेगांव मुख्यालय');
-    expect(r.spoken[0]).toContain('LV1 श्रेणी — कुल 2 कनेक्शन');
-    expect(r.spoken[0]).toContain('वसूल 1 कनेक्शन');
-    expect(r.spoken[0]).toContain('LV3 श्रेणी — कुल 1 कनेक्शन');
-    expect(r.btnText).toContain('▶'); // पूरा बोलकर खत्म होते ही बटन वापस "बोलकर सुनाएं" पर आ जाए
-  });
-
-  test('playVoiceScorecard — दोबारा दबाने पर टॉगल होकर रुक जाए (speechSynthesis.cancel बुलाए)', async ({ page }) => {
-    await openApp(page);
-    await loginJE(page);
-    const r = await page.evaluate(() => {
-      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', tariff: 'LV1', status: 'pending', amount: 100 }]);
-      var cancelled = false;
-      window.SpeechSynthesisUtterance = function (text) { this.text = text; };
-      Object.defineProperty(window, 'speechSynthesis', {
-        configurable: true,
-        value: {
-          speaking: true, pending: false, // पहले से बोल रहा है
-          cancel: function () { cancelled = true; },
-          speak: function () {},
-        },
-      });
-      playVoiceScorecard();
-      return { cancelled: cancelled, btnText: document.getElementById('voicesc-playbtn').textContent };
-    });
-    expect(r.cancelled).toBe(true);
-    expect(r.btnText).toContain('▶');
   });
 });
 
