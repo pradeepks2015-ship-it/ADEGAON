@@ -125,7 +125,7 @@ try{
             <button type="button" class="logout-item" id="hsc-menu-item" style="display:none;color:#7b3fd1;" onclick="openHscModal()">&#128421; होम पेज डिस्प्ले बोर्ड</button>
             <button type="button" class="logout-item" id="wasc-menu-item" style="display:none;color:#00695c;" onclick="openWaScorecard()">&#128202; स्कोरकार्ड डिस्प्ले</button>
             <button type="button" class="logout-item" id="todaysc-menu-item" style="display:none;color:#ef6c00;" onclick="openTodayScorecard()">&#128979;&#65039; आज की वसूली</button>
-            <button type="button" class="logout-item" id="voicesc-menu-item" style="display:none;color:#5e35b1;" onclick="openVoiceScorecard()">&#128266; वॉइस रिपोर्ट</button>
+            <button type="button" class="logout-item" id="voicesc-menu-item" style="display:none;color:#5e35b1;" onclick="openVoiceScorecard()">&#128203; मुख्यालय व टैरिफ रिपोर्ट</button>
             <button type="button" class="logout-item" id="village-menu-item" style="color:#a34d00;" onclick="openVillageModal()">&#127961; ग्राम-वार वसूली</button>
             <button type="button" class="logout-item" id="cash-menu-item" style="display:none;color:var(--green);" onclick="openCashModal()">&#128181; कैश लिस्ट</button>
             <button type="button" class="logout-item" id="backup-menu-item" style="display:none;color:var(--gold);" onclick="downloadFullBackup()">&#128190; पूरा बैकअप</button>
@@ -605,18 +605,17 @@ try{
   </div>
 </div>
 
-<!-- वॉइस रिपोर्ट (JE only) — मुख्यालय-वार, टैरिफ-श्रेणी-वार कनेक्शन/बकाया/वसूल बोलकर बताती है।
+<!-- मुख्यालय व टैरिफ रिपोर्ट (JE only) — मुख्यालय-वार, टैरिफ-श्रेणी-वार कनेक्शन/बकाया/वसूल की सूची।
      JE का सवाल था "network cost बढ़ाए बिना ऐसा बटन बन सकता है क्या" — जवाब: सिर्फ़ device के अपने
-     cache (cGet) से बनती है, कोई fetch() नहीं; बोलना ब्राउज़र का Web Speech API करता है (देखें
-     js/reports.js: _voiceHQBreakdown/playVoiceScorecard) -->
+     cache (cGet) से बनती है, कोई fetch() नहीं (देखें js/reports.js: _voiceHQBreakdown/_voiceScRender)।
+     बोलकर सुनाने वाला बटन पहले यहां था (v9.132), JE ने कहा "सिर्फ़ लिस्ट चाहिए" — हटा दिया (v9.133) -->
 <div class="moverlay" id="voicesc-overlay" onclick="if(event.target===this)closeVoiceScorecard()">
   <div class="msheet" style="max-height:92vh;">
     <div class="mhandle"></div>
-    <div class="mtitle">&#128266; वॉइस रिपोर्ट — मुख्यालय व टैरिफ-वार</div>
+    <div class="mtitle">&#128203; मुख्यालय व टैरिफ रिपोर्ट</div>
     <div style="font-size:10px;color:var(--muted);margin:-6px 0 8px;">यह device पर पहले से मौजूद (cache किए हुए) data से बनती है — कोई नया Firebase डाउनलोड नहीं होता। किसी HQ/श्रेणी को हाल ही में न खोला हो तो वहां data पुराना या खाली दिख सकता है।</div>
     <div id="voicesc-content"></div>
     <div class="mfooter">
-      <button class="btn-cancel" id="voicesc-playbtn" onclick="playVoiceScorecard()">&#9654; बोलकर सुनाएं</button>
       <button class="btn-save" onclick="closeVoiceScorecard()">बंद करें</button>
     </div>
   </div>
