@@ -678,3 +678,107 @@ function loadTodayScorecard(){
     _todayScRender();
   }
 }
+
+// ── वॉइस रिपोर्ट: मुख्यालय-वार, टैरिफ-श्रेणी-वार (LV1/LV3/...) कनेक्शन/बकाया/वसूल — बोलकर ──
+// JE का सवाल: "बिना कोई नेटवर्क कॉल किए या डेटा कास्ट बढ़ाए क्या ऐसा बटन बन सकता है"। जवाब: हां —
+// _voiceHQBreakdown() सिर्फ़ cGet() (device पर पहले से मौजूद cache) पढ़ता है, कोई fetch() यहां
+// कहीं नहीं है; और बोलना ब्राउज़र का अपना Web Speech API (speechSynthesis) करता है, जो टेक्स्ट
+// किसी सर्वर को भेजता नहीं — ज़्यादातर Android/iPhone पर आवाज़ device पर ही बनती है। अपवाद: कुछ
+// बहुत पुराने/कम-मेमोरी वाले Android पर पहली बार किसी भाषा का voice-data OS खुद माँग सकता है —
+// वह हमारे ऐप के नियंत्रण में नहीं और हमारी Firebase usage में भी नहीं गिनता।
+// तय क्रम नहीं, tot के घटते क्रम में — जिस टैरिफ में सबसे ज़्यादा कनेक्शन वह पहले बोला/दिखाया जाए
+function _voiceHQBreakdown(hq){
+  var master=cGet(hq,CATS_DEFAULT[0])||[];
+  var seen={},masterTariff={},rows={};
+  master.forEach(function(x){
+    if(!x)return;
+    var key=x.acc?String(x.acc):("_t"+Math.random());
+    if(seen[key])return; seen[key]=1;
+    var tf=(x.tariff||"").toString().trim()||"अन्य";
+    if(!rows[tf]) rows[tf]={tariff:tf,tot:0,due:0,paid:0,paidAmt:0};
+    rows[tf].tot++;
+    if(x.status!=="paid") rows[tf].due+=Number(x.amount)||0;
+    if(x.acc) masterTariff[String(x.acc)]=tf;
+  });
+  var seenPaid={};
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
+    cGet(hq,cat).forEach(function(x){
+      if(!x||x.status!=="paid"||!x.acc)return;
+      var tf=masterTariff[String(x.acc)];
+      if(!tf)return; // "कुल उपभोक्ता" (master) में न हो तो न गिनें — _waScRow जैसा dedup
+      var key=String(x.acc);
+      if(seenPaid[key])return; seenPaid[key]=1;
+      rows[tf].paid++; rows[tf].paidAmt+=Number(x.amount)||0;
+    });
+  }
+  return Object.keys(rows).map(function(k){return rows[k];}).sort(function(a,b){return b.tot-a.tot;});
+}
+
+function _voiceScRender(){
+  var el=document.getElementById("voicesc-content");
+  var html="";
+  HQS.forEach(function(hq){
+    var rows=_voiceHQBreakdown(hq);
+    if(!rows.length)return; // इस HQ का "कुल उपभोक्ता" cache में नहीं है — खाली न दिखाएं
+    html+="<div class='wasc-hdr' style='margin-top:10px;'><div class='wasc-hdr-t'>"+escHtml(hq)+"</div></div>";
+    html+="<table class='wasc-table'><thead><tr><th class='wasc-th-left'>Tariff</th><th>कुल</th><th>बकाया राशि</th><th class='wasc-col-paid'>वसूल</th><th class='wasc-col-paid'>वसूल राशि</th></tr></thead><tbody>";
+    rows.forEach(function(r){
+      html+="<tr><td class='wasc-hq'>"+escHtml(r.tariff)+"</td><td>"+r.tot.toLocaleString("hi-IN")+"</td><td>&#8377;"+Math.round(r.due).toLocaleString("hi-IN")+"</td>"+
+        "<td class='wasc-col-paid'>"+r.paid.toLocaleString("hi-IN")+"</td><td class='wasc-col-paid'>&#8377;"+Math.round(r.paidAmt).toLocaleString("hi-IN")+"</td></tr>";
+    });
+    html+="</tbody></table>";
+  });
+  // audit-verified: hq और r.tariff दोनों escHtml() से गुज़रते हैं (ऊपर देखें), बाक़ी सब संख्या
+  // eslint-disable-next-line no-unsanitized/property
+  el.innerHTML=html||"<div class='empty'><div class='empty-ico'>📴</div><div class='empty-t'>कोई cache data नहीं</div><div class='empty-s'>पहले किसी HQ/श्रेणी की सूची खोलें ताकि device पर data आ जाए</div></div>";
+}
+
+function openVoiceScorecard(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह देख सकते हैं","err");return;}
+  var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
+  document.getElementById("voicesc-overlay").classList.add("open");
+  _voiceScRender();
+}
+function closeVoiceScorecard(){
+  _voiceStop();
+  document.getElementById("voicesc-overlay").classList.remove("open");
+}
+
+// हर HQ का अलग वाक्य/utterance — एक साथ बहुत लंबा टेक्स्ट देने से कुछ browsers बीच में चुप हो
+// जाते हैं, और अलग-अलग utterance से "रोकें" दबाते ही तुरंत रुकना भी पक्का रहता है
+function _voiceLines(){
+  var lines=[];
+  HQS.forEach(function(hq){
+    var rows=_voiceHQBreakdown(hq);
+    if(!rows.length)return;
+    var s=hq+" मुख्यालय। ";
+    rows.forEach(function(r){
+      s+=r.tariff+" श्रेणी — कुल "+r.tot+" कनेक्शन, बकाया राशि "+Math.round(r.due)+" रुपये, वसूल "+r.paid+" कनेक्शन, वसूल राशि "+Math.round(r.paidAmt)+" रुपये। ";
+    });
+    lines.push(s);
+  });
+  return lines;
+}
+function _voiceStop(){
+  try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+  var btn=document.getElementById("voicesc-playbtn");
+  if(btn) btn.textContent="▶ बोलकर सुनाएं";
+}
+function playVoiceScorecard(){
+  if(typeof window.speechSynthesis==="undefined"||typeof window.SpeechSynthesisUtterance==="undefined"){
+    toast("इस browser में बोलने की सुविधा नहीं है","err");return;
+  }
+  var btn=document.getElementById("voicesc-playbtn");
+  if(window.speechSynthesis.speaking||window.speechSynthesis.pending){_voiceStop();return;} // टॉगल: दोबारा दबाने पर रुक जाए
+  var lines=_voiceLines();
+  if(!lines.length){toast("कोई cache data नहीं — पहले सूचियाँ खोलें","err");return;}
+  window.speechSynthesis.cancel(); // पुराना कुछ बाक़ी न रह जाए
+  lines.forEach(function(text,i){
+    var u=new SpeechSynthesisUtterance(text);
+    u.lang="hi-IN"; u.rate=0.95;
+    if(i===lines.length-1) u.onend=function(){ if(btn) btn.textContent="▶ बोलकर सुनाएं"; };
+    window.speechSynthesis.speak(u);
+  });
+  if(btn) btn.textContent="⏹ रोकें";
+}

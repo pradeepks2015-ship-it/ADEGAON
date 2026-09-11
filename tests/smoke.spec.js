@@ -333,10 +333,11 @@ test.describe('रोल-आधारित UI', () => {
       openCashModal(); results.push(document.getElementById('cash-overlay').classList.contains('open')); closeCashModal();
       openWaScorecard(); results.push(document.getElementById('wasc-overlay').classList.contains('open')); closeWaScorecard();
       openTodayScorecard(); results.push(document.getElementById('todaysc-overlay').classList.contains('open')); closeTodayScorecard();
+      openVoiceScorecard(); results.push(document.getElementById('voicesc-overlay').classList.contains('open')); closeVoiceScorecard();
       openMigModal(); results.push(document.getElementById('mig-overlay').classList.contains('open')); closeMigModal();
       return results;
     });
-    expect(ok).toEqual([true, true, true, true, true, true, true, true]);
+    expect(ok).toEqual([true, true, true, true, true, true, true, true, true]);
   });
 
   test('स्कोरकार्ड डिस्प्ले — सभी HQ की सही गिनती और वसूल% बनता है', async ({ page }) => {
@@ -4441,6 +4442,137 @@ test.describe('आज की वसूली — मुख्यालय-वा
       return { html: document.getElementById('todaysc-content').innerHTML, hqCount: HQS.length };
     });
     expect(r.html).toContain(String(r.hqCount)); // योग count सभी HQ जितना
+  });
+});
+
+test.describe('वॉइस रिपोर्ट — मुख्यालय-वार, टैरिफ-श्रेणी-वार बोलकर बताए (JE only, बिना नेटवर्क कॉल के)', () => {
+  test('openVoiceScorecard — खोलते ही network fetch न हो, सिर्फ़ cache से बने (JE का सवाल: "network cost बढ़ाए बिना ऐसा बटन बन सकता है क्या")', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const fetchCount = await page.evaluate(() => new Promise((resolve) => {
+      var count = 0;
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('.json') > -1 && (!opts || !opts.method)) count++;
+        return orig(url, opts);
+      };
+      openVoiceScorecard();
+      setTimeout(() => { window.fetch = orig; resolve(count); }, 300);
+    }));
+    expect(fetchCount).toBe(0);
+  });
+
+  test('voicesc-menu-item — lineman को न दिखे, openVoiceScorecard सीधे बुलाने पर भी न खुले (defense-in-depth)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      openVoiceScorecard();
+      return {
+        menuHidden: getComputedStyle(document.getElementById('voicesc-menu-item')).display,
+        opened: document.getElementById('voicesc-overlay').classList.contains('open'),
+      };
+    });
+    expect(r.menuHidden).toBe('none');
+    expect(r.opened).toBe(false);
+  });
+
+  test('_voiceHQBreakdown — "कुल उपभोक्ता" (master) को टैरिफ-वार गिने, दूसरी categories से सिर्फ़ वसूल-मिलान करे (bug जैसा _waScRow में — एक ही acc दो जगह न गिने)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const rows = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', tariff: 'LV1', status: 'pending', amount: 100 },
+        { acc: '2', name: 'श्याम', tariff: 'LV1', status: 'pending', amount: 200 },
+        { acc: '3', name: 'गीता', tariff: 'LV3', status: 'pending', amount: 300 },
+      ]);
+      // acc '1' घरेलू (LV1 की असली category tab) में paid मार्क है — master में अब भी pending दिखता
+      // है, पर _waScRow जैसा dedup इसे "master में मौजूद" पहचानकर वसूल में गिन ले
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', tariff: 'LV1', status: 'paid', amount: 100 }]);
+      return _voiceHQBreakdown('आदेगांव');
+    });
+    const lv1 = rows.find((r) => r.tariff === 'LV1');
+    const lv3 = rows.find((r) => r.tariff === 'LV3');
+    expect(lv1.tot).toBe(2);
+    expect(lv1.paid).toBe(1); // सिर्फ़ acc '1', दोबारा नहीं गिना
+    expect(lv1.paidAmt).toBe(100);
+    expect(lv1.due).toBe(300); // दोनों pending होने पर master का due (paid mark करने से पहले जोड़ा गया)
+    expect(lv3.tot).toBe(1);
+    expect(lv3.paid).toBe(0);
+    expect(rows[0].tariff).toBe('LV1'); // tot घटते क्रम में — LV1 (2) पहले, LV3 (1) बाद में
+  });
+
+  test('_voiceScRender — जिस HQ का "कुल उपभोक्ता" cache में नहीं, उसकी कोई पंक्ति न बने', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const html = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', tariff: 'LV1', status: 'pending', amount: 100 }]);
+      _voiceScRender();
+      return document.getElementById('voicesc-content').innerHTML;
+    });
+    expect(html).toContain('आदेगांव');
+    expect(html).toContain('LV1');
+    expect(html).not.toContain('पिंडरई'); // उस HQ का data cache में नहीं डाला
+  });
+
+  test('playVoiceScorecard — कोई network fetch नहीं करता, सिर्फ़ cache से टैरिफ-वार वाक्य बोलता है, खाली HQ की कोई पंक्ति नहीं जोड़ता', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', tariff: 'LV1', status: 'paid', amount: 100 },
+        { acc: '2', name: 'श्याम', tariff: 'LV1', status: 'pending', amount: 200 },
+        { acc: '3', name: 'गीता', tariff: 'LV3', status: 'pending', amount: 300 },
+      ]);
+      var fetchCalled = false;
+      var origFetch = window.fetch;
+      window.fetch = function () { fetchCalled = true; return origFetch.apply(window, arguments); };
+      var spoken = [];
+      window.SpeechSynthesisUtterance = function (text) { this.text = text; };
+      // window.speechSynthesis असली browser में read-only accessor है — सीधा "=" चुपचाप fail हो
+      // जाता है (native singleton ही बना रहता है); defineProperty से own-property बनाकर shadow करें
+      Object.defineProperty(window, 'speechSynthesis', {
+        configurable: true,
+        value: {
+          speaking: false, pending: false,
+          cancel: function () {},
+          // असली browser में speak() हमेशा async होता है (onend कभी उसी call-stack में नहीं आता) —
+          // setTimeout से वही असली क्रम नकल करते हैं: पहले "⏹ रोकें" लगे, बाद में बोलना खत्म होने पर "▶"
+          speak: function (u) { spoken.push(u.text); if (u.onend) setTimeout(u.onend, 0); },
+        },
+      });
+      playVoiceScorecard();
+      window.fetch = origFetch;
+      setTimeout(() => resolve({ spoken: spoken, fetchCalled: fetchCalled, btnText: document.getElementById('voicesc-playbtn').textContent }), 50);
+    }));
+    expect(r.fetchCalled).toBe(false);
+    expect(r.spoken.length).toBe(1); // सिर्फ़ आदेगांव में data है, बाक़ी 5 HQ खाली — उनकी कोई लाइन नहीं
+    expect(r.spoken[0]).toContain('आदेगांव मुख्यालय');
+    expect(r.spoken[0]).toContain('LV1 श्रेणी — कुल 2 कनेक्शन');
+    expect(r.spoken[0]).toContain('वसूल 1 कनेक्शन');
+    expect(r.spoken[0]).toContain('LV3 श्रेणी — कुल 1 कनेक्शन');
+    expect(r.btnText).toContain('▶'); // पूरा बोलकर खत्म होते ही बटन वापस "बोलकर सुनाएं" पर आ जाए
+  });
+
+  test('playVoiceScorecard — दोबारा दबाने पर टॉगल होकर रुक जाए (speechSynthesis.cancel बुलाए)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', tariff: 'LV1', status: 'pending', amount: 100 }]);
+      var cancelled = false;
+      window.SpeechSynthesisUtterance = function (text) { this.text = text; };
+      Object.defineProperty(window, 'speechSynthesis', {
+        configurable: true,
+        value: {
+          speaking: true, pending: false, // पहले से बोल रहा है
+          cancel: function () { cancelled = true; },
+          speak: function () {},
+        },
+      });
+      playVoiceScorecard();
+      return { cancelled: cancelled, btnText: document.getElementById('voicesc-playbtn').textContent };
+    });
+    expect(r.cancelled).toBe(true);
+    expect(r.btnText).toContain('▶');
   });
 });
 
