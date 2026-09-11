@@ -3797,6 +3797,97 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(r.pollActive).toBe(true);
   });
 
+  test('_tokenExpiryRecheck — token-expiry reconnect से पहले हल्की ETag जांच हो; कुछ नहीं बदला (304) तो भारी reconnect टलता रहे, EventSource दोबारा न खुले (JE का सवाल: "ऐप खुला छोड़ने पर cost बढ़ती है क्या?")', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.ES_RECONNECT_DELAY_MS = 10; // तेज़ जांच के लिए छोटा किया (टेस्ट-only)
+      window.TOKEN_RECHECK_MS = 40;
+      var sawEtagHeader = false, startListenCalls = 0;
+      var origStartListen = window.startListen;
+      window.startListen = function (h, c) { startListenCalls++; return origStartListen(h, c); };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) {
+          if (opts && opts.headers && opts.headers['X-Firebase-ETag']) sawEtagHeader = true;
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      var es = liveSource;
+      Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
+      es.onerror(); // token expire जैसा — पहला attempt
+      setTimeout(() => {
+        window.fetch = orig;
+        window.startListen = origStartListen;
+        resolve({ sawEtagHeader: sawEtagHeader, startListenCalls: startListenCalls, esOpenAgain: liveSource === es ? false : !!liveSource });
+      }, 150); // ES_RECONNECT_DELAY_MS(10) + TOKEN_RECHECK_MS(40) से काफ़ी ज़्यादा — दोनों टिक चुके हों
+    }));
+    expect(r.sawEtagHeader).toBe(true);   // हल्की जांच हुई
+    expect(r.startListenCalls).toBe(0);   // कुछ नहीं बदला — भारी reconnect (नया EventSource) नहीं हुआ
+    expect(r.esOpenAgain).toBe(false);    // कोई नया live connection नहीं खुला
+  });
+
+  test('_tokenExpiryRecheck — कुछ बदला निकले (200) तो असली (पूरा) reconnect हो, startListen बुलाया जाए', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.ES_RECONNECT_DELAY_MS = 10;
+      var startListenCalls = 0;
+      var origStartListen = window.startListen;
+      window.startListen = function (h, c) { startListenCalls++; return origStartListen(h, c); };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) {
+          return Promise.resolve({
+            ok: true, status: 200, headers: { get: () => '"new-etag"' },
+            json: () => Promise.resolve([{ acc: '1', status: 'pending', amount: 100 }]),
+          });
+        }
+        return orig(url, opts);
+      };
+      var es = liveSource;
+      Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
+      es.onerror();
+      setTimeout(() => {
+        window.fetch = orig;
+        window.startListen = origStartListen;
+        resolve({ startListenCalls: startListenCalls });
+      }, 100);
+    }));
+    expect(r.startListenCalls).toBe(1); // बदला हुआ data मिला — असली reconnect हुआ
+  });
+
+  test('_tokenExpiryRecheck — हल्की जांच ही नाकाम (network error) हो तो पुराने, हमेशा-safe रास्ते (startListen) पर लौट जाए', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.ES_RECONNECT_DELAY_MS = 10;
+      var startListenCalls = 0;
+      var origStartListen = window.startListen;
+      window.startListen = function (h, c) { startListenCalls++; return origStartListen(h, c); };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) {
+          return Promise.reject(new Error('network down'));
+        }
+        return orig(url, opts);
+      };
+      var es = liveSource;
+      Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
+      es.onerror();
+      setTimeout(() => {
+        window.fetch = orig;
+        window.startListen = origStartListen;
+        resolve({ startListenCalls: startListenCalls });
+      }, 100);
+    }));
+    expect(r.startListenCalls).toBe(1); // जांच नाकाम — फिर भी असली reconnect की कोशिश हुई, डेटा अटका न रहे
+  });
+
   test('pollOnce (आख़िरी सहारे वाला भारी fallback) — ETag भेजे, और HTTP 304 (कुछ नहीं बदला) पर कोई दोबारा render/error न हो', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
