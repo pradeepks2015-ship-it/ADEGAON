@@ -526,12 +526,50 @@ function _tokenExpiryRecheck(hq,cat){
   fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_etagHeaders(hq,cat)})
     .then(function(r){
       if(r.status===304){ setTimeout(function(){_tokenExpiryRecheck(hq,cat);},TOKEN_RECHECK_MS); return; }
-      startListen(hq,cat); // कुछ बदला — असली (पूरा) reconnect करो
+      _openLive(hq,cat); // कुछ बदला — असली (पूरा) reconnect करो
     })
-    .catch(function(){ startListen(hq,cat); }); // जांच नाकाम — पुराने रास्ते पर लौट जाओ
+    .catch(function(){ _openLive(hq,cat); }); // जांच नाकाम — पुराने रास्ते पर लौट जाओ
 }
 
+// ── TAB-REVISIT ऑप्टिमाइज़ेशन ──────────────────────────────────────────────────────────────
+// यह ठीक वही समस्या है जो ऊपर token-expiry reconnect के लिए हल की — SSE जुड़ते ही हमेशा *पूरी*
+// list भेजता है, कभी सिर्फ़ 304 नहीं। JE का सवाल: "बैंडविथ cost घटाने के और उपाय?" — किसी और
+// tab पर जाकर (नंबर चेक करना, तुलना करना) वापस उसी tab पर आना दिन में कई बार होता है, और हर बार
+// पूरी "कुल उपभोक्ता" जैसी बड़ी list दोबारा उतरती थी।
+// अब: अगर यही list हाल ही में (TAB_REVISIT_GRACE_MS के अंदर) एक बार पूरी तरह ताज़ा देखी जा चुकी है,
+// तो सीधे भारी SSE न खोलें — पहले एक हल्की ETag जांच करें। कुछ नहीं बदला (304, लगभग मुफ़्त) तो
+// cache पर टिके रहो, असली live-connection उस खिड़की के बीतते ही (उपयोगकर्ता अब भी उसी tab पर हो
+// तभी) अपने-आप जुड़ जाएगी। कुछ बदला निकले तो सीधे _openLive — वही नई data समेत live जोड़ देगा,
+// दोबारा data को हाथ से लागू करने की ज़रूरत नहीं (कोई logic दोहराया नहीं, इसलिए दोनों जगह एक जैसा
+// व्यवहार पक्का रहता है)। जांच नाकाम, offline, pause, या pending बदलाव हों — पुराने, हमेशा-safe
+// रास्ते पर लौट जाओ। पहली बार खोलने पर (_lastLiveAt खाली) या लंबे समय बाद (background 3+ मिनट)
+// यह छूट लागू ही नहीं होती — वहां हमेशा जैसा असली live sync चलता है
+var TAB_REVISIT_GRACE_MS=90*1000;
+var _lastLiveAt={};
+
 function startListen(hq,cat){
+  var key=hq+"/"+cat;
+  var recent=_lastLiveAt[key]&&(Date.now()-_lastLiveAt[key]<TAB_REVISIT_GRACE_MS);
+  if(recent&&navigator.onLine&&!isDataPaused()&&!isPending(hq,cat)){
+    stopListen();
+    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_etagHeaders(hq,cat)})
+      .then(function(r){
+        if(r.status===304){
+          // कुछ नहीं बदला — cache भरोसेमंद है; असली live-connection अभी नहीं, टाल दो
+          setTimeout(function(){
+            if(activeHQ===hq&&activeCat===cat&&!liveSource&&!pollTimer) _openLive(hq,cat);
+          },TAB_REVISIT_GRACE_MS);
+          return;
+        }
+        _openLive(hq,cat); // कुछ बदला — सीधे असली reconnect, वही ताज़ा data ले आएगा
+      })
+      .catch(function(){ _openLive(hq,cat); }); // जांच नाकाम — पुराने, हमेशा-safe रास्ते पर लौट जाओ
+    return;
+  }
+  _openLive(hq,cat);
+}
+
+function _openLive(hq,cat){
   stopListen();
   // 🛑 डेटा बचाओ मोड — live sync ही सबसे बड़ा download खर्च है, इसलिए जुड़ें ही नहीं।
   // स्विच हटते ही _applyPause खुद दोबारा जोड़ देता है, और जुड़ते ही पूरा ताज़ा data आ जाता है
@@ -551,6 +589,7 @@ function startListen(hq,cat){
       renderListWith(data);
     }
     setSyncStatus(true); updTime();
+    _lastLiveAt[hq+"/"+cat]=Date.now(); // tab-revisit gate के लिए — "आख़िरी बार कब पक्का ताज़ा देखा"
   }
 
   // migrated (per-record) HQ/श्रेणी में "patch" event से मिला delta local array पर लगाना —
@@ -569,6 +608,7 @@ function startListen(hq,cat){
       renderListWith(data);
     }
     setSyncStatus(true); updTime();
+    _lastLiveAt[hq+"/"+cat]=Date.now();
   }
 
   // Firebase का ETag तरीक़ा — "X-Firebase-ETag" भेजने पर जवाब में एक ETag मिलता है; अगली बार वही
