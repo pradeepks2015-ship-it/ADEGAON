@@ -98,7 +98,13 @@ function buildScOverview(hqs){
         if(x.status==="paid"){
           var key=hq+"||"+(x.acc||Math.random());
           if(x.acc&&!allAccs[key])return;
-          if(!allPaidAccs[key]){ allPaidAccs[key]=true; totAmt+=Number(x.amount)||0; }
+          // कुछ उपभोक्ताओं का "बकाया" ऋणात्मक होता है (advance/credit balance — ज़्यादा जमा कर चुके,
+          // बकायादार नहीं) — असली फ़ाइल में यह value वैसे ही रहनी चाहिए, पर "वसूल राशि" के जोड़ में
+          // उसे घटाव के तौर पर शामिल करना ग़लत है ("negative पैसा वसूलना" बेमानी है, और वह दूसरे सही
+          // उपभोक्ताओं की वसूली छुपा देता है — 11/9 को पिंडरई में ठीक यही हुआ, कुल राशि ही negative
+          // दिख गई)। गिनती (count) में ऐसे उपभोक्ता फिर भी शामिल हैं — असल में उनका कुछ बकाया नहीं,
+          // इसलिए "वसूल"/निपटा हुआ मानना ही सही है, सिर्फ़ राशि के जोड़ में उनका योगदान 0 माना जाता है
+          if(!allPaidAccs[key]){ allPaidAccs[key]=true; totAmt+=Math.max(0,Number(x.amount)||0); }
         }
       });
     });
@@ -106,7 +112,15 @@ function buildScOverview(hqs){
   totCons+=Object.keys(allAccs).length;
   var totPaid=Object.keys(allPaidAccs).length;
   var totPend=totCons-totPaid;
-  var fmt=function(a){return a>=100000?"₹"+(a/100000).toFixed(1)+"L":a>=1000?"₹"+(a/1000).toFixed(1)+"K":"₹"+a;};
+  // पहले negative a पर सीधे "₹"+a जुड़ जाता — चूंकि >=100000/>=1000 दोनों जांच negative पर हमेशा
+  // झूठी निकलती हैं, raw floating-point number दिख जाता था (जैसे "₹-60996.990000000005") — असली
+  // production में यही दिखा (11/9 वाला advance/credit balance मामला)। अब |a| पर तय होता है L/K/सादा
+  // दिखे, चिह्न (-) अलग से आगे जुड़ता है — negative पर भी उतनी ही साफ़ formatting मिलती है
+  var fmt=function(a){
+    var neg=a<0,v=Math.abs(a);
+    var s=v>=100000?(v/100000).toFixed(1)+"L":v>=1000?(v/1000).toFixed(1)+"K":v.toFixed(0);
+    return (neg?"-":"")+"₹"+s;
+  };
   // audit-verified: totCons/totPaid/totPend/fmt(totAmt) सब संख्या हैं, कोई free-text field नहीं
   // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=
@@ -173,7 +187,9 @@ function renderScDateTable(data){
       seenAcc[accKey]=true;
       if(!byDate[dt]) byDate[dt]={count:0,amount:0,names:[],accs:[],items:[]};
       byDate[dt].count++;
-      byDate[dt].amount+=Number(x.amount)||0;
+      // negative बकाया (advance/credit) वाले उपभोक्ता का योगदान वसूल-राशि के जोड़ में 0 माना जाता है —
+      // देखें buildScOverview का fmt() वाला comment, वही वजह
+      byDate[dt].amount+=Math.max(0,Number(x.amount)||0);
       byDate[dt].names.push(x.name||"");
       if(x.acc) byDate[dt].accs.push(x.acc);
       // नाम+नंबर जोड़ी में — तालिका में सिर्फ़ पहले 3 दिखते हैं (और वो भी चौड़ाई से कट जाते हैं),
@@ -305,7 +321,7 @@ function downloadScPDF(){
         seenAccPDF[accKey]=true;
         var dt=x.paydate.trim();
         if(!byDate[dt]) byDate[dt]={count:0,amount:0,names:[],accs:[]};
-        byDate[dt].count++; byDate[dt].amount+=Number(x.amount)||0;
+        byDate[dt].count++; byDate[dt].amount+=Math.max(0,Number(x.amount)||0);
         byDate[dt].names.push(x.name||'');
         if(x.acc) byDate[dt].accs.push(x.acc);
       }
@@ -552,7 +568,7 @@ function _waScRow(hq){
       if(x.acc&&!masterAcc[String(x.acc)])return; // "कुल उपभोक्ता" में न हो तो न गिनें
       var key=x.acc?String(x.acc):("_p"+paid+Math.random());
       if(seenPaid[key])return; seenPaid[key]=1;
-      paid++; paidAmt+=Number(x.amount)||0;
+      paid++; paidAmt+=Math.max(0,Number(x.amount)||0); // negative बकाया (advance) का योगदान 0 माना जाता है
     });
   }
   return {hq:hq,tot:tot,bakaya:bakaya,paid:paid,paidAmt:paidAmt,pct:tot?(paid/tot*100):0};
@@ -633,7 +649,7 @@ function _todayScRow(hq){
       if(normPayDate(String(x.paydate).trim())!==todayStr)return;
       var key=x.acc?String(x.acc):("_"+count+Math.random());
       if(seen[key])return; seen[key]=1;
-      count++; amt+=Number(x.amount)||0;
+      count++; amt+=Math.max(0,Number(x.amount)||0); // negative बकाया (advance) का योगदान 0 माना जाता है
     });
   }
   return {hq:hq,count:count,amt:amt};
@@ -707,7 +723,7 @@ function _voiceHQBreakdown(hq){
       if(!tf)return; // "कुल उपभोक्ता" (master) में न हो तो न गिनें — _waScRow जैसा dedup
       var key=String(x.acc);
       if(seenPaid[key])return; seenPaid[key]=1;
-      rows[tf].paid++; rows[tf].paidAmt+=Number(x.amount)||0;
+      rows[tf].paid++; rows[tf].paidAmt+=Math.max(0,Number(x.amount)||0); // negative बकाया (advance) का योगदान 0 माना जाता है
     });
   }
   return Object.keys(rows).map(function(k){return rows[k];}).sort(function(a,b){return b.tot-a.tot;});
