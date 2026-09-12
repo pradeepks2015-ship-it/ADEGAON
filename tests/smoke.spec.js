@@ -3179,6 +3179,25 @@ test.describe('error logging', () => {
     expect(logs.some((l) => l.c === 'js-error' && l.m.indexOf('असली गड़बड़ी') > -1)).toBe(true);
   });
 
+  test('App Check की "reCAPTCHA Timeout" वाली unhandled promise rejection लॉग नहीं होती (SDK के अंदर की, हम पकड़ नहीं सकते; monitor mode में असर भी नहीं) — पर असली promise rejection अब भी लॉग होती है', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => { try { localStorage.removeItem('dc_logs3'); } catch (e) {} });
+    await page.evaluate(() => {
+      window.dispatchEvent(new PromiseRejectionEvent('unhandledrejection', {
+        promise: Promise.resolve(), reason: new Error('reCAPTCHA Timeout (b)'),
+      }));
+    });
+    await page.evaluate(() => {
+      window.dispatchEvent(new PromiseRejectionEvent('unhandledrejection', {
+        promise: Promise.resolve(), reason: new Error('असली promise गड़बड़ी'),
+      }));
+    });
+    await page.waitForTimeout(200);
+    const logs = await page.evaluate(() => getLogs());
+    expect(logs.some((l) => l.c === 'promise' && l.m.indexOf('reCAPTCHA Timeout') > -1)).toBe(false);
+    expect(logs.some((l) => l.c === 'promise' && l.m.indexOf('असली promise गड़बड़ी') > -1)).toBe(true);
+  });
+
   test('clearServerLogs — "सभी डिवाइस" वाले (server) logs को DELETE करता है, ताकि JE पुराने ढेर से छुटकारा पा सके', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
