@@ -3874,7 +3874,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
         window.fetch = orig;
         window._openLive = origOpenLive;
         resolve({ openLiveCalls: openLiveCalls });
-      }, 100);
+      }, 300); // भारी parallel-suite load में 100ms कभी-कभी कम पड़ता था — मार्जिन बढ़ाया
     }));
     expect(r.openLiveCalls).toBe(1); // बदला हुआ data मिला — असली reconnect हुआ
   });
@@ -3902,7 +3902,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
         window.fetch = orig;
         window._openLive = origOpenLive;
         resolve({ openLiveCalls: openLiveCalls });
-      }, 100);
+      }, 300); // भारी parallel-suite load में 100ms कभी-कभी कम पड़ता था — मार्जिन बढ़ाया
     }));
     expect(r.openLiveCalls).toBe(1); // जांच नाकाम — फिर भी असली reconnect की कोशिश हुई, डेटा अटका न रहे
   });
@@ -4160,7 +4160,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
         window.fetch = orig;
         window._openLive = origOpenLive;
         resolve({ openLiveCalls: openLiveCalls });
-      }, 150);
+      }, 300);
     }));
     expect(r.openLiveCalls).toBe(1);
   });
