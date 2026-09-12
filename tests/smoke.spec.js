@@ -398,6 +398,21 @@ test.describe('रोल-आधारित UI', () => {
     expect(txt).toContain('0✅ वसूल');
   });
 
+  test('स्कोरकार्ड (buildScOverview) — negative बकाया (advance/credit) वाले "वसूल" record गिनती में गिनें, पर राशि-जोड़ में उनका योगदान 0 माना जाए (bug: 11/9 को पिंडरई में "वसूल राशि" ही negative दिख गई थी)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', status: 'paid', amount: 100 },
+        { acc: '2', status: 'paid', amount: -500 }, // advance/credit balance — बकायादार नहीं
+      ]);
+      buildScOverview(['आदेगांव']);
+      return document.getElementById('sc-overview').textContent;
+    });
+    expect(txt).toContain('2✅ वसूल'); // दोनों "वसूल"/निपटे हुए गिने गए
+    expect(txt).toContain('₹100वसूल राशि'); // राशि सिर्फ़ +100 — -500 का योगदान 0 माना गया, राशि negative नहीं हुई
+  });
+
   test('दिनांक-वार वसूली (renderScDateTable) — "कुल उपभोक्ता" में न हो ऐसे paid acc को न गिने', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
@@ -413,6 +428,24 @@ test.describe('रोल-आधारित UI', () => {
       return document.getElementById('sc-body').textContent;
     });
     expect(txt).toContain('कोई वसूली नहीं'); // acc '99' मास्टर सूची में नहीं — कोई paid record नहीं बचना चाहिए
+  });
+
+  test('दिनांक-वार वसूली (renderScDateTable) — negative बकाया (advance) वाले paid record का योगदान उस दिन की राशि में 0 माना जाए, राशि कभी negative न दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      var master = [
+        { acc: '1', name: 'राम', status: 'paid', amount: 500, paydate: '11/9/2026' },
+        { acc: '2', name: 'श्याम', status: 'paid', amount: -800, paydate: '11/9/2026' }, // advance
+      ];
+      cSet('आदेगांव', 'कुल उपभोक्ता', master);
+      renderScDateTable(master);
+      return document.getElementById('sc-body').innerHTML;
+    });
+    expect(txt).toContain('₹500'); // सिर्फ़ +500 — -800 का योगदान 0 माना गया
+    expect(txt).not.toContain('-300'); // असली bug: 500-800=-300 जैसा जोड़ नहीं होना चाहिए
+    expect(txt).not.toContain('₹-'); // राशि कहीं भी negative चिह्न के साथ न दिखे
   });
 
   // तालिका में "उपभोक्ता"/"Consumer No" दो बार कटते हैं (पहले सिर्फ़ 3, फिर max-width+ellipsis) —
@@ -1170,6 +1203,20 @@ test.describe('ग्राम-वार वसूली', () => {
     expect(row.paid).toBe(1);
     expect(row.bakaya).toBe(0);
     expect(row.paidAmt).toBe(300);
+  });
+
+  test('ग्राम-वार वसूली (_vgComputeRows) — negative बकाया (advance) वाले "वसूल" उपभोक्ता का योगदान paidAmt में 0 माना जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '601', addr: 'गांवए', status: 'paid', amount: 400 },
+        { acc: '602', addr: 'गांवए', status: 'paid', amount: -900 }, // advance/credit balance
+      ]);
+    });
+    const row = await page.evaluate(() => _vgComputeRows('आदेगांव')[0]);
+    expect(row.paid).toBe(2); // दोनों "वसूल"/निपटे हुए गिने गए
+    expect(row.paidAmt).toBe(400); // सिर्फ़ +400 — -900 का योगदान 0 माना गया
   });
 
   test('मिलते-जुलते गांव-नाम (केस भिन्नता + अलग-टोकन) रिपोर्ट में मर्ज होते हैं', async ({ page }) => {
@@ -4715,6 +4762,21 @@ test.describe('आज की वसूली — मुख्यालय-वा
     expect(r.amt).toBe(100);
   });
 
+  test('_todayScRow — negative बकाया (advance) वाले "वसूल" record का योगदान amt में 0 माना जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var today = _todayDateStr();
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: 'A1', name: 'एक', status: 'paid', paydate: today, amount: '100' },
+        { acc: 'A2', name: 'दो', status: 'paid', paydate: today, amount: '-600' }, // advance/credit balance
+      ]);
+      return _todayScRow('आदेगांव');
+    });
+    expect(r.count).toBe(2); // दोनों "वसूल"/निपटे हुए गिने गए
+    expect(r.amt).toBe(100); // सिर्फ़ +100 — -600 का योगदान 0 माना गया
+  });
+
   test('_todayScRender — सभी HQ मिलाकर सही योग (total) दिखाए', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
@@ -4784,6 +4846,21 @@ test.describe('मुख्यालय व टैरिफ रिपोर्�
     expect(lv3.tot).toBe(1);
     expect(lv3.paid).toBe(0);
     expect(rows[0].tariff).toBe('LV1'); // tot घटते क्रम में — LV1 (2) पहले, LV3 (1) बाद में
+  });
+
+  test('_voiceHQBreakdown — negative बकाया (advance) वाले "वसूल" record का योगदान paidAmt में 0 माना जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const rows = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', tariff: 'LV1', status: 'paid', amount: 150 },
+        { acc: '2', name: 'श्याम', tariff: 'LV1', status: 'paid', amount: -700 }, // advance/credit balance
+      ]);
+      return _voiceHQBreakdown('आदेगांव');
+    });
+    const lv1 = rows.find((r) => r.tariff === 'LV1');
+    expect(lv1.paid).toBe(2); // दोनों "वसूल"/निपटे हुए गिने गए
+    expect(lv1.paidAmt).toBe(150); // सिर्फ़ +150 — -700 का योगदान 0 माना गया
   });
 
   test('_voiceScRender — जिस HQ का "कुल उपभोक्ता" cache में नहीं, उसकी कोई पंक्ति न बने', async ({ page }) => {
@@ -5298,6 +5375,29 @@ test.describe('downloadPDF/downloadExcel — ऊपर चुना filter (स�
     }));
     expect(html).toContain('राम');
     expect(html).not.toContain('श्याम');
+  });
+
+  test('downloadPDF — negative बकाया (advance) वाले "वसूल" record का योगदान वसूल-राशि सारांश में 0 माना जाए', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', amount: 300 },
+        { acc: '2', name: 'श्याम', status: 'paid', amount: -900 }, // advance/credit balance
+      ]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'all';
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadPDF();
+    }));
+    // ऊपर का सारांश-कार्ड: सिर्फ़ +300 — -900 का योगदान 0 माना गया, कभी negative न दिखे
+    expect(html).toContain("<b style='color:green'>₹300</b>वसूल राशि");
+    // पर श्याम की अपनी row में असली (-900) बकाया वैसा ही दिखे — सिर्फ़ सारांश-जोड़ में क्लैंप होता है,
+    // व्यक्तिगत record का असली आंकड़ा छुपाया नहीं जाता
+    expect(html).toContain('₹-900');
   });
 
   test('downloadPDF — "सभी" filter में पुराना व्यवहार वैसा ही रहे (सब records आएं, हेडर में filter-लेबल न जुड़े)', async ({ page }) => {

@@ -459,7 +459,9 @@ function downloadPDF(){
   var paid=data.filter(function(x){return x.status==="paid";});
   var pending=data.filter(function(x){return x.status!=="paid";});
   var pendAmt=pending.reduce(function(s,x){return s+(Number(x.amount)||0);},0);
-  var paidAmt=paid.reduce(function(s,x){return s+(Number(x.amount)||0);},0);
+  // negative बकाया (advance/credit balance) वाले उपभोक्ता का योगदान वसूल-राशि के जोड़ में 0 माना
+  // जाता है — देखें reports.js: buildScOverview का fmt() वाला comment, वही वजह
+  var paidAmt=paid.reduce(function(s,x){return s+Math.max(0,Number(x.amount)||0);},0);
   var rows=data.map(function(x,i){
     var isPaid=x.status==="paid";
     // remarksArr का text लाइनमैन/JE का free-typed इनपुट है — escHtml के बिना यहां (document.write

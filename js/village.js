@@ -91,7 +91,9 @@ function _vgPaidMap(hq){
       if(!x||x.status!=="paid"||!x.acc)return;
       var key=String(x.acc);
       if(seen[key])return; seen[key]=1;
-      map[key]=Number(x.amount)||0;
+      // negative बकाया (advance/credit) वाले उपभोक्ता का योगदान वसूल-राशि के जोड़ में 0 माना जाता है —
+      // देखें reports.js: buildScOverview का fmt() वाला comment, वही वजह
+      map[key]=Math.max(0,Number(x.amount)||0);
     });
   }
   return map;
@@ -114,7 +116,7 @@ function _vgComputeRows(hq){
     byV[k].seen[key]=1;
     byV[k].tot++;
     var isPaid=x.acc&&paidMap.hasOwnProperty(String(x.acc))?true:(x.status==="paid");
-    if(isPaid){ byV[k].paid++; byV[k].paidAmt+=(x.acc&&paidMap.hasOwnProperty(String(x.acc)))?paidMap[String(x.acc)]:(Number(x.amount)||0); }
+    if(isPaid){ byV[k].paid++; byV[k].paidAmt+=(x.acc&&paidMap.hasOwnProperty(String(x.acc)))?paidMap[String(x.acc)]:Math.max(0,Number(x.amount)||0); }
     else byV[k].bakaya+=Number(x.amount)||0;
   });
   var rows=Object.keys(byV).map(function(k){
