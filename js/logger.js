@@ -408,7 +408,14 @@ window.addEventListener("error",function(ev){
   if(ev.message==="Script error."&&!ev.filename&&!ev.lineno&&!ev.error) return;
   if(ev.error||ev.message) logErr("js-error",ev.error||ev.message,(ev.filename||"").split("/").pop()+":"+(ev.lineno||""));
 });
+// Firebase App Check का reCAPTCHA v3 verification कमज़ोर नेटवर्क पर कभी-कभी समय पर पूरा नहीं होता।
+// यह SDK के अपने अंदर (हमारे किसी .then()/.catch() chain के बाहर) होता है, इसलिए हम इसे पकड़ ही
+// नहीं सकते — और App Check अभी सिर्फ़ "monitor mode" में है (enforce नहीं), इसका असर किसी भी
+// save/read पर नहीं पड़ता, device सामान्य auth से ही काम करता रहता है। "Script error." जैसा ही
+// बेमतलब शोर है (production में एक ही device पर बार-बार दिखा, कोई सुराग नहीं देता) — इसलिए लॉग नहीं करते
 window.addEventListener("unhandledrejection",function(ev){
+  var msg=(ev&&ev.reason&&ev.reason.message)||"";
+  if(/^reCAPTCHA/i.test(msg)) return;
   logErr("promise",ev&&ev.reason);
 });
 
