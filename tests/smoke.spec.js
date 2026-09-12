@@ -3848,15 +3848,15 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(r.esOpenAgain).toBe(false);    // कोई नया live connection नहीं खुला
   });
 
-  test('_tokenExpiryRecheck — कुछ बदला निकले (200) तो असली (पूरा) reconnect हो, startListen बुलाया जाए', async ({ page }) => {
+  test('_tokenExpiryRecheck — कुछ बदला निकले (200) तो असली (पूरा) reconnect हो, _openLive बुलाया जाए', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
     await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
     const r = await page.evaluate(() => new Promise((resolve) => {
       window.ES_RECONNECT_DELAY_MS = 10;
-      var startListenCalls = 0;
-      var origStartListen = window.startListen;
-      window.startListen = function (h, c) { startListenCalls++; return origStartListen(h, c); };
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function (h, c) { openLiveCalls++; return origOpenLive(h, c); };
       var orig = window.fetch;
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) {
@@ -3872,22 +3872,22 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       es.onerror();
       setTimeout(() => {
         window.fetch = orig;
-        window.startListen = origStartListen;
-        resolve({ startListenCalls: startListenCalls });
+        window._openLive = origOpenLive;
+        resolve({ openLiveCalls: openLiveCalls });
       }, 100);
     }));
-    expect(r.startListenCalls).toBe(1); // बदला हुआ data मिला — असली reconnect हुआ
+    expect(r.openLiveCalls).toBe(1); // बदला हुआ data मिला — असली reconnect हुआ
   });
 
-  test('_tokenExpiryRecheck — हल्की जांच ही नाकाम (network error) हो तो पुराने, हमेशा-safe रास्ते (startListen) पर लौट जाए', async ({ page }) => {
+  test('_tokenExpiryRecheck — हल्की जांच ही नाकाम (network error) हो तो पुराने, हमेशा-safe रास्ते (_openLive) पर लौट जाए', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
     await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
     const r = await page.evaluate(() => new Promise((resolve) => {
       window.ES_RECONNECT_DELAY_MS = 10;
-      var startListenCalls = 0;
-      var origStartListen = window.startListen;
-      window.startListen = function (h, c) { startListenCalls++; return origStartListen(h, c); };
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function (h, c) { openLiveCalls++; return origOpenLive(h, c); };
       var orig = window.fetch;
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) {
@@ -3900,11 +3900,11 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       es.onerror();
       setTimeout(() => {
         window.fetch = orig;
-        window.startListen = origStartListen;
-        resolve({ startListenCalls: startListenCalls });
+        window._openLive = origOpenLive;
+        resolve({ openLiveCalls: openLiveCalls });
       }, 100);
     }));
-    expect(r.startListenCalls).toBe(1); // जांच नाकाम — फिर भी असली reconnect की कोशिश हुई, डेटा अटका न रहे
+    expect(r.openLiveCalls).toBe(1); // जांच नाकाम — फिर भी असली reconnect की कोशिश हुई, डेटा अटका न रहे
   });
 
   test('pollOnce (आख़िरी सहारे वाला भारी fallback) — ETag भेजे, और HTTP 304 (कुछ नहीं बदला) पर कोई दोबारा render/error न हो', async ({ page }) => {
@@ -4036,6 +4036,181 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       return count;
     });
     expect(immediateFetchCount).toBe(0);
+  });
+
+  test('startListen — tab-revisit: हाल ही में (grace window में) ताज़ा देखी list पर वापस आने पर कुछ नहीं बदला (304) तो _openLive तुरंत न बुलाए, ETag header भेजा जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'आदेगांव', cat = 'कुल उपभोक्ता';
+      cSet(hq, cat, [{ acc: '1', status: 'pending', amount: 100 }]);
+      _lastLiveAt[hq + '/' + cat] = Date.now(); // अभी-अभी ताज़ा सिंक हुआ मान लो
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var sawEtagHeader = false;
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) {
+          if (opts && opts.headers && opts.headers['X-Firebase-ETag']) sawEtagHeader = true;
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      setTimeout(() => {
+        window.fetch = orig;
+        window._openLive = origOpenLive;
+        resolve({ sawEtagHeader: sawEtagHeader, openLiveCalls: openLiveCalls });
+      }, 150);
+    }));
+    expect(r.sawEtagHeader).toBe(true);
+    expect(r.openLiveCalls).toBe(0); // 304 पर SSE तुरंत नहीं खुला
+  });
+
+  test('startListen — tab-revisit: 304 के बाद grace window बीतते ही (उपयोगकर्ता अब भी उसी tab पर हो तो) असली live-connection अपने-आप जुड़े', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'आदेगांव', cat = 'कुल उपभोक्ता';
+      activeHQ = hq; activeCat = cat;
+      cSet(hq, cat, [{ acc: '1', status: 'pending', amount: 100 }]);
+      var origGrace = window.TAB_REVISIT_GRACE_MS;
+      window.TAB_REVISIT_GRACE_MS = 60; // तेज़ जांच के लिए छोटा किया (टेस्ट-only)
+      _lastLiveAt[hq + '/' + cat] = Date.now();
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) {
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      setTimeout(() => {
+        var beforeGraceEnds = openLiveCalls; // 60ms अभी नहीं बीते
+        setTimeout(() => {
+          window.fetch = orig;
+          window._openLive = origOpenLive;
+          window.TAB_REVISIT_GRACE_MS = origGrace;
+          resolve({ beforeGraceEnds: beforeGraceEnds, afterGraceEnds: openLiveCalls });
+        }, 250);
+      }, 20);
+    }));
+    expect(r.beforeGraceEnds).toBe(0);
+    expect(r.afterGraceEnds).toBe(1);
+  });
+
+  test('startListen — tab-revisit: deferred reconnect सिर्फ़ तभी चले जब उपयोगकर्ता अब भी उसी tab पर हो — बीच में कहीं और चले गए तो न चले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'आदेगांव', cat = 'कुल उपभोक्ता';
+      activeHQ = hq; activeCat = cat;
+      cSet(hq, cat, [{ acc: '1', status: 'pending', amount: 100 }]);
+      var origGrace = window.TAB_REVISIT_GRACE_MS;
+      window.TAB_REVISIT_GRACE_MS = 60;
+      _lastLiveAt[hq + '/' + cat] = Date.now();
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) {
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      setTimeout(() => { activeCat = 'घरेलू'; }, 15); // grace बीतने से पहले ही कहीं और चले गए
+      setTimeout(() => {
+        window.fetch = orig;
+        window._openLive = origOpenLive;
+        window.TAB_REVISIT_GRACE_MS = origGrace;
+        resolve({ openLiveCalls: openLiveCalls });
+      }, 250);
+    }));
+    expect(r.openLiveCalls).toBe(0); // पुरानी tab के लिए दोबारा live न जुड़े
+  });
+
+  test('startListen — tab-revisit: कुछ बदला निकले (200) तो सीधे _openLive बुलाया जाए (वही ताज़ा data ले आएगा)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'आदेगांव', cat = 'कुल उपभोक्ता';
+      cSet(hq, cat, [{ acc: '1', status: 'pending', amount: 100 }]);
+      _lastLiveAt[hq + '/' + cat] = Date.now();
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) {
+          return Promise.resolve({
+            ok: true, status: 200, headers: { get: () => '"new-etag"' },
+            json: () => Promise.resolve([{ acc: '1', status: 'paid', amount: 100 }]),
+          });
+        }
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      setTimeout(() => {
+        window.fetch = orig;
+        window._openLive = origOpenLive;
+        resolve({ openLiveCalls: openLiveCalls });
+      }, 150);
+    }));
+    expect(r.openLiveCalls).toBe(1);
+  });
+
+  test('startListen — tab-revisit: पहली बार (_lastLiveAt न हो) — कोई ETag pre-check नहीं, सीधे _openLive (पुराना व्यवहार अपरिवर्तित)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var hq = 'पिंडरई', cat = 'कुल उपभोक्ता'; // इस key का _lastLiveAt कभी नहीं भरा
+      var openLiveCalls = 0, preCheckFetches = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) preCheckFetches++;
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      window.fetch = orig;
+      window._openLive = origOpenLive;
+      return { openLiveCalls: openLiveCalls, preCheckFetches: preCheckFetches };
+    });
+    expect(r.preCheckFetches).toBe(0);
+    expect(r.openLiveCalls).toBe(1);
+  });
+
+  test('startListen — tab-revisit: offline pending बदलाव हों तो gate न लगे, सीधे _openLive (stale cache पर भरोसा न किया जाए)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var hq = 'आदेगांव', cat = 'कुल उपभोक्ता';
+      cSet(hq, cat, [{ acc: '1', status: 'pending', amount: 100 }]);
+      _lastLiveAt[hq + '/' + cat] = Date.now();
+      markPending(hq, cat, 'put');
+      var openLiveCalls = 0, preCheckFetches = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) preCheckFetches++;
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      window.fetch = orig;
+      window._openLive = origOpenLive;
+      clearPendingKey(cKey(hq, cat));
+      return { openLiveCalls: openLiveCalls, preCheckFetches: preCheckFetches };
+    });
+    expect(r.preCheckFetches).toBe(0);
+    expect(r.openLiveCalls).toBe(1);
   });
 
   test('_cashRefreshAll — 5 मिनट के cooldown के अंदर दोबारा बुलाने पर network fetch न हो (बैकअप/village-report/WhatsApp-scorecard बार-बार खुलने पर बचत)', async ({ page }) => {
