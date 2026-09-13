@@ -145,7 +145,7 @@ function _scBodyFromCache(){
 }
 function renderScBody(){
   var hdr=document.getElementById("sc-date-hdr");
-  hdr.textContent="📅 "+scActiveHQ+" — दिनांक-वार वसूली";
+  hdr.textContent="📅 "+scActiveHQ+" — दिनांक-वार वसूली (चालू चक्र: "+_scCycleWindow().label+")";
   _scBodyFromCache();
   if(!navigator.onLine) return;
   _cashRefreshAll([scActiveHQ],function(){
@@ -156,6 +156,23 @@ function renderScBody(){
   });
 }
 
+// ── "दिनांक-वार वसूली" चालू बिलिंग-चक्र खिड़की ────────────────────────────────────────────────
+// JE का बग रिपोर्ट: यह तालिका पुराने महीनों (जुलाई/अगस्त) की वसूली भी गिन लेती थी, जिससे चालू
+// चक्र की प्रगति भ्रामक दिखती। वजह असली मीटर-रीडिंग चक्र है: रीडिंग महीने की 24 तारीख़ से शुरू
+// होकर अगले महीने की 8-9 तारीख़ तक चलती है, नया लेजर 10 तारीख़ को आता है — तब तक पुराना लेजर ही
+// चलता रहता है। इस बीच (25 से महीने के आख़िर तक) जो उपभोक्ता बिल भर देते हैं, वे असल में अगले
+// (नए) चक्र के भुगतान हैं, भले ही अभी पुराने लेजर में दर्ज हों — इसलिए खिड़की 27 तारीख़ से रखी गई
+// है (उन्हें भी शामिल करने के लिए), 1 तारीख़ से नहीं। यह हमेशा "पिछले महीने की 27 से आज तक" रहती
+// है — महीना बदलते ही अपने-आप एक महीना आगे खिसक जाती है (buildScOverview का समग्र/all-time
+// आँकड़ा इससे अप्रभावित रहता है — वह जान-बूझकर अलग, संचयी हिसाब है)
+function _scCycleWindow(){
+  var t=new Date();
+  var s=new Date(t.getFullYear(),t.getMonth()-1,27);
+  return {
+    startVal:s.getFullYear()*10000+(s.getMonth()+1)*100+s.getDate(),
+    label:s.getDate()+"/"+(s.getMonth()+1)+"/"+s.getFullYear()+" – "+t.getDate()+"/"+(t.getMonth()+1)+"/"+t.getFullYear()
+  };
+}
 function normPayDate(v){
   // हर format (yyyy-mm-dd / d/m/yyyy / dd-mm-yyyy) को d/m/yyyy बनाएँ; future date → आज
   var d=null,m;
@@ -178,10 +195,12 @@ function renderScDateTable(data){
   // सिर्फ वही acc गिनें जो "कुल उपभोक्ता" (मास्टर) सूची में भी हों — ग्राम-वार वसूली से मेल के लिए
   var masterAcc={};
   (cGet(scActiveHQ,CATS[0])||[]).forEach(function(m){ if(m&&m.acc) masterAcc[String(m.acc)]=1; });
+  var cycleStartVal=_scCycleWindow().startVal;
   data.forEach(function(x){
     if(x.status==="paid"&&x.paydate){
       if(x.acc&&!masterAcc[String(x.acc)]) return;
       var dt=normPayDate(x.paydate.trim());
+      if(payDateVal(dt)<cycleStartVal) return; // चालू बिलिंग-चक्र से पुराना भुगतान — इस तालिका में न गिनें
       var accKey=x.acc||("__noAcc__"+x.name);
       if(seenAcc[accKey]) return; // duplicate acc — skip
       seenAcc[accKey]=true;
@@ -203,7 +222,7 @@ function renderScDateTable(data){
     return payDateVal(b)-payDateVal(a); // असली date से desc sort
   });
   if(!dates.length){
-    el.innerHTML="<div class='empty'><div class='empty-ico'>📊</div><div class='empty-t'>कोई वसूली नहीं</div><div class='empty-s'>अभी तक कोई भुगतान दर्ज नहीं</div></div>";
+    el.innerHTML="<div class='empty'><div class='empty-ico'>📊</div><div class='empty-t'>कोई वसूली नहीं</div><div class='empty-s'>चालू बिलिंग-चक्र में अभी तक कोई भुगतान दर्ज नहीं</div></div>";
     return;
   }
   // पूरी सूची वाली स्क्रीन के लिए संभालकर रखें (कोई network call नहीं — यही data पहले से हाथ में है)
@@ -304,6 +323,7 @@ function _scDayFallbackCopy(txt,n){
 function downloadScPDF(){
   // Gather all HQ data for scorecard PDF
   var hqs=CU.role==="supervisor"?HQS:[CU.hq];
+  var cw=_scCycleWindow();
   var rows="";
   hqs.forEach(function(hq){
     var combined=[];
@@ -316,6 +336,7 @@ function downloadScPDF(){
     combined.forEach(function(x){
       if(x.status==="paid"&&x.paydate){
         if(x.acc&&!masterAccPDF[String(x.acc)]) return;
+        if(payDateVal(normPayDate(x.paydate.trim()))<cw.startVal) return; // चालू बिलिंग-चक्र से पुराना भुगतान — इसमें न गिनें (देखें _scCycleWindow)
         var accKey=x.acc||("__noAcc__"+x.name);
         if(seenAccPDF[accKey]) return;
         seenAccPDF[accKey]=true;
@@ -344,7 +365,7 @@ function downloadScPDF(){
     "<style>body{font-family:Arial,sans-serif;font-size:11px;margin:15px;}h2{color:#4a148c;}td{padding:5px;border-bottom:1px solid #ddd;}"+
     "@media print{.np{display:none}}</style></head><body>"+
     "<h2>&#127942; DC स्कोरकार्ड — दिनांक-वार वसूली</h2>"+
-    "<p>दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+escHtml(CU.name)+"</p>"+
+    "<p>दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | चालू चक्र: <b>"+escHtml(cw.label)+"</b> | "+escHtml(CU.name)+"</p>"+
     "<button class='np' onclick='window.print()' style='margin-bottom:8px;padding:6px 14px;background:#4a148c;color:#fff;border:none;border-radius:5px;cursor:pointer;'>Print / PDF Save</button>"+
     rows+"</body></html>";
   var w=window.open("","_blank");

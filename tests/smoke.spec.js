@@ -435,9 +435,10 @@ test.describe('रोल-आधारित UI', () => {
     await loginJE(page);
     const txt = await page.evaluate(() => {
       scActiveHQ = 'आदेगांव';
+      var today = _todayDateStr();
       var master = [
-        { acc: '1', name: 'राम', status: 'paid', amount: 500, paydate: '11/9/2026' },
-        { acc: '2', name: 'श्याम', status: 'paid', amount: -800, paydate: '11/9/2026' }, // advance
+        { acc: '1', name: 'राम', status: 'paid', amount: 500, paydate: today },
+        { acc: '2', name: 'श्याम', status: 'paid', amount: -800, paydate: today }, // advance
       ];
       cSet('आदेगांव', 'कुल उपभोक्ता', master);
       renderScDateTable(master);
@@ -455,13 +456,18 @@ test.describe('रोल-आधारित UI', () => {
     await loginJE(page);
     const r = await page.evaluate(() => {
       scActiveHQ = 'आदेगांव';
+      // दो अलग-अलग तारीख़ें — दोनों चालू बिलिंग-चक्र खिड़की (_scCycleWindow) के अंदर पक्का रहें,
+      // इसलिए "आज" के सापेक्ष (हार्डकोड तारीख़ महीना बदलते ही खिड़की से बाहर निकल जाती)
+      var d2 = new Date(); d2.setDate(d2.getDate() - 2);
+      var day1 = d2.getDate() + '/' + (d2.getMonth() + 1) + '/' + d2.getFullYear();
+      var day2 = _todayDateStr();
       var master = [];
-      for (var i = 0; i < 40; i++) master.push({ acc: '11340' + (10000 + i), name: 'उपभोक्ता ' + i, status: 'paid', amount: 100, paydate: '31/8/2026' });
-      master.push({ acc: '9999', name: 'अकेला', status: 'paid', amount: 50, paydate: '1/9/2026' });
+      for (var i = 0; i < 40; i++) master.push({ acc: '11340' + (10000 + i), name: 'उपभोक्ता ' + i, status: 'paid', amount: 100, paydate: day1 });
+      master.push({ acc: '9999', name: 'अकेला', status: 'paid', amount: 50, paydate: day2 });
       cSet('आदेगांव', 'कुल उपभोक्ता', master);
       renderScDateTable(cGet('आदेगांव', 'कुल उपभोक्ता'));
       var rows = document.querySelectorAll('#sc-body tr.sc-day-row');
-      openScDayModal(SC_DAY_DATES.indexOf('31/8/2026'));
+      openScDayModal(SC_DAY_DATES.indexOf(day1));
       var el = document.getElementById('scday-content');
       var txt = el.textContent;
       var chips = el.querySelectorAll('.chip-acc').length;
@@ -470,7 +476,7 @@ test.describe('रोल-आधारित UI', () => {
       return { clickable: rows.length, chips: chips, open: open, txt: txt,
         title: document.getElementById('scday-title').textContent,
         sub: document.getElementById('scday-sub').textContent,
-        closed: !document.getElementById('scday-overlay').classList.contains('open') };
+        closed: !document.getElementById('scday-overlay').classList.contains('open'), day1: day1 };
     });
     expect(r.clickable).toBe(2);            // दोनों तारीख़ें दबाने लायक
     expect(r.open).toBe(true);
@@ -478,7 +484,7 @@ test.describe('रोल-आधारित UI', () => {
     expect(r.txt).toContain('1134010000');  // पहला पूरा नंबर
     expect(r.txt).toContain('1134010039');  // आख़िरी भी पूरा
     expect(r.txt).toContain('उपभोक्ता 39');
-    expect(r.title).toContain('31/8/2026');
+    expect(r.title).toContain(r.day1);
     expect(r.sub).toContain('40 उपभोक्ता');
     expect(r.closed).toBe(true);
   });
@@ -489,7 +495,7 @@ test.describe('रोल-आधारित UI', () => {
     const r = await page.evaluate(() => {
       scActiveHQ = 'आदेगांव';
       cSet('आदेगांव', 'कुल उपभोक्ता', [
-        { acc: "5'><img src=x onerror=alert(1)>", name: '<img src=y onerror=alert(2)>', status: 'paid', amount: 10, paydate: '2/9/2026' },
+        { acc: "5'><img src=x onerror=alert(1)>", name: '<img src=y onerror=alert(2)>', status: 'paid', amount: 10, paydate: _todayDateStr() },
       ]);
       renderScDateTable(cGet('आदेगांव', 'कुल उपभोक्ता'));
       openScDayModal(0);
@@ -508,8 +514,8 @@ test.describe('रोल-आधारित UI', () => {
     const r = await page.evaluate(() => {
       scActiveHQ = 'आदेगांव';
       cSet('आदेगांव', 'कुल उपभोक्ता', [
-        { acc: '7001', name: 'नंबर वाला', status: 'paid', amount: 10, paydate: '3/9/2026' },
-        { name: 'बिना नंबर वाला', status: 'paid', amount: 20, paydate: '3/9/2026' },
+        { acc: '7001', name: 'नंबर वाला', status: 'paid', amount: 10, paydate: _todayDateStr() },
+        { name: 'बिना नंबर वाला', status: 'paid', amount: 20, paydate: _todayDateStr() },
       ]);
       renderScDateTable(cGet('आदेगांव', 'कुल उपभोक्ता'));
       openScDayModal(0);
@@ -523,6 +529,86 @@ test.describe('रोल-आधारित UI', () => {
     expect(r.txt).toContain('बिना नंबर वाला');
     expect(r.chips).toBe(1);                      // सिर्फ़ एक के पास नंबर है
     expect(r.txt).toContain('कॉपी करें (1)');      // कॉपी बटन सिर्फ़ असली नंबरों की गिनती दिखाए
+  });
+});
+
+test.describe('स्कोरकार्ड "दिनांक-वार वसूली" अब चालू बिलिंग-चक्र तक सीमित (bug: जुलाई/अगस्त जैसे पुराने महीनों की वसूली भी गिन ली जाती थी, जिससे चालू चक्र की प्रगति भ्रामक दिखती — JE: मीटर-रीडिंग 24 तारीख़ से शुरू होकर अगले महीने 8-9 तक चलती है, नया लेजर 10 को आता है, 25-महीना-अंत के बीच के भुगतान भी अगले चक्र के गिने जाने चाहिए — इसलिए खिड़की पिछले महीने की 27 से आज तक)', () => {
+  test('चक्र-खिड़की से पुराना भुगतान (70 दिन पहले) — तालिका/कुल में न गिने', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      var old = new Date(); old.setDate(old.getDate() - 70); // हमेशा सबसे बड़ी संभव खिड़की (~35 दिन) से भी पुराना
+      var oldDate = old.getDate() + '/' + (old.getMonth() + 1) + '/' + old.getFullYear();
+      var master = [{ acc: '1', name: 'पुराना', status: 'paid', amount: 100, paydate: oldDate }];
+      cSet('आदेगांव', 'कुल उपभोक्ता', master);
+      renderScDateTable(master);
+      return document.getElementById('sc-body').textContent;
+    });
+    expect(txt).toContain('कोई वसूली नहीं');
+  });
+
+  test('चक्र-खिड़की की शुरुआत (पिछले महीने की 27) पर हुआ भुगतान गिना जाए — सीमा-रेखा शामिल', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      var t = new Date();
+      var boundary = new Date(t.getFullYear(), t.getMonth() - 1, 27);
+      var boundaryDate = boundary.getDate() + '/' + (boundary.getMonth() + 1) + '/' + boundary.getFullYear();
+      var master = [{ acc: '1', name: 'सीमारेखा', status: 'paid', amount: 100, paydate: boundaryDate }];
+      cSet('आदेगांव', 'कुल उपभोक्ता', master);
+      renderScDateTable(master);
+      return document.getElementById('sc-body').textContent;
+    });
+    expect(txt).toContain('सीमारेखा');
+    expect(txt).toContain('1 / 1'); // वसूल/कुल — गिना गया
+  });
+
+  test('चक्र-खिड़की से ठीक एक दिन पहले (पिछले महीने की 26) का भुगतान न गिने', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      var t = new Date();
+      var beforeBoundary = new Date(t.getFullYear(), t.getMonth() - 1, 26);
+      var d = beforeBoundary.getDate() + '/' + (beforeBoundary.getMonth() + 1) + '/' + beforeBoundary.getFullYear();
+      var master = [{ acc: '1', name: 'सीमारेखा-से-पहले', status: 'paid', amount: 100, paydate: d }];
+      cSet('आदेगांव', 'कुल उपभोक्ता', master);
+      renderScDateTable(master);
+      return document.getElementById('sc-body').textContent;
+    });
+    expect(txt).toContain('कोई वसूली नहीं');
+  });
+
+  test('renderScBody का header चालू चक्र की तारीख़-सीमा दिखाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      renderScBody();
+      return { hdr: document.getElementById('sc-date-hdr').textContent, label: _scCycleWindow().label };
+    });
+    expect(r.hdr).toContain('चालू चक्र');
+    expect(r.hdr).toContain(r.label);
+  });
+
+  test('downloadScPDF — पुराना (चक्र-खिड़की से बाहर) भुगतान वाली HQ का सेक्शन ही न बने', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      var old = new Date(); old.setDate(old.getDate() - 70);
+      var oldDate = old.getDate() + '/' + (old.getMonth() + 1) + '/' + old.getFullYear();
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'पुराना', status: 'paid', amount: 100, paydate: oldDate }]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadScPDF();
+    }));
+    expect(html).not.toContain('पुराना');
+    expect(html).not.toContain('📍 आदेगांव');
   });
 });
 
@@ -5620,7 +5706,7 @@ test.describe('XSS सुरक्षा — PDF/print export और दिन�
   test('downloadScPDF (reports.js) — दिनांक-वार PDF में consumer name/Consumer No escape होकर जाएं', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {
-      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '<script>alert(3)</script>', name: '<img src=x onerror=alert(4)>', status: 'paid', amount: 100, paydate: '1/1/2026' }]);
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '<script>alert(3)</script>', name: '<img src=x onerror=alert(4)>', status: 'paid', amount: 100, paydate: _todayDateStr() }]);
     });
     await loginJE(page);
     const html = await page.evaluate(() => new Promise((resolve) => {
@@ -5631,19 +5717,21 @@ test.describe('XSS सुरक्षा — PDF/print export और दिन�
     }));
     expect(html).not.toContain('<script>alert(3)</script>');
     expect(html).not.toContain('<img src=x onerror=alert(4)>');
+    expect(html).toContain('&lt;script&gt;alert(3)&lt;/script&gt;'); // चालू चक्र में गिना गया और escape होकर दिखा (vacuous pass न हो)
   });
 
   test('renderScDateTable (स्क्रीन पर दिनांक-वार तालिका) — consumer name/Consumer No escape होकर दिखें', async ({ page }) => {
     await openApp(page);
     const html = await page.evaluate(() => {
       scActiveHQ = 'आदेगांव';
-      var rec = { acc: '<script>alert(5)</script>', name: '<img src=x onerror=alert(6)>', status: 'paid', amount: 100, paydate: '1/1/2026' };
+      var rec = { acc: '<script>alert(5)</script>', name: '<img src=x onerror=alert(6)>', status: 'paid', amount: 100, paydate: _todayDateStr() };
       cSet('आदेगांव', 'कुल उपभोक्ता', [rec]); // renderScDateTable इसी master-list से acc मिलान करके फ़िल्टर करता है
       renderScDateTable([rec]);
       return document.getElementById('sc-body').innerHTML;
     });
     expect(html).not.toContain('<script>alert(5)</script>');
     expect(html).not.toContain('<img src=x onerror=alert(6)>');
+    expect(html).toContain('&lt;script&gt;alert(5)&lt;/script&gt;'); // चालू चक्र में गिना गया और escape होकर दिखा (vacuous pass न हो)
   });
 
   test('renderListWith — con-card के onclick="...(\'...\')" में escHtml काफ़ी नहीं (सिंगल-कोट को browser वापस decode कर देता है), escJsAttr चाहिए', async ({ page }) => {

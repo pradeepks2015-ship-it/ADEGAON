@@ -184,6 +184,7 @@
   "_saveFailToast",
   "_saveJEHash",
   "_scBodyFromCache",
+  "_scCycleWindow",
   "_scDayFallbackCopy",
   "_searchTimer",
   "_serverTimeOffset",
