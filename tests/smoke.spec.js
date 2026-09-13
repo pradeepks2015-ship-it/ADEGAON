@@ -4709,9 +4709,10 @@ test.describe('लेजर अपलोड के बाद reconcileHQ चल�
 });
 
 test.describe('पुराने (v9.139 फिक्स से पहले के) अपलोड से बचे मिसमैच अपने-आप ठीक हों — reconcileHQ अब login और HQ/category tab बदलने पर भी चले, सिर्फ़ नए अपलोड पर नहीं (bug: जोबा में fix के बाद भी "कुल उपभोक्ता" में पुराना मिसमैच वैसा ही दिखता रहा — असली वजह: फिक्स सिर्फ़ भविष्य के अपलोड पर चलता है, पहले से मौजूद मिसमैच वाले device local cache को कभी नहीं छूता था)', () => {
-  test('login पर सक्रिय (डिफ़ॉल्ट) HQ का पुराना मिसमैच reconcile हो जाए', async ({ page }) => {
+  test('login पर सक्रिय (डिफ़ॉल्ट) HQ का पुराना मिसमैच reconcile हो जाए (auth पहले से तय मानकर)', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {
+      window.AUTH_READY = true; // असली device पर auth तय होने के बाद वाली स्थिति — reconcileHQ तुरंत चले
       // supervisor login डिफ़ॉल्ट रूप से HQS[0] यानी "आदेगांव" पर खुलता है — वहीं पुराना मिसमैच बना देते हैं
       cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', status: 'pending', amount: 100 }]);
       cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', status: 'paid', paydate: '1/1/2026', amount: 100 }]);
@@ -4721,10 +4722,11 @@ test.describe('पुराने (v9.139 फिक्स से पहले �
     expect(status).toBe('paid');
   });
 
-  test('HQ tab बदलने पर उस HQ का पुराना मिसमैच reconcile हो जाए', async ({ page }) => {
+  test('HQ tab बदलने पर उस HQ का पुराना मिसमैच reconcile हो जाए (auth पहले से तय मानकर)', async ({ page }) => {
     await openApp(page);
     await loginJE(page); // डिफ़ॉल्ट "आदेगांव" पर लॉगिन
     await page.evaluate(() => {
+      window.AUTH_READY = true;
       cSet('जोबा', 'कुल उपभोक्ता', [{ acc: '1', name: 'श्याम', status: 'pending', amount: 200 }]);
       cSet('जोबा', 'घरेलू', [{ acc: '1', name: 'श्याम', status: 'paid', paydate: '1/1/2026', amount: 200 }]);
     });
@@ -4735,10 +4737,11 @@ test.describe('पुराने (v9.139 फिक्स से पहले �
     expect(status).toBe('paid');
   });
 
-  test('category tab बदलने पर भी सक्रिय HQ का पुराना मिसमैच reconcile हो जाए', async ({ page }) => {
+  test('category tab बदलने पर भी सक्रिय HQ का पुराना मिसमैच reconcile हो जाए (auth पहले से तय मानकर)', async ({ page }) => {
     await openApp(page);
     await loginJE(page); // डिफ़ॉल्ट "आदेगांव" पर लॉगिन
     await page.evaluate(() => {
+      window.AUTH_READY = true;
       cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', status: 'pending', amount: 100 }]);
       cSet('आदेगांव', 'व्यवसाय', [{ acc: '1', name: 'राम', status: 'paid', paydate: '1/1/2026', amount: 100 }]);
     });
@@ -4747,6 +4750,29 @@ test.describe('पुराने (v9.139 फिक्स से पहले �
     });
     const status = await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता').find((x) => x.acc === '1').status);
     expect(status).toBe('paid');
+  });
+});
+
+test.describe('reconcileHQ अब auth तय होने तक रुके — silent restore पर Firebase account अभी अनिश्चित हो तो तुरंत fbSet न भेजें (bug v9.140: lineman डिवाइस पर सुबह ऐप खोलते ही "save-fail HTTP 401" — reconcileHQ हर login पर auth तय होने का इंतज़ार किए बिना तुरंत लिख देता था)', () => {
+  test('AUTH_READY अभी false हो तो reconcileHQ तुरंत न चले, auth तय होते ही (waiter चलते ही) चले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      window.AUTH_READY = false; // silent restore पर auth अभी resolve नहीं हुआ, जैसा असली bug में था
+      _authWaiters.splice(0); // login के वक़्त की अपनी (असली) reconcileHQ waiter हटाकर सिर्फ़ इस टेस्ट का काउंट देखें
+      var calls = 0;
+      var origReconcile = window.reconcileHQ;
+      window.reconcileHQ = function (hq) { calls++; return origReconcile(hq); };
+      _afterAuthReady(function () { reconcileHQ('आदेगांव'); });
+      var before = calls;
+      window.AUTH_READY = true;
+      _authWaiters.splice(0).forEach(function (f) { f(); }); // असली firebase.auth().onIdTokenChanged जैसा
+      var after = calls;
+      window.reconcileHQ = origReconcile;
+      return { before: before, after: after };
+    });
+    expect(r.before).toBe(0); // auth तय होने से पहले न चले — 401 से बचाव
+    expect(r.after).toBe(1); // auth तय होते ही चल जाए
   });
 });
 
