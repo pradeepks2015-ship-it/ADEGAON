@@ -461,6 +461,11 @@ function _finishLogin(name,silent){
   document.getElementById("app-screen").classList.add("active");
   buildUI();
   showLoader("डेटा लोड हो रहा है...");
+  // पुराने अपलोड (fix v9.139 से पहले के) अब भी categories के बीच वसूल-status मिसमैच लिए बैठे हो सकते हैं —
+  // सिर्फ़ नए अपलोड पर reconcileHQ चलाना उन्हें कभी ठीक नहीं करता। इसलिए हर login पर भी एक बार चला
+  // देते हैं — cGet() सिर्फ़ local cache पढ़ता है (कोई network cost नहीं), Firebase पर लिखा तभी जाता
+  // है जब सच में कोई मिसमैच मिले (देखें reconcileHQ, js/list.js)
+  reconcileHQ(activeHQ);
   fbGet(activeHQ,activeCat,function(data){
     renderSummaryWith(data); renderListWith(data);
     startListen(activeHQ,activeCat);
@@ -551,6 +556,7 @@ function buildHQTabs(){
       buildHQTabs();
       buildCatTabs();
       showLoader();
+      reconcileHQ(hq); // पुराने मिसमैच के लिए, देखें _finishLogin वाला comment
       fbGet(activeHQ,activeCat,function(data){
         renderSummaryWith(data); renderListWith(data);
         startListen(activeHQ,activeCat); hideLoader();
@@ -573,6 +579,7 @@ function buildCatTabs(){
       document.querySelectorAll(".filter-btn").forEach(function(x){x.className="filter-btn";});
       document.querySelector("[data-f='all']").className="filter-btn active-all";
       buildCatTabs(); showLoader();
+      reconcileHQ(activeHQ); // पुराने मिसमैच के लिए, देखें _finishLogin वाला comment
       fbGet(activeHQ,activeCat,function(data){
         renderSummaryWith(data); renderListWith(data);
         startListen(activeHQ,activeCat); hideLoader();
