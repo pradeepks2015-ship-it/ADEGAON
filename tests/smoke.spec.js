@@ -4708,6 +4708,48 @@ test.describe('लेजर अपलोड के बाद reconcileHQ चल�
   });
 });
 
+test.describe('पुराने (v9.139 फिक्स से पहले के) अपलोड से बचे मिसमैच अपने-आप ठीक हों — reconcileHQ अब login और HQ/category tab बदलने पर भी चले, सिर्फ़ नए अपलोड पर नहीं (bug: जोबा में fix के बाद भी "कुल उपभोक्ता" में पुराना मिसमैच वैसा ही दिखता रहा — असली वजह: फिक्स सिर्फ़ भविष्य के अपलोड पर चलता है, पहले से मौजूद मिसमैच वाले device local cache को कभी नहीं छूता था)', () => {
+  test('login पर सक्रिय (डिफ़ॉल्ट) HQ का पुराना मिसमैच reconcile हो जाए', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      // supervisor login डिफ़ॉल्ट रूप से HQS[0] यानी "आदेगांव" पर खुलता है — वहीं पुराना मिसमैच बना देते हैं
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', status: 'pending', amount: 100 }]);
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', status: 'paid', paydate: '1/1/2026', amount: 100 }]);
+    });
+    await loginJE(page);
+    const status = await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता').find((x) => x.acc === '1').status);
+    expect(status).toBe('paid');
+  });
+
+  test('HQ tab बदलने पर उस HQ का पुराना मिसमैच reconcile हो जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page); // डिफ़ॉल्ट "आदेगांव" पर लॉगिन
+    await page.evaluate(() => {
+      cSet('जोबा', 'कुल उपभोक्ता', [{ acc: '1', name: 'श्याम', status: 'pending', amount: 200 }]);
+      cSet('जोबा', 'घरेलू', [{ acc: '1', name: 'श्याम', status: 'paid', paydate: '1/1/2026', amount: 200 }]);
+    });
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll('#hq-tabs .hq-tab')).find((t) => t.textContent === 'जोबा').click();
+    });
+    const status = await page.evaluate(() => cGet('जोबा', 'कुल उपभोक्ता').find((x) => x.acc === '1').status);
+    expect(status).toBe('paid');
+  });
+
+  test('category tab बदलने पर भी सक्रिय HQ का पुराना मिसमैच reconcile हो जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page); // डिफ़ॉल्ट "आदेगांव" पर लॉगिन
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', status: 'pending', amount: 100 }]);
+      cSet('आदेगांव', 'व्यवसाय', [{ acc: '1', name: 'राम', status: 'paid', paydate: '1/1/2026', amount: 100 }]);
+    });
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll('#cat-tabs .cat-tab')).find((t) => t.textContent.indexOf('व्यवसाय') !== -1).click();
+    });
+    const status = await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता').find((x) => x.acc === '1').status);
+    expect(status).toBe('paid');
+  });
+});
+
 test.describe('अपलोड — दो फ़ाइलें जल्दी-जल्दी चुनने पर race-condition न हो', () => {
   test('handleFile — पहली (धीमी) फ़ाइल का parse देर से पूरा हो तो भी उसे नज़रअंदाज़ करे, दूसरी (नई) फ़ाइल का ही data रहे (bug: पुराने HQ का data नए के ऊपर चढ़ जाना)', async ({ page }) => {
     await openApp(page);
