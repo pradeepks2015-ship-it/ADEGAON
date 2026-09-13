@@ -4663,6 +4663,51 @@ test.describe('नया लेजर अपलोड — सिर्फ़ च
   });
 });
 
+test.describe('लेजर अपलोड के बाद reconcileHQ चले — किसी भी category में वसूल acc सभी categories में वसूल हो (bug: जोबा में "किशन" category 176 वसूल दिखाती थी, बाद में अलग से अपलोड हुई "कुल उपभोक्ता" सिर्फ़ 29 — दोनों categories का लेजर अलग-अलग समय अपलोड होने से status नहीं मिल पाया, क्योंकि सामान्य अपलोड के बाद reconcileHQ कभी नहीं चलता था — सिर्फ़ कैश-लिस्ट अपलोड में चलता था)', () => {
+  test('replace mode — नई category upload होने पर, किसी और (पहले से मौजूद) category में वसूल acc नई category में भी वसूल आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      // "घरेलू" में यह उपभोक्ता पहले से वसूल है (जैसे "किशन" में था)
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: '1/1/2026', amount: 100 },
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      // नया "कुल उपभोक्ता" लेजर — सब pending (जैसा असली नए लेजर में होता है)
+      parsedRows = [{ acc: '1', name: 'राम', amount: 100, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      var d = cGet('आदेगांव', 'कुल उपभोक्ता');
+      return { status: d.find(function (x) { return x.acc === '1'; }).status };
+    });
+    expect(r.status).toBe('paid'); // reconcileHQ ने "घरेलू" से मिलाकर नई "कुल उपभोक्ता" में भी वसूल कर दिया
+  });
+
+  test('merge mode — नई category upload होने पर भी reconcileHQ चले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: '1/1/2026', amount: 100 },
+      ]);
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '1', name: 'राम', status: 'pending', amount: 100 }, // अभी तक "बाकी" — merge में यह list खाली न होने से "merge" पथ चलेगा
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'घरेलू';
+      setUpMode('merge');
+      parsedRows = [{ acc: '2', name: 'श्याम', amount: 200, status: 'pending', remarksArr: [] }]; // नया, अलग acc
+      confirmUpload();
+      var d = cGet('आदेगांव', 'घरेलू');
+      return { status: d.find(function (x) { return x.acc === '1'; }).status };
+    });
+    expect(r.status).toBe('paid'); // reconcileHQ ने "कुल उपभोक्ता" से मिलाकर "घरेलू" का पुराना acc भी वसूल कर दिया
+  });
+});
+
 test.describe('अपलोड — दो फ़ाइलें जल्दी-जल्दी चुनने पर race-condition न हो', () => {
   test('handleFile — पहली (धीमी) फ़ाइल का parse देर से पूरा हो तो भी उसे नज़रअंदाज़ करे, दूसरी (नई) फ़ाइल का ही data रहे (bug: पुराने HQ का data नए के ऊपर चढ़ जाना)', async ({ page }) => {
     await openApp(page);

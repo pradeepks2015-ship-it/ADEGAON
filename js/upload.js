@@ -339,7 +339,12 @@ function confirmUpload(){
         var msg="✅ "+added+" नए जोड़े";
         if(dupes>0) msg+=" | "+dupes+" duplicate skip";
         msg+=" | कुल: "+arr.length+"/"+_maxR;
-        _doSave(hq,cat,arr); toast(msg,"ok"); return;
+        _doSave(hq,cat,arr);
+        // इस HQ की किसी और category में वसूल हो चुके acc (या इसी अपलोड से नए वसूल हुए) दोनों
+        // तरफ़ मिल जाएं — देखें नीचे reconcileHQ वाला मुख्य comment
+        var _rec1=reconcileHQ(hq);
+        if(_rec1) msg+=" | 🔁 "+_rec1+" अन्य categories में मिलाया";
+        toast(msg,"ok"); return;
       }
     }
     
@@ -389,8 +394,14 @@ function confirmUpload(){
       });
     }
     _doSave(hq,cat,arr);
-    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+" 🔥","ok");
-    
+    // असली bug (JE की रिपोर्ट): एक category में लेजर अपलोड होने से उसकी "वसूल" स्थिति बहाल होती है
+    // (ऊपर वाला backup-restore), पर वह सिर्फ़ उसी category तक सीमित थी — किसी और category के अपने
+    // लेजर में (जैसे "कुल उपभोक्ता") वही उपभोक्ता अब भी पुराना (बाकी) दिखता रहता, भले ही असल में
+    // वसूल हो चुका हो। कैश-लिस्ट अपलोड में reconcileHQ() पहले से यही ठीक करता था — अब सामान्य
+    // लेजर अपलोड के बाद भी यही चले, ताकि "किसी भी category में वसूल = हर category में वसूल" हमेशा सच रहे
+    var _rec2=reconcileHQ(hq);
+    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+(_rec2?" 🔁 "+_rec2+" अन्य categories में मिलाया":"")+" 🔥","ok");
+
   }catch(err){
     logErr("upload-confirm",err,activeHQ+"/"+(document.getElementById("up-cat")?document.getElementById("up-cat").value:""));
     toast("Error: "+err.message,"err");
