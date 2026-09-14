@@ -72,7 +72,7 @@
       }
     },
     "PROFILE_PHOTOS": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'",
       "$key": {
         ".write": "auth.token.email === 'pradeepks2015@gmail.com' || (auth.uid === 'Jm8txywdH1gmNmvODYPMpNO3at33' && $key.beginsWith('आदेगांव_')) || (auth.uid === '15ABFlksdpf0gh7eXNjcJNgaOEy2' && $key.beginsWith('पिंडरई_')) || (auth.uid === 'mH467iTWo8cZH8vl9efBaTfpp7r2' && $key.beginsWith('जोबा_')) || (auth.uid === 'qitd6m0UWzRvEHiYpna1XOYz3yq2' && $key.beginsWith('पाटन_')) || (auth.uid === 'e0UGSD4Aa6drRkkwWTIKAYwjYq62' && $key.beginsWith('बीबी_')) || (auth.uid === 'elaQYR70BJc49A4jBrljiTMmCqw2' && $key.beginsWith('मढ़ी_'))",
         ".validate": "newData.hasChildren(['photo'])",
