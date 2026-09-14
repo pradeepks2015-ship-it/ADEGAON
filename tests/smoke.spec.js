@@ -22,11 +22,41 @@ async function openApp(page) {
 
 /** @param {import('@playwright/test').Page} page */
 async function loginLineman(page, name = 'टेस्ट लाइनमैन') {
+  // असली जड़ diagnostics से मिली: Service Worker कभी-कभी किसी पहले चले test से बचे हुए
+  // worker-profile cache से Firebase CDN scripts सीधे Cache Storage से serve कर देता है — यह
+  // कभी network तक जाता ही नहीं, इसलिए blockExternal का page.route() इसे रोक ही नहीं पाता।
+  // नतीजा: firebase असल में defined मिल जाता, doLogin() खाली PIN के साथ भी असली Firebase
+  // sign-in आज़माता, और "auth/network-request-failed" के अलावा कोई और error code मिलते ही
+  // CU कभी सेट नहीं होता — login-screen हमेशा के लिए अटक जाती (CI पर बार-बार यही TimeoutError,
+  // firebaseType:"object" + CU:"null" ने पक्का किया)। यहां तय offline-fallback रास्ता ही चले,
+  // इसके लिए हर बार साफ़ कर देते हैं — यही व्यवहार बाकी सैकड़ों loginLineman() calls में पहले से
+  // (संयोग से undefined रहने की वजह से) भरोसेमंद रहा है
+  await page.evaluate(() => { window.firebase = undefined; });
   await page.click('#rc-lin');
   await page.fill('#uname-inp', name);
   await page.selectOption('#hq-sel', { index: 1 });
   await page.click('.login-btn');
-  await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+  try {
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+  } catch (e) {
+    // असली bug न मिलने पर स्थानीय रूप से दोहराया नहीं जा सका (सिर्फ़ CI पर) — पिछली कोशिश में
+    // यहां console.log() से diagnostics भेजी थी, पर CI का "github" reporter उसे job log में
+    // दिखाता ही नहीं (local "list" reporter दिखाता है, इसलिए local जांच में यह गलती पकड़ में
+    // नहीं आई)। अब सीधे thrown error के message में जोड़ रहे हैं — वह हर reporter हमेशा दिखाता है
+    const diag = await page.evaluate(() => ({
+      selectedRole: typeof selectedRole !== 'undefined' ? selectedRole : 'undef',
+      hqSelVal: document.getElementById('hq-sel') && document.getElementById('hq-sel').value,
+      unameVal: document.getElementById('uname-inp') && document.getElementById('uname-inp').value,
+      loginActive: document.getElementById('login-screen').classList.contains('active'),
+      appActive: document.getElementById('app-screen').classList.contains('active'),
+      firebaseType: typeof firebase,
+      navOnline: navigator.onLine,
+      CU: typeof CU !== 'undefined' ? JSON.stringify(CU) : 'undef',
+      appStarted: typeof _appStarted !== 'undefined' ? _appStarted : 'undef',
+    })).catch((err) => ({ evalError: String(err) }));
+    e.message = '[loginLineman DIAG] ' + JSON.stringify(diag) + '\n\n' + e.message;
+    throw e;
+  }
 }
 
 /** @param {import('@playwright/test').Page} page */
@@ -2556,8 +2586,13 @@ test.describe('चरण 3 — migration-revert ऑटो-पहचान', () =
     await page.evaluate(() => {
       localStorage.setItem('dc_migrated3', JSON.stringify({ 'टेस्ट_HQ22': { 'कुल_उपभोक्ता': true } }));
     });
-    await page.reload();
-    await page.waitForFunction(() => typeof loadMigratedFlags === 'function', null, { timeout: 15000 });
+    // page.reload() के बाद इसी टेस्ट में आगे loginLineman() से क्लिक-इंटरैक्शन करना था — यही जोड़ी
+    // (reload + तुरंत क्लिक) CI पर बार-बार loginLineman() के अंदर TimeoutError देती थी (धीमी/व्यस्त
+    // मशीन पर), जबकि बाकी पूरी suite में हर जगह page.goto('/') (openApp() के ज़रिए) के बाद क्लिक
+    // करना हमेशा भरोसेमंद रहा — इसी origin पर goto भी वैसा ही असली reload है (localStorage बना
+    // रहता है) पर यहां वही आज़माया-परखा रास्ता इस्तेमाल कर रहे हैं
+    await page.goto('/');
+    await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
     await loginLineman(page);
     const body = await page.evaluate(() => new Promise((resolve) => {
       var orig = window.fetch;
@@ -2692,7 +2727,19 @@ test.describe('बकाया ≤0 अपने-आप वसूल — migrati
 test.describe('Lineman PIN — सामान्य सुरक्षा-मज़बूती', () => {
   test('HQ का PIN सेट हो तो गलत PIN से login रुकता है, सही PIN से चलता है', async ({ page }) => {
     await openApp(page);
-    await page.evaluate(() => { HQ_PINS[hqKey('आदेगांव')] = '4321'; });
+    // v9.146: PIN अब client पर मिलान नहीं होता (HQ_PIN सिर्फ़ JE पढ़ सकते हैं) — असली फ़ैसला
+    // Firebase signInWithEmailAndPassword ही करता है, इसलिए यहां उसे mock करना ज़रूरी है
+    await page.evaluate(() => {
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: null,
+          signInWithEmailAndPassword: function (email, pw) {
+            return pw === 'vasuli-4321' ? Promise.resolve({}) : Promise.reject({ code: 'auth/wrong-password' });
+          },
+        };
+      };
+    });
     await page.click('#rc-lin');
     await page.fill('#uname-inp', 'टेस्ट लाइनमैन');
     await page.selectOption('#hq-sel', { label: 'आदेगांव' });
@@ -2707,7 +2754,6 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
 
   test('logout पर PIN फ़ील्ड भी साफ़ हो जाए — वरना shared device पर अगले लाइनमैन को पुराने PIN से login fail दिखता (गड़बड़ी जो "logout ठीक से काम नहीं करता" जैसी दिखती थी)', async ({ page }) => {
     await openApp(page);
-    await page.evaluate(() => { HQ_PINS[hqKey('आदेगांव')] = '4321'; });
     await page.click('#rc-lin');
     await page.fill('#uname-inp', 'टेस्ट लाइनमैन');
     await page.selectOption('#hq-sel', { label: 'आदेगांव' });
@@ -2723,7 +2769,6 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('सही PIN पर उस HQ के असली Firebase account से sign-in होता है (email + PIN से बना password)', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => new Promise((resolve) => {
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return {
@@ -2745,10 +2790,26 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
   });
 
+  test('सफल login पर CU.pin भी याद रखा जाए (v9.146: HQ_PIN अब server से दोबारा नहीं पढ़ी जा सकती, इसी device पर याद रखे pin से ही _ensureCorrectHqAuth बाद में दोबारा sign-in कर पाता है)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: null, signInWithEmailAndPassword: function () { return Promise.resolve({}); } };
+      };
+      selectRole('lineman');
+      document.getElementById('uname-inp').value = 'टेस्ट लाइनमैन';
+      document.getElementById('hq-sel').value = 'आदेगांव';
+      document.getElementById('lin-pin').value = '4321';
+      doLogin();
+    });
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+    expect(await page.evaluate(() => CU.pin)).toBe('4321');
+  });
+
   test('HQ sign-in reject (गलत password/server) हो तो login रुक जाता है', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return {
@@ -2769,7 +2830,6 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('HQ sign-in के बीच नेट टूटे तो भी login आगे बढ़ जाता है (offline-सहनशील)', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return {
@@ -2789,8 +2849,9 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('_ensureCorrectHqAuth — anonymous auth में login हो तो online होते ही सही HQ account से sign-in हो (bug: login के वक़्त network कमज़ोर होने पर device हमेशा के लिए anonymous रह जाता, हर save 401 देता रहता)', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => new Promise((resolve) => {
-      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव' };
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      // v9.146: PIN अब server (HQ_PIN, सिर्फ़ JE पढ़ सकते हैं) से नहीं — पिछले सफल login पर इसी
+      // device पर याद रखा गया CU.pin इस्तेमाल होता है
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव', pin: '4321' };
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return {
@@ -2815,7 +2876,6 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('सेव किया हुआ session बहाल होने पर सही HQ account पक्का हो (v9.108 regression: चुपचाप अंदर आने पर device anonymous रह जाता, हर save 401)', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => new Promise((resolve) => {
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return {
@@ -2823,7 +2883,8 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
           signInWithEmailAndPassword: function (email, pw) { resolve({ email: email, pw: pw }); return Promise.resolve({}); },
         };
       };
-      CU = { role: 'lineman', name: 'बहाल लाइनमैन', hq: 'आदेगांव' };
+      // असली restored session में pin भी साथ बहाल होता है (पिछले सफल login पर याद रखा गया — देखें doLogin)
+      CU = { role: 'lineman', name: 'बहाल लाइनमैन', hq: 'आदेगांव', pin: '4321' };
       _finishLogin(CU.name, true); // silent = सेव किया session बहाल हुआ
       setTimeout(() => resolve({ email: null, pw: null }), 8000);
     }));
@@ -2834,7 +2895,6 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('ताज़ा login (silent नहीं) पर दोबारा sign-in की कोशिश न हो — doLogin खुद सही account से जोड़ चुका है', async ({ page }) => {
     await openApp(page);
     const calls = await page.evaluate(() => new Promise((resolve) => {
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       var n = 0;
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
@@ -2856,7 +2916,6 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     await openApp(page);
     const r = await page.evaluate(() => {
       CU = { role: 'lineman', name: 'अटका', hq: 'आदेगांव' };
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       _authHealed = {};
       var p = {};
       p[cKey('आदेगांव', 'कुल उपभोक्ता')] = { hq: 'आदेगांव', cat: 'कुल उपभोक्ता', type: 'put', authFailCount: STUCK_AUTH_MAX };
@@ -2881,8 +2940,7 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('पहला 401 आते ही सही account से जुड़ने की कोशिश हो (हार मानने का इंतज़ार न करे)', async ({ page }) => {
     await openApp(page);
     const tried = await page.evaluate(() => new Promise((resolve) => {
-      CU = { role: 'lineman', name: '401', hq: 'आदेगांव' };
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      CU = { role: 'lineman', name: '401', hq: 'आदेगांव', pin: '4321' };
       _authHealed = {};
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
@@ -2901,7 +2959,6 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     await openApp(page);
     const called = await page.evaluate(() => {
       CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव' };
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       var calls = 0;
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
@@ -2916,11 +2973,10 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     expect(called).toBe(0);
   });
 
-  test('_ensureCorrectHqAuth — HQ का PIN सेट न हो तो कुछ न करे (anonymous ही पुराना/सही व्यवहार है)', async ({ page }) => {
+  test('_ensureCorrectHqAuth — PIN याद न हो (पुराने version से login) तो कुछ न करे (anonymous ही पुराना/सही व्यवहार है)', async ({ page }) => {
     await openApp(page);
     const called = await page.evaluate(() => {
-      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा' };
-      delete HQ_PINS[hqKey('जोबा')];
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा' }; // .pin जान-बूझकर सेट नहीं किया
       var calls = 0;
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
@@ -2936,7 +2992,6 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     await openApp(page);
     const called = await page.evaluate(() => {
       CU = { role: 'supervisor', name: 'टेस्ट जेई', hq: 'आदेगांव' };
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       var calls = 0;
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
@@ -2951,8 +3006,7 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('_ensureCorrectHqAuth — sign-in सफल होने पर flushPending() भी बुलाया जाए (ताकि अटका data तुरंत भेजने की कोशिश हो)', async ({ page }) => {
     await openApp(page);
     const called = await page.evaluate(() => new Promise((resolve) => {
-      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव' };
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव', pin: '4321' };
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return { currentUser: { email: null }, signInWithEmailAndPassword: function () { return Promise.resolve({}); } };
@@ -4951,7 +5005,6 @@ test.describe('reconcileHQ अब auth तय होने तक रुके �
     await openApp(page);
     const r = await page.evaluate(() => new Promise((resolve) => {
       window.AUTH_READY = true; // Firebase का initial auth-restore तो हो चुका है...
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       var resolveSignIn;
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
@@ -4965,7 +5018,7 @@ test.describe('reconcileHQ अब auth तय होने तक रुके �
       var calls = 0;
       var origReconcile = window.reconcileHQ;
       window.reconcileHQ = function (hq) { calls++; return origReconcile(hq); };
-      CU = { role: 'lineman', name: 'देरी वाला', hq: 'आदेगांव' };
+      CU = { role: 'lineman', name: 'देरी वाला', hq: 'आदेगांव', pin: '4321' };
       _finishLogin(CU.name, true); // silent = सेव किया session बहाल हुआ
       setTimeout(() => {
         var before = calls; // sign-in अभी pending है
@@ -5496,13 +5549,13 @@ test.describe('पुरानी categories मिटाएं — घरेल
   });
 });
 
-test.describe('database.rules.json — HQ_PIN सिर्फ़ JE लिख सके (bug: "$other" के तहत कोई भी authenticated — anonymous समेत — PIN बदल सकता था, लाइनमैन lock-out या account-takeover का खतरा)', () => {
-  test('HQ_PIN का अपना explicit rule हो — CAT_NAMES/HOME_SCORECARD जैसा JE-only write, बाक़ी सब पढ़ सकें', () => {
+test.describe('database.rules.json — HQ_PIN अब सिर्फ़ JE ही पढ़/लिख सके (v9.146 सुरक्षा-फिक्स: पहले "auth != null" था, यानी कोई भी login-किया — anonymous भी, ऐप अपने-आप हर visitor को anonymous sign-in करा देता है — बिना कुछ किए सीधे /HQ_PIN.json पढ़कर सभी HQ के PIN पा सकता था, और PIN से बना Firebase password इस्तेमाल करके सीधे उस HQ के असली account में घुस सकता था — असली account-takeover रास्ता)', () => {
+  test('HQ_PIN का read भी CAT_NAMES/MIGRATED जैसे JE-only ही हो — किसी और को (anonymous समेत) कच्चा PIN न दिखे', () => {
     const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
     const hqPinRule = rules.rules.HQ_PIN;
     expect(hqPinRule, 'HQ_PIN का अपना top-level rule होना चाहिए — $other के भरोसे नहीं').toBeTruthy();
     expect(hqPinRule['.write']).toBe("auth.token.email === 'pradeepks2015@gmail.com'");
-    expect(hqPinRule['.read']).toBe('auth != null'); // login के वक़्त PIN जांचने के लिए सबको पढ़ना ज़रूरी है
+    expect(hqPinRule['.read']).toBe("auth.token.email === 'pradeepks2015@gmail.com'"); // अब login के वक़्त client PIN जांचता ही नहीं — असली जांच सीधे Firebase signIn करता है (देखें doLogin)
   });
 });
 
@@ -5525,6 +5578,20 @@ test.describe('database.rules.json — DEVICE_VERSIONS को पूरी त�
     const devWrite = dvRule.$dev && dvRule.$dev['.write'];
     expect(devWrite, '$dev.write होना चाहिए — startDevicePing हर लॉगिन-किया device (लाइनमैन समेत) से चलता है').toBeTruthy();
     expect(devWrite).toContain("sign_in_provider !== 'anonymous'"); // सिर्फ असल लॉगिन-किया identity लिख सके, कोरा anonymous visitor नहीं
+  });
+});
+
+test.describe('database.rules.json — DEVICE_VERSIONS/$dev पर अब field-validation भी हो (v9.146: पहले कोई .validate नहीं था — कोई भी लॉगिन-किया device किसी भी दूसरे device के version-रिकॉर्ड में मनमाने आकार/आकृति का data भर सकता था)', () => {
+  test('$dev पर तय fields (v/hq/role/name/t) और हर एक पर type+लंबाई की सीमा हो, अतिरिक्त field रुके', () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
+    const dev = rules.rules.DEVICE_VERSIONS.$dev;
+    expect(dev['.validate']).toBe("newData.hasChildren(['v','hq','role','name','t'])");
+    expect(dev.v['.validate']).toContain('isString()');
+    expect(dev.hq['.validate']).toContain('isString()');
+    expect(dev.role['.validate']).toContain('isString()');
+    expect(dev.name['.validate']).toContain('isString()');
+    expect(dev.t['.validate']).toContain('isNumber()');
+    expect(dev.$f['.validate']).toBe(false); // pingDeviceVersion() के {v,hq,role,name,t} के अलावा कोई और field न बचे
   });
 });
 
@@ -5650,6 +5717,17 @@ test.describe('Firebase Rules — auto-deploy पाइपलाइन (bug: JE 
     expect(script).toMatch(/JSON\.parse\(rulesContent\)/); // deploy से पहले local validation
     expect(script).toContain('.settings/rules.json'); // Firebase RTDB का असली rules-management endpoint
     expect(script).toContain("method: \"PUT\"");
+  });
+});
+
+test.describe('GitHub Actions workflows — firebase-admin/xlsx version pinned हो (v9.146: पहले "npm install firebase-admin" बिना version के — हर run पर अपने-आप नया (कभी breaking) major version आ जाता, deploy-rules/backup चुपचाप टूट सकते थे)', () => {
+  test('deploy-rules.yml और backup.yml दोनों में firebase-admin@<version> — बिना version वाला install न हो', () => {
+    const deployWf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy-rules.yml'), 'utf8');
+    const backupWf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'backup.yml'), 'utf8');
+    expect(deployWf).toMatch(/firebase-admin@\d+\.\d+\.\d+/);
+    expect(deployWf).not.toMatch(/install --no-save firebase-admin\s*$/m); // बिना version वाला install न रह जाए
+    expect(backupWf).toMatch(/firebase-admin@\d+\.\d+\.\d+/);
+    expect(backupWf).toMatch(/xlsx@\d+\.\d+\.\d+/);
   });
 });
 

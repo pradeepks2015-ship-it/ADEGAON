@@ -21,7 +21,8 @@ jobs:
         with:
           node-version: 20
       - name: Install deploy dependencies
-        run: npm install --no-save firebase-admin
+        # version pinned — अनजाने में नया (कभी breaking) major version अपने-आप न आ जाए
+        run: npm install --no-save firebase-admin@14.4.0
       - name: Deploy rules
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
