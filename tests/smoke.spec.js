@@ -2557,7 +2557,12 @@ test.describe('चरण 3 — migration-revert ऑटो-पहचान', () =
       localStorage.setItem('dc_migrated3', JSON.stringify({ 'टेस्ट_HQ22': { 'कुल_उपभोक्ता': true } }));
     });
     await page.reload();
+    // reload के बाद startApp फिर से 2s वाले fallback timer से गुज़रता है — सिर्फ़ function मौजूद
+    // होने का इंतज़ार काफ़ी नहीं, login-screen असल में सक्रिय होने का भी इंतज़ार ज़रूरी है, वरना
+    // धीमी/व्यस्त मशीन (CI) पर loginLineman() का क्लिक login-screen के सक्रिय होने से पहले ही चल
+    // सकता है — असली bug यही था (CI-only flake: TimeoutError in loginLineman के बाद)
     await page.waitForFunction(() => typeof loadMigratedFlags === 'function', null, { timeout: 15000 });
+    await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
     await loginLineman(page);
     const body = await page.evaluate(() => new Promise((resolve) => {
       var orig = window.fetch;
