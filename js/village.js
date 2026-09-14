@@ -129,6 +129,55 @@ function _vgComputeRows(hq){
   return rows;
 }
 
+// ── "किसी व्यक्ति द्वारा कौन से गांव गोद लिए गए हैं" ─────────────────────────────────────────
+// JE का अनुरोध: हर HQ की कुछ categories का नाम किसी व्यक्ति के नाम पर बदल दिया जाता है (जैसे
+// "किशन", "अशोक") और उस tab में सिर्फ़ उसी व्यक्ति के ज़िम्मे वाले गांवों की बकाया सूची रहती है —
+// यह पता चलना चाहिए कि किस व्यक्ति ने कौन से गांव संभाले हैं। डेटा में यह अलग से दर्ज नहीं है कि
+// कोई custom नाम असल में "व्यक्ति" है या सिर्फ़ कोई और status-सूची (जैसे "3 month nonpayee") —
+// इसलिए हर उस category को दिखाया जाता है जिसका नाम default (घरेलू/व्यवसाय/...) से बदला गया हो;
+// असली व्यक्ति-नाम वाली JE खुद पहचान लेंगे। गांव वही _vgNormKey() से मिलते-जुलते नाम मर्ज करके
+// (VILLAGE_ALIASES सहित), कोई अलग network call नहीं — सिर्फ़ पहले से cache में मौजूद data पर
+function _vgComputeAdoptions(hq){
+  var rows=[];
+  for(var i=1;i<CATS_DEFAULT.length;i++){
+    if(!(CAT_NAMES[hq]&&CAT_NAMES[hq][i]!=null)) continue; // default नाम — छोड़ें
+    var catName=CAT_NAMES[hq][i];
+    var d=cGet(hq,catName)||[];
+    if(!d.length) continue;
+    var seenV={},villages=[];
+    d.forEach(function(x){
+      if(!x) return;
+      var raw=(x.addr||"").trim()||"(गांव दर्ज नहीं)";
+      var k=_vgNormKey(hq,raw);
+      if(seenV[k]) return; seenV[k]=1;
+      villages.push(raw);
+    });
+    villages.sort(function(a,b){return a.localeCompare(b,"hi");});
+    rows.push({cat:catName,count:d.length,villages:villages});
+  }
+  rows.sort(function(a,b){return a.cat.localeCompare(b.cat,"hi");});
+  return rows;
+}
+function _vgRenderAdoptions(){
+  var el=document.getElementById("vg-adopt-list");
+  if(!el) return;
+  var rows=_vgComputeAdoptions(vgActiveHQ);
+  if(!rows.length){
+    el.innerHTML="<div class='log-empty'>इस HQ में कोई नाम-बदली हुई सूची नहीं (✏️ से किसी category का नाम बदलें)</div>";
+    return;
+  }
+  var html=rows.map(function(r){
+    return "<div class='vg-adopt-card'>"+
+      "<span class='vg-adopt-name'>&#128100; "+escHtml(r.cat)+"</span> "+
+      "<span class='vg-adopt-meta'>("+r.count+" उपभोक्ता, "+r.villages.length+" गांव)</span>"+
+      "<div class='vg-adopt-villages'>"+escHtml(r.villages.join(", "))+"</div>"+
+    "</div>";
+  }).join("");
+  // audit-verified: r.cat और r.villages दोनों escHtml() से गुज़रे (ऊपर देखें)
+  // eslint-disable-next-line no-unsanitized/property
+  el.innerHTML=html;
+}
+
 function _vgFiltered(){
   var q=(document.getElementById("vg-search").value||"").trim().toLowerCase();
   return q?vgRows.filter(function(r){return r.village.toLowerCase().indexOf(q)>-1;}):vgRows;
@@ -175,6 +224,7 @@ function _vgRenderList(){
 function _vgRenderCached(){
   vgRows=_vgComputeRows(vgActiveHQ);
   _vgRenderList();
+  _vgRenderAdoptions();
 }
 
 function _vgLoadAndRender(){
@@ -184,6 +234,7 @@ function _vgLoadAndRender(){
   _cashRefreshAll(hqs,function(){
     vgRows=_vgComputeRows(vgActiveHQ);
     _vgRenderList();
+    _vgRenderAdoptions();
   },true); // force=true — यह अब सिर्फ़ explicit "रिफ्रेश करें" बटन से बुलाया जाता है
 }
 

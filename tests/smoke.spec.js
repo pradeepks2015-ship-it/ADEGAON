@@ -1426,6 +1426,80 @@ test.describe('ग्राम-वार वसूली', () => {
   });
 });
 
+test.describe('व्यक्ति/सूची-वार गोद लिए गांव — JE अनुरोध: हर HQ की जिन categories का नाम किसी व्यक्ति (या status) पर बदला गया है, उनमें मौजूद गांव दिखें', () => {
+  test('_vgComputeAdoptions — नाम-बदली category में मौजूद अलग-अलग (मिलते-जुलते मर्ज करके) गांव लौटाए, default-नाम वाली category छूट जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 1: 'किशन' }; // सिर्फ़ index 1 (घरेलू) का नाम बदला — बाकी default ही रहे
+      cSet('आदेगांव', 'किशन', [
+        { acc: '1', name: 'राम', addr: 'HAMEERGAGH', status: 'pending', amount: 100 },   // alias वाला ग़लत spelling
+        { acc: '2', name: 'श्याम', addr: 'hameergarh', status: 'paid', amount: 100 },     // वही गांव, केस/alias दोनों भिन्न
+        { acc: '3', name: 'गीता', addr: 'CHHOTA BICHHUA', status: 'pending', amount: 100 },
+      ]);
+      cSet('आदेगांव', 'व्यवसाय', [ // default नाम — इसे adoptions में नहीं आना चाहिए
+        { acc: '9', name: 'मोहन', addr: 'कोई और गांव', status: 'pending', amount: 100 },
+      ]);
+      return _vgComputeAdoptions('आदेगांव');
+    });
+    expect(r.length).toBe(1);              // सिर्फ़ "किशन" — "व्यवसाय" (default नाम) नहीं
+    expect(r[0].cat).toBe('किशन');
+    expect(r[0].count).toBe(3);
+    expect(r[0].villages.length).toBe(2);  // HAMEERGAGH/hameergarh मर्ज होकर एक ही गांव
+  });
+
+  test('कोई भी category नाम-बदली न हो तो खाली सूची लौटे, और UI में साफ़ संदेश दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['पिंडरई'] = {};
+      vgActiveHQ = 'पिंडरई';
+      _vgRenderAdoptions();
+      return { rows: _vgComputeAdoptions('पिंडरई'), txt: document.getElementById('vg-adopt-list').textContent };
+    });
+    expect(r.rows.length).toBe(0);
+    expect(r.txt).toContain('कोई नाम-बदली हुई सूची नहीं');
+  });
+
+  test('openVillageModal खुलते ही सक्रिय HQ के लिए adoptions section अपने-आप बन जाए (नाम/गांव escape होकर, XSS न बने)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 1: '<img src=x onerror=alert(1)>' };
+      cSet('आदेगांव', CAT_NAMES['आदेगांव'][1], [
+        { acc: '1', name: 'राम', addr: '<script>alert(2)</script>', status: 'pending', amount: 100 },
+      ]);
+      openVillageModal();
+      var el = document.getElementById('vg-adopt-list');
+      return { html: el.innerHTML, imgs: el.querySelectorAll('img').length };
+    });
+    expect(r.imgs).toBe(0);
+    expect(r.html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(r.html).not.toContain('<script>alert(2)</script>');
+    expect(r.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(r.html).toContain('&lt;script&gt;alert(2)&lt;/script&gt;');
+  });
+
+  test('HQ tab बदलने पर adoptions section भी उस HQ के हिसाब से बदल जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 1: 'आदेगांव-वाला' };
+      CAT_NAMES['जोबा'] = { 1: 'जोबा-वाला' };
+      cSet('आदेगांव', 'आदेगांव-वाला', [{ acc: '1', name: 'क', addr: 'गांव-अ', status: 'pending', amount: 100 }]);
+      cSet('जोबा', 'जोबा-वाला', [{ acc: '2', name: 'ख', addr: 'गांव-ब', status: 'pending', amount: 100 }]);
+      openVillageModal();
+      var before = document.getElementById('vg-adopt-list').textContent;
+      Array.from(document.querySelectorAll('#vg-hq-tabs .hq-tab')).find((t) => t.textContent === 'जोबा').click();
+      var after = document.getElementById('vg-adopt-list').textContent;
+      return { before: before, after: after };
+    });
+    expect(r.before).toContain('आदेगांव-वाला');
+    expect(r.before).not.toContain('जोबा-वाला');
+    expect(r.after).toContain('जोबा-वाला');
+    expect(r.after).not.toContain('आदेगांव-वाला');
+  });
+});
+
 test.describe('गांव-वार सुधरी Excel', () => {
   test('मिलते-जुलते गांव-नाम मर्ज करके सारांश + HQ-वार sheets बनती हैं', async ({ page }) => {
     test.setTimeout(90000); // background prefetch (offline-gated fetches) को settle होने का समय — धीमे CI runner पर flake रोकने के लिए
