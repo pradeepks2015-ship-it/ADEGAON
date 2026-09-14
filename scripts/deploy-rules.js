@@ -14,7 +14,9 @@ const REQ_TIMEOUT_MS = 20000; // कभी भी हमेशा के लि�
 
 async function main() {
   var serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  var cred = admin.credential.cert(serviceAccount);
+  // firebase-admin@14.x में admin.credential.cert नहीं — cert() अब सीधे top-level पर है
+  // (require("firebase-admin") से मिली object में .credential namespace हट गया है)
+  var cred = admin.cert(serviceAccount);
   var tokenResult = await cred.getAccessToken();
   var token = tokenResult.access_token;
   console.log("Firebase access token मिल गया, rules deploy हो रही हैं...");
