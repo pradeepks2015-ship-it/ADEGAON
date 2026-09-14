@@ -22,6 +22,16 @@ async function openApp(page) {
 
 /** @param {import('@playwright/test').Page} page */
 async function loginLineman(page, name = 'टेस्ट लाइनमैन') {
+  // असली जड़ diagnostics से मिली: Service Worker कभी-कभी किसी पहले चले test से बचे हुए
+  // worker-profile cache से Firebase CDN scripts सीधे Cache Storage से serve कर देता है — यह
+  // कभी network तक जाता ही नहीं, इसलिए blockExternal का page.route() इसे रोक ही नहीं पाता।
+  // नतीजा: firebase असल में defined मिल जाता, doLogin() खाली PIN के साथ भी असली Firebase
+  // sign-in आज़माता, और "auth/network-request-failed" के अलावा कोई और error code मिलते ही
+  // CU कभी सेट नहीं होता — login-screen हमेशा के लिए अटक जाती (CI पर बार-बार यही TimeoutError,
+  // firebaseType:"object" + CU:"null" ने पक्का किया)। यहां तय offline-fallback रास्ता ही चले,
+  // इसके लिए हर बार साफ़ कर देते हैं — यही व्यवहार बाकी सैकड़ों loginLineman() calls में पहले से
+  // (संयोग से undefined रहने की वजह से) भरोसेमंद रहा है
+  await page.evaluate(() => { window.firebase = undefined; });
   await page.click('#rc-lin');
   await page.fill('#uname-inp', name);
   await page.selectOption('#hq-sel', { index: 1 });
