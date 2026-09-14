@@ -26,7 +26,25 @@ async function loginLineman(page, name = 'टेस्ट लाइनमैन'
   await page.fill('#uname-inp', name);
   await page.selectOption('#hq-sel', { index: 1 });
   await page.click('.login-btn');
-  await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+  try {
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+  } catch (e) {
+    // असली bug न मिलने पर स्थानीय रूप से दोहराया नहीं जा सका (सिर्फ़ CI पर) — यह diagnostics
+    // CI job log में ही दिखेगा (कोई artifact-upload कदम नहीं है), असली कारण पकड़ने के लिए
+    const diag = await page.evaluate(() => ({
+      selectedRole: typeof selectedRole !== 'undefined' ? selectedRole : 'undef',
+      hqSelVal: document.getElementById('hq-sel') && document.getElementById('hq-sel').value,
+      unameVal: document.getElementById('uname-inp') && document.getElementById('uname-inp').value,
+      loginActive: document.getElementById('login-screen').classList.contains('active'),
+      appActive: document.getElementById('app-screen').classList.contains('active'),
+      firebaseType: typeof firebase,
+      navOnline: navigator.onLine,
+      CU: typeof CU !== 'undefined' ? JSON.stringify(CU) : 'undef',
+      appStarted: typeof _appStarted !== 'undefined' ? _appStarted : 'undef',
+    })).catch((err) => ({ evalError: String(err) }));
+    console.log('[loginLineman DIAG]', JSON.stringify(diag));
+    throw e;
+  }
 }
 
 /** @param {import('@playwright/test').Page} page */
