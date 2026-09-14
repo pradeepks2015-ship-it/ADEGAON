@@ -131,29 +131,47 @@ function _vgComputeRows(hq){
 
 // ── "किसी व्यक्ति द्वारा कौन से गांव गोद लिए गए हैं" ─────────────────────────────────────────
 // JE का अनुरोध: हर HQ की कुछ categories का नाम किसी व्यक्ति के नाम पर बदल दिया जाता है (जैसे
-// "किशन", "अशोक") और उस tab में सिर्फ़ उसी व्यक्ति के ज़िम्मे वाले गांवों की बकाया सूची रहती है —
-// यह पता चलना चाहिए कि किस व्यक्ति ने कौन से गांव संभाले हैं। डेटा में यह अलग से दर्ज नहीं है कि
-// कोई custom नाम असल में "व्यक्ति" है या सिर्फ़ कोई और status-सूची (जैसे "3 month nonpayee") —
-// इसलिए हर उस category को दिखाया जाता है जिसका नाम default (घरेलू/व्यवसाय/...) से बदला गया हो;
-// असली व्यक्ति-नाम वाली JE खुद पहचान लेंगे। गांव वही _vgNormKey() से मिलते-जुलते नाम मर्ज करके
-// (VILLAGE_ALIASES सहित), कोई अलग network call नहीं — सिर्फ़ पहले से cache में मौजूद data पर
+// "किशन", "अशोक") और उस tab में सिर्फ़ उसी व्यक्ति के ज़िम्मे वाले गांवों की बकाया सूची रहती है।
+// सिर्फ़ गांव के नाम काफ़ी नहीं — हर गांव का पूरा हिसाब चाहिए (जैसा मुख्य ग्राम-वार तालिका देती
+// है): कुल उपभोक्ता, कुल बकाया राशि, कुल वसूल राशि, प्रतिशत — यहां वही _vgComputeRows() जैसा
+// हिसाब, बस उस category की अपनी सूची पर (मास्टर "कुल उपभोक्ता" पर नहीं)। डेटा में यह अलग से दर्ज
+// नहीं है कि कोई custom नाम असल में "व्यक्ति" है या सिर्फ़ कोई और status-सूची (जैसे "3 month
+// nonpayee") — इसलिए हर उस category को दिखाया जाता है जिसका नाम default से बदला गया हो; असली
+// व्यक्ति-नाम वाली JE खुद पहचान लेंगे। गांव वही _vgNormKey() से मिलते-जुलते नाम मर्ज करके, वसूल-
+// स्थिति भी वही _vgPaidMap() से (किसी भी category में वसूल = हर जगह वसूल, list.js: reconcileHQ
+// वाला नियम) — कोई अलग network call नहीं, सिर्फ़ पहले से cache में मौजूद data पर
+function _vgComputeAdoptionVillages(hq,catName){
+  var d=cGet(hq,catName)||[];
+  var paidMap=_vgPaidMap(hq);
+  var byV={};
+  d.forEach(function(x){
+    if(!x) return;
+    var raw=(x.addr||"").trim()||"(गांव दर्ज नहीं)";
+    var k=_vgNormKey(hq,raw);
+    if(!byV[k]) byV[k]={tot:0,paid:0,bakaya:0,paidAmt:0,names:{}};
+    byV[k].names[raw]=(byV[k].names[raw]||0)+1;
+    byV[k].tot++;
+    var isPaid=x.acc&&paidMap.hasOwnProperty(String(x.acc))?true:(x.status==="paid");
+    if(isPaid){ byV[k].paid++; byV[k].paidAmt+=(x.acc&&paidMap.hasOwnProperty(String(x.acc)))?paidMap[String(x.acc)]:Math.max(0,Number(x.amount)||0); }
+    else byV[k].bakaya+=Number(x.amount)||0;
+  });
+  var rows=Object.keys(byV).map(function(k){
+    var v=byV[k];
+    var best=k,bc=-1;
+    Object.keys(v.names).forEach(function(n){ if(v.names[n]>bc){bc=v.names[n];best=n;} });
+    return {village:best,tot:v.tot,paid:v.paid,bakaya:v.bakaya,paidAmt:v.paidAmt,pct:v.tot?(v.paid/v.tot*100):0};
+  });
+  rows.sort(function(a,b){return a.village.localeCompare(b.village,"hi");});
+  return rows;
+}
 function _vgComputeAdoptions(hq){
   var rows=[];
   for(var i=1;i<CATS_DEFAULT.length;i++){
     if(!(CAT_NAMES[hq]&&CAT_NAMES[hq][i]!=null)) continue; // default नाम — छोड़ें
     var catName=CAT_NAMES[hq][i];
-    var d=cGet(hq,catName)||[];
-    if(!d.length) continue;
-    var seenV={},villages=[];
-    d.forEach(function(x){
-      if(!x) return;
-      var raw=(x.addr||"").trim()||"(गांव दर्ज नहीं)";
-      var k=_vgNormKey(hq,raw);
-      if(seenV[k]) return; seenV[k]=1;
-      villages.push(raw);
-    });
-    villages.sort(function(a,b){return a.localeCompare(b,"hi");});
-    rows.push({cat:catName,count:d.length,villages:villages});
+    var villages=_vgComputeAdoptionVillages(hq,catName);
+    if(!villages.length) continue;
+    rows.push({cat:catName,villages:villages});
   }
   rows.sort(function(a,b){return a.cat.localeCompare(b.cat,"hi");});
   return rows;
@@ -161,19 +179,33 @@ function _vgComputeAdoptions(hq){
 function _vgRenderAdoptions(){
   var el=document.getElementById("vg-adopt-list");
   if(!el) return;
-  var rows=_vgComputeAdoptions(vgActiveHQ);
-  if(!rows.length){
+  var cats=_vgComputeAdoptions(vgActiveHQ);
+  if(!cats.length){
     el.innerHTML="<div class='log-empty'>इस HQ में कोई नाम-बदली हुई सूची नहीं (✏️ से किसी category का नाम बदलें)</div>";
     return;
   }
-  var html=rows.map(function(r){
-    return "<div class='vg-adopt-card'>"+
-      "<span class='vg-adopt-name'>&#128100; "+escHtml(r.cat)+"</span> "+
-      "<span class='vg-adopt-meta'>("+r.count+" उपभोक्ता, "+r.villages.length+" गांव)</span>"+
-      "<div class='vg-adopt-villages'>"+escHtml(r.villages.join(", "))+"</div>"+
-    "</div>";
+  var fmt=function(n){return Number(n||0).toLocaleString("hi-IN");};
+  var html=cats.map(function(c){
+    var gTot=0,gPaid=0,gBak=0,gPaidAmt=0;
+    c.villages.forEach(function(v){gTot+=v.tot;gPaid+=v.paid;gBak+=v.bakaya;gPaidAmt+=v.paidAmt;});
+    var gPct=gTot?(gPaid/gTot*100):0;
+    var rows=c.villages.map(function(v,i){
+      return "<tr><td>"+(i+1)+"</td><td class='wasc-hq'>"+escHtml(v.village)+"</td>"+
+        "<td>"+v.tot+"<br><span class='wasc-sub'>&#8377;"+fmt(v.bakaya)+"</span></td>"+
+        "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+v.paid+"</span><br><span class='wasc-sub'>&#8377;"+fmt(v.paidAmt)+"</span></td>"+
+        "<td>"+v.pct.toFixed(1)+"%</td></tr>";
+    }).join("");
+    return "<div class='wasc-hdr' style='margin-top:14px;'><div class='wasc-hdr-t' style='font-size:13px;'>&#128100; "+escHtml(c.cat)+"</div></div>"+
+      "<table class='wasc-table'><thead><tr><th>क्र.</th><th>गांव</th>"+
+      "<th>कुल कनेक्शन<br><span class='wasc-sub'>बकाया राशि</span></th>"+
+      "<th class='wasc-col-paid'>वसूल<br><span class='wasc-sub'>वसूल राशि</span></th>"+
+      "<th>Paid %</th></tr></thead><tbody>"+rows+
+      "</tbody><tfoot><tr><td colspan='2'>योग ("+c.villages.length+" गांव)</td>"+
+      "<td>"+gTot+"<br><span class='wasc-sub'>&#8377;"+fmt(gBak)+"</span></td>"+
+      "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+gPaid+"</span><br><span class='wasc-sub'>&#8377;"+fmt(gPaidAmt)+"</span></td>"+
+      "<td>"+gPct.toFixed(1)+"%</td></tr></tfoot></table>";
   }).join("");
-  // audit-verified: r.cat और r.villages दोनों escHtml() से गुज़रे (ऊपर देखें)
+  // audit-verified: c.cat और v.village दोनों escHtml() से गुज़रे (ऊपर देखें), बाक़ी संख्या
   // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=html;
 }

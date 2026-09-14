@@ -1427,13 +1427,13 @@ test.describe('ग्राम-वार वसूली', () => {
 });
 
 test.describe('व्यक्ति/सूची-वार गोद लिए गांव — JE अनुरोध: हर HQ की जिन categories का नाम किसी व्यक्ति (या status) पर बदला गया है, उनमें मौजूद गांव दिखें', () => {
-  test('_vgComputeAdoptions — नाम-बदली category में मौजूद अलग-अलग (मिलते-जुलते मर्ज करके) गांव लौटाए, default-नाम वाली category छूट जाए', async ({ page }) => {
+  test('_vgComputeAdoptions — नाम-बदली category के गांव-वार आंकड़े (कुल/बकाया/वसूल/%) लौटाए, मिलते-जुलते गांव मर्ज हों, default-नाम वाली category छूट जाए', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => {
       CAT_NAMES['आदेगांव'] = { 1: 'किशन' }; // सिर्फ़ index 1 (घरेलू) का नाम बदला — बाकी default ही रहे
       cSet('आदेगांव', 'किशन', [
-        { acc: '1', name: 'राम', addr: 'HAMEERGAGH', status: 'pending', amount: 100 },   // alias वाला ग़लत spelling
-        { acc: '2', name: 'श्याम', addr: 'hameergarh', status: 'paid', amount: 100 },     // वही गांव, केस/alias दोनों भिन्न
+        { acc: '1', name: 'राम', addr: 'HAMEERGAGH', status: 'pending', amount: 150 },   // alias वाला ग़लत spelling
+        { acc: '2', name: 'श्याम', addr: 'hameergarh', status: 'paid', amount: 200 },     // वही गांव, केस/alias दोनों भिन्न — वसूल
         { acc: '3', name: 'गीता', addr: 'CHHOTA BICHHUA', status: 'pending', amount: 100 },
       ]);
       cSet('आदेगांव', 'व्यवसाय', [ // default नाम — इसे adoptions में नहीं आना चाहिए
@@ -1443,8 +1443,18 @@ test.describe('व्यक्ति/सूची-वार गोद लिए 
     });
     expect(r.length).toBe(1);              // सिर्फ़ "किशन" — "व्यवसाय" (default नाम) नहीं
     expect(r[0].cat).toBe('किशन');
-    expect(r[0].count).toBe(3);
-    expect(r[0].villages.length).toBe(2);  // HAMEERGAGH/hameergarh मर्ज होकर एक ही गांव
+    expect(r[0].villages.length).toBe(2);  // HAMEERGAGH/hameergarh मर्ज होकर एक ही गांव, CHHOTA BICHHUA अलग
+    const norm = await page.evaluate((vs) => vs.map((v) => _vgNormKey('आदेगांव', v.village)), r[0].villages);
+    var hameergarh = r[0].villages[norm.indexOf('HAMEERGARH')];
+    expect(hameergarh.tot).toBe(2);
+    expect(hameergarh.paid).toBe(1);
+    expect(hameergarh.paidAmt).toBe(200);
+    expect(hameergarh.bakaya).toBe(150);
+    expect(hameergarh.pct).toBeCloseTo(50, 1);
+    var bichhua = r[0].villages[norm.indexOf('CHHOTA BICHHUA')];
+    expect(bichhua.tot).toBe(1);
+    expect(bichhua.paid).toBe(0);
+    expect(bichhua.bakaya).toBe(100);
   });
 
   test('कोई भी category नाम-बदली न हो तो खाली सूची लौटे, और UI में साफ़ संदेश दिखे', async ({ page }) => {
