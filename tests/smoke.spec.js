@@ -3692,6 +3692,34 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
     expect(approxBytes).toBeLessThan(60 * 1024); // compressed होने पर बहुत छोटा रहना चाहिए
   });
 
+  test('फ़ोटो हटाने का बटन — फ़ोटो न हो तो छुपा रहे, फ़ोटो हो तो दिखे और DELETE भेजकर avatar वापस initial पर लौटे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => document.getElementById('update-banner')?.remove());
+    await page.click('button[onclick="openProfileModal()"]');
+    // पहली बार कोई फ़ोटो नहीं — बटन छुपा हो
+    expect(await page.locator('#profile-photo-remove-btn').isVisible()).toBe(false);
+
+    // फ़ोटो cache में डालकर फिर से खोलें, ताकि बटन दिखे (असली अपलोड ऊपर वाले test में पहले ही जांचा जा चुका है)।
+    // मॉडल पहले से खुली है, इसलिए trigger बटन को दोबारा क्लिक करने की बजाय सीधे function बुलाएं
+    // (वरना overlay उसी बटन के ऊपर होने से क्लिक इंटरसेप्ट हो जाता है)
+    await page.evaluate(() => { _profilePhotoCache = 'data:image/jpeg;base64,xyz'; openProfileModal(); });
+    expect(await page.locator('#profile-photo-remove-btn').isVisible()).toBe(true);
+
+    let deleteMethod = null;
+    await page.route('**/PROFILE_PHOTOS/**', async (route) => {
+      deleteMethod = route.request().method();
+      await route.fulfill({ status: 200, body: '{}' });
+    });
+    page.on('dialog', (d) => d.accept()); // "फ़ोटो हटाना चाहते हैं?"
+    await page.click('#profile-photo-remove-btn');
+    await page.waitForFunction(() => document.getElementById('profile-photo-remove-btn').style.display === 'none', null, { timeout: 5000 });
+
+    expect(deleteMethod).toBe('DELETE');
+    expect(await page.evaluate(() => _profilePhotoCache)).toBeNull();
+    expect(await page.locator('#profile-photo-remove-btn').isVisible()).toBe(false);
+  });
+
   test('डार्क मोड टॉगल — html[data-theme] बदलता है, localStorage में याद रहता है, दोबारा खोलने पर बना रहता है', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
@@ -5659,10 +5687,13 @@ test.describe('database.rules.json — LOGS/USAGE अब append-only हों (
 test.describe('database.rules.json — PROFILE_PHOTOS पर मालिकाना और size-cap (bug: कोई भी device किसी की भी फ़ोटो-key पर लिख सकता था — JE_... समेत — और base64 में कितने भी MB भर सकता था)', () => {
   const readRules = () => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
 
-  test('हर HQ का account सिर्फ़ अपने ही HQ के prefix वाली key लिख सके (लाइनमैन-खाते HQ-वार साझा हैं, इसलिए इससे बारीक पहचान संभव ही नहीं) — पढ़ना सबके लिए खुला रहे', () => {
+  test('हर HQ का account सिर्फ़ अपने ही HQ के prefix वाली key लिख सके (लाइनमैन-खाते HQ-वार साझा हैं, इसलिए इससे बारीक पहचान संभव ही नहीं) — पढ़ना हर logged-in (non-anonymous) device के लिए खुला रहे', () => {
     const rules = readRules();
     const pp = rules.PROFILE_PHOTOS;
-    expect(pp['.read']).toBe('auth != null'); // हर device app खुलते ही अपनी फ़ोटो पढ़ता है
+    // हर device login के बाद अपनी फ़ोटो पढ़ता है (profile.js: loadProfilePhoto केवल CU सेट होने पर चलता
+    // है) — इसलिए anonymous session को बाहर रखना safe है; पहले bare "auth != null" से कोई भी बिना login
+    // किए सारे लाइनमैन के नाम/फ़ोटो/role देख सकता था
+    expect(pp['.read']).toBe("auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'");
     expect(pp['.write'], 'पूरे PROFILE_PHOTOS पर खुला .write नहीं रहना चाहिए').toBeUndefined();
     const w = pp.$key && pp.$key['.write'];
     expect(w, 'PROFILE_PHOTOS/$key पर .write होना चाहिए').toBeTruthy();

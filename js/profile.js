@@ -49,6 +49,11 @@ function openProfileModal(){
   document.getElementById("profile-meta").textContent=(CU.role==="supervisor"?"कनिष्ठ अभियंता (JE)":"लाइनमैन")+" | "+CU.hq;
   _syncThemeSwitch();
   _syncSoundSwitch();
+  _syncRemovePhotoBtn();
+}
+function _syncRemovePhotoBtn(){
+  var btn=document.getElementById("profile-photo-remove-btn");
+  if(btn) btn.style.display=_profilePhotoCache?"":"none";
 }
 function closeProfileModal(){ document.getElementById("profile-overlay").classList.remove("open"); }
 
@@ -110,6 +115,7 @@ function onPhotoSelected(input){
       if(av) _renderAvatarInto(av);
       var dot=document.getElementById("udot");
       if(dot) _renderAvatarInto(dot);
+      _syncRemovePhotoBtn();
       var key=_profileKey();
       fetch(FB+"/PROFILE_PHOTOS/"+key+".json",{
         method:"PUT",headers:{"Content-Type":"application/json"},
@@ -122,6 +128,24 @@ function onPhotoSelected(input){
     img.src=e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+// फ़ोटो हटाना — पहले सिर्फ़ बदलने का रास्ता था, हटाने का कोई नहीं (JE का सुझाव)
+function removeProfilePhoto(){
+  if(!confirm("फ़ोटो हटाना चाहते हैं?")) return;
+  var key=_profileKey();
+  fetch(FB+"/PROFILE_PHOTOS/"+key+".json",{method:"DELETE"})
+    .then(function(r){
+      if(!r.ok){ toast("⚠ फ़ोटो हटाई नहीं जा सकी, दोबारा कोशिश करें","err"); return; }
+      _profilePhotoCache=null;
+      var av=document.getElementById("profile-avatar-wrap");
+      if(av) _renderAvatarInto(av);
+      var dot=document.getElementById("udot");
+      if(dot) _renderAvatarInto(dot);
+      _syncRemovePhotoBtn();
+      toast("✅ फ़ोटो हट गई","ok");
+    })
+    .catch(function(){ toast("📴 ऑफलाइन — नेट आने पर दोबारा कोशिश करें","err"); });
 }
 
 function openSupportModal(){
