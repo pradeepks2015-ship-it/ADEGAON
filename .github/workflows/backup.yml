@@ -19,7 +19,8 @@ jobs:
         with:
           node-version: 20
       - name: Install backup dependencies
-        run: npm install --no-save firebase-admin xlsx
+        # version pinned — अनजाने में नया (कभी breaking) major version अपने-आप न आ जाए
+        run: npm install --no-save firebase-admin@14.4.0 xlsx@0.18.5
       - name: Run backup
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

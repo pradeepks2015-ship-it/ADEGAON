@@ -202,7 +202,11 @@ function verifyJE(pw,cb){
 }
 
 // ── Lineman PIN: हर HQ का एक साझा PIN (सामान्य सुरक्षा-मज़बूती — कोई भी नाम भरकर न घुस सके) ──
-// असली access-control नहीं (Security Rules अलग से restrict नहीं करतीं) — JE खुद /HQ_PIN में सेट/बदल सकते हैं
+// असली access-control अब Security Rules से ही है (HQ_PIN सिर्फ़ JE पढ़/लिख सकते हैं, v9.146) —
+// यह HQ_PINS variable अब सिर्फ़ JE के "Lineman PIN" मेनू (देखें openPinModal/savePins) के लिए है।
+// लाइनमैन login के वक़्त PIN यहां से नहीं पढ़ते (देखें doLogin) — असली जांच सीधे Firebase
+// signInWithEmailAndPassword करता है, और _ensureCorrectHqAuth बाद के दोबारा sign-in के लिए
+// device पर याद रखे CU.pin का इस्तेमाल करता है (सर्वर से दोबारा पढ़ने का रास्ता जान-बूझकर बंद है)
 var HQ_PINS={};
 function loadHQPins(){
   try{var s=localStorage.getItem("dc_hqpins");if(s)HQ_PINS=JSON.parse(s);}catch(e){}
@@ -329,22 +333,24 @@ function doLogin(){
   }
   var hq=document.getElementById("hq-sel").value;
   if(!hq){toast("HQ चुनें","err");return;}
-  var expectedPin=HQ_PINS[hqKey(hq)];
   var typedPin=document.getElementById("lin-pin").value.trim();
-  if(expectedPin&&typedPin!==expectedPin){
-    toast("गलत PIN! JE से सही PIN लें","err");return;
-  }
-  // PIN सही है और उस HQ का असली Firebase account मौजूद है — anonymous की जगह उसी से sign-in करें
-  // (Security Rules अब सिर्फ़ यही असली पहचान जांचती हैं — असली access-control server से)
+  // PIN अब यहां client-side पहले से जांची नहीं जाती (v9.146 सुरक्षा-फिक्स): पहले HQ_PIN कोई भी
+  // login-किया (anonymous भी) device पढ़ सकता था — यानी बिना PIN जाने भी कोई सीधे /HQ_PIN.json
+  // पढ़कर सभी HQ के असली PIN पा सकता था, और उन्हीं से बना Firebase password इस्तेमाल करके सीधे
+  // उस HQ के असली account में घुस सकता था। अब HQ_PIN सिर्फ़ JE पढ़ सकते हैं (Security Rules) —
+  // सही/ग़लत PIN का असली फ़ैसला पूरी तरह नीचे वाला signInWithEmailAndPassword करता है
   var hqEmail=HQ_AUTH_EMAIL[hq];
   var fbAuthOk=false;
   try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
-  if(expectedPin&&hqEmail&&navigator.onLine&&fbAuthOk){
+  if(hqEmail&&navigator.onLine&&fbAuthOk){
     showLoader("लॉगिन हो रहा है...");
     firebase.auth().signInWithEmailAndPassword(hqEmail,_hqAuthPassword(typedPin))
       .then(function(){
         hideLoader();
-        CU={role:"lineman",name:name,hq:hq};
+        // pin यहीं याद रखते हैं (सिर्फ़ इसी device पर, localStorage में) — _ensureCorrectHqAuth को
+        // बाद में (silent restore, "online" event, session खोने पर) दोबारा sign-in करने के लिए
+        // यही चाहिए होता है, और अब HQ_PIN को दोबारा server से पढ़ने का कोई रास्ता नहीं बचा
+        CU={role:"lineman",name:name,hq:hq,pin:typedPin};
         _finishLogin(name);
       })
       .catch(function(e){
@@ -358,7 +364,7 @@ function doLogin(){
       });
     return;
   }
-  // PIN सेट नहीं है इस HQ का, या ऑफलाइन हैं — पुराने (anonymous) तरीके से आगे बढ़ें
+  // इस HQ का Firebase account कॉन्फ़िगर नहीं, या ऑफलाइन हैं — पुराने (anonymous) तरीके से आगे बढ़ें
   try{
     var u=firebase.auth().currentUser;
     if(u&&u.email) firebase.auth().signOut();
@@ -386,17 +392,16 @@ function _ensureCorrectHqAuth(cb){
   cb=cb||function(){};
   if(!CU||CU.role!=="lineman"||!navigator.onLine) return cb();
   var hqEmail=HQ_AUTH_EMAIL[CU.hq];
-  var pin=HQ_PINS[hqKey(CU.hq)];
-  if(!hqEmail||!pin) return cb(); // इस HQ का PIN सेट ही नहीं — पुराना anonymous रास्ता ही सही व्यवहार है
+  if(!hqEmail) return cb();
   var fbAuthOk=false;
   try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
   if(!fbAuthOk) return cb();
   var u=firebase.auth().currentUser;
   if(u&&u.email===hqEmail){
-    // पहले से सही account से sign-in है — दोबारा sign-in की ज़रूरत नहीं। पर अगर पहले कभी
-    // 401 की वजह से इस HQ की entries "अटकी" चिह्नित हो चुकी हैं, तो वो गिनती अब मान्य नहीं:
-    // account सही है यानी rules इस HQ को लिखने देती हैं। पहले यह रीसेट सिर्फ़ नए sign-in पर
-    // होता था, इसलिए मैन्युअल logout+login के बाद भी अटका डेटा हमेशा के लिए अटका रह जाता था
+    // पहले से सही account से sign-in है — दोबारा sign-in की ज़रूरत नहीं (PIN जानने की भी नहीं)।
+    // पर अगर पहले कभी 401 की वजह से इस HQ की entries "अटकी" चिह्नित हो चुकी हैं, तो वो गिनती
+    // अब मान्य नहीं: account सही है यानी rules इस HQ को लिखने देती हैं। पहले यह रीसेट सिर्फ़ नए
+    // sign-in पर होता था, इसलिए मैन्युअल logout+login के बाद भी अटका डेटा हमेशा के लिए अटका रह जाता था
     if(!_authHealed[CU.hq]){
       _authHealed[CU.hq]=true;
       _resetAuthFailForHQ(CU.hq);
@@ -404,6 +409,12 @@ function _ensureCorrectHqAuth(cb){
     }
     return cb();
   }
+  // account ग़लत/anonymous है — असल में नया sign-in चाहिए, इसके लिए PIN ज़रूरी है। v9.146:
+  // यह अब server से नहीं (HQ_PIN अब सिर्फ़ JE पढ़ सकते हैं) — पिछले सफल login पर इसी device पर
+  // याद रखा गया CU.pin इस्तेमाल होता है (देखें doLogin)। याद न हो (पुराने version से login हुआ
+  // था) तो नया sign-in नहीं कर सकते — पुराना/pending-queue वाला safe रास्ता ही चलेगा
+  var pin=CU.pin;
+  if(!pin) return cb();
   firebase.auth().signInWithEmailAndPassword(hqEmail,_hqAuthPassword(pin))
     .then(function(){
       _authHealed[CU.hq]=true;

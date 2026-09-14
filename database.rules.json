@@ -9,7 +9,7 @@
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' && (!newData.exists() || !data.child('ts').exists() || newData.child('ts').val() >= data.child('ts').val())"
     },
     "HQ_PIN": {
-      ".read": "auth != null",
+      ".read": "auth.token.email === 'pradeepks2015@gmail.com'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com'"
     },
     "PAUSE": {
@@ -23,7 +23,14 @@
     "DEVICE_VERSIONS": {
       ".read": "auth.token.email === 'pradeepks2015@gmail.com'",
       "$dev": {
-        ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'"
+        ".write": "auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'",
+        ".validate": "newData.hasChildren(['v','hq','role','name','t'])",
+        "v": { ".validate": "newData.isString() && newData.val().length <= 20" },
+        "hq": { ".validate": "newData.isString() && newData.val().length <= 40" },
+        "role": { ".validate": "newData.isString() && newData.val().length <= 20" },
+        "name": { ".validate": "newData.isString() && newData.val().length <= 80" },
+        "t": { ".validate": "newData.isNumber()" },
+        "$f": { ".validate": false }
       }
     },
     "LOGS": {
