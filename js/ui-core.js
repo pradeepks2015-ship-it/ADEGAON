@@ -378,14 +378,19 @@ function _hqAuthPassword(pin){ return "vasuli-"+pin; }
 // एक ही HQ के लिए बार-बार "अटकी हुई गिनती" रीसेट न होती रहे (वरना 401 ↔ रीसेट का झूला चलता
 // रहेगा) — हर HQ के लिए app के एक session में सिर्फ़ एक बार
 var _authHealed={};
-function _ensureCorrectHqAuth(){
-  if(!CU||CU.role!=="lineman"||!navigator.onLine) return;
+// cb (वैकल्पिक) — सही account असल में तय हो जाने पर ही चलता है, न कि सिर्फ़ sign-in *शुरू* होने पर।
+// पहले यह हमेशा fire-and-forget था (कोई callback नहीं) — caller (जैसे reconcileHQ) इसके फ़ौरन
+// बाद ही चल जाता, जबकि नीचे वाला signInWithEmailAndPassword अभी async चल ही रहा होता — असली
+// production bug यही था (v9.140/v9.141 दोनों में save-fail HTTP 401, silent restore पर)
+function _ensureCorrectHqAuth(cb){
+  cb=cb||function(){};
+  if(!CU||CU.role!=="lineman"||!navigator.onLine) return cb();
   var hqEmail=HQ_AUTH_EMAIL[CU.hq];
   var pin=HQ_PINS[hqKey(CU.hq)];
-  if(!hqEmail||!pin) return; // इस HQ का PIN सेट ही नहीं — पुराना anonymous रास्ता ही सही व्यवहार है
+  if(!hqEmail||!pin) return cb(); // इस HQ का PIN सेट ही नहीं — पुराना anonymous रास्ता ही सही व्यवहार है
   var fbAuthOk=false;
   try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
-  if(!fbAuthOk) return;
+  if(!fbAuthOk) return cb();
   var u=firebase.auth().currentUser;
   if(u&&u.email===hqEmail){
     // पहले से सही account से sign-in है — दोबारा sign-in की ज़रूरत नहीं। पर अगर पहले कभी
@@ -397,15 +402,16 @@ function _ensureCorrectHqAuth(){
       _resetAuthFailForHQ(CU.hq);
       flushPending();
     }
-    return;
+    return cb();
   }
   firebase.auth().signInWithEmailAndPassword(hqEmail,_hqAuthPassword(pin))
     .then(function(){
       _authHealed[CU.hq]=true;
       _resetAuthFailForHQ(CU.hq); // पुरानी "अनधिकृत" गिनती अब मान्य नहीं — दोबारा भेजने दो
       flushPending();
+      cb();
     })
-    .catch(function(){}); // अभी भी नाकाम (PIN बदल गया होगा) — अगली बार "online" event पर फिर कोशिश होगी
+    .catch(function(){ cb(); }); // अभी भी नाकाम (PIN बदल गया होगा) — फिर भी caller को आगे बढ़ने दें, पुराना/pending-queue वाला safe रास्ता संभाल लेगा
 }
 
 // ── LOGIN SESSION ─────────────────────────────────────────────────────────────
@@ -452,8 +458,6 @@ function _finishLogin(name,silent){
   // अपना session कहीं खो गया या anonymous पर लौट गया (firebase.js खुद ऐसा करता है), device
   // हमेशा के लिए anonymous रह जाता — हर save 401। "online" event यहां मदद नहीं करता क्योंकि वो
   // सिर्फ़ offline→online बदलने पर चलता है, पहले से online रहते हुए ऐप खोलने पर कभी नहीं।
-  // Firebase का auth तय होने का इंतज़ार करते हैं ताकि सही account पहले से हो तो कोई नई call न जाए
-  if(silent) _afterAuthReady(_ensureCorrectHqAuth);
   activeHQ=CU.hq; activeFilter="all";
   rebuildCatsForHQ(activeHQ);
   activeCat=CATS[0];
@@ -464,12 +468,15 @@ function _finishLogin(name,silent){
   // पुराने अपलोड (fix v9.139 से पहले के) अब भी categories के बीच वसूल-status मिसमैच लिए बैठे हो सकते हैं —
   // सिर्फ़ नए अपलोड पर reconcileHQ चलाना उन्हें कभी ठीक नहीं करता। इसलिए हर login पर भी एक बार चला
   // देते हैं — cGet() सिर्फ़ local cache पढ़ता है (कोई network cost नहीं), Firebase पर लिखा तभी जाता
-  // है जब सच में कोई मिसमैच मिले (देखें reconcileHQ, js/list.js)। असली production bug (v9.140):
-  // silent restore (app दोबारा खुलने) पर Firebase का अपना auth अभी resolve ही नहीं हुआ होता (या
-  // lineman अभी भी पुराने/anonymous account पर हो, _ensureCorrectHqAuth ठीक होने से पहले ही) —
-  // इसी वक़्त reconcileHQ का fbSet चल जाए तो सीधे HTTP 401 "save-fail" (लाइनमैन डिवाइस पर देखा गया)।
-  // इसलिए auth पक्का होने का इंतज़ार करें, तभी लिखें
-  _afterAuthReady(function(){ reconcileHQ(activeHQ); });
+  // है जब सच में कोई मिसमैच मिले (देखें reconcileHQ, js/list.js)। असली production bug (v9.140,
+  // फिर v9.141 के बाद भी दोबारा हुआ): silent restore पर सिर्फ़ Firebase का auth resolve होना काफ़ी
+  // नहीं — lineman अगर अभी भी पुराने/anonymous account पर हो तो _ensureCorrectHqAuth खुद अपना
+  // sign-in शुरू करता है (async, fire-and-forget) और तुरंत लौट आता है; v9.141 के fix में reconcileHQ
+  // उसी वक़्त अलग से (सिर्फ़ auth-ready होने पर) चल जाता था — सही account तय होने का इंतज़ार किए
+  // बिना — तो भी 401 आ जाता (v9.144 पर मढ़ी/नीलेश में यही दोहराया)। अब reconcileHQ सीधे
+  // _ensureCorrectHqAuth() की अपनी completion callback से चलता है, ताकि सही account असल में तय
+  // होने के बाद ही लिखे (supervisor/पहले-से-सही-account मामलों में callback तुरंत ही चलता है)
+  _afterAuthReady(function(){ _ensureCorrectHqAuth(function(){ reconcileHQ(activeHQ); }); });
   fbGet(activeHQ,activeCat,function(data){
     renderSummaryWith(data); renderListWith(data);
     startListen(activeHQ,activeCat);
@@ -560,7 +567,7 @@ function buildHQTabs(){
       buildHQTabs();
       buildCatTabs();
       showLoader();
-      _afterAuthReady(function(){ reconcileHQ(hq); }); // पुराने मिसमैच के लिए, auth पक्का होने के बाद (देखें _finishLogin वाला comment)
+      _afterAuthReady(function(){ _ensureCorrectHqAuth(function(){ reconcileHQ(hq); }); }); // पुराने मिसमैच के लिए, सही account तय होने के बाद (देखें _finishLogin वाला comment)
       fbGet(activeHQ,activeCat,function(data){
         renderSummaryWith(data); renderListWith(data);
         startListen(activeHQ,activeCat); hideLoader();
@@ -583,7 +590,7 @@ function buildCatTabs(){
       document.querySelectorAll(".filter-btn").forEach(function(x){x.className="filter-btn";});
       document.querySelector("[data-f='all']").className="filter-btn active-all";
       buildCatTabs(); showLoader();
-      _afterAuthReady(function(){ reconcileHQ(activeHQ); }); // पुराने मिसमैच के लिए, auth पक्का होने के बाद (देखें _finishLogin वाला comment)
+      _afterAuthReady(function(){ _ensureCorrectHqAuth(function(){ reconcileHQ(activeHQ); }); }); // पुराने मिसमैच के लिए, सही account तय होने के बाद (देखें _finishLogin वाला comment)
       fbGet(activeHQ,activeCat,function(data){
         renderSummaryWith(data); renderListWith(data);
         startListen(activeHQ,activeCat); hideLoader();

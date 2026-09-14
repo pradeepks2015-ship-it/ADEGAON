@@ -2839,7 +2839,9 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return {
-          currentUser: { email: null },
+          // doLogin() खुद अपना signInWithEmailAndPassword() पहले ही सफल कर चुका है (silent नहीं),
+          // तभी _finishLogin(name) बुलाया जाता है — इसलिए currentUser यहां पहले से सही account है
+          currentUser: { email: 'hq-adegaon@adegaondc.internal' },
           signInWithEmailAndPassword: function () { n++; return Promise.resolve({}); },
         };
       };
@@ -2847,7 +2849,7 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
       _finishLogin(CU.name); // silent नहीं
       setTimeout(() => resolve(n), 6000);
     }));
-    expect(calls).toBe(0);
+    expect(calls).toBe(0); // _ensureCorrectHqAuth ने account पहले से सही पाया — दोबारा sign-in नहीं किया
   });
 
   test('_ensureCorrectHqAuth — सही account पहले से हो तो भी पुरानी "अटकी" गिनती साफ़ हो (bug: मैन्युअल logout+login के बाद भी अटका डेटा हमेशा के लिए अटका रह जाता था)', async ({ page }) => {
@@ -4943,6 +4945,39 @@ test.describe('reconcileHQ अब auth तय होने तक रुके �
     });
     expect(r.before).toBe(0); // auth तय होने से पहले न चले — 401 से बचाव
     expect(r.after).toBe(1); // auth तय होते ही चल जाए
+  });
+
+  test('_finishLogin (silent) — reconcileHQ तभी चले जब _ensureCorrectHqAuth का अपना sign-in वाक़ई पूरा हो जाए, सिर्फ़ शुरू होने पर नहीं (bug v9.141 पर भी दोहराया: sign-in अभी async चल ही रहा होता, reconcileHQ AUTH_READY देखकर उसी वक़्त अलग से चल जाता — फिर भी 401)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.AUTH_READY = true; // Firebase का initial auth-restore तो हो चुका है...
+      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      var resolveSignIn;
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null }, // ...पर अभी भी anonymous — silent restore पर बिल्कुल यही होता है
+          signInWithEmailAndPassword: function () {
+            return new Promise((res) => { resolveSignIn = res; }); // जान-बूझकर अभी resolve नहीं करते
+          },
+        };
+      };
+      var calls = 0;
+      var origReconcile = window.reconcileHQ;
+      window.reconcileHQ = function (hq) { calls++; return origReconcile(hq); };
+      CU = { role: 'lineman', name: 'देरी वाला', hq: 'आदेगांव' };
+      _finishLogin(CU.name, true); // silent = सेव किया session बहाल हुआ
+      setTimeout(() => {
+        var before = calls; // sign-in अभी pending है
+        resolveSignIn({}); // अब असली sign-in पूरा हुआ मान लो
+        setTimeout(() => {
+          window.reconcileHQ = origReconcile;
+          resolve({ before: before, after: calls });
+        }, 50);
+      }, 50);
+    }));
+    expect(r.before).toBe(0); // sign-in अभी पूरा नहीं हुआ था — reconcileHQ ने इंतज़ार किया, 401 से बचाव
+    expect(r.after).toBe(1);  // sign-in पूरा होते ही चल गया
   });
 });
 
