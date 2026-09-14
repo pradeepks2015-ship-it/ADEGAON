@@ -29,8 +29,10 @@ async function loginLineman(page, name = 'टेस्ट लाइनमैन'
   try {
     await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
   } catch (e) {
-    // असली bug न मिलने पर स्थानीय रूप से दोहराया नहीं जा सका (सिर्फ़ CI पर) — यह diagnostics
-    // CI job log में ही दिखेगा (कोई artifact-upload कदम नहीं है), असली कारण पकड़ने के लिए
+    // असली bug न मिलने पर स्थानीय रूप से दोहराया नहीं जा सका (सिर्फ़ CI पर) — पिछली कोशिश में
+    // यहां console.log() से diagnostics भेजी थी, पर CI का "github" reporter उसे job log में
+    // दिखाता ही नहीं (local "list" reporter दिखाता है, इसलिए local जांच में यह गलती पकड़ में
+    // नहीं आई)। अब सीधे thrown error के message में जोड़ रहे हैं — वह हर reporter हमेशा दिखाता है
     const diag = await page.evaluate(() => ({
       selectedRole: typeof selectedRole !== 'undefined' ? selectedRole : 'undef',
       hqSelVal: document.getElementById('hq-sel') && document.getElementById('hq-sel').value,
@@ -42,7 +44,7 @@ async function loginLineman(page, name = 'टेस्ट लाइनमैन'
       CU: typeof CU !== 'undefined' ? JSON.stringify(CU) : 'undef',
       appStarted: typeof _appStarted !== 'undefined' ? _appStarted : 'undef',
     })).catch((err) => ({ evalError: String(err) }));
-    console.log('[loginLineman DIAG]', JSON.stringify(diag));
+    e.message = '[loginLineman DIAG] ' + JSON.stringify(diag) + '\n\n' + e.message;
     throw e;
   }
 }
