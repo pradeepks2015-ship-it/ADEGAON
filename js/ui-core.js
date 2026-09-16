@@ -411,10 +411,20 @@ function _ensureCorrectHqAuth(cb){
   }
   // account ग़लत/anonymous है — असल में नया sign-in चाहिए, इसके लिए PIN ज़रूरी है। v9.146:
   // यह अब server से नहीं (HQ_PIN अब सिर्फ़ JE पढ़ सकते हैं) — पिछले सफल login पर इसी device पर
-  // याद रखा गया CU.pin इस्तेमाल होता है (देखें doLogin)। याद न हो (पुराने version से login हुआ
-  // था) तो नया sign-in नहीं कर सकते — पुराना/pending-queue वाला safe रास्ता ही चलेगा
+  // याद रखा गया CU.pin इस्तेमाल होता है (देखें doLogin)। याद न हो (v9.146 से पहले login हुआ था,
+  // या offline/network-fail वाले fallback रास्ते से login हुआ था) तो नया sign-in नहीं कर सकते।
+  // production में असली bug यही निकला: पहले यहां चुपचाप cb() बुलाकर रुक जाते थे — device हमेशा
+  // के लिए ग़लत account पर अटका रह जाता, हर save 401 (कई लाइनमैन पर हुआ — sync-patch-fail बार-बार,
+  // कभी अपने-आप न सुधरा)। अब चुपचाप अटकने की बजाय साफ़ logout करके login screen पर भेज देते हैं,
+  // ताकि एक बार PIN दोबारा डालते ही (CU.pin सेव होकर) हमेशा के लिए ठीक हो जाए — यह तभी चलता है
+  // जब AUTH_READY हो चुका हो (caller हमेशा _afterAuthReady से गुज़ारकर बुलाता है), इसलिए "ग़लत
+  // account" का यह नतीजा भरोसेमंद है, कोई अस्थायी/अनिश्चित स्थिति नहीं
   var pin=CU.pin;
-  if(!pin) return cb();
+  if(!pin){
+    doLogout(false);
+    toast("🔐 सुरक्षा अपडेट — कृपया एक बार दोबारा PIN डालकर login करें","inf");
+    return cb();
+  }
   firebase.auth().signInWithEmailAndPassword(hqEmail,_hqAuthPassword(pin))
     .then(function(){
       _authHealed[CU.hq]=true;

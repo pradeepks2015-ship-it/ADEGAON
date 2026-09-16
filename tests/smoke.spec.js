@@ -10,6 +10,15 @@ const path = require('path');
 /** @param {import('@playwright/test').Page} page */
 async function blockExternal(page) {
   await page.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (route) => route.abort());
+  // Service Worker कभी-कभी किसी पहले चले test से बचे हुए worker-profile cache से Firebase CDN
+  // scripts सीधे serve कर देता है — यह कभी network तक जाता ही नहीं, इसलिए ऊपर वाला route() इसे
+  // रोक नहीं पाता। page.addInitScript(() => window.firebase = undefined) से रोकने की कोशिश भी
+  // नाकाम रही (diagnostics से पक्का हुआ, देखें reloadAndWaitForApp का git history) — वह पहले चल
+  // तो जाता है, पर उसके बाद असली <script src="firebase-*.js"> tag (जो SW ने cache से परोसा) फिर
+  // से execute होकर window.firebase को वापस असली बना देता है। असली, पक्का fix अब playwright.config.js
+  // में है: serviceWorkers:'block' — कोई भी test असली browser-registered SW पर निर्भर नहीं (sw.js
+  // की जांच सिर्फ़ static/mocked-scope से होती है), इसलिए SW को सिरे से रजिस्टर ही न होने देना
+  // सबसे पक्का रास्ता है, हर navigation पर window.firebase को दोबारा साफ़ करने की ज़रूरत ही नहीं
 }
 
 /** @param {import('@playwright/test').Page} page */
@@ -55,6 +64,32 @@ async function loginLineman(page, name = 'टेस्ट लाइनमैन'
       appStarted: typeof _appStarted !== 'undefined' ? _appStarted : 'undef',
     })).catch((err) => ({ evalError: String(err) }));
     e.message = '[loginLineman DIAG] ' + JSON.stringify(diag) + '\n\n' + e.message;
+    throw e;
+  }
+}
+
+// addInitScript वाला fix (blockExternal) दूसरी बार भी असफल रहा — दोनों reload-आधारित tests
+// अब भी CI पर वैसे ही TimeoutError पर अटके। असली वजह अब भी पता नहीं, इसलिए तीसरी बार अंदाज़ा
+// लगाने की बजाय (जो पिछली बार ग़लत निकला) यहां वही सिद्ध तरीक़ा दोहरा रहे हैं जिससे loginLineman
+// का असली bug पकड़ में आया था: timeout पर page-side state को thrown error के .message में जोड़ दें
+/** @param {import('@playwright/test').Page} page */
+async function reloadAndWaitForApp(page) {
+  await page.reload();
+  try {
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+  } catch (e) {
+    const diag = await page.evaluate(() => ({
+      firebaseType: typeof firebase,
+      CU: typeof CU !== 'undefined' ? JSON.stringify(CU) : 'undef',
+      loginActive: document.getElementById('login-screen').classList.contains('active'),
+      appActive: document.getElementById('app-screen').classList.contains('active'),
+      dcCu: localStorage.getItem('dc_cu'),
+      appStarted: typeof _appStarted !== 'undefined' ? _appStarted : 'undef',
+      toastText: (function () { var t = document.getElementById('toast'); return t ? t.textContent : 'no-toast-el'; })(),
+      toastShown: (function () { var t = document.getElementById('toast'); return t ? t.classList.contains('show') : 'no-toast-el'; })(),
+      navOnline: navigator.onLine,
+    })).catch((err) => ({ evalError: String(err) }));
+    e.message = '[reload DIAG] ' + JSON.stringify(diag) + '\n\n' + e.message;
     throw e;
   }
 }
@@ -128,8 +163,7 @@ test.describe('बूट और login', () => {
     await openApp(page);
     await loginLineman(page, 'रिलोड लाइनमैन');
     expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toContain('रिलोड लाइनमैन');
-    await page.reload();
-    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+    await reloadAndWaitForApp(page);
     expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(false);
     expect(await page.evaluate(() => CU && CU.name)).toBe('रिलोड लाइनमैन');
     // चुपचाप वापस आया — "स्वागत है" toast दोबारा न दिखे
@@ -143,8 +177,7 @@ test.describe('बूट और login', () => {
     await openApp(page);
     await loginLineman(page, 'मिनिमाइज़ लाइनमैन');
     await page.evaluate(() => sessionStorage.clear()); // OS ने tab मार दिया
-    await page.reload();
-    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+    await reloadAndWaitForApp(page);
     expect(await page.evaluate(() => CU && CU.name)).toBe('मिनिमाइज़ लाइनमैन');
     expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(false);
   });
@@ -2973,19 +3006,20 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     expect(called).toBe(0);
   });
 
-  test('_ensureCorrectHqAuth — PIN याद न हो (पुराने version से login) तो कुछ न करे (anonymous ही पुराना/सही व्यवहार है)', async ({ page }) => {
+  test('_ensureCorrectHqAuth — PIN याद न हो (v9.146 से पहले login हुआ था) तो चुपचाप न अटके, साफ़ logout करके login screen पर भेज दे (bug: पहले हमेशा के लिए ग़लत account पर अटका रह जाता, हर save 401)', async ({ page }) => {
     await openApp(page);
-    const called = await page.evaluate(() => {
+    await page.evaluate(() => {
       CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा' }; // .pin जान-बूझकर सेट नहीं किया
-      var calls = 0;
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
-        return { currentUser: { email: null }, signInWithEmailAndPassword: function () { calls++; return Promise.resolve({}); } };
+        return { currentUser: { email: null }, signInWithEmailAndPassword: function () { return Promise.resolve({}); } };
       };
       _ensureCorrectHqAuth();
-      return calls;
     });
-    expect(called).toBe(0);
+    expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(true);
+    expect(await page.evaluate(() => document.getElementById('app-screen').classList.contains('active'))).toBe(false);
+    expect(await page.evaluate(() => CU)).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toBeNull();
   });
 
   test('_ensureCorrectHqAuth — JE (supervisor) के लिए कुछ न करे (सिर्फ़ lineman पर लागू)', async ({ page }) => {
