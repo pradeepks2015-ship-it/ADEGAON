@@ -10,6 +10,15 @@ const path = require('path');
 /** @param {import('@playwright/test').Page} page */
 async function blockExternal(page) {
   await page.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (route) => route.abort());
+  // Service Worker कभी-कभी किसी पहले चले test से बचे हुए worker-profile cache से Firebase CDN
+  // scripts सीधे Cache Storage से serve कर देता है — यह कभी network तक जाता ही नहीं, इसलिए ऊपर
+  // वाला route() इसे रोक नहीं पाता (पूरी जड़ देखें loginLineman() के comment में)। वह fix सिर्फ़
+  // पहली बार login के वक़्त चलता था — page.reload()/दूसरी navigation पर (जैसे silent session
+  // restore वाले tests) दोबारा ज़रूरी था, और उसकी कमी से एक नया CI-only bug पकड़ में आया (v9.148:
+  // _ensureCorrectHqAuth अब !pin पर doLogout() करता है — अगर reload के बाद firebase असल में
+  // defined मिल जाए तो यह ग़लती से चल जाता, login-screen हमेशा अटकी रह जाती)। अब हर नई
+  // document-load पर (reload समेत) page.addInitScript से पहले ही window.firebase साफ़ कर देते हैं
+  await page.addInitScript(() => { window.firebase = undefined; });
 }
 
 /** @param {import('@playwright/test').Page} page */
