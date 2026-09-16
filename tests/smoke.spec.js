@@ -11,14 +11,14 @@ const path = require('path');
 async function blockExternal(page) {
   await page.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (route) => route.abort());
   // Service Worker कभी-कभी किसी पहले चले test से बचे हुए worker-profile cache से Firebase CDN
-  // scripts सीधे Cache Storage से serve कर देता है — यह कभी network तक जाता ही नहीं, इसलिए ऊपर
-  // वाला route() इसे रोक नहीं पाता (पूरी जड़ देखें loginLineman() के comment में)। वह fix सिर्फ़
-  // पहली बार login के वक़्त चलता था — page.reload()/दूसरी navigation पर (जैसे silent session
-  // restore वाले tests) दोबारा ज़रूरी था, और उसकी कमी से एक नया CI-only bug पकड़ में आया (v9.148:
-  // _ensureCorrectHqAuth अब !pin पर doLogout() करता है — अगर reload के बाद firebase असल में
-  // defined मिल जाए तो यह ग़लती से चल जाता, login-screen हमेशा अटकी रह जाती)। अब हर नई
-  // document-load पर (reload समेत) page.addInitScript से पहले ही window.firebase साफ़ कर देते हैं
-  await page.addInitScript(() => { window.firebase = undefined; });
+  // scripts सीधे serve कर देता है — यह कभी network तक जाता ही नहीं, इसलिए ऊपर वाला route() इसे
+  // रोक नहीं पाता। page.addInitScript(() => window.firebase = undefined) से रोकने की कोशिश भी
+  // नाकाम रही (diagnostics से पक्का हुआ, देखें reloadAndWaitForApp का git history) — वह पहले चल
+  // तो जाता है, पर उसके बाद असली <script src="firebase-*.js"> tag (जो SW ने cache से परोसा) फिर
+  // से execute होकर window.firebase को वापस असली बना देता है। असली, पक्का fix अब playwright.config.js
+  // में है: serviceWorkers:'block' — कोई भी test असली browser-registered SW पर निर्भर नहीं (sw.js
+  // की जांच सिर्फ़ static/mocked-scope से होती है), इसलिए SW को सिरे से रजिस्टर ही न होने देना
+  // सबसे पक्का रास्ता है, हर navigation पर window.firebase को दोबारा साफ़ करने की ज़रूरत ही नहीं
 }
 
 /** @param {import('@playwright/test').Page} page */
