@@ -2973,19 +2973,20 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     expect(called).toBe(0);
   });
 
-  test('_ensureCorrectHqAuth — PIN याद न हो (पुराने version से login) तो कुछ न करे (anonymous ही पुराना/सही व्यवहार है)', async ({ page }) => {
+  test('_ensureCorrectHqAuth — PIN याद न हो (v9.146 से पहले login हुआ था) तो चुपचाप न अटके, साफ़ logout करके login screen पर भेज दे (bug: पहले हमेशा के लिए ग़लत account पर अटका रह जाता, हर save 401)', async ({ page }) => {
     await openApp(page);
-    const called = await page.evaluate(() => {
+    await page.evaluate(() => {
       CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा' }; // .pin जान-बूझकर सेट नहीं किया
-      var calls = 0;
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
-        return { currentUser: { email: null }, signInWithEmailAndPassword: function () { calls++; return Promise.resolve({}); } };
+        return { currentUser: { email: null }, signInWithEmailAndPassword: function () { return Promise.resolve({}); } };
       };
       _ensureCorrectHqAuth();
-      return calls;
     });
-    expect(called).toBe(0);
+    expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(true);
+    expect(await page.evaluate(() => document.getElementById('app-screen').classList.contains('active'))).toBe(false);
+    expect(await page.evaluate(() => CU)).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toBeNull();
   });
 
   test('_ensureCorrectHqAuth — JE (supervisor) के लिए कुछ न करे (सिर्फ़ lineman पर लागू)', async ({ page }) => {
