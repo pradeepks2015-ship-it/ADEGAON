@@ -68,6 +68,32 @@ async function loginLineman(page, name = 'टेस्ट लाइनमैन'
   }
 }
 
+// addInitScript वाला fix (blockExternal) दूसरी बार भी असफल रहा — दोनों reload-आधारित tests
+// अब भी CI पर वैसे ही TimeoutError पर अटके। असली वजह अब भी पता नहीं, इसलिए तीसरी बार अंदाज़ा
+// लगाने की बजाय (जो पिछली बार ग़लत निकला) यहां वही सिद्ध तरीक़ा दोहरा रहे हैं जिससे loginLineman
+// का असली bug पकड़ में आया था: timeout पर page-side state को thrown error के .message में जोड़ दें
+/** @param {import('@playwright/test').Page} page */
+async function reloadAndWaitForApp(page) {
+  await page.reload();
+  try {
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+  } catch (e) {
+    const diag = await page.evaluate(() => ({
+      firebaseType: typeof firebase,
+      CU: typeof CU !== 'undefined' ? JSON.stringify(CU) : 'undef',
+      loginActive: document.getElementById('login-screen').classList.contains('active'),
+      appActive: document.getElementById('app-screen').classList.contains('active'),
+      dcCu: localStorage.getItem('dc_cu'),
+      appStarted: typeof _appStarted !== 'undefined' ? _appStarted : 'undef',
+      toastText: (function () { var t = document.getElementById('toast'); return t ? t.textContent : 'no-toast-el'; })(),
+      toastShown: (function () { var t = document.getElementById('toast'); return t ? t.classList.contains('show') : 'no-toast-el'; })(),
+      navOnline: navigator.onLine,
+    })).catch((err) => ({ evalError: String(err) }));
+    e.message = '[reload DIAG] ' + JSON.stringify(diag) + '\n\n' + e.message;
+    throw e;
+  }
+}
+
 /** @param {import('@playwright/test').Page} page */
 async function loginJE(page, pw = 'Test#123') {
   await page.evaluate((p) => _saveJEHash(p), pw); // offline-hash रास्ता — नेट बंद है
@@ -137,8 +163,7 @@ test.describe('बूट और login', () => {
     await openApp(page);
     await loginLineman(page, 'रिलोड लाइनमैन');
     expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toContain('रिलोड लाइनमैन');
-    await page.reload();
-    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+    await reloadAndWaitForApp(page);
     expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(false);
     expect(await page.evaluate(() => CU && CU.name)).toBe('रिलोड लाइनमैन');
     // चुपचाप वापस आया — "स्वागत है" toast दोबारा न दिखे
@@ -152,8 +177,7 @@ test.describe('बूट और login', () => {
     await openApp(page);
     await loginLineman(page, 'मिनिमाइज़ लाइनमैन');
     await page.evaluate(() => sessionStorage.clear()); // OS ने tab मार दिया
-    await page.reload();
-    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+    await reloadAndWaitForApp(page);
     expect(await page.evaluate(() => CU && CU.name)).toBe('मिनिमाइज़ लाइनमैन');
     expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(false);
   });
