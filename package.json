@@ -6,7 +6,8 @@
   "scripts": {
     "test": "playwright test",
     "lint": "eslint --report-unused-disable-directives js scripts tests playwright.config.js eslint.config.js",
-    "check-xss": "node scripts/check-xss-onclick-escaping.js"
+    "check-xss": "node scripts/check-xss-onclick-escaping.js",
+    "check-globals": "node scripts/check-duplicate-globals.js"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
