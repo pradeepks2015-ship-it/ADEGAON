@@ -11,7 +11,7 @@
 ## Repo/Branch
 - GitHub: `pradeepks2015-ship-it/ADEGAON`
 - `main` branch से Netlify auto-deploy होता है
-- सारा development branch `claude/app-version-strengths-weaknesses-v19hwv` पर होता है, फिर PR बनाकर `main` में merge होता है
+- सारा development branch `claude/recovery-tractor-cloud-file-cx3d5z` पर होता है, फिर PR बनाकर `main` में merge होता है
 
 ## मुख्य फाइलें
 - `js/config.js` — HQS, CATS, APP_VER, HQ_AUTH_EMAIL, JE_EMAIL, CAT_NAMES
