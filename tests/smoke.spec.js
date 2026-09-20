@@ -6160,7 +6160,7 @@ test.describe('डेटा उपयोग का मीटर — हर ड�
       'js/home-scorecard.js': ['trackUsageOf(d); // होम बोर्ड'], // होम बोर्ड की पढ़ाई (कैश-refresh वाली अब ETag के साथ है, नीचे अलग टेस्ट में जांची जाती है)
       'js/profile.js': ['trackUsageOf(d); // फ़ोटो'],             // base64 फ़ोटो, दसियों KB
       'js/config.js': ['trackUsageOf(d)'],                        // CAT_NAMES
-      'js/ui-core.js': ['trackUsageOf(d)'],                       // HQ_PIN
+      'js/auth.js': ['trackUsageOf(d)'],                          // HQ_PIN
     };
     Object.keys(need).forEach((f) => {
       const src = fs.readFileSync(path.join(root, f), 'utf8');
