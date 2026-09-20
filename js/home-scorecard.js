@@ -309,7 +309,7 @@ var _CASH_REFRESH_TIMEOUT_MS=8000; // टेस्ट में छोटा क
 var _CASH_REFRESH_COOLDOWN_MS=5*60*1000;
 var _lastRefreshAt={};
 function _cashRefreshAll(hqs,cb,force){
-  if(!navigator.onLine){cb();return;}
+  if(!navigator.onLine){cb(0);return;}
   var jobs=[];
   var now=Date.now();
   hqs.forEach(function(hq){
@@ -321,15 +321,26 @@ function _cashRefreshAll(hqs,cb,force){
       jobs.push({hq:hq,cat:cat,key:key});
     }
   });
-  if(!jobs.length){cb();return;}
-  var done=0;
-  function fin(){done++;if(done>=jobs.length)cb();}
+  if(!jobs.length){cb(0);return;}
+  var done=0,failed=[];
+  // पहले टाइमआउट/fetch-fail पर चुपचाप पुरानी cache से आगे बढ़ जाते थे — JE को पता ही नहीं चलता था
+  // कि "रिफ्रेश करें" दबाने पर भी कुछ मुख्यालय/श्रेणी असल में ताज़ा नहीं हो पाईं (कमज़ोर नेट पर
+  // असली शिकायत यही थी)। अब कितनी नाकाम रहीं गिनकर caller को बताते हैं, और एक बार साफ़ लॉग भी
+  // करते हैं ताकि "एरर लॉग" में अगली बार यही समस्या आने पर कौन-सी HQ/श्रेणी अटकी वो दिख जाए
+  function fin(ok,j){
+    if(!ok) failed.push(j.hq+"/"+j.cat);
+    done++;
+    if(done>=jobs.length){
+      if(failed.length) logErr("cash-refresh-partial","रिफ्रेश पर "+failed.length+"/"+jobs.length+" श्रेणी ताज़ा नहीं हो पाईं (कमज़ोर नेट/timeout) — पुराना data दिख रहा है: "+failed.join(", "));
+      cb(failed.length);
+    }
+  }
   // कमज़ोर नेटवर्क पर एक भी HQ/श्रेणी अटक जाए तो पूरी स्क्रीन हमेशा के लिए "लोड हो रहा है" पर न रुके —
   // 8 सेकंड में जवाब न आए तो उस एक की पुरानी cache से आगे बढ़ो; असली जवाब देर से भी आए तो cache फिर भी अपडेट होगा
   jobs.forEach(function(j){
     var finned=false;
-    function safeFin(){ if(finned)return; finned=true; fin(); }
-    var tm=setTimeout(safeFin,_CASH_REFRESH_TIMEOUT_MS);
+    function safeFin(ok){ if(finned)return; finned=true; fin(ok,j); }
+    var tm=setTimeout(function(){safeFin(false);},_CASH_REFRESH_TIMEOUT_MS);
     // ETag के साथ — यह रास्ता एक HQ की सभी 8 श्रेणियाँ पढ़ता है और स्कोरकार्ड खोलने/HQ-tab बदलने
     // पर बार-बार चलता है। JE को सभी 6 मुख्यालय दिखते हैं, इसलिए उनके device पर यही सबसे भारी खर्च
     // था (असली नाप: JE के तीन device मिलकर पूरे DC का 36%)। ETag से जिस सूची में कुछ नहीं बदला
@@ -342,7 +353,7 @@ function _cashRefreshAll(hqs,cb,force){
           _done304=true;
           clearTimeout(tm);
           _lastRefreshAt[j.key]=Date.now();
-          safeFin();
+          safeFin(true);
           return null;
         }
         _tag=r.headers.get("ETag");
@@ -361,9 +372,9 @@ function _cashRefreshAll(hqs,cb,force){
         cSet(j.hq,j.cat,data);
         _etagSet(j.hq,j.cat,_tag); // cache लिखने के *बाद* ही — तभी अगली बार 304 पर भरोसा किया जा सकता है
         _lastRefreshAt[j.key]=Date.now();
-        safeFin();
+        safeFin(true);
       })
-      .catch(function(){clearTimeout(tm);safeFin();}); // fetch fail — उस tab के लिए cache से ही चलेगा
+      .catch(function(){clearTimeout(tm);safeFin(false);}); // fetch fail — उस tab के लिए cache से ही चलेगा
   });
 }
 
