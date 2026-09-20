@@ -405,7 +405,11 @@ function loadWaScorecard(){
   var el=document.getElementById("wasc-content");
   el.innerHTML="<div class='sc-loading'>⏳ ताज़ा data लाया जा रहा है...</div>";
   if(navigator.onLine){
-    _cashRefreshAll(HQS,function(){_waScRender();},true);
+    // कमज़ोर नेट पर कुछ श्रेणी ताज़ा न हो पाएं तो चुपचाप पुराना data न दिखे — JE को साफ़ पता चले
+    _cashRefreshAll(HQS,function(failCount){
+      _waScRender();
+      if(failCount) toast("⚠️ नेट कमज़ोर — "+failCount+" श्रेणी ताज़ा नहीं हो पाईं (पुराना data दिख रहा है), दोबारा रिफ्रेश करें","err");
+    },true);
   } else {
     _waScRender();
   }
@@ -486,7 +490,11 @@ function loadTodayScorecard(){
   var el=document.getElementById("todaysc-content");
   el.innerHTML="<div class='sc-loading'>⏳ ताज़ा data लाया जा रहा है...</div>";
   if(navigator.onLine){
-    _cashRefreshAll(HQS,function(){_todayScRender();},true);
+    // कमज़ोर नेट पर कुछ श्रेणी ताज़ा न हो पाएं तो चुपचाप पुराना data न दिखे — JE को साफ़ पता चले
+    _cashRefreshAll(HQS,function(failCount){
+      _todayScRender();
+      if(failCount) toast("⚠️ नेट कमज़ोर — "+failCount+" श्रेणी ताज़ा नहीं हो पाईं (पुराना data दिख रहा है), दोबारा रिफ्रेश करें","err");
+    },true);
   } else {
     _todayScRender();
   }
