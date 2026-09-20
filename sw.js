@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v167";
+var CACHE_NAME="adegaon-dc-v168";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -29,6 +29,7 @@ var CORE=[
   "./js/celebration.js",
   "./js/upload.js",
   "./js/reports.js",
+  "./js/scorecards.js",
   "./js/village.js",
   "./js/migration.js",
   "./js/home-scorecard.js",
