@@ -1,0 +1,14 @@
+# devDependencies (eslint, playwright वगैरह — कोई runtime dependency नहीं) और GitHub Actions
+# workflows में इस्तेमाल हुई actions (checkout, setup-node वगैरह) को हफ़्ते में एक बार जांचकर,
+# नया/सुरक्षित version मिलने पर अपने-आप एक PR बनाता है। हर PR सामान्य CI (lint+smoke) से ही
+# गुज़रता है, बिना पास हुए merge नहीं होता — कोई secret/key नहीं चाहिए, कुछ भी deploy नहीं होता
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
