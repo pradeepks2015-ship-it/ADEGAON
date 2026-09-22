@@ -5033,6 +5033,54 @@ test.describe('लेजर अपलोड के बाद reconcileHQ चल�
   });
 });
 
+// असली production bug (JE की रिपोर्ट, मढ़ी): एक ही Consumer No के दो अलग card एक साथ दिखे। जड़: Merge
+// mode में पहले से duplicate-acc जांच थी (मौजूदा list से मिलाते वक़्त), पर Replace mode में नहीं —
+// फ़ाइल में ही वही Consumer No दो बार हो (जैसे मीटर बदलने पर) तो दोनों सीधे सेव हो जाते थे। migrated
+// (per-record) श्रेणी में यह सिर्फ़ दिखावटी confusion नहीं — दोनों की Firebase-key वही acc होती, तो एक
+// को "वसूल" मार्क करने पर patch उसी key पर टकराता और दूसरे की वसूली चुपचाप overwrite हो सकती थी
+test.describe('Replace mode अपलोड — फ़ाइल में ही duplicate Consumer No हो तो पहला रखें, बाकी skip करें', () => {
+  test('same acc वाले 2 rows में से सिर्फ़ पहला बचे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      parsedRows = [
+        { acc: '1134004076', name: 'GAREEBA CHAMAR पहला', amount: 609, status: 'pending', remarksArr: [] },
+        { acc: '2', name: 'दूसरा उपभोक्ता', amount: 200, status: 'pending', remarksArr: [] },
+        { acc: '1134004076', name: 'GAREEBA CHAMAR दूसरा (duplicate)', amount: 609, status: 'pending', remarksArr: [] },
+      ];
+      confirmUpload();
+      var d = cGet('आदेगांव', 'कुल उपभोक्ता');
+      return { count: d.length, names: d.map(function (x) { return x.name; }), toastText: document.getElementById('toast').textContent };
+    });
+    expect(r.count).toBe(2); // duplicate वाला तीसरा row skip हुआ
+    expect(r.names).toContain('GAREEBA CHAMAR पहला'); // पहला occurrence बचा
+    expect(r.names).not.toContain('GAREEBA CHAMAR दूसरा (duplicate)');
+    expect(r.toastText).toContain('1 duplicate Consumer No skip');
+  });
+
+  test('acc-रहित रिकॉर्ड यहां नहीं छुए जाएं — वो चरण-3 की अलग समस्या है', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      parsedRows = [
+        { acc: '', name: 'Consumer No खाली 1', amount: 100, status: 'pending', remarksArr: [] },
+        { acc: '', name: 'Consumer No खाली 2', amount: 100, status: 'pending', remarksArr: [] },
+      ];
+      confirmUpload();
+      return cGet('आदेगांव', 'कुल उपभोक्ता').length;
+    });
+    expect(r).toBe(2); // दोनों acc-रहित records बने रहे, ग़लती से duplicate मानकर हटे नहीं
+  });
+});
+
 test.describe('पुराने (v9.139 फिक्स से पहले के) अपलोड से बचे मिसमैच अपने-आप ठीक हों — reconcileHQ अब login और HQ/category tab बदलने पर भी चले, सिर्फ़ नए अपलोड पर नहीं (bug: जोबा में fix के बाद भी "कुल उपभोक्ता" में पुराना मिसमैच वैसा ही दिखता रहा — असली वजह: फिक्स सिर्फ़ भविष्य के अपलोड पर चलता है, पहले से मौजूद मिसमैच वाले device local cache को कभी नहीं छूता था)', () => {
   test('login पर सक्रिय (डिफ़ॉल्ट) HQ का पुराना मिसमैच reconcile हो जाए (auth पहले से तय मानकर)', async ({ page }) => {
     await openApp(page);
