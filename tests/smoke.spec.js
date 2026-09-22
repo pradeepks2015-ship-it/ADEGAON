@@ -3022,6 +3022,43 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toBeNull();
   });
 
+  test('_ensureCorrectHqAuth — याद रखा PIN ग़लत निकले (auth/wrong-password) तो चुपचाप न अटके, साफ़ logout करके दोबारा सही PIN मांगे (bug: JE ने बाद में PIN बदल दिया हो तो device हमेशा के लिए पुराने PIN से अटका रह जाता, हर श्रेणी में हर save 401 — पाटन/Vaibhav पर v9.152 में यही मिला)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा', pin: '1234' }; // PIN याद है, पर अब ग़लत मान लो
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null },
+          signInWithEmailAndPassword: function () { return Promise.reject({ code: 'auth/wrong-password' }); },
+        };
+      };
+      _ensureCorrectHqAuth();
+    });
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(true);
+    expect(await page.evaluate(() => document.getElementById('app-screen').classList.contains('active'))).toBe(false);
+    expect(await page.evaluate(() => CU)).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toBeNull();
+  });
+
+  test('_ensureCorrectHqAuth — re-auth के बीच नेट टूटे (auth/network-request-failed) तो logout न हो, session बना रहे (सच में PIN ग़लत नहीं, सिर्फ़ नेट की समस्या — अगली बार online पर अपने आप दोबारा कोशिश होगी)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा', pin: '1234' };
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null },
+          signInWithEmailAndPassword: function () { return Promise.reject({ code: 'auth/network-request-failed' }); },
+        };
+      };
+      _ensureCorrectHqAuth();
+    });
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => CU && CU.hq)).toBe('जोबा'); // session बना रहा, logout नहीं हुआ (doLogout होता तो CU null हो जाता)
+  });
+
   test('_ensureCorrectHqAuth — JE (supervisor) के लिए कुछ न करे (सिर्फ़ lineman पर लागू)', async ({ page }) => {
     await openApp(page);
     const called = await page.evaluate(() => {

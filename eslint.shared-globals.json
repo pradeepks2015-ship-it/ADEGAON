@@ -76,6 +76,7 @@
   "_asPerRecord",
   "_authHealed",
   "_authWaiters",
+  "_authWrongPin",
   "_autoColWidths",
   "_autoFixPatch",
   "_autoFixUnsafe",
