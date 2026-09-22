@@ -347,7 +347,26 @@ function confirmUpload(){
         toast(msg,"ok"); return;
       }
     }
-    
+
+    // Replace mode (या merge मोड में खाली category — ऊपर वाला block तभी चलता है जब ex.length>0) —
+    // फ़ाइल में ही duplicate Consumer No हो सकता है (जैसे मीटर बदलने पर वही उपभोक्ता दो बार चढ़ आना)।
+    // Merge mode के उलट यहां पहले कोई जांच नहीं थी — असली production bug (JE की रिपोर्ट, मढ़ी):
+    // एक ही Consumer No के दो अलग card एक साथ दिखते, और migrated (per-record) श्रेणी में दोनों की
+    // Firebase-key वही acc होती, तो एक को "वसूल" मार्क करने पर patch उसी key पर टकराता — array में
+    // जो record बाद में आए वही जीतता, दूसरे की वसूली चुपचाप overwrite हो सकती थी।
+    // अब पहला occurrence रखें, बाकी skip — ठीक Merge mode जैसा ही नियम
+    var dupSkip=0;
+    (function(){
+      var seenAcc={};
+      arr=arr.filter(function(r){
+        if(!r.acc) return true; // acc-रहित record अपनी अलग समस्या है (चरण 3 पकड़ता है), यहां न छेड़ें
+        var k=String(r.acc).trim();
+        if(seenAcc[k]){dupSkip++;return false;}
+        seenAcc[k]=1;
+        return true;
+      });
+    })();
+
     // Replace mode या पहली बार — पुरानी वसूली सुरक्षित रखें (checkbox on हो तो)
     var kept=0,dropped=0;
     var keepEl=document.getElementById("up-keeppaid");
@@ -400,7 +419,7 @@ function confirmUpload(){
     // वसूल हो चुका हो। कैश-लिस्ट अपलोड में reconcileHQ() पहले से यही ठीक करता था — अब सामान्य
     // लेजर अपलोड के बाद भी यही चले, ताकि "किसी भी category में वसूल = हर category में वसूल" हमेशा सच रहे
     var _rec2=reconcileHQ(hq);
-    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+(_rec2?" 🔁 "+_rec2+" अन्य categories में मिलाया":"")+" 🔥","ok");
+    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+(dupSkip?" | "+dupSkip+" duplicate Consumer No skip":"")+(_rec2?" 🔁 "+_rec2+" अन्य categories में मिलाया":"")+" 🔥","ok");
 
   }catch(err){
     logErr("upload-confirm",err,activeHQ+"/"+(document.getElementById("up-cat")?document.getElementById("up-cat").value:""));

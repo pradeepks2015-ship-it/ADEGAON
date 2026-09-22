@@ -66,7 +66,10 @@ window.addEventListener("offline",function(){setSyncStatus(false);});
 // अब: थोड़ी देर के लिए बाहर जाने पर connection चालू ही रहने दो (SSE खुला रहने में कुछ खर्च नहीं होता,
 // वो सिर्फ़ असली बदलाव भेजता है)। सच में लंबे समय के लिए background में पड़ा रहे, तभी बंद करो —
 // मूल मक़सद (घंटों पड़ा device चुपचाप खर्च न करे) वैसे का वैसा पूरा होता है।
-var LISTEN_HIDE_GRACE_MS=3*60*1000;
+// v9.154: database.js के TAB_REVISIT_GRACE_MS जैसा ही 3→10 मिनट किया (असली Firebase Console
+// usage देखकर JE का फ़ैसला — देखें वहां का कमेंट)। पूरे ऐप में एक ही नियम बना रहे, इसलिए दोनों
+// साथ बदले
+var LISTEN_HIDE_GRACE_MS=10*60*1000;
 var _hideTimer=null;
 document.addEventListener("visibilitychange",function(){
   if(document.hidden){
