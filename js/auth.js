@@ -171,6 +171,10 @@ function _hqAuthPassword(pin){ return "vasuli-"+pin; }
 // एक ही HQ के लिए बार-बार "अटकी हुई गिनती" रीसेट न होती रहे (वरना 401 ↔ रीसेट का झूला चलता
 // रहेगा) — हर HQ के लिए app के एक session में सिर्फ़ एक बार
 var _authHealed={};
+// गलत/पुराने PIN से re-auth नाकाम रहे तो एक HQ के लिए सिर्फ़ एक बार logout+toast (doLogout के बाद
+// CU ही null हो जाता है तो ज़्यादातर यह अपने-आप एक बार ही चलेगा, पर _ensureCorrectHqAuth कई जगह से
+// लगभग एक साथ बुलाया जा सकता है — जैसे एक साथ कई श्रेणियों में save नाकाम होना — इसलिए अलग गार्ड)
+var _authWrongPin={};
 // cb (वैकल्पिक) — सही account असल में तय हो जाने पर ही चलता है, न कि सिर्फ़ sign-in *शुरू* होने पर।
 // पहले यह हमेशा fire-and-forget था (कोई callback नहीं) — caller (जैसे reconcileHQ) इसके फ़ौरन
 // बाद ही चल जाता, जबकि नीचे वाला signInWithEmailAndPassword अभी async चल ही रहा होता — असली
@@ -219,7 +223,24 @@ function _ensureCorrectHqAuth(cb){
       flushPending();
       cb();
     })
-    .catch(function(){ cb(); }); // अभी भी नाकाम (PIN बदल गया होगा) — फिर भी caller को आगे बढ़ने दें, पुराना/pending-queue वाला safe रास्ता संभाल लेगा
+    .catch(function(e){
+      // production में असली bug: यहां पहले हमेशा चुपचाप cb() बुलाकर रुक जाते थे, यह सोचकर कि
+      // "पुराना/pending-queue वाला safe रास्ता संभाल लेगा" — पर वो रास्ता सिर्फ़ retry रोकता है,
+      // कभी दोबारा सही PIN नहीं मांगता। नतीजा: अगर JE ने बाद में उस HQ का PIN बदल दिया (device पर
+      // याद रखा CU.pin अब पुराना/ग़लत हो गया), तो यह sign-in हमेशा उसी ग़लत PIN से नाकाम होता रहता
+      // — हर श्रेणी में हर save 401 (पाटन/Vaibhav पर v9.152 में यही मिला, कई श्रेणियों में एक साथ)।
+      // नेटवर्क genuinely टूटा हो (auth/network-request-failed) तो logout मत करो — नेट वापस आते
+      // ही "online" event पर फिर कोशिश होगी। बाक़ी हर वजह (ग़लत PIN यानी auth/wrong-password या
+      // auth/invalid-credential) का मतलब है यह PIN अब काम का नहीं — !pin वाले रास्ते जैसा ही
+      // साफ़ logout करके दोबारा सही PIN मांगना ही एकमात्र पक्का रास्ता है
+      if(e&&e.code==="auth/network-request-failed") return cb();
+      if(!_authWrongPin[CU.hq]){
+        _authWrongPin[CU.hq]=true;
+        doLogout(false);
+        toast("🔐 PIN बदल गया लगता है — कृपया सही PIN डालकर दोबारा login करें","inf");
+      }
+      cb();
+    });
 }
 
 // ── LOGIN SESSION ─────────────────────────────────────────────────────────────
