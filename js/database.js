@@ -509,6 +509,23 @@ var _esBackoffMs=0;
 var _esOpenedAt=0;
 var _esRetryT=null;
 
+// ── जांच: क्या Firebase live-sync को मना कर रहा है? ──────────────────────────────────────────
+// Firebase Console (App Check) में ~15% requests "Unverified: outdated client" दिख रही थीं, जबकि
+// Database "Enforced" पर है — यानी बिना App Check token वाली हर request मना होती है। बाक़ी सारी
+// requests js/firebase.js के fetch-wrapper से token (X-Firebase-AppCheck header) के साथ जाती हैं,
+// पर EventSource में header भेजने का कोई तरीक़ा ही नहीं — तो शक है कि live-sync हर बार मना होकर
+// चुपचाप polling पर चला जाता है (ज़्यादा data, और लाइनमैन को कोई गड़बड़ी दिखती भी नहीं)।
+// पक्का करने के लिए: connection एक बार भी खुले बिना सीधे CLOSED हो तो "एरर लॉग" में दर्ज करो —
+// हर ऐप-खुलने पर सिर्फ़ एक बार, ताकि LOGS न भरे
+var _sseNeverOpenedLogged=false;
+function _sseLogNeverOpened(hq,cat){
+  if(_sseNeverOpenedLogged) return;
+  _sseNeverOpenedLogged=true;
+  logErr("sse-never-opened",
+    "live-sync एक बार भी नहीं जुड़ा — सर्वर ने connection मना किया (App Check या account की दिक़्क़त)",
+    hq+"/"+cat+" • AppCheck token: "+(AC_TOKEN?"था":"नहीं था")+" • login token: "+(ID_TOKEN?"था":"नहीं था"));
+}
+
 function stopListen(){
   if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
   if(liveSource){liveSource.close();liveSource=null;}
@@ -690,9 +707,13 @@ function _openLive(hq,cat){
         }catch(e){}
         pollOnce(); // सुरक्षित fallback
       });
-      es.onopen=function(){setSyncStatus(true);_esReconnectAttempts=0;_esOpenedAt=Date.now();};
+      var esOpened=false;
+      es.onopen=function(){esOpened=true;setSyncStatus(true);_esReconnectAttempts=0;_esOpenedAt=Date.now();};
       es.onerror=function(){
         setSyncStatus(false);
+        // एक बार भी जुड़े बिना सीधे CLOSED = सर्वर ने HTTP स्तर पर मना किया (नेट का झटका होता तो
+        // readyState 0 होता) — देखें _sseLogNeverOpened
+        if(!esOpened&&es.readyState===2&&navigator.onLine) _sseLogNeverOpened(hq,cat);
         if(es.readyState===0){ // CONNECTING — नेट का झटका, browser ~3 सेकंड में खुद जोड़ने वाला है
           var stable=_esOpenedAt&&(Date.now()-_esOpenedAt>=ES_STABLE_MS);
           _esBackoffMs=stable||!_esBackoffMs?ES_BACKOFF_BASE_MS:Math.min(_esBackoffMs*2,ES_BACKOFF_MAX_MS);

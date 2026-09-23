@@ -4560,6 +4560,43 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(r.created).toBe(1); // सिर्फ़ शुरुआती — पुराने tab के लिए दोबारा नहीं जुड़ा
   });
 
+  // जांच (App Check "outdated client" ~15%): EventSource में App Check header जा ही नहीं सकता —
+  // शक है कि सर्वर live-sync मना करता है। एक बार भी खुले बिना सीधे CLOSED = HTTP स्तर पर मनाही
+  test('live-sync एक बार भी जुड़े बिना सीधे CLOSED हो तो "एरर लॉग" में दर्ज हो — पर हर ऐप-खुलने पर सिर्फ़ एक बार', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      const logs = [];
+      window.logErr = function (c, m, x) { logs.push({ c: c, m: String(m), x: String(x || '') }); };
+      window.EventSource = function () { this.readyState = 0; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      _sseNeverOpenedLogged = false;
+      _openLive(activeHQ, activeCat);
+      let es = liveSource; es.readyState = 2; es.onerror();
+      _openLive(activeHQ, activeCat); // दोबारा वही — इस बार लॉग नहीं होना चाहिए
+      es = liveSource; es.readyState = 2; es.onerror();
+      return logs.filter((l) => l.c === 'sse-never-opened');
+    });
+    expect(r.length).toBe(1);
+    expect(r[0].x).toContain('AppCheck token'); // token था या नहीं — यही असली सुराग है
+  });
+
+  test('जुड़ने के बाद टूटे (जैसे token expire) या नेट का झटका (readyState 0) हो — तो "कभी नहीं जुड़ा" वाला लॉग न बने', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const n = await page.evaluate(() => {
+      let count = 0;
+      window.logErr = function (c) { if (c === 'sse-never-opened') count++; };
+      window.EventSource = function () { this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      _sseNeverOpenedLogged = false;
+      _openLive(activeHQ, activeCat);
+      let es = liveSource; es.onopen(); es.readyState = 2; es.onerror(); // खुला था, फिर बंद
+      _openLive(activeHQ, activeCat);
+      es = liveSource; es.readyState = 0; es.onerror(); // नेट का झटका, कभी खुला नहीं
+      return count;
+    });
+    expect(n).toBe(0);
+  });
+
   test('_tokenExpiryRecheck — token-expiry reconnect से पहले हल्की ETag जांच हो; कुछ नहीं बदला (304) तो भारी reconnect टलता रहे, EventSource दोबारा न खुले (JE का सवाल: "ऐप खुला छोड़ने पर cost बढ़ती है क्या?")', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
