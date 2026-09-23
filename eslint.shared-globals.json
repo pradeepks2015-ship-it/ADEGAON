@@ -221,6 +221,8 @@
   "_sndTried",
   "_sndWarm",
   "_sseFullPutData",
+  "_sseLogNeverOpened",
+  "_sseNeverOpenedLogged",
   "_swSetupAutoUpdate",
   "_syncRemovePhotoBtn",
   "_syncSoundSwitch",
