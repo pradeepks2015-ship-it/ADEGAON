@@ -4,9 +4,20 @@
 // दो टेम्पलेट में फिट नहीं बैठती)। जो टाइप आख़िरी बार चुना गया वह localStorage में याद रहता है।
 // "अपना संदेश" एक अकेला, सबका साझा टेक्स्ट है (PH_CUSTOM_MSG, js/config.js) — सिर्फ़ JE बदल सकते
 // हैं (database.rules.json), और बदलते ही सभी मुख्यालयों के सभी लाइनमैन को वही नया संदेश दिखता है
-// (CAT_NAMES जैसा ही पैटर्न)। लाइनमैन के लिए textarea सिर्फ़ पढ़ने के लिए है — कोई भी अकेला उपभोक्ता
-// इसे अपने हिसाब से बदलकर न भेज दे, JE का लिखा संदेश ही हर जगह सही रहे
+// (CAT_NAMES जैसा ही पैटर्न)।
+// बटन और edit अलग-अलग हैं: "अपना संदेश" बटन बाकी दो जैसा ही सिर्फ़ select करता है (लाइनमैन के लिए
+// भी) — नीचे कोई box नहीं खुलता। JE को उसके बगल में एक अलग ✏️ बटन दिखता है, वही edit-box खोलता है;
+// लाइनमैन को यह बटन दिखता ही नहीं। सेव करते ही box अपने-आप बंद हो जाता है — permanent नहीं रहता।
+// बटन का नाम ("अपना संदेश") भी JE बदल सकते हैं (PH_CUSTOM_MSG.label) — असली काम (जैसे "अतिक्रमण
+// सूचना") के हिसाब से बटन पर ही सही नाम दिखे, बार-बार सबको याद न दिलाना पड़े कि यह बटन किसलिए है
 var _phCtx=null;
+function _phCustomLabel(){
+  return (PH_CUSTOM_MSG&&PH_CUSTOM_MSG.label&&PH_CUSTOM_MSG.label.trim())||"अपना संदेश";
+}
+function _phUpdateCustomBtnLabel(){
+  var b=document.getElementById("ph-mt-custom-btn");
+  if(b) b.textContent=_phCustomLabel();
+}
 function _phBuildMsg(type,ctx){
   if(type==="disconnect"){
     return "⚠️ वैधानिक सूचना\n"+ctx.name+" जी, आपके विद्युत संयोजन"+
@@ -32,46 +43,68 @@ function _phApplyMsgType(type){
   document.querySelectorAll(".ph-mt-btn").forEach(function(b){
     b.classList.toggle("active",b.getAttribute("data-type")===type);
   });
-  document.getElementById("ph-custom-wrap").style.display=type==="custom"?"block":"none";
-  if(type==="custom") _phRefreshCustomView();
   var msg=_phBuildMsg(type,_phCtx);
   document.getElementById("ph-sms-btn").href="sms:"+_phCtx.clean+"?body="+encodeURIComponent(msg);
   document.getElementById("ph-wa-btn").href="https://wa.me/91"+_phCtx.clean+"?text="+encodeURIComponent(msg);
 }
 function _phSelectMsgType(type){ _phApplyMsgType(type); }
-// PH_CUSTOM_MSG से "अपना संदेश" टैब को दोबारा भरना — टैब चुनने पर, और दूसरे device से JE के
-// बदलाव के live आते ही (fetchPhCustomMsgFromFB, js/config.js)। JE खुद टाइप कर रहे हों (textarea
-// पर focus हो) तो न छेड़ें — वरना बीच टाइपिंग में उनका ही अधूरा लिखा मिट जाता
-function _phRefreshCustomView(){
-  var ta=document.getElementById("ph-custom-text");
-  if(!ta||document.getElementById("ph-custom-wrap").style.display!=="block") return;
-  var isJE=CU&&CU.role==="supervisor";
-  ta.readOnly=!isJE;
-  document.getElementById("ph-custom-save").style.display=isJE?"block":"none";
-  var meta=(PH_CUSTOM_MSG&&PH_CUSTOM_MSG.by)?("आख़िरी बार "+PH_CUSTOM_MSG.by+(PH_CUSTOM_MSG.at?" • "+PH_CUSTOM_MSG.at:"")+" ने बदला"):"अभी तक कोई संदेश सेव नहीं हुआ";
-  document.getElementById("ph-custom-meta").textContent=(isJE?"":"🔒 सिर्फ़ JE बदल सकते हैं — ")+meta;
-  if(document.activeElement!==ta) ta.value=(PH_CUSTOM_MSG&&PH_CUSTOM_MSG.text)||"";
+// सिर्फ़ JE — ✏️ बटन दबाकर "अपना संदेश" का edit-box खोलना
+function _phOpenCustomEdit(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह संदेश बदल सकते हैं","err");return;}
+  document.getElementById("ph-custom-wrap").style.display="block";
+  _phRefreshCustomView();
+  document.getElementById("ph-custom-text").focus();
 }
-// टाइप करते ही सिर्फ़ SMS/WhatsApp लिंक (इसी device पर, अभी के लिए) ताज़ा हों — असली सेव अलग बटन से,
-// ताकि हर अक्षर पर Firebase को न लिखा जाए और ग़लती से आधा-लिखा वाक्य सबको न दिख जाए
+function _phCloseCustomEdit(){
+  document.getElementById("ph-custom-wrap").style.display="none";
+}
+// PH_CUSTOM_MSG से edit-box को भरना — box खोलते ही, और दूसरे device से JE के बदलाव के live आते ही
+// (fetchPhCustomMsgFromFB, js/config.js) — पर सिर्फ़ तभी जब box अभी खुला हो। JE खुद टाइप कर रहे
+// हों (label/text में से जिस पर focus हो) तो उसे न छेड़ें — वरना बीच टाइपिंग में उनका ही अधूरा लिखा मिट जाता
+function _phRefreshCustomView(){
+  var wrap=document.getElementById("ph-custom-wrap");
+  if(!wrap||wrap.style.display!=="block") return;
+  var ta=document.getElementById("ph-custom-text");
+  var la=document.getElementById("ph-custom-label");
+  var meta=(PH_CUSTOM_MSG&&PH_CUSTOM_MSG.by)?("आख़िरी बार "+PH_CUSTOM_MSG.by+(PH_CUSTOM_MSG.at?" • "+PH_CUSTOM_MSG.at:"")+" ने बदला"):"अभी तक कोई संदेश सेव नहीं हुआ";
+  document.getElementById("ph-custom-meta").textContent=meta;
+  if(document.activeElement!==ta) ta.value=(PH_CUSTOM_MSG&&PH_CUSTOM_MSG.text)||"";
+  if(document.activeElement!==la) la.value=(PH_CUSTOM_MSG&&PH_CUSTOM_MSG.label)||"";
+}
+// टाइप करते ही सिर्फ़ SMS/WhatsApp लिंक (इसी device पर, अभी के लिए) ताज़ा हों — पर सिर्फ़ तब जब
+// "अपना संदेश" ही अभी चुना हुआ हो, वरना दिख किसी और टेम्पलेट का रहा है और लिंक उसी के होने चाहिए।
+// असली सेव अलग बटन से, ताकि हर अक्षर पर Firebase को न लिखा जाए और आधा-लिखा वाक्य सबको न दिख जाए
 function _phCustomInput(){
   if(!_phCtx) return;
+  var active=document.querySelector(".ph-mt-btn.active");
+  if(!active||active.getAttribute("data-type")!=="custom") return;
   var t=document.getElementById("ph-custom-text").value;
   document.getElementById("ph-sms-btn").href="sms:"+_phCtx.clean+"?body="+encodeURIComponent(t);
   document.getElementById("ph-wa-btn").href="https://wa.me/91"+_phCtx.clean+"?text="+encodeURIComponent(t);
+}
+// बटन का नाम टाइप करते ही तुरंत बटन पर भी दिखे (इसी device पर, अभी के लिए) — असली सेव अलग बटन से
+function _phCustomLabelInput(){
+  var v=document.getElementById("ph-custom-label").value.trim();
+  var b=document.getElementById("ph-mt-custom-btn");
+  if(b) b.textContent=v||"अपना संदेश";
 }
 function _phSaveCustomMsg(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह संदेश बदल सकते हैं","err");return;}
   if(!navigator.onLine){toast("📴 सेव करने के लिए नेट ज़रूरी है — सभी मुख्यालयों तक यही भेजना है","err");return;}
   var text=document.getElementById("ph-custom-text").value;
+  var label=document.getElementById("ph-custom-label").value.trim();
   var now=new Date();
-  var body={text:text,by:CU.name,at:now.toLocaleString("hi-IN"),ts:serverNow()};
+  var body={text:text,label:label,by:CU.name,at:now.toLocaleString("hi-IN"),ts:serverNow()};
   fetch(FB+"/PH_CUSTOM_MSG.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
     .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
     .then(function(d){
       PH_CUSTOM_MSG=d&&typeof d==="object"?d:body;
       try{localStorage.setItem("dc_ph_custom_msg",JSON.stringify(PH_CUSTOM_MSG));}catch(e){}
-      _phRefreshCustomView();
+      _phCloseCustomEdit();
+      _phUpdateCustomBtnLabel();
+      // अभी "अपना संदेश" ही चुना हुआ था तो SMS/WhatsApp लिंक भी नए (अभी-अभी सेव किए) टेक्स्ट पर अपडेट हों
+      var active=document.querySelector(".ph-mt-btn.active");
+      if(active&&active.getAttribute("data-type")==="custom") _phApplyMsgType("custom");
       toast("✅ सेव हो गया — अब सभी मुख्यालयों में यही संदेश दिखेगा","ok");
     })
     .catch(function(e){logErr("ph-custom-save-fail",e);toast("⚠️ सेव नहीं हुआ — दोबारा कोशिश करें","err");});
@@ -82,6 +115,9 @@ function openPhModal(name, phone, acc, amt){
   document.getElementById("ph-name").textContent=name;
   document.getElementById("ph-num").textContent="📞 "+phone;
   document.getElementById("ph-call-btn").href="tel:"+clean;
+  document.getElementById("ph-custom-wrap").style.display="none"; // हर बार बंद ही खुले
+  document.getElementById("ph-mt-edit-btn").style.display=(CU&&CU.role==="supervisor")?"flex":"none";
+  _phUpdateCustomBtnLabel();
   var savedType="reminder";
   try{savedType=localStorage.getItem("dc_ph_msgtype")||"reminder";}catch(e){}
   if(savedType!=="disconnect"&&savedType!=="custom") savedType="reminder";

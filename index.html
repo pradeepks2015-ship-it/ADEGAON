@@ -377,12 +377,19 @@ try{
     <div class="ph-msgtype" id="ph-msgtype">
       <button type="button" class="ph-mt-btn" data-type="reminder" onclick="_phSelectMsgType('reminder')">🔔 सामान्य रिमाइंडर</button>
       <button type="button" class="ph-mt-btn" data-type="disconnect" onclick="_phSelectMsgType('disconnect')">⚠️ विच्छेदन सूचना (धारा 56)</button>
-      <button type="button" class="ph-mt-btn" data-type="custom" onclick="_phSelectMsgType('custom')">✏️ अपना संदेश</button>
+      <div class="ph-mt-custom-slot">
+        <button type="button" class="ph-mt-btn" data-type="custom" id="ph-mt-custom-btn" onclick="_phSelectMsgType('custom')">अपना संदेश</button>
+        <button type="button" class="ph-mt-edit-btn" id="ph-mt-edit-btn" onclick="_phOpenCustomEdit()" title="बदलें" style="display:none;">✏️</button>
+      </div>
     </div>
     <div class="ph-custom-wrap" id="ph-custom-wrap" style="display:none;">
-      <textarea class="fta" id="ph-custom-text" placeholder="जैसे: योजना की जानकारी, अवैध अतिक्रमण की सूचना, आदि..." oninput="_phCustomInput()" readonly></textarea>
+      <input type="text" class="fi" id="ph-custom-label" maxlength="24" placeholder="बटन का नाम (जैसे: अतिक्रमण सूचना)" oninput="_phCustomLabelInput()" style="margin-bottom:8px;">
+      <textarea class="fta" id="ph-custom-text" placeholder="जैसे: योजना की जानकारी, अवैध अतिक्रमण की सूचना, आदि..." oninput="_phCustomInput()"></textarea>
       <div class="ph-custom-meta" id="ph-custom-meta"></div>
-      <button type="button" class="ph-custom-save" id="ph-custom-save" onclick="_phSaveCustomMsg()" style="display:none;">💾 सेव करें (सभी मुख्यालयों में दिखेगा)</button>
+      <div class="ph-custom-actions">
+        <button type="button" class="ph-custom-save" onclick="_phSaveCustomMsg()">💾 सेव करें (सभी मुख्यालयों में दिखेगा)</button>
+        <button type="button" class="ph-custom-cancel" onclick="_phCloseCustomEdit()">रद्द करें</button>
+      </div>
     </div>
     <div class="ph-btns">
       <a class="ph-btn ph-btn-call" id="ph-call-btn" href="#">
