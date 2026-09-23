@@ -48,6 +48,7 @@ window.addEventListener("online",function(){
   _ensureCorrectHqAuth(); // पहले सही account पक्का करें, तभी flushPending() को असली मौक़ा मिलेगा
   flushPending();
   fetchCatNamesFromFB(false);
+  fetchPhCustomMsgFromFB();
   hscFetch();
   if(CU&&activeHQ&&activeCat&&!isPending(activeHQ,activeCat)){
     fbGet(activeHQ,activeCat,function(d){renderSummaryWith(d);renderListWith(d);});

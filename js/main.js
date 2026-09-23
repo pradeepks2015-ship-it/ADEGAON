@@ -3,6 +3,7 @@ var _appStarted=false;
 function startApp(){
   if(_appStarted)return; _appStarted=true;
   loadCatNames();
+  loadPhCustomMsg();
   loadMigratedFlags();
   loadHQPins();
   // 🛑 डेटा बचाओ मोड — पहले device की याद से (ताकि जवाब आने से पहले भी सही व्यवहार हो, वरना
