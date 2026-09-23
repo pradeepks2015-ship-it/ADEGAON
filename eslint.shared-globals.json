@@ -409,6 +409,7 @@
   "pollTimer",
   "prefetchAll",
   "processRows",
+  "propagateRemark",
   "propagateStatus",
   "rebuildCatsForHQ",
   "recOp",
