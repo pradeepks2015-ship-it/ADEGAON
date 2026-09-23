@@ -405,14 +405,18 @@ function loadWaScorecard(){
   var el=document.getElementById("wasc-content");
   el.innerHTML="<div class='sc-loading'>⏳ ताज़ा data लाया जा रहा है...</div>";
   if(navigator.onLine){
+    if(_cashRefreshBusy()) toast("⏳ पिछला रिफ्रेश अभी चल रहा है — उसी का नतीजा दिखेगा","inf");
     // कमज़ोर नेट पर कुछ श्रेणी ताज़ा न हो पाएं तो चुपचाप पुराना data न दिखे — JE को साफ़ पता चले
     _cashRefreshAll(HQS,function(failCount){
       _waScRender();
-      if(failCount) toast("⚠️ नेट कमज़ोर — "+failCount+" श्रेणी ताज़ा नहीं हो पाईं (पुराना data दिख रहा है), दोबारा रिफ्रेश करें","err");
-    },true);
+      if(failCount) toast(_scRefreshFailMsg(failCount),"err");
+    },true,_waScRender);
   } else {
     _waScRender();
   }
+}
+function _scRefreshFailMsg(n){
+  return "⚠️ नेट कमज़ोर — "+n+" श्रेणी अभी ताज़ा नहीं हो पाईं। देर से पहुंचीं तो स्क्रीन अपने-आप ताज़ा होगी, वरना थोड़ी देर बाद दोबारा रिफ्रेश करें";
 }
 
 // ── आज की वसूली — वर्तमान दिनांक का मुख्यालय-वार भुगतान संख्या स्कोरकार्ड (JE only) ──
@@ -490,11 +494,12 @@ function loadTodayScorecard(){
   var el=document.getElementById("todaysc-content");
   el.innerHTML="<div class='sc-loading'>⏳ ताज़ा data लाया जा रहा है...</div>";
   if(navigator.onLine){
+    if(_cashRefreshBusy()) toast("⏳ पिछला रिफ्रेश अभी चल रहा है — उसी का नतीजा दिखेगा","inf");
     // कमज़ोर नेट पर कुछ श्रेणी ताज़ा न हो पाएं तो चुपचाप पुराना data न दिखे — JE को साफ़ पता चले
     _cashRefreshAll(HQS,function(failCount){
       _todayScRender();
-      if(failCount) toast("⚠️ नेट कमज़ोर — "+failCount+" श्रेणी ताज़ा नहीं हो पाईं (पुराना data दिख रहा है), दोबारा रिफ्रेश करें","err");
-    },true);
+      if(failCount) toast(_scRefreshFailMsg(failCount),"err");
+    },true,_todayScRender);
   } else {
     _todayScRender();
   }

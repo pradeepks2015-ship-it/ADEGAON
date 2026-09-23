@@ -491,9 +491,28 @@ var liveSource = null; // real-time SSE stream (Firebase REST streaming)
 // list देर तक खुली रहने से। अब पहले ताज़ा token के साथ EventSource दोबारा जोड़ने की कोशिश होती है
 var _esReconnectAttempts = 0;
 
+// ── नेट-झटके पर रुक-रुक कर दोबारा जुड़ना ──────────────────────────────────────────────────────
+// असली production नाप: कमज़ोर नेट वाले एक लाइनमैन (आनंद कुमार कवरेती, आदेगांव) ने अकेले पूरे DC
+// का 27% (54.5 MB) खाया — उसी दिन उसके device पर बार-बार "Failed to fetch" भी दर्ज थे। वजह:
+// नेट का हर छोटा झटका (readyState 0) EventSource को ~3 सेकंड में अपने-आप दोबारा जोड़ देता है, और
+// Firebase हर बार जुड़ते ही *पूरी* list भेजता है — ऊपर वाली token-expiry की सस्ती ETag जांच सिर्फ़
+// पूरी तरह बंद (readyState 2) होने पर चलती है, इन झटकों पर नहीं। SSE पर "कुछ बदला?" पूछकर भी
+// बचत नहीं होती (जुड़ना ही पूरी list है), इसलिए उपाय जुड़ने की गिनती घटाना है: टूटने पर browser का
+// अपना reconnect रोककर खुद ES_BACKOFF_BASE_MS बाद जुड़ें, और कनेक्शन टिके बिना फिर टूटे तो इंतज़ार
+// दोगुना (अधिकतम ES_BACKOFF_MAX_MS)। ES_STABLE_MS तक टिक जाए तो फिर शुरू से। पुराने तरीक़े से कभी
+// ज़्यादा जुड़ना नहीं होता; कीमत बस इतनी कि कमज़ोर नेट के दौरान दूसरों के बदलाव थोड़ी देर से दिखें —
+// वसूली सेव करना (PATCH) इस पर निर्भर नहीं, वह अलग से तुरंत जाता है
+var ES_BACKOFF_BASE_MS=5000;
+var ES_BACKOFF_MAX_MS=2*60*1000;
+var ES_STABLE_MS=60*1000;
+var _esBackoffMs=0;
+var _esOpenedAt=0;
+var _esRetryT=null;
+
 function stopListen(){
   if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
   if(liveSource){liveSource.close();liveSource=null;}
+  if(_esRetryT){clearTimeout(_esRetryT);_esRetryT=null;}
 }
 
 // SSE "put" event का data पार्स करना — Firebase पूरे node (path:"/") के बदलाव पर event में ही नया data दे देता है
@@ -671,9 +690,25 @@ function _openLive(hq,cat){
         }catch(e){}
         pollOnce(); // सुरक्षित fallback
       });
-      es.onopen=function(){setSyncStatus(true);_esReconnectAttempts=0;};
+      es.onopen=function(){setSyncStatus(true);_esReconnectAttempts=0;_esOpenedAt=Date.now();};
       es.onerror=function(){
         setSyncStatus(false);
+        if(es.readyState===0){ // CONNECTING — नेट का झटका, browser ~3 सेकंड में खुद जोड़ने वाला है
+          var stable=_esOpenedAt&&(Date.now()-_esOpenedAt>=ES_STABLE_MS);
+          _esBackoffMs=stable||!_esBackoffMs?ES_BACKOFF_BASE_MS:Math.min(_esBackoffMs*2,ES_BACKOFF_MAX_MS);
+          _esOpenedAt=0;
+          es.close(); // browser का अपना (तुरंत, बिना गिनती) reconnect रोको
+          // liveSource जान-बूझकर यही (बंद) es रहता है — "live अभी इसी tab का है, बस रुककर जुड़ेगा";
+          // कोई और रास्ता (tab-revisit वाला timer) इसे खाली देखकर बीच में ही भारी reconnect न कर दे
+          if(_esRetryT) clearTimeout(_esRetryT);
+          _esRetryT=setTimeout(function(){
+            _esRetryT=null;
+            // इस बीच tab बदला / stopListen हुआ (liveSource बदल गया), polling चालू हुई, या डेटा-बचाओ — कुछ न करें
+            if(liveSource!==es||pollTimer||!(CU&&activeHQ===hq&&activeCat===cat)||isDataPaused()) return;
+            _openLive(hq,cat);
+          },_esBackoffMs);
+          return;
+        }
         if(es.readyState===2){ // CLOSED — स्ट्रीम पूरी तरह टूट गई (जैसे token expire)
           if(liveSource===es) liveSource=null;
           if(_esReconnectAttempts<3){
@@ -688,7 +723,6 @@ function _openLive(hq,cat){
             startPolling();
           }
         }
-        // वरना EventSource खुद reconnect करने की कोशिश करता रहेगा
       };
       // यहां pollOnce() जान-बूझकर नहीं बुलाया — caller (fbGet, हमेशा startListen से ठीक पहले/इसी
       // callback में चलता है) पहले ही ताज़ा data दिखा चुका होता है, और EventSource जुड़ते ही खुद अपना

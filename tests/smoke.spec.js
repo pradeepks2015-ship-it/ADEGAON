@@ -3345,6 +3345,77 @@ test.describe('_cashRefreshAll — कमज़ोर नेटवर्क प�
     expect(r.stuckStillOld).toBe(true);
     expect(r.othersUpdated).toBe(true);
   });
+
+  // असली लॉग (JE, कमज़ोर नेट): सभी 48 सूचियां एक साथ मंगाने से पीछे वाले मुख्यालय (पाटन/बीबी/मढ़ी)
+  // 8 सेकंड में पूरे नहीं हो पाते थे (19/48 नाकाम)
+  test('एक बार में सिर्फ़ _CASH_REFRESH_CONCURRENCY (6) सूचियां मंगाई जाएं, बाकी पहले वालों के निपटने पर', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      _CASH_REFRESH_TIMEOUT_MS = 80;
+      let calls = 0, first = -1;
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ50') > -1) { calls++; return new Promise(() => {}); }
+        return orig(url, opts);
+      };
+      _cashRefreshAll(['टेस्ट HQ50'], function (n) { window.fetch = orig; resolve({ first: first, calls: calls, n: n }); }, true);
+      first = calls; // सिर्फ़ शुरुआती (synchronous) requests
+    }));
+    expect(r.first).toBe(6);  // एक साथ सिर्फ़ 6
+    expect(r.calls).toBe(8);  // बाकी 2 बाद में — आख़िर में सभी 8 श्रेणियां मंगाई गईं
+    expect(r.n).toBe(8);      // कोई जवाब नहीं आया — सब timeout गिनी गईं
+  });
+
+  // असली लॉग: JE ने रिफ्रेश चलते-चलते दोबारा दबाया, पहले की अधूरी requests के ऊपर 48 नई चढ़ गईं (48/48 नाकाम)
+  test('रिफ्रेश चलते दोबारा बुलाने पर नया रिफ्रेश न चले — उसी में जुड़कर उसका नतीजा मिले', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      let calls = 0;
+      const results = [];
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ51') > -1) {
+          calls++;
+          return new Promise((res) => setTimeout(() => res({ status: 304, ok: false, headers: { get: () => null } }), 30));
+        }
+        return orig(url, opts);
+      };
+      const done = (n) => { results.push(n); if (results.length === 2) { window.fetch = orig; resolve({ calls: calls, results: results, busy: busy }); } };
+      _cashRefreshAll(['टेस्ट HQ51'], done, true);
+      const busy = _cashRefreshBusy();
+      _cashRefreshAll(['टेस्ट HQ51'], done, true); // चलते हुए दोबारा — जैसे बटन दोबारा दबाया
+    }));
+    expect(r.busy).toBe(true);
+    expect(r.calls).toBe(8);         // 16 नहीं — दूसरी बार कोई नई request नहीं गई
+    expect(r.results).toEqual([0, 0]); // दोनों callers को उसी रिफ्रेश का नतीजा मिला
+  });
+
+  test('timeout के बाद देर से पहुंची सूची cache में आए और caller का onLate बुलाया जाए (स्क्रीन पुरानी न दिखती रहे)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      _CASH_REFRESH_TIMEOUT_MS = 50;
+      let failN = -1;
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ52/घरेलू') > -1) {
+          return new Promise((res) => setTimeout(() => res({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([{ acc: 'NEW', status: 'pending' }]) }), 150));
+        }
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ52') > -1) {
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      const fallback = setTimeout(() => { window.fetch = orig; resolve({ failN: failN, late: false }); }, 3000);
+      _cashRefreshAll(['टेस्ट HQ52'], function (n) { failN = n; }, true, function () {
+        clearTimeout(fallback);
+        window.fetch = orig;
+        resolve({ failN: failN, late: true, acc: cGet('टेस्ट HQ52', 'घरेलू')[0].acc });
+      });
+    }));
+    expect(r.failN).toBe(1);   // cb के वक़्त "घरेलू" अभी timeout थी
+    expect(r.late).toBe(true); // बाद में पहुंची तो onLate बुलाया गया
+    expect(r.acc).toBe('NEW'); // और उसका ताज़ा data cache में आ गया
+  });
 });
 
 test.describe('Firebase permission-denied response को असली record न समझा जाए', () => {
@@ -4209,6 +4280,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
     const r = await page.evaluate(() => {
       var es = liveSource;
+      es.close(); // असली (network-blocked) EventSource का अपना देर वाला error न आए — वरना वह भी थोपे गए readyState=2 से "पूरी तरह बंद" रास्ते पर जाकर दूसरी बार reconnect चला देता (test-race, ~1/15 flaky)
       Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
       es.onerror();
       return { attempts: _esReconnectAttempts, pollActive: !!pollTimer };
@@ -4230,6 +4302,73 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(r.pollActive).toBe(true);
   });
 
+  // असली नाप: कमज़ोर नेट वाले एक लाइनमैन ने अकेले पूरे DC का 27% खाया — हर नेट-झटके (readyState 0)
+  // पर browser ~3 सेकंड में खुद दोबारा जोड़ता था, और Firebase हर बार जुड़ते ही पूरी list भेजता है
+  test('नेट-झटके (readyState=0) पर browser का तुरंत reconnect रुके, और बार-बार टूटने पर इंतज़ार दोगुना होता जाए (अधिकतम सीमा तक)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      ES_BACKOFF_BASE_MS = 30; ES_BACKOFF_MAX_MS = 100; ES_STABLE_MS = 60000;
+      let created = 0;
+      window.EventSource = function () { created++; this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      _esBackoffMs = 0; _esOpenedAt = 0;
+      _openLive(activeHQ, activeCat);
+      const seen = [];
+      let n = 0;
+      (function step() {
+        const es = liveSource;
+        es.readyState = 0; es.onerror();
+        seen.push({ bo: _esBackoffMs, closed: es.readyState === 2, kept: liveSource === es });
+        if (++n >= 4) return resolve({ seen: seen, created: created });
+        const t0 = Date.now();
+        (function wait() {
+          if (liveSource && liveSource !== es) return step();
+          if (Date.now() - t0 > 3000) return resolve({ seen: seen, created: created, timeout: true });
+          setTimeout(wait, 5);
+        })();
+      })();
+    }));
+    expect(r.timeout).toBeUndefined();
+    expect(r.seen.map((s) => s.bo)).toEqual([30, 60, 100, 100]); // दोगुना, फिर अधिकतम पर टिका
+    expect(r.seen.every((s) => s.closed)).toBe(true); // browser का अपना reconnect हर बार रोका गया
+    expect(r.seen.every((s) => s.kept)).toBe(true);   // रुकने के दौरान liveSource खाली नहीं हुआ
+    expect(r.created).toBe(4); // शुरुआती 1 + रुककर 3 बार दोबारा जुड़ा
+  });
+
+  test('connection ES_STABLE_MS तक टिक जाए तो अगले झटके पर इंतज़ार फिर शुरू से (लंबी सज़ा न मिले)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const bo = await page.evaluate(() => {
+      ES_BACKOFF_BASE_MS = 30; ES_BACKOFF_MAX_MS = 100; ES_STABLE_MS = 60000;
+      window.EventSource = function () { this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      _openLive(activeHQ, activeCat);
+      _esBackoffMs = 100; // पहले कई बार टूट चुका था
+      const es = liveSource;
+      es.onopen();
+      _esOpenedAt = Date.now() - 61000; // 61 सेकंड टिका रहा
+      es.readyState = 0; es.onerror();
+      return _esBackoffMs;
+    });
+    expect(bo).toBe(30);
+  });
+
+  test('रुकने के दौरान tab बदल गया तो पुराने tab के लिए दोबारा न जुड़े', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      ES_BACKOFF_BASE_MS = 30;
+      let created = 0;
+      window.EventSource = function () { created++; this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      _esBackoffMs = 0; _esOpenedAt = 0;
+      _openLive(activeHQ, activeCat);
+      const es = liveSource;
+      es.readyState = 0; es.onerror();
+      activeCat = activeCat === CATS[1] ? CATS[2] : CATS[1]; // इंतज़ार के बीच उपयोगकर्ता दूसरी श्रेणी पर चला गया
+      setTimeout(() => resolve({ created: created }), 150);
+    }));
+    expect(r.created).toBe(1); // सिर्फ़ शुरुआती — पुराने tab के लिए दोबारा नहीं जुड़ा
+  });
+
   test('_tokenExpiryRecheck — token-expiry reconnect से पहले हल्की ETag जांच हो; कुछ नहीं बदला (304) तो भारी reconnect टलता रहे, EventSource दोबारा न खुले (JE का सवाल: "ऐप खुला छोड़ने पर cost बढ़ती है क्या?")', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
@@ -4249,6 +4388,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
         return orig(url, opts);
       };
       var es = liveSource;
+      es.close(); // असली (network-blocked) EventSource का अपना देर वाला error न आए — वरना वह भी थोपे गए readyState=2 से "पूरी तरह बंद" रास्ते पर जाकर दूसरी बार reconnect चला देता (test-race, ~1/15 flaky)
       Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
       es.onerror(); // token expire जैसा — पहला attempt
       setTimeout(() => {
@@ -4282,6 +4422,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
         return orig(url, opts);
       };
       var es = liveSource;
+      es.close(); // असली (network-blocked) EventSource का अपना देर वाला error न आए — वरना वह भी थोपे गए readyState=2 से "पूरी तरह बंद" रास्ते पर जाकर दूसरी बार reconnect चला देता (test-race, ~1/15 flaky)
       Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
       es.onerror();
       setTimeout(() => {
@@ -4310,6 +4451,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
         return orig(url, opts);
       };
       var es = liveSource;
+      es.close(); // असली (network-blocked) EventSource का अपना देर वाला error न आए — वरना वह भी थोपे गए readyState=2 से "पूरी तरह बंद" रास्ते पर जाकर दूसरी बार reconnect चला देता (test-race, ~1/15 flaky)
       Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
       es.onerror();
       setTimeout(() => {
