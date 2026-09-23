@@ -4080,10 +4080,100 @@ test.describe('फोन-नंबर मॉडल — दो तरह के �
     await page.evaluate(() => closePhModal());
     await page.evaluate(() => openPhModal('गीता देवी', '9876511111', 'ACC3', 800));
     expect(await page.evaluate(() => document.querySelector('.ph-mt-btn.active').getAttribute('data-type'))).toBe('disconnect');
-    expect(await page.evaluate(() => document.querySelectorAll('.ph-mt-btn').length)).toBe(2);
+    expect(await page.evaluate(() => document.querySelectorAll('.ph-mt-btn').length)).toBe(3);
     // वापस "सामान्य रिमाइंडर" पर बदल सकें
     await page.evaluate(() => _phSelectMsgType('reminder'));
     expect(await page.evaluate(() => localStorage.getItem('dc_ph_msgtype'))).toBe('reminder');
+  });
+
+  test('"अपना संदेश" — सिर्फ़ JE textarea में edit कर सके और सेव बटन दिखे, lineman के लिए readonly रहे, सेव बटन न दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'सूचना: तालाब किनारे अवैध अतिक्रमण हटाएं', by: 'Pradeep', at: '1/1/2026, 10:00 am' }; });
+    await page.evaluate(() => openPhModal('मोहन लाल', '9876522222', 'ACC4', 900));
+    await page.evaluate(() => _phSelectMsgType('custom'));
+    const r = await page.evaluate(() => ({
+      readOnly: document.getElementById('ph-custom-text').readOnly,
+      value: document.getElementById('ph-custom-text').value,
+      saveShown: document.getElementById('ph-custom-save').style.display,
+      meta: document.getElementById('ph-custom-meta').textContent,
+    }));
+    expect(r.readOnly).toBe(true);
+    expect(r.value).toBe('सूचना: तालाब किनारे अवैध अतिक्रमण हटाएं'); // JE का सेव किया संदेश दिखा
+    expect(r.saveShown).toBe('none');
+    expect(r.meta).toContain('🔒');
+    expect(r.meta).toContain('Pradeep');
+    const wa = await page.evaluate(() => decodeURIComponent(document.getElementById('ph-wa-btn').href.split('text=')[1]));
+    expect(wa).toBe('सूचना: तालाब किनारे अवैध अतिक्रमण हटाएं'); // कोई नाम/बकाया अपने-आप नहीं जुड़ा
+  });
+
+  test('"अपना संदेश" — JE बदलकर सेव करे तो PH_CUSTOM_MSG (सभी मुख्यालयों के लिए साझा) अपडेट हो, lineman सीधे बुलाए तो कुछ न लिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openPhModal('गीता', '9876544444', 'ACC6', 0));
+    await page.evaluate(() => _phSelectMsgType('custom'));
+    expect(await page.evaluate(() => document.getElementById('ph-custom-text').readOnly)).toBe(false);
+    expect(await page.evaluate(() => document.getElementById('ph-custom-save').style.display)).toBe('block');
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      let putBody = null;
+      const orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/PH_CUSTOM_MSG.json') > -1 && o && o.method === 'PUT') {
+          putBody = JSON.parse(o.body);
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(putBody) });
+        }
+        return orig(u, o);
+      };
+      document.getElementById('ph-custom-text').value = 'योजना: नई सोलर सब्सिडी योजना लागू — कार्यालय संपर्क करें।';
+      _phSaveCustomMsg();
+      setTimeout(() => { window.fetch = orig; resolve({ putBody: putBody, msg: PH_CUSTOM_MSG }); }, 200);
+    }));
+    expect(r.putBody.text).toBe('योजना: नई सोलर सब्सिडी योजना लागू — कार्यालय संपर्क करें।');
+    expect(r.putBody.by).toBe('टेस्ट जेई'); // loginJE का नाम — देखें loginJE() हेल्पर
+    expect(r.msg.text).toBe(r.putBody.text); // local PH_CUSTOM_MSG भी उसी वक़्त अपडेट हुआ
+  });
+
+  test('"अपना संदेश" — lineman _phSaveCustomMsg सीधे बुलाए तो भी Firebase पर कुछ न लिखे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      var puts = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf('/PH_CUSTOM_MSG.json') > -1 && o && o.method === 'PUT') puts++; return orig(u, o); };
+      _phSaveCustomMsg();
+      window.fetch = orig;
+      return puts;
+    });
+    expect(r).toBe(0);
+  });
+
+  test('"अपना संदेश" — दूसरे device पर JE का बदलाव आते ही (fetchPhCustomMsgFromFB) यह तुरंत textarea में दिखे, बीच टाइपिंग में न छेड़े', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => openPhModal('श्याम', '9876555555', 'ACC7', 0));
+    await page.evaluate(() => _phSelectMsgType('custom'));
+    const r1 = await page.evaluate(() => new Promise((resolve) => {
+      const orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/PH_CUSTOM_MSG.json') > -1 && (!o || !o.method)) {
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ text: 'नया संदेश दूसरे device से', by: 'JE', at: 'अभी' }) });
+        }
+        return orig(u, o);
+      };
+      fetchPhCustomMsgFromFB();
+      setTimeout(() => { window.fetch = orig; resolve(document.getElementById('ph-custom-text').value); }, 150);
+    }));
+    expect(r1).toBe('नया संदेश दूसरे device से');
+    // अब सोचें यह device खुद JE हो और अभी टाइप कर रहा हो — तभी एक और live update आ जाए
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'कुछ और', by: 'X', at: 'Y' }; });
+    const r2 = await page.evaluate(() => new Promise((resolve) => {
+      const ta = document.getElementById('ph-custom-text');
+      ta.value = 'JE अभी यही टाइप कर रहा है...';
+      ta.focus();
+      _phRefreshCustomView();
+      resolve(ta.value);
+    }));
+    expect(r2).toBe('JE अभी यही टाइप कर रहा है...'); // focus में होने से नहीं बदला
   });
 });
 
@@ -5897,6 +5987,16 @@ test.describe('database.rules.json — MIGRATED सिर्फ़ JE लिख 
     expect(migratedRule, 'MIGRATED का अपना top-level rule होना चाहिए — $other के भरोसे नहीं').toBeTruthy();
     expect(migratedRule['.write']).toBe("auth.token.email === 'pradeepks2015@gmail.com'");
     expect(migratedRule['.read']).toBe('auth != null'); // हर device fbSet() से पहले isMigrated() जांचता है, इसलिए पढ़ना सबके लिए ज़रूरी है
+  });
+});
+
+test.describe('database.rules.json — PH_CUSTOM_MSG (फोन-मॉडल "अपना संदेश") सिर्फ़ JE लिख सके, बाक़ी सब पढ़ सकें', () => {
+  test('PH_CUSTOM_MSG का अपना explicit rule हो — CAT_NAMES जैसा ही JE-only write, सबके लिए read', () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
+    const rule = rules.rules.PH_CUSTOM_MSG;
+    expect(rule, 'PH_CUSTOM_MSG का अपना top-level rule होना चाहिए — $other के भरोसे नहीं').toBeTruthy();
+    expect(rule['.write']).toBe("auth.token.email === 'pradeepks2015@gmail.com'");
+    expect(rule['.read']).toBe('auth != null'); // हर लाइनमैन का device फ़ोन-मॉडल में यही संदेश पढ़ता है
   });
 });
 

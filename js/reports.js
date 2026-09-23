@@ -1,7 +1,11 @@
 // ─── PHONE ACTION MODAL ───────────────────────────────────────────────────────
-// दो तरह के संदेश टेम्पलेट — "सामान्य रिमाइंडर" (पुराना) और "विच्छेदन सूचना धारा 56" (नया, कानूनी
-// भाषा वाला)। जो टाइप आख़िरी बार चुना गया वह localStorage में याद रहता है — अगली बार सीधे वही चुना
-// हुआ दिखता/भेजा जाता है, पर दूसरा विकल्प भी हमेशा वहीं मौजूद रहता है बदलने के लिए
+// तीन तरह के संदेश टेम्पलेट — "सामान्य रिमाइंडर" (पुराना), "विच्छेदन सूचना धारा 56" (कानूनी भाषा
+// वाला), और "अपना संदेश" (योजना का प्रचार, अवैध अतिक्रमण जैसी सीधी सूचना, या कोई और बात जो ऊपर के
+// दो टेम्पलेट में फिट नहीं बैठती)। जो टाइप आख़िरी बार चुना गया वह localStorage में याद रहता है।
+// "अपना संदेश" एक अकेला, सबका साझा टेक्स्ट है (PH_CUSTOM_MSG, js/config.js) — सिर्फ़ JE बदल सकते
+// हैं (database.rules.json), और बदलते ही सभी मुख्यालयों के सभी लाइनमैन को वही नया संदेश दिखता है
+// (CAT_NAMES जैसा ही पैटर्न)। लाइनमैन के लिए textarea सिर्फ़ पढ़ने के लिए है — कोई भी अकेला उपभोक्ता
+// इसे अपने हिसाब से बदलकर न भेज दे, JE का लिखा संदेश ही हर जगह सही रहे
 var _phCtx=null;
 function _phBuildMsg(type,ctx){
   if(type==="disconnect"){
@@ -13,6 +17,7 @@ function _phBuildMsg(type,ctx){
       "\n– आदेगांव बिजली वितरण केंद्र सिवनी"+
       "\n(नोट: यदि भुगतान कर दिया है तो कृपया इस संदेश को अनदेखा करें)";
   }
+  if(type==="custom") return (PH_CUSTOM_MSG&&PH_CUSTOM_MSG.text)||"";
   return "नमस्ते "+ctx.name+" जी, आपका बिजली संयोजन"+
     (ctx.acc?" क्रमांक "+ctx.acc:"")+
     " पर वर्तमान माह तक"+
@@ -27,11 +32,50 @@ function _phApplyMsgType(type){
   document.querySelectorAll(".ph-mt-btn").forEach(function(b){
     b.classList.toggle("active",b.getAttribute("data-type")===type);
   });
+  document.getElementById("ph-custom-wrap").style.display=type==="custom"?"block":"none";
+  if(type==="custom") _phRefreshCustomView();
   var msg=_phBuildMsg(type,_phCtx);
   document.getElementById("ph-sms-btn").href="sms:"+_phCtx.clean+"?body="+encodeURIComponent(msg);
   document.getElementById("ph-wa-btn").href="https://wa.me/91"+_phCtx.clean+"?text="+encodeURIComponent(msg);
 }
 function _phSelectMsgType(type){ _phApplyMsgType(type); }
+// PH_CUSTOM_MSG से "अपना संदेश" टैब को दोबारा भरना — टैब चुनने पर, और दूसरे device से JE के
+// बदलाव के live आते ही (fetchPhCustomMsgFromFB, js/config.js)। JE खुद टाइप कर रहे हों (textarea
+// पर focus हो) तो न छेड़ें — वरना बीच टाइपिंग में उनका ही अधूरा लिखा मिट जाता
+function _phRefreshCustomView(){
+  var ta=document.getElementById("ph-custom-text");
+  if(!ta||document.getElementById("ph-custom-wrap").style.display!=="block") return;
+  var isJE=CU&&CU.role==="supervisor";
+  ta.readOnly=!isJE;
+  document.getElementById("ph-custom-save").style.display=isJE?"block":"none";
+  var meta=(PH_CUSTOM_MSG&&PH_CUSTOM_MSG.by)?("आख़िरी बार "+PH_CUSTOM_MSG.by+(PH_CUSTOM_MSG.at?" • "+PH_CUSTOM_MSG.at:"")+" ने बदला"):"अभी तक कोई संदेश सेव नहीं हुआ";
+  document.getElementById("ph-custom-meta").textContent=(isJE?"":"🔒 सिर्फ़ JE बदल सकते हैं — ")+meta;
+  if(document.activeElement!==ta) ta.value=(PH_CUSTOM_MSG&&PH_CUSTOM_MSG.text)||"";
+}
+// टाइप करते ही सिर्फ़ SMS/WhatsApp लिंक (इसी device पर, अभी के लिए) ताज़ा हों — असली सेव अलग बटन से,
+// ताकि हर अक्षर पर Firebase को न लिखा जाए और ग़लती से आधा-लिखा वाक्य सबको न दिख जाए
+function _phCustomInput(){
+  if(!_phCtx) return;
+  var t=document.getElementById("ph-custom-text").value;
+  document.getElementById("ph-sms-btn").href="sms:"+_phCtx.clean+"?body="+encodeURIComponent(t);
+  document.getElementById("ph-wa-btn").href="https://wa.me/91"+_phCtx.clean+"?text="+encodeURIComponent(t);
+}
+function _phSaveCustomMsg(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह संदेश बदल सकते हैं","err");return;}
+  if(!navigator.onLine){toast("📴 सेव करने के लिए नेट ज़रूरी है — सभी मुख्यालयों तक यही भेजना है","err");return;}
+  var text=document.getElementById("ph-custom-text").value;
+  var now=new Date();
+  var body={text:text,by:CU.name,at:now.toLocaleString("hi-IN"),ts:serverNow()};
+  fetch(FB+"/PH_CUSTOM_MSG.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(function(d){
+      PH_CUSTOM_MSG=d&&typeof d==="object"?d:body;
+      try{localStorage.setItem("dc_ph_custom_msg",JSON.stringify(PH_CUSTOM_MSG));}catch(e){}
+      _phRefreshCustomView();
+      toast("✅ सेव हो गया — अब सभी मुख्यालयों में यही संदेश दिखेगा","ok");
+    })
+    .catch(function(e){logErr("ph-custom-save-fail",e);toast("⚠️ सेव नहीं हुआ — दोबारा कोशिश करें","err");});
+}
 function openPhModal(name, phone, acc, amt){
   var clean=phone.replace(/\D/g,"");
   _phCtx={name:name,acc:acc,amtN:Number(amt)||0,clean:clean};
@@ -40,7 +84,7 @@ function openPhModal(name, phone, acc, amt){
   document.getElementById("ph-call-btn").href="tel:"+clean;
   var savedType="reminder";
   try{savedType=localStorage.getItem("dc_ph_msgtype")||"reminder";}catch(e){}
-  if(savedType!=="disconnect") savedType="reminder";
+  if(savedType!=="disconnect"&&savedType!=="custom") savedType="reminder";
   _phApplyMsgType(savedType);
   document.getElementById("ph-overlay").classList.add("open");
 }

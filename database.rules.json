@@ -4,6 +4,10 @@
       ".read": "auth != null",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com'"
     },
+    "PH_CUSTOM_MSG": {
+      ".read": "auth != null",
+      ".write": "auth.token.email === 'pradeepks2015@gmail.com'"
+    },
     "HOME_SCORECARD": {
       ".read": "auth != null",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' && (!newData.exists() || !data.child('ts').exists() || newData.child('ts').val() >= data.child('ts').val())"
