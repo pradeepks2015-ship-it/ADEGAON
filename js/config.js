@@ -14,7 +14,7 @@ var HQ_AUTH_EMAIL = {
   "बीबी":"hq-bibi@adegaondc.internal",
   "मढ़ी":"hq-madhi@adegaondc.internal"
 };
-var APP_VER = "9.158"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "9.159"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
@@ -105,9 +105,10 @@ function fetchCatNamesFromFB(showToast){
 // ── फोन-मॉडल का "अपना संदेश" — सिर्फ़ JE बदल सके, बदलते ही हर मुख्यालय के हर लाइनमैन को दिखे ──
 // CAT_NAMES जैसा ही पैटर्न: छोटा shared value, JE-only write (database.rules.json), सब पढ़ सकें,
 // localStorage में cache ताकि offline भी पिछला संदेश दिखता रहे (देखें js/reports.js)
-var PH_CUSTOM_MSG = {text:"",by:"",at:""};
+var PH_CUSTOM_MSG = {text:"",label:"",by:"",at:""};
 function loadPhCustomMsg(){
   try{var s=localStorage.getItem("dc_ph_custom_msg");if(s)PH_CUSTOM_MSG=JSON.parse(s);}catch(e){}
+  if(typeof _phUpdateCustomBtnLabel==="function") _phUpdateCustomBtnLabel();
   fetchPhCustomMsgFromFB();
 }
 function fetchPhCustomMsgFromFB(){
@@ -116,11 +117,12 @@ function fetchPhCustomMsgFromFB(){
     .then(function(d){
       trackUsageOf(d);
       if(!d||typeof d!=="object"||d.text==null) return;
-      PH_CUSTOM_MSG={text:d.text,by:d.by||"",at:d.at||""};
+      PH_CUSTOM_MSG={text:d.text,label:d.label||"",by:d.by||"",at:d.at||""};
       try{localStorage.setItem("dc_ph_custom_msg",JSON.stringify(PH_CUSTOM_MSG));}catch(e){}
       // फ़ोन मॉडल अभी "अपना संदेश" टैब पर खुली हो (JE दूसरे device से बदल दे, यह device उसी वक़्त
-      // उसे देख रहा हो) तो तुरंत ताज़ा दिखे — _phRefreshCustomView, js/reports.js
+      // उसे देख रहा हो) तो तुरंत ताज़ा दिखे — दोनों js/reports.js में
       if(typeof _phRefreshCustomView==="function") _phRefreshCustomView();
+      if(typeof _phUpdateCustomBtnLabel==="function") _phUpdateCustomBtnLabel();
     }).catch(function(){});
 }
 var CU = null, activeHQ = "", activeCat = "", activeFilter = "all";

@@ -4086,34 +4086,43 @@ test.describe('फोन-नंबर मॉडल — दो तरह के �
     expect(await page.evaluate(() => localStorage.getItem('dc_ph_msgtype'))).toBe('reminder');
   });
 
-  test('"अपना संदेश" — सिर्फ़ JE textarea में edit कर सके और सेव बटन दिखे, lineman के लिए readonly रहे, सेव बटन न दिखे', async ({ page }) => {
+  test('"अपना संदेश" बटन सिर्फ़ select करता है — किसी के लिए भी (JE/lineman) box नहीं खुलता, सेव किया संदेश तुरंत SMS/WhatsApp में जाए', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
     await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'सूचना: तालाब किनारे अवैध अतिक्रमण हटाएं', by: 'Pradeep', at: '1/1/2026, 10:00 am' }; });
     await page.evaluate(() => openPhModal('मोहन लाल', '9876522222', 'ACC4', 900));
     await page.evaluate(() => _phSelectMsgType('custom'));
     const r = await page.evaluate(() => ({
-      readOnly: document.getElementById('ph-custom-text').readOnly,
-      value: document.getElementById('ph-custom-text').value,
-      saveShown: document.getElementById('ph-custom-save').style.display,
-      meta: document.getElementById('ph-custom-meta').textContent,
+      boxShown: document.getElementById('ph-custom-wrap').style.display,
+      active: document.querySelector('.ph-mt-btn.active').getAttribute('data-type'),
     }));
-    expect(r.readOnly).toBe(true);
-    expect(r.value).toBe('सूचना: तालाब किनारे अवैध अतिक्रमण हटाएं'); // JE का सेव किया संदेश दिखा
-    expect(r.saveShown).toBe('none');
-    expect(r.meta).toContain('🔒');
-    expect(r.meta).toContain('Pradeep');
+    expect(r.boxShown).toBe('none'); // lineman के लिए box कभी नहीं खुलता
+    expect(r.active).toBe('custom');
     const wa = await page.evaluate(() => decodeURIComponent(document.getElementById('ph-wa-btn').href.split('text=')[1]));
     expect(wa).toBe('सूचना: तालाब किनारे अवैध अतिक्रमण हटाएं'); // कोई नाम/बकाया अपने-आप नहीं जुड़ा
   });
 
-  test('"अपना संदेश" — JE बदलकर सेव करे तो PH_CUSTOM_MSG (सभी मुख्यालयों के लिए साझा) अपडेट हो, lineman सीधे बुलाए तो कुछ न लिखे', async ({ page }) => {
+  test('✏️ edit-बटन — lineman को दिखता ही नहीं, JE को दिखे और दबाने पर box खुले', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => openPhModal('मोहन लाल', '9876522222', 'ACC4', 900));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-edit-btn').style.display)).toBe('none');
+    // lineman सीधे function बुला भी ले तो भी toast से मना हो, box न खुले
+    await page.evaluate(() => _phOpenCustomEdit());
+    expect(await page.evaluate(() => document.getElementById('ph-custom-wrap').style.display)).toBe('none');
+  });
+
+  test('JE ✏️ दबाए तो box खुले (पिछला सेव किया संदेश भरा मिले), सेव करते ही box अपने-आप बंद हो जाए और PH_CUSTOM_MSG अपडेट हो', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'पुराना संदेश', by: 'X', at: 'Y' }; });
     await page.evaluate(() => openPhModal('गीता', '9876544444', 'ACC6', 0));
-    await page.evaluate(() => _phSelectMsgType('custom'));
-    expect(await page.evaluate(() => document.getElementById('ph-custom-text').readOnly)).toBe(false);
-    expect(await page.evaluate(() => document.getElementById('ph-custom-save').style.display)).toBe('block');
+    expect(await page.evaluate(() => document.getElementById('ph-mt-edit-btn').style.display)).toBe('flex');
+    expect(await page.evaluate(() => document.getElementById('ph-custom-wrap').style.display)).toBe('none'); // खुलते ही box बंद हो
+    await page.evaluate(() => _phOpenCustomEdit());
+    expect(await page.evaluate(() => document.getElementById('ph-custom-text').value)).toBe('पुराना संदेश');
+    expect(await page.evaluate(() => document.getElementById('ph-custom-wrap').style.display)).toBe('block');
+
     const r = await page.evaluate(() => new Promise((resolve) => {
       let putBody = null;
       const orig = window.fetch;
@@ -4126,14 +4135,27 @@ test.describe('फोन-नंबर मॉडल — दो तरह के �
       };
       document.getElementById('ph-custom-text').value = 'योजना: नई सोलर सब्सिडी योजना लागू — कार्यालय संपर्क करें।';
       _phSaveCustomMsg();
-      setTimeout(() => { window.fetch = orig; resolve({ putBody: putBody, msg: PH_CUSTOM_MSG }); }, 200);
+      setTimeout(() => { window.fetch = orig; resolve({ putBody: putBody, msg: PH_CUSTOM_MSG, boxShown: document.getElementById('ph-custom-wrap').style.display }); }, 200);
     }));
     expect(r.putBody.text).toBe('योजना: नई सोलर सब्सिडी योजना लागू — कार्यालय संपर्क करें।');
     expect(r.putBody.by).toBe('टेस्ट जेई'); // loginJE का नाम — देखें loginJE() हेल्पर
     expect(r.msg.text).toBe(r.putBody.text); // local PH_CUSTOM_MSG भी उसी वक़्त अपडेट हुआ
+    expect(r.boxShown).toBe('none'); // सेव होते ही box अपने-आप बंद
   });
 
-  test('"अपना संदेश" — lineman _phSaveCustomMsg सीधे बुलाए तो भी Firebase पर कुछ न लिखे', async ({ page }) => {
+  test('"रद्द करें" — box बिना सेव किए बंद हो जाए, PH_CUSTOM_MSG न बदले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'असली संदेश', by: 'X', at: 'Y' }; });
+    await page.evaluate(() => openPhModal('गीता', '9876544444', 'ACC6', 0));
+    await page.evaluate(() => _phOpenCustomEdit());
+    await page.evaluate(() => { document.getElementById('ph-custom-text').value = 'बिना सेव किया बदलाव'; });
+    await page.evaluate(() => _phCloseCustomEdit());
+    expect(await page.evaluate(() => document.getElementById('ph-custom-wrap').style.display)).toBe('none');
+    expect(await page.evaluate(() => PH_CUSTOM_MSG.text)).toBe('असली संदेश'); // बदला नहीं
+  });
+
+  test('"अपना संदेश" — lineman _phSaveCustomMsg/_phOpenCustomEdit सीधे बुलाए तो भी Firebase पर कुछ न लिखे', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
     const r = await page.evaluate(() => {
@@ -4147,11 +4169,20 @@ test.describe('फोन-नंबर मॉडल — दो तरह के �
     expect(r).toBe(0);
   });
 
-  test('"अपना संदेश" — दूसरे device पर JE का बदलाव आते ही (fetchPhCustomMsgFromFB) यह तुरंत textarea में दिखे, बीच टाइपिंग में न छेड़े', async ({ page }) => {
+  test('"अपना संदेश" — दूसरे device पर JE का बदलाव आते ही (fetchPhCustomMsgFromFB) खुले box में तुरंत दिखे, बीच टाइपिंग में न छेड़े; box बंद हो तो कुछ न छेड़े', async ({ page }) => {
     await openApp(page);
-    await loginLineman(page);
+    await loginJE(page);
     await page.evaluate(() => openPhModal('श्याम', '9876555555', 'ACC7', 0));
-    await page.evaluate(() => _phSelectMsgType('custom'));
+    // box अभी बंद है — इसी बीच PH_CUSTOM_MSG बदल जाए (जैसे दूसरे device से), _phRefreshCustomView
+    // यहां कुछ न छेड़े (box बंद है, textarea को touch करने की ज़रूरत ही नहीं) — पर बाद में box
+    // खुलने पर नया (ताज़ा) मान ज़रूर दिखे
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'बीच में बदला संदेश', by: 'Y', at: 'Z' }; _phRefreshCustomView(); });
+    await page.evaluate(() => _phOpenCustomEdit());
+    expect(await page.evaluate(() => document.getElementById('ph-custom-text').value)).toBe('बीच में बदला संदेश'); // box खुलते ही ताज़ा मिला
+    // _phOpenCustomEdit() खुद textarea को focus कर देता है (JE तुरंत टाइप कर सकें) — यहां सिर्फ़
+    // "box खुला है पर अभी टाइप नहीं हो रहा" जांचना है, इसलिए वही focus हटा दें
+    await page.evaluate(() => document.getElementById('ph-custom-text').blur());
+
     const r1 = await page.evaluate(() => new Promise((resolve) => {
       const orig = window.fetch;
       window.fetch = function (u, o) {
@@ -4163,17 +4194,87 @@ test.describe('फोन-नंबर मॉडल — दो तरह के �
       fetchPhCustomMsgFromFB();
       setTimeout(() => { window.fetch = orig; resolve(document.getElementById('ph-custom-text').value); }, 150);
     }));
-    expect(r1).toBe('नया संदेश दूसरे device से');
-    // अब सोचें यह device खुद JE हो और अभी टाइप कर रहा हो — तभी एक और live update आ जाए
-    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'कुछ और', by: 'X', at: 'Y' }; });
-    const r2 = await page.evaluate(() => new Promise((resolve) => {
+    expect(r1).toBe('नया संदेश दूसरे device से'); // box खुला था — live update दिखा
+    // अभी टाइप कर रहे हों — तभी एक और live update आ जाए
+    const r2 = await page.evaluate(() => {
+      PH_CUSTOM_MSG = { text: 'कुछ और', by: 'X', at: 'Y' };
       const ta = document.getElementById('ph-custom-text');
       ta.value = 'JE अभी यही टाइप कर रहा है...';
       ta.focus();
       _phRefreshCustomView();
-      resolve(ta.value);
-    }));
+      return ta.value;
+    });
     expect(r2).toBe('JE अभी यही टाइप कर रहा है...'); // focus में होने से नहीं बदला
+  });
+
+  test('"अपना संदेश" बटन का नाम भी JE बदल सकते हैं — कुछ सेव न हुआ हो तो डिफ़ॉल्ट "अपना संदेश" दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: '', label: '', by: '', at: '' }; });
+    await page.evaluate(() => openPhModal('गीता', '9876544444', 'ACC6', 0));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('अपना संदेश');
+  });
+
+  test('JE label टाइप करके सेव करे तो बटन पर वही नाम दिखे, और अगली बार मॉडल खुलने पर भी वही रहे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'तालाब किनारे अतिक्रमण हटाएं', label: '', by: 'X', at: 'Y' }; });
+    await page.evaluate(() => openPhModal('गीता', '9876544444', 'ACC6', 0));
+    await page.evaluate(() => _phOpenCustomEdit());
+    expect(await page.evaluate(() => document.getElementById('ph-custom-label').value)).toBe(''); // पहले कोई label सेव नहीं थी
+    // टाइप करते ही तुरंत बटन पर भी दिखे (सेव होने से पहले ही, इसी device पर)
+    await page.fill('#ph-custom-label', 'अतिक्रमण सूचना');
+    await page.evaluate(() => document.getElementById('ph-custom-label').dispatchEvent(new Event('input')));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('अतिक्रमण सूचना');
+
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      let putBody = null;
+      const orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/PH_CUSTOM_MSG.json') > -1 && o && o.method === 'PUT') {
+          putBody = JSON.parse(o.body);
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(putBody) });
+        }
+        return orig(u, o);
+      };
+      _phSaveCustomMsg();
+      setTimeout(() => { window.fetch = orig; resolve({ putBody: putBody }); }, 200);
+    }));
+    expect(r.putBody.label).toBe('अतिक्रमण सूचना');
+
+    // मॉडल बंद करके दोबारा खोलें — पुराना cache नहीं, ताज़ा (अभी सेव किया) label ही दिखे
+    await page.evaluate(() => closePhModal());
+    await page.evaluate(() => openPhModal('गीता', '9876544444', 'ACC6', 0));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('अतिक्रमण सूचना');
+  });
+
+  test('lineman को label बदलने का कोई रास्ता नहीं — edit-बटन ही नहीं दिखता, पर JE का सेव किया नाम बटन पर दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'सूचना', label: 'योजना प्रचार', by: 'Pradeep', at: '1/1/2026' }; });
+    await page.evaluate(() => openPhModal('मोहन लाल', '9876522222', 'ACC4', 900));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('योजना प्रचार');
+    expect(await page.evaluate(() => document.getElementById('ph-mt-edit-btn').style.display)).toBe('none');
+  });
+
+  test('दूसरे device से JE का बदला हुआ label live आते ही बटन पर दिखे (मॉडल खुली हो तब भी)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'पुराना', label: 'पुराना नाम', by: 'X', at: 'Y' }; });
+    await page.evaluate(() => openPhModal('मोहन लाल', '9876522222', 'ACC4', 900));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('पुराना नाम');
+    await page.evaluate(() => new Promise((resolve) => {
+      const orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/PH_CUSTOM_MSG.json') > -1 && (!o || !o.method)) {
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ text: 'नया', label: 'नया नाम', by: 'JE', at: 'अभी' }) });
+        }
+        return orig(u, o);
+      };
+      fetchPhCustomMsgFromFB();
+      setTimeout(() => { window.fetch = orig; resolve(); }, 150);
+    }));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('नया नाम');
   });
 });
 
