@@ -29,6 +29,7 @@
 :root[data-theme="dark"] .warn-box{background:rgba(194,106,26,.14);border-color:rgba(194,106,26,.3);}
 :root[data-theme="dark"] .limit-warn-box{background:rgba(214,69,90,.14);border-color:rgba(214,69,90,.3);}
 :root[data-theme="dark"] .prev-rmk-hdr span{background:rgba(194,106,26,.28);}
+:root[data-theme="dark"] .prev-rmk-cat{background:rgba(194,106,26,.28);}
 :root[data-theme="dark"] .log-ctx{background:rgba(214,69,90,.18);}
 :root[data-theme="dark"] .role-card.selected{background:rgba(59,130,201,.16);}
 :root[data-theme="dark"] .sc-date-table th{background:rgba(59,130,201,.20);}
@@ -334,6 +335,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .prev-rmk-item:last-child{border-bottom:none;}
 .prev-rmk-text{color:var(--text);margin-bottom:2px;}
 .prev-rmk-meta{font-size:9px;color:var(--muted);}
+.prev-rmk-cat{background:rgba(255,140,66,.15);color:var(--orange);border-radius:8px;padding:0 6px;font-size:9px;white-space:nowrap;}
 /* PHONE ACTION POPUP */
 .ph-overlay{position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.75);backdrop-filter:blur(5px);display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .22s;}
 .ph-overlay.open{opacity:1;pointer-events:all;}

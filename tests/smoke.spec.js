@@ -1159,6 +1159,48 @@ test.describe('डेटा और वसूली', () => {
     expect(sentBody['555666'].remarksArr[0].text).toBe('बकाया माफ़ी की मांग');
   });
 
+  test('रिमार्क अब सिर्फ़ उसी category तक सीमित नहीं — उसी acc की बाकी सभी categories (कुल उपभोक्ता समेत) में भी दिखे (bug: JE की शिकायत, "घरेलू" में डाला कमेंट "कुल उपभोक्ता" में कभी नहीं दिखता था)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '777', name: 'मोहन', status: 'pending', amount: 400 }]);
+      cSet('आदेगांव', 'घरेलू', [{ acc: '777', name: 'मोहन', status: 'pending', amount: 400 }]);
+      cSet('आदेगांव', 'व्यवसाय', [{ acc: '888', name: 'कोई और', status: 'pending', amount: 100 }]); // अलग acc — न छुए
+    });
+    await loginLineman(page);
+    await page.evaluate(() => { activeHQ = 'आदेगांव'; activeCat = 'घरेलू'; });
+    await page.evaluate(() => {
+      openRmkModal(0, '777');
+      document.getElementById('rmk-text').value = 'मीटर खराब है';
+      saveRmk();
+    });
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => ({
+      master: cGet('आदेगांव', 'कुल उपभोक्ता').find((x) => x.acc === '777'),
+      ghar: cGet('आदेगांव', 'घरेलू').find((x) => x.acc === '777'),
+      vyapar: cGet('आदेगांव', 'व्यवसाय').find((x) => x.acc === '888'),
+    }));
+    expect(r.master.remarksArr[0].text).toBe('मीटर खराब है'); // "कुल उपभोक्ता" में भी पहुंचा
+    expect(r.master.remarksArr[0].cat).toBe('घरेलू'); // असल स्रोत category टैग हुई
+    expect(r.ghar.remarksArr[0].cat).toBe('घरेलू'); // जहां सीधे डाला वहां भी टैग हो (अपनी ही category)
+    expect(r.vyapar.remarksArr).toBeFalsy(); // अलग acc — बिल्कुल न छुआ
+  });
+
+  test('openRmkModal — दूसरी category से आया रिमार्क 📁 टैग के साथ दिखे, अपनी ही category का रिमार्क बिना टैग', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '999', name: 'सीता', status: 'pending', amount: 200, remarksArr: [
+        { text: 'यहीं का रिमार्क', by: 'X', at: 'कल', cat: 'कुल उपभोक्ता' },
+        { text: 'घरेलू से आया', by: 'X', at: 'आज', cat: 'घरेलू' },
+      ] }]);
+    });
+    await loginLineman(page);
+    await page.evaluate(() => { activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; openRmkModal(0, '999'); });
+    const html = await page.evaluate(() => document.getElementById('prev-rmk-list').innerHTML);
+    expect(html).toContain('घरेलू से आया');
+    expect(html).toContain('📁 घरेलू'); // दूसरी category से आया — टैग दिखे
+    expect((html.match(/📁/g) || []).length).toBe(1); // सिर्फ़ एक टैग — अपनी ही category वाले पर नहीं
+  });
+
   test('कैश लिस्ट: नया-पुराना timestamp नियम (बोर्ड टकराव)', async ({ page }) => {
     await openApp(page);
     await loginJE(page); // असली publish (PUT) सिर्फ़ JE कर सकता है — _hscRetryPublish अब यह जांचता है

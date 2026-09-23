@@ -397,8 +397,11 @@ function openRmkModal(idx,acc){
   if(arr.length){
     cnt.textContent=arr.length;
     var html=arr.slice().reverse().map(function(r){
+      // r.cat तभी दिखाएं जब यह किसी और category से propagate होकर आया हो — यहीं (activeCat) में
+      // सीधे डाला गया हो तो टैग बेकार/redundant है
+      var catTag=(r.cat&&r.cat!==activeCat)?" <span class='prev-rmk-cat'>📁 "+escHtml(r.cat)+"</span>":"";
       return "<div class='prev-rmk-item'>"+
-        "<div class='prev-rmk-text'>💬 "+escHtml(r.text)+"</div>"+
+        "<div class='prev-rmk-text'>💬 "+escHtml(r.text)+catTag+"</div>"+
         "<div class='prev-rmk-meta'>— "+escHtml(r.by)+(r.at?" • "+r.at:"")+"</div>"+
       "</div>";
     }).join("");
@@ -445,9 +448,12 @@ function saveRmk(){
     }
   }
   var newText=document.getElementById("rmk-text").value.trim();
+  var newEntry=null;
   if(newText){
     if(!d[idx].remarksArr) d[idx].remarksArr=[];
-    d[idx].remarksArr.push({text:newText,by:CU.name,at:dtStr});
+    // cat टैग — यही वजह से बाद में दूसरी category में यह रिमार्क दिखे तो पता चले असल में कहां डाला गया था
+    newEntry={text:newText,by:CU.name,at:dtStr,cat:activeCat};
+    d[idx].remarksArr.push(newEntry);
     // Keep backward-compat field as latest remark text
     d[idx].remarks=newText;
   }
@@ -461,5 +467,35 @@ function saveRmk(){
   toast("✅ रिमार्क सेव! (कुल "+total+")","ok");
   fbSet(activeHQ,activeCat,d,prevSnap,null);
   propagateStatus(d[idx].acc,activeCat,rmkStatus,d[idx].paydate||"",dtStr,d[idx].ts);
+  // JE की शिकायत: किसी category में डाला कमेंट "कुल उपभोक्ता" में नहीं दिखता था — हर category उसी
+  // acc की अपनी अलग कॉपी रखती है, status तो propagateStatus पहले से मिला देता है, पर असली रिमार्क
+  // text कभी नहीं। अब नया रिमार्क बाकी सभी categories की उसी acc वाली कॉपी में भी जुड़ता है
+  if(newEntry) propagateRemark(d[idx].acc,activeCat,newEntry);
+}
+// ── हर category में एक ही Consumer No पर पड़ा रिमार्क अब सब जगह (कुल उपभोक्ता समेत) दिखे ──
+// एक ही उपभोक्ता (acc) कई categories में अपनी-अपनी अलग कॉपी के तौर पर रहता है (जैसे "कुल उपभोक्ता"
+// और JE की बनाई कोई खास सूची, दोनों में एक ही आदमी)। रिमार्क सिर्फ़ जहां डाला गया वहीं की कॉपी में
+// रह जाता था। अब हर नया रिमार्क entry अपनी मूल category ({cat:srcCat}) टैग रखता है और उसी acc की
+// बाकी सभी categories में भी push हो जाता है — कहीं से भी डाला कमेंट अब हर जगह दिखेगा, और कई अलग
+// categories से आए हों तो openRmkModal का 📁 टैग बताएगा हर एक असल में कहां से आया (देखें वहां)
+function propagateRemark(acc,srcCat,entry){
+  if(!acc||!entry) return;
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var cat=isCatEditable(i)?getCatName(activeHQ,i):CATS_DEFAULT[i];
+    if(cat===srcCat) continue;
+    var d=cGet(activeHQ,cat);
+    if(!d||!d.length) continue;
+    var prevSnap=JSON.parse(JSON.stringify(d));
+    var changed=false;
+    d.forEach(function(x){
+      if(x&&x.acc&&String(x.acc).trim()===String(acc).trim()){
+        if(!x.remarksArr) x.remarksArr=[];
+        x.remarksArr.push(entry);
+        x.remarks=entry.text; // backward-compat field — saveRmk जैसा ही
+        changed=true;
+      }
+    });
+    if(changed){ cSet(activeHQ,cat,d); fbSet(activeHQ,cat,d,prevSnap,null); }
+  }
 }
 
