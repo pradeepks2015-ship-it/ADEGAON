@@ -344,13 +344,16 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .ph-handle{width:34px;height:4px;border-radius:2px;background:var(--border);margin:8px auto 14px;}
 .ph-name{font-family:"Baloo 2",cursive;font-size:16px;font-weight:800;color:var(--gold2);margin-bottom:3px;}
 .ph-num{font-size:13px;color:var(--muted);margin-bottom:14px;letter-spacing:.5px;}
-.ph-msgtype{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
-.ph-mt-btn{flex:1 1 28%;min-width:90px;padding:9px 6px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-family:"Noto Sans Devanagari",sans-serif;font-size:11.5px;font-weight:700;cursor:pointer;transition:transform .12s,background .15s,border-color .15s,color .15s;text-align:center;line-height:1.3;}
+/* तीनों संदेश-बटन हमेशा बराबर चौड़े/ऊंचे — grid के 3 बराबर कॉलम; ✏️ अपनी जगह नहीं लेता
+   (पहले flex में ✏️ की 34px चौड़ाई तीसरे बटन से कटती थी, इसलिए वह पतला-लंबा दिखता था) */
+.ph-msgtype{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:16px;}
+.ph-mt-btn{min-width:0;padding:9px 6px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-family:"Noto Sans Devanagari",sans-serif;font-size:11.5px;font-weight:700;cursor:pointer;transition:transform .12s,background .15s,border-color .15s,color .15s;text-align:center;line-height:1.3;}
 .ph-mt-btn:active{transform:scale(.97);}
 .ph-mt-btn.active{background:linear-gradient(135deg,#0fa578,#0a8c68 55%,var(--green));border-color:transparent;color:#fff;}
-.ph-mt-custom-slot{flex:1 1 28%;min-width:100px;display:flex;gap:5px;}
+.ph-mt-custom-slot{position:relative;display:flex;min-width:0;}
 .ph-mt-custom-slot .ph-mt-btn{flex:1;min-width:0;}
-.ph-mt-edit-btn{flex:0 0 auto;width:34px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;line-height:1;cursor:pointer;}
+/* ✏️ (सिर्फ़ JE) — बटन के ऊपरी-दाएं कोने पर छोटा गोल बैज */
+.ph-mt-edit-btn{position:absolute;top:-13px;right:-9px;z-index:1;width:26px;height:26px;padding:0;border-radius:50%;border:1px solid var(--border);background:var(--card);box-shadow:0 2px 6px rgba(0,0,0,.18);font-size:12px;line-height:1;cursor:pointer;}
 .ph-mt-edit-btn:active{transform:scale(.95);}
 .ph-custom-wrap{margin:-6px 0 16px;}
 .ph-custom-wrap .fta{height:90px;}
