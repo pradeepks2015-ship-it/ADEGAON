@@ -4581,6 +4581,29 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(r[0].x).toContain('AppCheck token'); // token था या नहीं — यही असली सुराग है
   });
 
+  test('fetch stream की मनाही — लॉग में तरीका (fetch), HTTP status और सर्वर का जवाब भी दर्ज हो', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const logs = [];
+      window.logErr = function (c, m, x) { if (c === 'sse-never-opened') logs.push(String(x || '')); };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (opts && opts.headers && opts.headers.Accept === 'text/event-stream') {
+          return Promise.resolve(new Response('{\n  "error" : "Permission denied"\n}', { status: 403 }));
+        }
+        return orig(url, opts);
+      };
+      _sseNeverOpenedLogged = false;
+      _openLive(activeHQ, activeCat);
+      setTimeout(() => { window.fetch = orig; stopListen(); resolve(logs); }, 300);
+    }));
+    expect(r.length).toBe(1);
+    expect(r[0]).toContain('तरीका: fetch');
+    expect(r[0]).toContain('HTTP 403');
+    expect(r[0]).toContain('"error" : "Permission denied"');
+  });
+
   test('जुड़ने के बाद टूटे (जैसे token expire) या नेट का झटका (readyState 0) हो — तो "कभी नहीं जुड़ा" वाला लॉग न बने', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);

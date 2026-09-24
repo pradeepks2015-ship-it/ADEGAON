@@ -585,12 +585,19 @@ var _esRetryT=null;
 // पक्का करने के लिए: connection एक बार भी खुले बिना सीधे CLOSED हो तो "एरर लॉग" में दर्ज करो —
 // हर ऐप-खुलने पर सिर्फ़ एक बार, ताकि LOGS न भरे
 var _sseNeverOpenedLogged=false;
-function _sseLogNeverOpened(hq,cat){
+// v9.164: v9.163 (fetch stream) के बाद भी एक device (मढ़ी) से यह entry आई — अब साथ में यह भी दर्ज
+// होता है कि किस तरीक़े से जुड़ने की कोशिश थी (fetch stream या पुराना EventSource — बहुत पुराने
+// browser पर fetch stream नहीं चलता), और fetch में सर्वर ने कौन-सा HTTP status/जवाब दिया
+function _sseLogNeverOpened(hq,cat,es){
   if(_sseNeverOpenedLogged) return;
   _sseNeverOpenedLogged=true;
+  var how=(typeof FetchLiveSource==="function"&&es instanceof FetchLiveSource)?"fetch":"EventSource";
+  var extra=" • तरीका: "+how;
+  if(es&&es.httpStatus) extra+=" • HTTP "+es.httpStatus;
+  if(es&&es.errText) extra+=" • जवाब: "+es.errText;
   logErr("sse-never-opened",
     "live-sync एक बार भी नहीं जुड़ा — सर्वर ने connection मना किया (App Check या account की दिक़्क़त)",
-    hq+"/"+cat+" • AppCheck token: "+(AC_TOKEN?"था":"नहीं था")+" • login token: "+(ID_TOKEN?"था":"नहीं था"));
+    hq+"/"+cat+" • AppCheck token: "+(AC_TOKEN?"था":"नहीं था")+" • login token: "+(ID_TOKEN?"था":"नहीं था")+extra);
 }
 
 // ── कदम 2: header भेज सकने वाला live-sync (fetch stream) ────────────────────────────────────
@@ -622,7 +629,14 @@ function FetchLiveSource(url){
   fetch(url,{headers:{"Accept":"text/event-stream"},cache:"no-store",signal:self._ctrl.signal})
     .then(function(r){
       if(self._closed) return;
-      if(!r.ok||!r.body){ self._fail(2); return; }
+      if(!r.ok||!r.body){
+        // मनाही की असली वजह "एरर लॉग" के लिए रख लो — HTTP status + सर्वर का छोटा-सा जवाब
+        // (जैसे "Permission denied" या App Check वाली error) — देखें _sseLogNeverOpened
+        self.httpStatus=r.status;
+        var done=function(t){ self.errText=String(t||"").replace(/\s+/g," ").slice(0,120); self._fail(2); };
+        if(r.text) r.text().then(done,function(){ done(""); }); else done("");
+        return;
+      }
       self.readyState=1;
       if(self.onopen) self.onopen();
       var reader=r.body.getReader(),dec=new TextDecoder(),buf="";
@@ -861,7 +875,7 @@ function _openLive(hq,cat){
         setSyncStatus(false);
         // एक बार भी जुड़े बिना सीधे CLOSED = सर्वर ने HTTP स्तर पर मना किया (नेट का झटका होता तो
         // readyState 0 होता) — देखें _sseLogNeverOpened
-        if(!esOpened&&es.readyState===2&&navigator.onLine) _sseLogNeverOpened(hq,cat);
+        if(!esOpened&&es.readyState===2&&navigator.onLine) _sseLogNeverOpened(hq,cat,es);
         if(es.readyState===0){ // CONNECTING — नेट का झटका, browser ~3 सेकंड में खुद जोड़ने वाला है
           var stable=_esOpenedAt&&(Date.now()-_esOpenedAt>=ES_STABLE_MS);
           _esBackoffMs=stable||!_esBackoffMs?ES_BACKOFF_BASE_MS:Math.min(_esBackoffMs*2,ES_BACKOFF_MAX_MS);
