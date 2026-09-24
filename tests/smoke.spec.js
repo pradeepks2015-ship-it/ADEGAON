@@ -2475,8 +2475,9 @@ test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
       let count = 0;
       const orig = window.fetch;
       window.fetch = function (url, opts) {
-        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ10/कुल_उपभोक्ता') > -1 && opts && opts.method === 'PATCH') {
-          count++;
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ10/कुल_उपभोक्ता') > -1) {
+          // असली 401 device पर PATCH से पहले वाली रिमार्क-पढ़ाई (_mergeServerRemarks) भी 401 ही पाती है
+          if (opts && opts.method === 'PATCH') count++;
           return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) });
         }
         return orig(url, opts);
@@ -5490,6 +5491,184 @@ test.describe('Replace mode अपलोड — फ़ाइल में ही
       return cGet('आदेगांव', 'कुल उपभोक्ता').length;
     });
     expect(r).toBe(2); // दोनों acc-रहित records बने रहे, ग़लती से duplicate मानकर हटे नहीं
+  });
+});
+
+// (ख) पुरानी कॉपी वाला फ़ोन सेव करे तो सर्वर पर पड़ा किसी और का रिमार्क न दबे — per-record PATCH पूरा
+// record भेजता है, इसलिए भेजने से पहले उस record का सर्वर वाला remarksArr पढ़कर मिलाया जाता है
+test.describe('सेव से पहले सर्वर के रिमार्क मिलाओ — पुरानी कॉपी वाला फ़ोन किसी का रिमार्क न मिटाए', () => {
+  const setup = (page, opts) => page.evaluate((o) => new Promise((resolve) => {
+    Object.defineProperty(navigator, 'onLine', { get: () => o.online !== false, configurable: true });
+    var hq = 'टेस्ट HQ31', cat = 'कुल उपभोक्ता';
+    MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+    var serverRmk = [{ text: 'कल शाम आएंगे', by: 'राजू', at: '23/9/2026, 6:00 pm' }];
+    var gets = [], patches = [];
+    var orig = window.fetch;
+    window.fetch = function (url, init) {
+      var u = String(url);
+      if (u.indexOf(fbPath(hq, cat)) > -1) {
+        if (init && init.method === 'PATCH') {
+          patches.push(JSON.parse(init.body));
+          return Promise.resolve(new Response('{}', { status: o.patchStatus || 200 }));
+        }
+        if (u.indexOf('/remarksArr.json') > -1) {
+          gets.push(u);
+          return Promise.resolve(new Response(JSON.stringify(serverRmk), { status: 200 }));
+        }
+      }
+      return orig(url, init);
+    };
+    var n = o.count || 1;
+    var prev = [], arr = [];
+    for (var i = 0; i < n; i++) {
+      prev.push({ acc: String(100 + i), name: 'उपभोक्ता', status: 'pending', o: i, remarksArr: [] });
+      arr.push({ acc: String(100 + i), name: 'उपभोक्ता', status: 'paid', paydate: '24/9/2026', o: i, remarksArr: o.myRmk ? [{ text: 'मेरा', by: 'JE', at: '24/9/2026' }] : [] });
+    }
+    cSet(hq, cat, arr);
+    fbSet(hq, cat, arr, prev, function (ok) {
+      var after = function () {
+        window.fetch = orig;
+        resolve({ ok: ok, gets: gets.length, patches: patches, cache: cGet(hq, cat)[0].remarksArr.map(function (r) { return r.text; }) });
+      };
+      if (o.thenFlush) {
+        o.patchStatus = 200;
+        serverRmk.push({ text: 'offline के बीच डाला', by: 'मोहन', at: '24/9/2026, 9:00 am' });
+        flushPending();
+        setTimeout(after, 300);
+      } else after();
+    });
+  }), opts);
+
+  test('"वसूल" मार्क करने वाले फ़ोन पर रिमार्क नहीं था — सर्वर वाला रिमार्क PATCH में जाए, फ़ोन पर भी दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await setup(page, {});
+    expect(r.ok).toBe(true);
+    expect(r.gets).toBe(1);
+    expect(r.patches[0]['100'].status).toBe('paid');
+    expect(r.patches[0]['100'].remarksArr.map((x) => x.text)).toEqual(['कल शाम आएंगे']);
+    expect(r.cache).toEqual(['कल शाम आएंगे']);
+  });
+
+  test('अपना नया रिमार्क भी — सर्वर वाला पहले, अपना बाद में, कोई दोहराव नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await setup(page, { myRmk: true });
+    const texts = r.patches[0]['100'].remarksArr.map((x) => x.text);
+    expect(texts).toEqual(['कल शाम आएंगे', 'मेरा']);
+    expect(r.patches[0]['100'].remarks).toBe('मेरा');
+  });
+
+  test('थोक बदलाव (10 से ज़्यादा records, जैसे अपलोड) — हर record की अलग पढ़ाई न हो', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await setup(page, { count: 11 });
+    expect(r.gets).toBe(0);
+    expect(Object.keys(r.patches[0]).length).toBe(11);
+  });
+
+  test('offline में अटका patch — नेट आने पर भेजने से पहले इस बीच सर्वर पर आया रिमार्क भी मिले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await setup(page, { patchStatus: 503, thenFlush: true });
+    expect(r.ok).toBe(false);
+    expect(r.patches.length).toBe(2);
+    expect(r.patches[1]['100'].remarksArr.map((x) => x.text)).toEqual(['कल शाम आएंगे', 'offline के बीच डाला']);
+  });
+});
+
+// असली शिकायत (JE, बीबी): कल डाले रिमार्क आज गायब। Replace/"हटाएं → अपलोड" में पहले सिर्फ़ "वसूल"
+// उपभोक्ताओं के रिमार्क नई सूची में जाते थे — बाकी (अवसूल) उपभोक्ताओं के सब मिट जाते थे
+test.describe('अपलोड में पुराने रिमार्क सुरक्षित — वसूल हो या बाकी, हर उपभोक्ता के', () => {
+  const rmk = (t, by, at, cat) => ({ text: t, by: by || 'राजू', at: at || '23/9/2026, 5:00 pm', cat: cat });
+
+  test('Replace — बाकी (अवसूल) उपभोक्ता का पुराना रिमार्क नई सूची में आए, फ़ाइल वाला भी बचे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate((R) => {
+      cSet('बीबी', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'pending', amount: 100, remarksArr: [R.a] },
+        { acc: '2', name: 'श्याम', status: 'paid', paydate: new Date().toLocaleDateString('hi-IN'), amount: 100, remarksArr: [R.b] },
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'बीबी';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      parsedRows = [
+        { acc: '1', name: 'राम', amount: 300, status: 'pending', remarksArr: [R.f] },
+        { acc: '2', name: 'श्याम', amount: 300, status: 'pending', remarksArr: [] },
+        { acc: '3', name: 'नया', amount: 300, status: 'pending', remarksArr: [] },
+      ];
+      confirmUpload();
+      var d = cGet('बीबी', 'कुल उपभोक्ता');
+      var by = {}; d.forEach(function (x) { by[x.acc] = (x.remarksArr || []).map(function (y) { return y.text; }); });
+      return { by: by, last1: d.find(function (x) { return x.acc === '1'; }).remarks, toast: document.getElementById('toast').textContent };
+    }, { a: rmk('कल आएंगे'), b: rmk('जमा कर दिया'), f: rmk('फ़ाइल वाला', 'JE', '24/9/2026') });
+    expect(r.by['1']).toEqual(['कल आएंगे', 'फ़ाइल वाला']); // पुराना पहले, फ़ाइल का आखिर में
+    expect(r.last1).toBe('फ़ाइल वाला');
+    expect(r.by['2']).toEqual(['जमा कर दिया']); // वसूल वाले का पहले की तरह
+    expect(r.by['3']).toEqual([]);
+    expect(r.toast).toContain('2 के रिमार्क सुरक्षित');
+  });
+
+  test('"हटाएं" के बाद अपलोड — backup से बाकी उपभोक्ता के रिमार्क वापस आएं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate((R) => {
+      window.fetch = function () { return Promise.resolve(new Response('null', { status: 200 })); };
+      cSet('बीबी', 'घरेलू', [{ acc: '7', name: 'राम', status: 'pending', amount: 100, remarksArr: [R.a] }]);
+      fbDel('बीबी', 'घरेलू');
+      var afterDel = cGet('बीबी', 'घरेलू').length;
+      openUpModal();
+      document.getElementById('up-hq').value = 'बीबी';
+      document.getElementById('up-cat').value = 'घरेलू';
+      setUpMode('replace');
+      parsedRows = [{ acc: '7', name: 'राम', amount: 300, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      return { afterDel: afterDel, texts: cGet('बीबी', 'घरेलू')[0].remarksArr.map(function (y) { return y.text; }) };
+    }, { a: rmk('मीटर बदलवाना है') });
+    expect(r.afterDel).toBe(0);
+    expect(r.texts).toEqual(['मीटर बदलवाना है']);
+  });
+
+  test('नई सूची — उपभोक्ता दूसरी category में पहले से हो तो उसके रिमार्क 📁 टैग के साथ आएं, दोहराव नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate((R) => {
+      cSet('बीबी', 'कुल उपभोक्ता', [{ acc: '9', name: 'राम', status: 'pending', amount: 100, remarksArr: [R.a, R.p] }]);
+      cSet('बीबी', 'व्यवसाय', [{ acc: '9', name: 'राम', status: 'pending', amount: 100, remarksArr: [R.p] }]);
+      cSet('बीबी', 'सूची-2', []);
+      openUpModal();
+      document.getElementById('up-hq').value = 'बीबी';
+      document.getElementById('up-cat').value = 'सूची-2';
+      setUpMode('merge'); // खाली category — replace वाला रास्ता चलेगा
+      parsedRows = [{ acc: '9', name: 'राम', amount: 300, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      return cGet('बीबी', 'सूची-2')[0].remarksArr;
+    }, { a: rmk('कुल वाला'), p: rmk('दोनों में फैला', 'राजू', '23/9/2026, 6:00 pm', 'व्यवसाय') });
+    expect(r.map((y) => y.text)).toEqual(['कुल वाला', 'दोनों में फैला']); // propagate हुआ रिमार्क एक ही बार
+    expect(r[0].cat).toBe('कुल उपभोक्ता'); // मूल category टैग जुड़ा
+    expect(r[1].cat).toBe('व्यवसाय');
+  });
+
+  test('Merge — सिर्फ़ नए जुड़े उपभोक्ताओं में दूसरी category के रिमार्क आएं, पुराने records अछूते', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate((R) => {
+      cSet('बीबी', 'कुल उपभोक्ता', [{ acc: '5', name: 'नया', status: 'pending', amount: 100, remarksArr: [R.a] }]);
+      cSet('बीबी', 'घरेलू', [{ acc: '4', name: 'पुराना', status: 'pending', amount: 100, remarksArr: [] }]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'बीबी';
+      document.getElementById('up-cat').value = 'घरेलू';
+      setUpMode('merge');
+      parsedRows = [{ acc: '5', name: 'नया', amount: 300, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      var d = cGet('बीबी', 'घरेलू');
+      return { n4: d.find((x) => x.acc === '4').remarksArr.length, t5: d.find((x) => x.acc === '5').remarksArr.map((y) => y.text), toast: document.getElementById('toast').textContent };
+    }, { a: rmk('कुल में लिखा') });
+    expect(r.n4).toBe(0);
+    expect(r.t5).toEqual(['कुल में लिखा']);
+    expect(r.toast).toContain('1 के रिमार्क साथ आए');
   });
 });
 

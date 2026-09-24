@@ -315,6 +315,66 @@ function processRows(rows){
   document.getElementById("btn-up-ok").style.opacity=canUpload?"1":".5";
 }
 
+// ── अपलोड में पुराने रिमार्क सुरक्षित — JE की शिकायत (बीबी): कल डाले रिमार्क आज गायब ──
+// Replace/"हटाएं → अपलोड" में पहले सिर्फ़ "वसूल" उपभोक्ताओं के रिमार्क नई सूची में जाते थे, बाकी
+// (अवसूल) उपभोक्ताओं के सब मिट जाते थे। और नई सूची (जैसे JE की कोई खास सूची) में आया उपभोक्ता
+// बाकी categories में पहले से पड़े अपने रिमार्क के बिना आता था। अब इस HQ की हर category (इसी समेत)
+// की device-कॉपी + "हटाएं" के समय बना backup (7 दिन, देखें fbDel) — सबसे उसी Consumer No के
+// रिमार्क इकट्ठा करके नई सूची के record में जोड़े जाते हैं (text|by|at से dedup — दोहराव नहीं)
+var RMK_BK_MAX_AGE_MS=7*24*60*60*1000;
+function _upCollectOldRemarks(hq,cat){
+  var byAcc={};
+  function add(acc,arr,srcCat){
+    if(!acc||!arr||!arr.length) return;
+    var k=String(acc).trim();
+    var list=byAcc[k]||(byAcc[k]=[]);
+    arr.forEach(function(r){
+      if(!r||!r.text) return;
+      var e=JSON.parse(JSON.stringify(r));
+      // दूसरी category से आया और मूल-category टैग नहीं है — 📁 टैग के लिए जोड़ दें (openRmkModal)
+      if(!e.cat&&srcCat&&srcCat!==cat) e.cat=srcCat;
+      list.push(e);
+    });
+  }
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var c=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
+    (cGet(hq,c)||[]).forEach(function(x){ if(x) add(x.acc,x.remarksArr,c); });
+  }
+  ["vt_rmkbk_","vt_paidbk_"].forEach(function(pre){
+    try{
+      var raw=localStorage.getItem(pre+cKey(hq,cat));
+      if(!raw) return;
+      var o=JSON.parse(raw);
+      if(Date.now()-(o.t||0)>=RMK_BK_MAX_AGE_MS) return;
+      Object.keys(o.m||{}).forEach(function(acc){
+        var v=o.m[acc];
+        add(acc,Array.isArray(v)?v:(v&&v.remarksArr),cat);
+      });
+    }catch(e){}
+  });
+  return byAcc;
+}
+// पुराने रिमार्क पहले, फ़ाइल में आया रिमार्क (अगर हो) आखिर में — दोहराव हटाकर। लौटाता है कितने
+// records में कुछ जुड़ा
+function _upApplyOldRemarks(recs,byAcc){
+  var n=0;
+  (recs||[]).forEach(function(r){
+    if(!r||!r.acc) return;
+    var old=byAcc[String(r.acc).trim()];
+    if(!old||!old.length) return;
+    var seen={},out=[];
+    old.concat(r.remarksArr||[]).forEach(function(x){
+      var k=rmkKeyOf(x);
+      if(!seen[k]){ seen[k]=1; out.push(x); }
+    });
+    if(out.length===(r.remarksArr||[]).length) return;
+    r.remarksArr=out;
+    r.remarks=out[out.length-1].text; // backward-compat field — saveRmk जैसा ही
+    n++;
+  });
+  return n;
+}
+
 function confirmUpload(){
   try{
     var hq=document.getElementById("up-hq").value;
@@ -330,13 +390,16 @@ function confirmUpload(){
       var _maxR=getMaxRecords(cat);
       if(ex.length>0){
         var merged=ex.slice();
-        var added=0,dupes=0;
+        var added=0,dupes=0,newRecs=[];
         arr.forEach(function(r){
           if(merged.find(function(e){return e.acc===r.acc;})){dupes++;}
-          else if(merged.length<_maxR){merged.push(r);added++;}
+          else if(merged.length<_maxR){merged.push(r);newRecs.push(r);added++;}
         });
+        // नए जुड़े उपभोक्ता बाकी categories में पहले से हों तो उनके रिमार्क साथ आएं (पुराने records अछूते)
+        var rmkKeptM=_upApplyOldRemarks(newRecs,_upCollectOldRemarks(hq,cat));
         arr=merged;
         var msg="✅ "+added+" नए जोड़े";
+        if(rmkKeptM) msg+=" | 💬 "+rmkKeptM+" के रिमार्क साथ आए";
         if(dupes>0) msg+=" | "+dupes+" duplicate skip";
         msg+=" | कुल: "+arr.length+"/"+_maxR;
         _doSave(hq,cat,arr);
@@ -407,11 +470,13 @@ function confirmUpload(){
         if(pm&&r.status!=="paid"){
           r.status="paid";r.paydate=pm.paydate;
           if(pm.by){r.updatedBy=pm.by;r.updatedAt=pm.at;}
-          if(pm.remarksArr&&pm.remarksArr.length)r.remarksArr=pm.remarksArr;
           r.ts=pm.ts||r.ts;kept++;
         }
       });
     }
+    // रिमार्क "वसूली सुरक्षित रखें" checkbox से बंधे नहीं — वसूल हो या बाकी, हर उपभोक्ता के पुराने
+    // रिमार्क नई सूची में जाएं (पहले सिर्फ़ ऊपर वाले paid-restore में जाते थे)
+    var rmkKept=_upApplyOldRemarks(arr,_upCollectOldRemarks(hq,cat));
     _doSave(hq,cat,arr);
     // असली bug (JE की रिपोर्ट): एक category में लेजर अपलोड होने से उसकी "वसूल" स्थिति बहाल होती है
     // (ऊपर वाला backup-restore), पर वह सिर्फ़ उसी category तक सीमित थी — किसी और category के अपने
@@ -419,7 +484,7 @@ function confirmUpload(){
     // वसूल हो चुका हो। कैश-लिस्ट अपलोड में reconcileHQ() पहले से यही ठीक करता था — अब सामान्य
     // लेजर अपलोड के बाद भी यही चले, ताकि "किसी भी category में वसूल = हर category में वसूल" हमेशा सच रहे
     var _rec2=reconcileHQ(hq);
-    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+(dupSkip?" | "+dupSkip+" duplicate Consumer No skip":"")+(_rec2?" 🔁 "+_rec2+" अन्य categories में मिलाया":"")+" 🔥","ok");
+    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+(rmkKept?" 💬 "+rmkKept+" के रिमार्क सुरक्षित":"")+(dupSkip?" | "+dupSkip+" duplicate Consumer No skip":"")+(_rec2?" 🔁 "+_rec2+" अन्य categories में मिलाया":"")+" 🔥","ok");
 
   }catch(err){
     logErr("upload-confirm",err,activeHQ+"/"+(document.getElementById("up-cat")?document.getElementById("up-cat").value:""));
