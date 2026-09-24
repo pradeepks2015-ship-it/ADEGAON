@@ -90,18 +90,24 @@ function mergeRecord(l,st){
   out.remarksArr=arr;
   return out;
 }
+// Consumer No का मिलान हमेशा खाली जगह हटाकर — असली bug (JE की रिपोर्ट, मढ़ी/कुल उपभोक्ता, 1134019486):
+// कहीं acc में आगे-पीछे space रह जाए तो एक ही उपभोक्ता "अलग" मान लिया जाता और सूची में दूसरा card
+// जुड़ जाता (Firebase की per-record key हमेशा trimmed acc होती है, इसलिए दोनों तरफ़ ऐसा ही मिलान चाहिए)
+function accKeyOf(x){ return (x&&x.acc!=null)?String(x.acc).trim():""; }
 function mergeArrays(local,server){
   if(!server||!server.length) return local||[];
   if(!local||!local.length) return server;
   var sMap={};
-  server.forEach(function(x){if(x&&x.acc)sMap[x.acc]=x;});
+  server.forEach(function(x){var k=accKeyOf(x);if(k)sMap[k]=x;});
   var usedAcc={};
   var out=local.map(function(l){
-    if(l&&l.acc&&sMap[l.acc]){usedAcc[l.acc]=1;return mergeRecord(l,sMap[l.acc]);}
+    var k=accKeyOf(l);
+    if(k&&sMap[k]){usedAcc[k]=1;return mergeRecord(l,sMap[k]);}
     return l;
   });
   server.forEach(function(st){
-    if(st&&st.acc&&!usedAcc[st.acc]) out.push(st);
+    var k=accKeyOf(st);
+    if(k&&!usedAcc[k]) out.push(st);
   });
   return out;
 }

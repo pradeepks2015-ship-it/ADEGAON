@@ -232,6 +232,22 @@ function _checkMigrationRevert(hq,cat,raw){
   });
 }
 
+// एक ही (trimmed) Consumer No के कई records को एक में मिलाना — पहली वाली जगह (क्रम) पर रहे;
+// mergeRecord (storage.js): जिसका ts नया उसके fields, रिमार्क दोनों के (text|by|at से dedup)।
+// acc-रहित records जैसे हैं वैसे (वो पहले ही "unsafe" में रुक जाते हैं)
+function _migMergeDupes(arr){
+  var out=[],at={},merged=0;
+  (arr||[]).forEach(function(x){
+    if(!x) return;
+    var k=accKeyOf(x);
+    if(!k){ out.push(x); return; }
+    if(at.hasOwnProperty(k)){ out[at[k]]=mergeRecord(x,out[at[k]]); merged++; return; } // पहले वाले के रिमार्क पहले
+    at[k]=out.length;
+    out.push(x);
+  });
+  return {arr:out,merged:merged};
+}
+
 // array → per-record object — हर record की key उसका acc, क्रम बनाए रखने के लिए 'o' field जोड़ें
 // (सिर्फ वही record शामिल जिनका acc हो — dry-run पहले ही पुष्टि कर चुका होता है कि सब ठीक हैं)
 function _migConvertToObject(arr){
@@ -241,6 +257,7 @@ function _migConvertToObject(arr){
     var k=String(x.acc).trim();
     var rec=JSON.parse(JSON.stringify(x));
     rec.o=i;
+    rec.acc=k; // key जैसा ही — आगे-पीछे की खाली जगह record में भी न रहे
     obj[k]=rec;
   });
   return obj;
@@ -257,7 +274,13 @@ function _migrateOne(hq,cat,cb){
       if(!raw){ cb({hq:hq,cat:cat,status:"empty"}); return; }
       if(!Array.isArray(raw)){ cb({hq:hq,cat:cat,status:"already"}); return; }
       var a=_migAnalyzeList(raw);
-      if(a.missingAcc||a.dupAcc||a.illegalAcc){ cb({hq:hq,cat:cat,status:"unsafe",a:a}); return; }
+      if(a.missingAcc||a.illegalAcc){ cb({hq:hq,cat:cat,status:"unsafe",a:a}); return; }
+      // duplicate Consumer No अब रुकावट नहीं — JE की मंज़ूरी (मढ़ी/कुल उपभोक्ता, 1134019486 के दो card):
+      // per-record फॉर्मेट में एक acc की एक ही जगह होती है, और एक ही सूची में एक Consumer No = एक ही
+      // उपभोक्ता। इसलिए दोनों को मिलाकर एक कर दो (_migMergeDupes) — नया बदलाव जीते, रिमार्क सबके बचें।
+      // पहले यहां "unsafe" पर रुक जाते थे, और सूची पुराने format में ही अटकी रहती
+      var merged=0;
+      if(a.dupAcc){ var md=_migMergeDupes(raw); raw=md.arr; merged=md.merged; }
       var obj=_migConvertToObject(raw);
       fetch(FB+"/"+fbPath(hq,cat)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(obj)})
         .then(function(r){
@@ -271,7 +294,8 @@ function _migrateOne(hq,cat,cb){
           return fetch(FB+"/MIGRATED/"+hqKey(hq)+"/"+catKey(cat)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:"true"}).catch(function(){});
         })
         .then(function(){
-          cb({hq:hq,cat:cat,status:"ok",count:Object.keys(obj).length});
+          if(merged) logErr("migration-dup-merged",merged+" duplicate Consumer No वाले card एक में मिलाए गए (नया बदलाव रखा, सबके रिमार्क जोड़े)",hq+"/"+cat);
+          cb({hq:hq,cat:cat,status:"ok",count:Object.keys(obj).length,merged:merged});
         })
         .catch(function(e){ logErr("migrate-fail",e,hq+"/"+cat); cb({hq:hq,cat:cat,status:"error",err:String(e&&e.message||e)}); });
     })

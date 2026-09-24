@@ -488,11 +488,13 @@ function _fbSendPatch(hq,cat,patch,cb){
 // या acc: null यानी हटाया गया) local array पर लगाना, ताकि पूरी लिस्ट दोबारा मंगाने की ज़रूरत न पड़े
 function _applyPatchToArray(arr,patch){
   var byAcc={};
-  (arr||[]).forEach(function(x,i){ if(x&&x.acc!=null) byAcc[String(x.acc)]=i; });
+  // trimmed मिलान — देखें storage.js: accKeyOf (वरना space वाले acc पर एक ही उपभोक्ता का दूसरा card जुड़ जाता)
+  (arr||[]).forEach(function(x,i){ var ak=accKeyOf(x); if(ak) byAcc[ak]=i; });
   var out=(arr||[]).slice();
   var removeIdx=[];
-  Object.keys(patch).forEach(function(k){
-    var val=patch[k];
+  Object.keys(patch).forEach(function(pk){
+    var val=patch[pk];
+    var k=String(pk).trim();
     if(val===null){
       if(byAcc.hasOwnProperty(k)) removeIdx.push(byAcc[k]);
     } else if(byAcc.hasOwnProperty(k)){
