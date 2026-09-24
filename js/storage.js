@@ -141,8 +141,12 @@ function flushPending(){
     if(it.patch){
       // migrated HQ/श्रेणी — सिर्फ offline में बदले records PATCH करो; server के बाकी records को हाथ मत लगाओ
       // (इसलिए यहां fetch+merge की ज़रूरत नहीं — PATCH अपने-आप बाकी keys को बिना छेड़े रहने देता है)
-      fetch(FB+"/"+fbPath(it.hq,it.cat)+".json",{
-        method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(it.patch)
+      // offline में बने patch में भी भेजने से पहले सर्वर के रिमार्क मिलाओ — इस बीच किसी और ने
+      // उसी उपभोक्ता पर रिमार्क डाला हो तो वो न दबे (देखें database.js: _mergeServerRemarks)
+      _mergeServerRemarks(it.hq,it.cat,it.patch).then(function(){
+        return fetch(FB+"/"+fbPath(it.hq,it.cat)+".json",{
+          method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(it.patch)
+        });
       }).then(function(r){
         if(!r.ok)throw new Error("HTTP "+r.status);
         clearPendingKey(k);

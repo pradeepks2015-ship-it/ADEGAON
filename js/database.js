@@ -400,6 +400,60 @@ function _noAccLabels(arr){
     .map(function(x){ return (x.name||"(नाम नहीं)")+(x.addr?" — "+x.addr:"")+(x.phone?" — "+x.phone:""); });
 }
 
+// ── सर्वर पर पहले से पड़े रिमार्क कभी न दबें — JE की शिकायत (बीबी): कल डाले रिमार्क आज गायब ──
+// per-record PATCH पूरा record भेजता है। जिस फ़ोन पर उस उपभोक्ता की कॉपी पुरानी हो (किसी और ने बाद
+// में रिमार्क डाला, इस फ़ोन तक अभी नहीं पहुंचा), वह "वसूल" मार्क करे या अपना रिमार्क डाले तो सर्वर
+// का record उसी पुरानी कॉपी से बदल जाता — दूसरे का रिमार्क चुपचाप मिट जाता। अब PATCH से ठीक पहले
+// बदले records के सर्वर वाले remarksArr (सिर्फ़ वही छोटा हिस्सा) पढ़कर अपने में मिला लेते हैं
+// (text|by|at से dedup — ऐप में रिमार्क हटाने का कोई रास्ता नहीं, इसलिए जोड़ना हमेशा सुरक्षित है)।
+// थोक बदलाव (अपलोड जैसे, REMARK_MERGE_MAX से ज़्यादा records) में नहीं — वहां हर record की अलग
+// पढ़ाई भारी पड़ती, और अपलोड पुराने रिमार्क पहले ही खुद जोड़ लेता है (देखें upload.js)।
+// पढ़ाई नाकाम (offline) हो तो patch जैसा है वैसा — PATCH भी fail होकर pending बनेगा, और
+// flushPending भेजने से पहले यही मिलान दोबारा करेगा
+var REMARK_MERGE_MAX=10;
+var REMARK_MERGE_TIMEOUT_MS=5000;
+function _mergeServerRemarks(hq,cat,patch){
+  var keys=Object.keys(patch||{}).filter(function(k){ return patch[k]&&typeof patch[k]==="object"&&k.indexOf("/")<0; });
+  if(!keys.length||keys.length>REMARK_MERGE_MAX||!navigator.onLine) return Promise.resolve(patch);
+  var gained={};
+  return Promise.all(keys.map(function(k){
+    // धीमे नेट पर यह पढ़ाई असली सेव को देर तक न रोके — REMARK_MERGE_TIMEOUT_MS बाद जैसा है वैसा भेजो
+    return Promise.race([
+      fetch(FB+"/"+fbPath(hq,cat)+"/"+encodeURIComponent(k)+"/remarksArr.json?t="+Date.now()).then(_fbJson),
+      new Promise(function(_,rej){ setTimeout(function(){ rej(new Error("timeout")); },REMARK_MERGE_TIMEOUT_MS); })
+    ])
+      .then(function(srv){
+        trackUsageOf(srv);
+        if(!srv||typeof srv!=="object") return;
+        var srvArr=Array.isArray(srv)?srv:Object.keys(srv).map(function(i){ return srv[i]; });
+        var mine=patch[k].remarksArr||[];
+        var seen={},out=[];
+        srvArr.concat(mine).forEach(function(r){
+          if(!r||typeof r!=="object") return;
+          var rk=rmkKeyOf(r);
+          if(!seen[rk]){ seen[rk]=1; out.push(r); }
+        });
+        if(out.length===mine.length) return; // सर्वर पर ऐसा कुछ नहीं जो इस फ़ोन पर न हो
+        patch[k].remarksArr=out;
+        patch[k].remarks=out[out.length-1].text; // backward-compat field — saveRmk जैसा ही
+        gained[k]=out;
+      })
+      .catch(function(){});
+  })).then(function(){
+    // सर्वर से मिले रिमार्क इस फ़ोन की कॉपी में भी तुरंत दिखें (SSE के भरोसे न रहें)
+    if(Object.keys(gained).length){
+      var d=cGet(hq,cat)||[];
+      d.forEach(function(x){
+        var k=x&&x.acc!=null?String(x.acc).trim():"";
+        if(k&&gained[k]){ x.remarksArr=JSON.parse(JSON.stringify(gained[k])); x.remarks=gained[k][gained[k].length-1].text; }
+      });
+      cSet(hq,cat,d);
+      if(CU&&hq===activeHQ&&cat===activeCat){ renderSummaryWith(d); renderListWith(d); }
+    }
+    return patch;
+  });
+}
+
 function _fbPutPerRecord(hq,cat,prev,arr,cb){
   // acc-रहित record किसी भी तरीक़े से per-record सेव नहीं हो सकता (acc ही उसकी key है) — बाक़ी
   // सबका patch भेज दें, और JE को साफ़ बताएं कि किस उपभोक्ता का Consumer No भरना है
@@ -409,6 +463,9 @@ function _fbPutPerRecord(hq,cat,prev,arr,cb){
   }
   var patch=_diffToPatch(prev,arr);
   if(!Object.keys(patch).length){ if(cb) cb(true); return; } // कुछ बदला ही नहीं — network call भी नहीं
+  _mergeServerRemarks(hq,cat,patch).then(function(){ _fbSendPatch(hq,cat,patch,cb); });
+}
+function _fbSendPatch(hq,cat,patch,cb){
   fetch(FB+"/"+fbPath(hq,cat)+".json",{
     method:"PATCH",
     headers:{"Content-Type":"application/json"},
@@ -459,6 +516,16 @@ function fbDel(hq,cat,cb){
       if(e&&e.acc&&e.status==="paid")bk[String(e.acc).trim()]={paydate:e.paydate||"",by:e.updatedBy||"",at:e.updatedAt||"",ts:e.ts||0,remarksArr:e.remarksArr||[]};
     });
     if(Object.keys(bk).length)localStorage.setItem("vt_paidbk_"+cKey(hq,cat),JSON.stringify({t:Date.now(),m:bk}));
+  }catch(e){}
+  // बाकी (अवसूल) उपभोक्ताओं के रिमार्क का भी backup — ऊपर वाला सिर्फ़ "वसूल" का रखता था, इसलिए
+  // "हटाएं → अपलोड" के बाद बाकी उपभोक्ताओं पर लिखे रिमार्क हमेशा के लिए मिट जाते थे (JE की शिकायत,
+  // बीबी)। अपलोड इसे _upCollectOldRemarks() में वापस लेता है (देखें js/upload.js)
+  try{
+    var rbk={};
+    (cGet(hq,cat)||[]).forEach(function(e){
+      if(e&&e.acc&&e.remarksArr&&e.remarksArr.length) rbk[String(e.acc).trim()]=e.remarksArr;
+    });
+    if(Object.keys(rbk).length)localStorage.setItem("vt_rmkbk_"+cKey(hq,cat),JSON.stringify({t:Date.now(),m:rbk}));
   }catch(e){}
   cSet(hq,cat,[]);
   fetch(FB+"/"+fbPath(hq,cat)+".json",{method:"DELETE"})
