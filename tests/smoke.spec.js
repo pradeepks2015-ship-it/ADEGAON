@@ -4502,7 +4502,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     const r = await page.evaluate(() => new Promise((resolve) => {
       ES_BACKOFF_BASE_MS = 30; ES_BACKOFF_MAX_MS = 100; ES_STABLE_MS = 60000;
       let created = 0;
-      window.EventSource = function () { created++; this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      window.FetchLiveSource = function () { created++; this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
       _esBackoffMs = 0; _esOpenedAt = 0;
       _openLive(activeHQ, activeCat);
       const seen = [];
@@ -4532,7 +4532,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     await loginLineman(page);
     const bo = await page.evaluate(() => {
       ES_BACKOFF_BASE_MS = 30; ES_BACKOFF_MAX_MS = 100; ES_STABLE_MS = 60000;
-      window.EventSource = function () { this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      window.FetchLiveSource = function () { this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
       _openLive(activeHQ, activeCat);
       _esBackoffMs = 100; // पहले कई बार टूट चुका था
       const es = liveSource;
@@ -4550,7 +4550,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     const r = await page.evaluate(() => new Promise((resolve) => {
       ES_BACKOFF_BASE_MS = 30;
       let created = 0;
-      window.EventSource = function () { created++; this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      window.FetchLiveSource = function () { created++; this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
       _esBackoffMs = 0; _esOpenedAt = 0;
       _openLive(activeHQ, activeCat);
       const es = liveSource;
@@ -4569,7 +4569,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     const r = await page.evaluate(() => {
       const logs = [];
       window.logErr = function (c, m, x) { logs.push({ c: c, m: String(m), x: String(x || '') }); };
-      window.EventSource = function () { this.readyState = 0; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      window.FetchLiveSource = function () { this.readyState = 0; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
       _sseNeverOpenedLogged = false;
       _openLive(activeHQ, activeCat);
       let es = liveSource; es.readyState = 2; es.onerror();
@@ -4587,7 +4587,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     const n = await page.evaluate(() => {
       let count = 0;
       window.logErr = function (c) { if (c === 'sse-never-opened') count++; };
-      window.EventSource = function () { this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      window.FetchLiveSource = function () { this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
       _sseNeverOpenedLogged = false;
       _openLive(activeHQ, activeCat);
       let es = liveSource; es.onopen(); es.readyState = 2; es.onerror(); // खुला था, फिर बंद
@@ -4596,6 +4596,106 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       return count;
     });
     expect(n).toBe(0);
+  });
+
+  // कदम 2: EventSource App Check header नहीं भेज सकता था, इसलिए हर device पर live-sync मना होता था
+  // ("sse-never-opened" हर HQ से)। FetchLiveSource वही streaming endpoint fetch से खोलता है — fetch
+  // wrapper token और App Check header जोड़ता है। यहां नकली stream (ReadableStream) से उसका व्यवहार जांचते हैं
+  const fakeStream = (page, spec) => page.evaluate((sp) => new Promise((resolve) => {
+    var enc = new TextEncoder(), ctl = null, seenOpts = null, seenUrl = null;
+    var orig = window.fetch;
+    window._rawFetchForTest = orig;
+    window.fetch = function (url, opts) {
+      if (opts && opts.headers && opts.headers.Accept === 'text/event-stream') {
+        seenOpts = opts; seenUrl = url;
+        if (sp.status && sp.status !== 200) return Promise.resolve(new Response('{"error":"Permission denied"}', { status: sp.status }));
+        var body = new ReadableStream({ start: function (c) { ctl = c; } });
+        return Promise.resolve(new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }));
+      }
+      return orig(url, opts);
+    };
+    var es = new FetchLiveSource(FB + '/' + fbPath('आदेगांव', 'कुल उपभोक्ता') + '.json');
+    var got = [], errs = [], opened = false;
+    es.addEventListener('put', function (e) { got.push(['put', JSON.parse(e.data)]); });
+    es.addEventListener('patch', function (e) { got.push(['patch', JSON.parse(e.data)]); });
+    es.onopen = function () { opened = true; };
+    es.onerror = function () { errs.push(es.readyState); };
+    setTimeout(function () {
+      (sp.chunks || []).forEach(function (ch) { if (ctl) ctl.enqueue(enc.encode(ch)); });
+      if (sp.closeStream && ctl) ctl.close();
+      if (sp.userClose) { es.close(); if (ctl) ctl.enqueue(enc.encode('event: put\ndata: {"path":"/","data":1}\n\n')); }
+      setTimeout(function () {
+        window.fetch = orig;
+        resolve({ opened: opened, got: got, errs: errs, rs: es.readyState, accept: seenOpts && seenOpts.headers.Accept, url: seenUrl });
+      }, 80);
+    }, 30);
+  }), spec);
+
+  test('FetchLiveSource — put/patch event सही पढ़े, एक event दो टुकड़ों में आए तब भी; keep-alive अनदेखा', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await fakeStream(page, { chunks: [
+      'event: put\ndata: {"path":"/","data":{"1":{"acc":"1"}}}\n\nevent: keep-alive\ndata: null\n\nevent: pat',
+      'ch\ndata: {"path":"/","data":{"1":{"acc":"1","status":"paid"}}}\n\n',
+    ] });
+    expect(r.opened).toBe(true);
+    expect(r.accept).toBe('text/event-stream');
+    expect(r.url).not.toContain('auth='); // token fetch wrapper खुद जोड़ता है — URL में दोबारा नहीं
+    expect(r.got).toEqual([
+      ['put', { path: '/', data: { 1: { acc: '1' } } }],
+      ['patch', { path: '/', data: { 1: { acc: '1', status: 'paid' } } }],
+    ]);
+    expect(r.errs).toEqual([]);
+  });
+
+  test('FetchLiveSource — सर्वर की मनाही (403) = एक बार भी खुले बिना CLOSED (readyState 2), EventSource जैसा', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await fakeStream(page, { status: 403 });
+    expect(r.opened).toBe(false);
+    expect(r.errs).toEqual([2]);
+  });
+
+  test('FetchLiveSource — "auth_revoked" (token expire) या "cancel" पर CLOSED, stream का टूटना = नेट का झटका (0)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const a = await fakeStream(page, { chunks: ['event: auth_revoked\ndata: "credential is no longer valid"\n\n'] });
+    expect(a.opened).toBe(true);
+    expect(a.errs).toEqual([2]);
+    const c = await fakeStream(page, { chunks: ['event: cancel\ndata: null\n\n'] });
+    expect(c.errs).toEqual([2]);
+    const d = await fakeStream(page, { closeStream: true });
+    expect(d.errs).toEqual([0]);
+  });
+
+  test('FetchLiveSource — close() के बाद कोई event या error न आए', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await fakeStream(page, { userClose: true });
+    expect(r.got).toEqual([]);
+    expect(r.errs).toEqual([]);
+    expect(r.rs).toBe(2);
+  });
+
+  test('असली fetch wrapper से जाए — login token (?auth=) और App Check header दोनों लगें', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var raw = _rawFetch;
+      ID_TOKEN = 'tok-123'; AC_TOKEN = 'ac-456'; AC_READY = true;
+      _rawFetch = function (url, opts) {
+        if (opts && opts.headers && opts.headers.Accept === 'text/event-stream') {
+          _rawFetch = raw;
+          resolve({ url: String(url), ac: opts.headers['X-Firebase-AppCheck'] });
+          return new Promise(function () {});
+        }
+        return raw(url, opts);
+      };
+      var es = new FetchLiveSource(FB + '/' + fbPath('आदेगांव', 'कुल उपभोक्ता') + '.json');
+      setTimeout(function () { es.close(); }, 500);
+    }));
+    expect(r.url).toContain('auth=tok-123');
+    expect(r.ac).toBe('ac-456');
   });
 
   test('_tokenExpiryRecheck — token-expiry reconnect से पहले हल्की ETag जांच हो; कुछ नहीं बदला (304) तो भारी reconnect टलता रहे, EventSource दोबारा न खुले (JE का सवाल: "ऐप खुला छोड़ने पर cost बढ़ती है क्या?")', async ({ page }) => {
@@ -4642,7 +4742,9 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window._openLive = function (h, c) { openLiveCalls++; return origOpenLive(h, c); };
       var orig = window.fetch;
       window.fetch = function (url, opts) {
-        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) {
+        // सिर्फ़ हल्की ETag जांच नकली — live-stream (FetchLiveSource) की अपनी request असली रास्ते से जाए
+        var isStream = opts && opts.headers && opts.headers.Accept === 'text/event-stream';
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method) && !isStream) {
           return Promise.resolve({
             ok: true, status: 200, headers: { get: () => '"new-etag"' },
             json: () => Promise.resolve([{ acc: '1', status: 'pending', amount: 100 }]),
@@ -4813,7 +4915,9 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       var count = 0;
       var orig = window.fetch;
       window.fetch = function (url, opts) {
-        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) count++;
+        // live-stream खुद (Accept: text/event-stream) redundant नहीं — वही तो "EventSource" है (देखें FetchLiveSource)
+        var isStream = opts && opts.headers && opts.headers.Accept === 'text/event-stream';
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method) && !isStream) count++;
         return orig(url, opts);
       };
       startListen(activeHQ, activeCat); // सिर्फ़ synchronous हिस्सा जांचना है — EventSource async है
