@@ -593,6 +593,87 @@ function _sseLogNeverOpened(hq,cat){
     hq+"/"+cat+" • AppCheck token: "+(AC_TOKEN?"था":"नहीं था")+" • login token: "+(ID_TOKEN?"था":"नहीं था"));
 }
 
+// ── कदम 2: header भेज सकने वाला live-sync (fetch stream) ────────────────────────────────────
+// ऊपर वाली जांच ने पक्का कर दिया (24 सितंबर, सभी 6 HQ के लगभग हर device पर "sse-never-opened",
+// ज़्यादातर "AppCheck token: था • login token: था" के साथ): EventSource किसी भी device पर जुड़ ही
+// नहीं रहा था — App Check "Enforced" है और EventSource App Check header भेज नहीं सकता, तो सर्वर
+// हर बार मना कर देता, ऐप 3 कोशिशों बाद 15-सेकंड polling पर चला जाता (हर मना हुई कोशिश + हर poll
+// एक अलग request, और दूसरों के बदलाव देर से दिखते)।
+// यह उसी Firebase streaming endpoint से fetch() के ज़रिए जुड़ता है — fetch js/firebase.js के wrapper
+// से जाता है, जो login token (?auth=) और App Check header दोनों जोड़ता है, token बनने तक (4 सेकंड
+// तक) इंतज़ार करता है ("login token: नहीं था" वाली entries — ऐप login पूरा होने से पहले जुड़ रहा था),
+// और 401/403 पर token ताज़ा करके एक बार दोबारा कोशिश करता है। बाक़ी ऐप के लिए यह बिल्कुल EventSource
+// जैसा दिखता है (readyState 0/1/2, onopen, onerror, addEventListener, close) — इसलिए _openLive का
+// सारा पुराना व्यवहार (backoff, token-expiry की सस्ती ETag जांच, patch event, polling fallback) वैसा ही:
+//   • HTTP मनाही (जवाब ok नहीं) या सर्वर का "cancel"/"auth_revoked" event → readyState 2 (CLOSED)
+//   • जुड़ने के बाद stream टूटना / नेट की गड़बड़ी → readyState 0 (नेट का झटका — रुककर दोबारा)
+function _fetchStreamSupported(){
+  return typeof fetch==="function"&&typeof AbortController==="function"&&typeof TextDecoder==="function"&&
+    typeof ReadableStream!=="undefined"&&typeof Response!=="undefined"&&("body" in Response.prototype);
+}
+function FetchLiveSource(url){
+  var self=this;
+  self.readyState=0;
+  self.onopen=null;
+  self.onerror=null;
+  self._l={};
+  self._closed=false;
+  self._ctrl=new AbortController();
+  fetch(url,{headers:{"Accept":"text/event-stream"},cache:"no-store",signal:self._ctrl.signal})
+    .then(function(r){
+      if(self._closed) return;
+      if(!r.ok||!r.body){ self._fail(2); return; }
+      self.readyState=1;
+      if(self.onopen) self.onopen();
+      var reader=r.body.getReader(),dec=new TextDecoder(),buf="";
+      function pump(){
+        return reader.read().then(function(res){
+          if(self._closed) return;
+          if(res.done){ self._fail(0); return; } // सर्वर ने stream बंद की — नेट के झटके जैसा
+          buf+=dec.decode(res.value,{stream:true});
+          var blocks=buf.split(/\r?\n\r?\n/);
+          buf=blocks.pop();
+          for(var i=0;i<blocks.length&&!self._closed;i++) self._dispatch(blocks[i]);
+          if(!self._closed) return pump();
+        });
+      }
+      return pump();
+    })
+    .catch(function(){ if(!self._closed) self._fail(0); });
+}
+FetchLiveSource.prototype.addEventListener=function(type,fn){ (this._l[type]||(this._l[type]=[])).push(fn); };
+FetchLiveSource.prototype.close=function(){
+  this._closed=true;
+  this.readyState=2;
+  try{ this._ctrl.abort(); }catch(e){}
+};
+FetchLiveSource.prototype._fail=function(state){
+  if(this._closed) return;
+  this.readyState=state;
+  if(state===2) this.close();
+  if(this.onerror) this.onerror({});
+};
+FetchLiveSource.prototype._dispatch=function(block){
+  var type="message",data=[];
+  block.split(/\r?\n/).forEach(function(line){
+    if(line.indexOf("event:")===0) type=line.slice(6).trim();
+    else if(line.indexOf("data:")===0) data.push(line.slice(5).replace(/^ /,""));
+  });
+  // cancel = अब पढ़ने की अनुमति नहीं; auth_revoked = login token expire — दोनों में सर्वर आगे कुछ नहीं
+  // भेजेगा, EventSource जैसा CLOSED मानो (वहीं से ताज़ा token के साथ सस्ता reconnect होता है)
+  if(type==="cancel"||type==="auth_revoked"){ this._fail(2); return; }
+  var fns=this._l[type];
+  if(!fns||!fns.length) return; // keep-alive वगैरह
+  var ev={type:type,data:data.join("\n")};
+  fns.slice().forEach(function(f){ try{ f(ev); }catch(e){} });
+};
+// live-sync किससे जुड़े — fetch stream (header जाता है) जहां चले, वरना पुराना EventSource, वरना कुछ नहीं (polling)
+function _liveSourceFor(hq,cat){
+  if(_fetchStreamSupported()) return new FetchLiveSource(FB+"/"+fbPath(hq,cat)+".json");
+  if(typeof EventSource==="function") return new EventSource(FB+"/"+fbPath(hq,cat)+".json"+(ID_TOKEN?("?auth="+encodeURIComponent(ID_TOKEN)):""));
+  return null;
+}
+
 function stopListen(){
   if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
   if(liveSource){liveSource.close();liveSource=null;}
@@ -750,10 +831,10 @@ function _openLive(hq,cat){
   }
 
   // असली real-time: Firebase REST streaming (Server-Sent Events) — बदलाव होते ही तुरंत मिलता है, हर 15 sec पूछने की ज़रूरत नहीं
-  if(typeof EventSource==="function"){
+  var es=null;
+  try{ es=_liveSourceFor(hq,cat); }catch(e){ es=null; }
+  if(es){
     try{
-      var url=FB+"/"+fbPath(hq,cat)+".json"+(ID_TOKEN?("?auth="+encodeURIComponent(ID_TOKEN)):"");
-      var es=new EventSource(url);
       liveSource=es;
       // "put" event में Firebase पहले से पूरा नया data भेज देता है — उसी को इस्तेमाल करो,
       // दोबारा fetch करके एक ही data दो बार डाउनलोड मत करो (bandwidth बचत)
