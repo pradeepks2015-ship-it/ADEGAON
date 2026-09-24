@@ -314,6 +314,7 @@ function _asPerRecord(hq,cat,arr){
   if(skip) logErr("mig-noacc-skip",skip+" record बिना acc के मिले — उन्हें सेव नहीं किया (मैन्युअल जांच ज़रूरी), बाकी सुरक्षित रूप से per-record फॉर्मेट में सेव किए",hq+"/"+cat);
   return obj;
 }
+var _arrayPutLogged={};
 function _fbPut(hq,cat,arr,cb){
   var body,wrote;
   if(isMigrated(hq,cat)){
@@ -331,6 +332,14 @@ function _fbPut(hq,cat,arr,cb){
   } else {
     wrote=arr;
     body=JSON.stringify(arr);
+    // जांच: migrated list को array में पलटने वाला device कौन है? सबसे संभावित वजह — इस device पर
+    // MIGRATED flags लोड ही नहीं हुए (बिल्कुल खाली)। ऐसे में पूरी array लिखते वक़्त एक बार लॉग करो
+    // (logErr अपने-आप लाइनमैन/version/device जोड़ता है) — ताकि असली लिखने वाला पकड़ा जा सके
+    var _ak=hq+"/"+cat;
+    if(!_arrayPutLogged[_ak]&&!Object.keys(MIGRATED||{}).length){
+      _arrayPutLogged[_ak]=true;
+      logErr("array-put-noflags","MIGRATED flags लोड हुए बिना पूरी list array रूप में लिखी जा रही है — अगर यह list migrated है तो यही उसे पलट देगा",hq+"/"+cat+" • पिछला रूप: "+(lastShape(hq,cat)||"अज्ञात"));
+    }
   }
   fetch(FB+"/"+fbPath(hq,cat)+".json",{
     method:"PUT",
