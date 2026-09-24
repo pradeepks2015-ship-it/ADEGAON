@@ -949,7 +949,8 @@ test.describe('डेटा और वसूली', () => {
       for (var i = 0; i < 6; i++) {              // 6 बार वसूल मार्क (बीच में वापस करके)
         if (i) markUnpaid(0, '950');
         markPaid(0, '950');
-        atCount.push(logged.length);
+        // सिर्फ़ repeat-mark गिनें — बाक़ी असंबंधित लॉग (जैसे flags लोड न होने पर array-put-noflags) गिनती न बिगाड़ें
+        atCount.push(logged.filter(function (x) { return x.t === 'repeat-mark'; }).length);
       }
       var stillPaid = cGet('आदेगांव', 'कुल उपभोक्ता')[0].status;
       window.logErr = orig;
@@ -2618,6 +2619,55 @@ test.describe('चरण 3 — migration-revert ऑटो-पहचान', () =
     expect(r.logs.filter((l) => l.c === 'migration-revert-fixed').length).toBe(1);
     expect(r.logs.filter((l) => l.c === 'migration-dup-merged')[0].m).toContain('1 duplicate');
     expect(r.logs.filter((l) => l.c === 'migration-revert-unsafe').length).toBe(0);
+  });
+
+  // असली (JE, मढ़ी): v9.164 के बाद भी 1134019486 के 3 card — पलटी (array) list पर नए devices के
+  // per-record PATCH ने Consumer No-key जोड़ दी, node "मिली-जुली" object बन गया और पहचान चुप रही
+  test('मिली-जुली list (क्रमांक-key + Consumer No-key) पहचानी जाए और एक-एक card में ठीक हो', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      var hq = 'टेस्ट HQ44', cat = 'कुल उपभोक्ता', put = null;
+      MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+      var raw = {
+        0: { acc: '501', name: 'क', o: 0 },
+        1: { acc: '502', name: 'ASADU', o: 1, ts: 1, remarksArr: [{ text: 'सी फॉर्म', by: 'V', at: '1' }] },
+        2: { acc: '503', name: 'ग', o: 2 },
+        502: { acc: '502', name: 'ASADU', o: 1, ts: 5, status: 'paid', remarksArr: [{ text: 'सी फॉर्म', by: 'V', at: '1' }, { text: 'जमा', by: 'V', at: '2' }] },
+      };
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf(fbPath(hq, cat)) > -1 && String(url).indexOf('/MIGRATED/') < 0) {
+          if (opts && opts.method === 'PUT') { put = JSON.parse(opts.body); return Promise.resolve({ ok: true, json: () => Promise.resolve(true) }); }
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(raw) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+      };
+      var shapes = { mixed: _isBadShape(raw), good: _isBadShape({ 7: { acc: '7' }, 8: { acc: '8' } }), arr: _isBadShape([{ acc: '1' }]) };
+      _checkMigrationRevert(hq, cat, raw);
+      setTimeout(() => resolve({ shapes: shapes, put: put, logs: getLogs() }), 400);
+    }));
+    expect(r.shapes).toEqual({ mixed: true, good: false, arr: true });
+    expect(Object.keys(r.put).sort()).toEqual(['501', '502', '503']);
+    expect(r.put['502'].status).toBe('paid');
+    expect(r.put['502'].remarksArr.map((x) => x.text)).toEqual(['सी फॉर्म', 'जमा']);
+    expect(r.logs.filter((l) => l.c === 'migration-mixed').length).toBe(1);
+    expect(r.logs.filter((l) => l.c === 'migration-revert-fixed').length).toBe(1);
+  });
+
+  test('flags लोड हुए बिना array लिखी जाए तो एक बार "array-put-noflags" लॉग हो (पलटाने वाला device पकड़ में आए)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const n = await page.evaluate(() => new Promise((resolve) => {
+      var logs = [];
+      window.logErr = function (c) { logs.push(c); };
+      MIGRATED = {};
+      window.fetch = function () { return Promise.resolve({ ok: true, json: () => Promise.resolve(true) }); };
+      _fbPut('टेस्ट HQ45', 'कुल उपभोक्ता', [{ acc: '1' }]);
+      _fbPut('टेस्ट HQ45', 'कुल उपभोक्ता', [{ acc: '1' }]);
+      setTimeout(() => resolve(logs.filter((c) => c === 'array-put-noflags').length), 100);
+    }));
+    expect(n).toBe(1);
   });
 
   test('self-heal — Consumer No खाली हो तो पहले की तरह रुके ("unsafe")', async ({ page }) => {

@@ -41,7 +41,7 @@ function _migAnalyzeList(raw){
     if(seen[acc]){dupAcc++; if(dupSamples.length<5)dupSamples.push(acc);}
     else seen[acc]=1;
   });
-  return {tot:arr.length,missingAcc:missingAcc,missingAccSamples:missingAccSamples,dupAcc:dupAcc,dupSamples:dupSamples,illegalAcc:illegalAcc,illegalSamples:illegalSamples,alreadyObj:!isArr};
+  return {tot:arr.length,missingAcc:missingAcc,missingAccSamples:missingAccSamples,dupAcc:dupAcc,dupSamples:dupSamples,illegalAcc:illegalAcc,illegalSamples:illegalSamples,alreadyObj:!_isBadShape(raw)}; // मिली-जुली object list भी "पलटी" गिनी जाए (देखें _isBadShape)
 }
 
 function _migRunDryRun(){
@@ -200,16 +200,34 @@ function loadMigratedFlags(){
 // वापस array में न बदल दे — जो भी device वह list खोले/देखे (fbGet या real-time listener से),
 // अगर MIGRATED flag "true" है पर data अब भी array दिखे, तो समझो पलट गया — तुरंत ठीक करो
 var _revertFixing={};
+var _revertUnsafe={}; // इस ऐप-खुलने में "unsafe" निकली list — हर पढ़ाई पर दोबारा कोशिश/लॉग न हो
+// ── "मिली-जुली" list — असली bug (JE, मढ़ी/कुल उपभोक्ता, 1134019486 के पहले 2 फिर 3 card) ──
+// list पुराने array format में पलटी (keys 0,1,2…), फिर नए devices ने अपने बदलाव per-record PATCH
+// (key = Consumer No) से भेजे। Firebase में वह PATCH array के *साथ* एक नई key जोड़ देता है — अब node
+// में "0…1504" भी और "1134019486" भी, और Firebase उसे array नहीं, object बताता है। नतीजा: उस
+// उपभोक्ता के दो card (पुराना क्रमांक-key वाला + नया Consumer No-key वाला), और क्योंकि data अब array
+// नहीं दिखता था, ऊपर वाली "पलट गई" पहचान चुप रहती — हर नए बदलाव पर duplicate बढ़ते जाते।
+// अब सही रूप = object जिसकी हर key ठीक उसी record का Consumer No हो; बाक़ी सब (array, या कोई key
+// अपने record के acc से अलग) "बिगड़ा रूप" है और वही ऑटो-सुधार चलता है
+function _isBadShape(raw){
+  if(!raw||typeof raw!=="object") return false;
+  if(Array.isArray(raw)) return true;
+  return Object.keys(raw).some(function(k){
+    var v=raw[k];
+    return v&&typeof v==="object"&&accKeyOf(v)!==k;
+  });
+}
 function _checkMigrationRevert(hq,cat,raw){
   if(!isMigrated(hq,cat)) return; // यह HQ/श्रेणी migrated ही नहीं — कुछ जांचने को नहीं
-  if(!Array.isArray(raw)) return; // अब भी सही (object/per-record) है — ठीक है
+  if(!_isBadShape(raw)) return; // सही (per-record) रूप है — ठीक है
   var key=hqKey(hq)+"/"+catKey(cat);
-  if(_revertFixing[key]) return; // पहले से ठीक करने की कोशिश चल रही है — दोबारा शुरू मत करो
+  if(_revertFixing[key]||_revertUnsafe[key]) return; // सुधार चल रहा है / इस बार पहले ही असुरक्षित निकली
   _revertFixing[key]=true;
   // पहले यह संदेश सीधे "पुराने version वाले device" को दोष देता था — production लॉग से पता चला कि
   // असली वजह अक्सर वो नहीं, बल्कि MIGRATED flag का किसी device पर लोड न हो पाना थी (देखें ऊपर
   // MIG_FLAG_KEY वाला नोट)। संदेश अब असली संभावित कारण बताता है, ताकि जांच ग़लत दिशा में न जाए
-  logErr("migration-reverted","list वापस पुराने array format में मिली — किसी device पर MIGRATED flag लोड न हो पाया होगा (कमज़ोर नेट), या वो बहुत पुराने version पर है। अपने आप ठीक किया जा रहा है",hq+"/"+cat);
+  if(Array.isArray(raw)) logErr("migration-reverted","list वापस पुराने array format में मिली — किसी device पर MIGRATED flag लोड न हो पाया होगा (कमज़ोर नेट), या वो बहुत पुराने version पर है। अपने आप ठीक किया जा रहा है",hq+"/"+cat);
+  else logErr("migration-mixed","list में पुराने (क्रमांक-key) और नए (Consumer No-key) records मिले-जुले मिले — पलटी list पर नए बदलाव जुड़ने से एक ही उपभोक्ता के कई card बन रहे थे। अपने आप ठीक किया जा रहा है",hq+"/"+cat);
   // नतीजा हमेशा लॉग करें — पहले सिर्फ़ "unsafe" लॉग होता था, "ok"/"already"/"empty" चुपचाप निकल
   // जाते थे (सिर्फ़ एक toast, जो अक्सर किसी ने देखा ही नहीं)। इससे लॉग देखकर यह पता ही नहीं चलता
   // था कि सुधार हुआ या नहीं — असली production में इसी वजह से "migration-reverted" बार-बार दिखता
@@ -221,6 +239,7 @@ function _checkMigrationRevert(hq,cat,raw){
       toast("🛠 "+hq+"/"+cat+" — पुराना format मिला, अपने आप ठीक कर दिया गया","inf");
       logErr("migration-revert-fixed","अपने आप ठीक कर दिया गया — "+((r&&r.count)||0)+" records अब per-record फॉर्मेट में",hq+"/"+cat);
     } else if(st==="unsafe"){
+      _revertUnsafe[key]=true;
       logErr("migration-revert-unsafe","ऑटो-सुधार असुरक्षित लगा (acc missing/duplicate) — चरण 3 जांच → \"समस्या वाले records\" देखकर Consumer No भरें",hq+"/"+cat);
     } else if(st==="already"){
       // दोबारा पढ़ने पर list ठीक मिली — किसी और device ने बीच में ठीक कर दिया, या यह झूठा alarm था
@@ -272,7 +291,9 @@ function _migrateOne(hq,cat,cb){
       trackUsageOf(raw);
       _noteShape(hq,cat,raw);
       if(!raw){ cb({hq:hq,cat:cat,status:"empty"}); return; }
-      if(!Array.isArray(raw)){ cb({hq:hq,cat:cat,status:"already"}); return; }
+      if(!_isBadShape(raw)){ cb({hq:hq,cat:cat,status:"already"}); return; }
+      // मिली-जुली (object) list — सारे records एक सूची में, पुराने क्रम (o) से; फिर वही रास्ता
+      if(!Array.isArray(raw)) raw=normList(raw);
       var a=_migAnalyzeList(raw);
       if(a.missingAcc||a.illegalAcc){ cb({hq:hq,cat:cat,status:"unsafe",a:a}); return; }
       // duplicate Consumer No अब रुकावट नहीं — JE की मंज़ूरी (मढ़ी/कुल उपभोक्ता, 1134019486 के दो card):
