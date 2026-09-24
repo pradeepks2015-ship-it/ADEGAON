@@ -2586,6 +2586,75 @@ test.describe('चरण 3 — migration-revert ऑटो-पहचान', () =
     expect(logs.filter((l) => l.c === 'migration-revert-already').length).toBe(1);
   });
 
+  // असली (JE, मढ़ी/कुल उपभोक्ता): सूची पुराने format में पलटी और उसमें 1134019486 के दो card थे —
+  // self-heal "unsafe" पर रुक गया। अब duplicate मिलाकर एक कर दिए जाते हैं, फिर सूची ठीक होती है
+  test('self-heal — duplicate Consumer No मिलाकर एक हों (नया बदलाव जीते, दोनों के रिमार्क बचें), फिर सूची ठीक हो', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      var hq = 'टेस्ट HQ42', cat = 'कुल उपभोक्ता', put = null;
+      MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+      var raw = [
+        { acc: '5', name: 'पहला' },
+        { acc: '1134019486', name: 'ASADU LAL', status: 'pending', ts: 100, remarksArr: [{ text: 'सी फॉर्म में दिया गया', by: 'Vishnu', at: '2:39' }] },
+        { acc: '1134019486 ', name: 'ASADU LAL', status: 'paid', paydate: '24/9/2026', ts: 200, remarksArr: [{ text: '?', by: 'Vishnu', at: '2:46' }] },
+      ];
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf(fbPath(hq, cat)) > -1 && String(url).indexOf('/MIGRATED/') < 0) {
+          if (opts && opts.method === 'PUT') { put = JSON.parse(opts.body); return Promise.resolve({ ok: true, json: () => Promise.resolve(true) }); }
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(raw) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+      };
+      _checkMigrationRevert(hq, cat, raw);
+      setTimeout(() => resolve({ put: put, logs: getLogs() }), 400);
+    }));
+    expect(Object.keys(r.put).sort()).toEqual(['1134019486', '5']);
+    const rec = r.put['1134019486'];
+    expect(rec.status).toBe('paid'); // नया (ts 200) बदलाव जीता
+    expect(rec.remarksArr.map((x) => x.text)).toEqual(['सी फॉर्म में दिया गया', '?']);
+    expect(rec.o).toBe(1); // पहले वाले card की जगह पर
+    expect(r.logs.filter((l) => l.c === 'migration-revert-fixed').length).toBe(1);
+    expect(r.logs.filter((l) => l.c === 'migration-dup-merged')[0].m).toContain('1 duplicate');
+    expect(r.logs.filter((l) => l.c === 'migration-revert-unsafe').length).toBe(0);
+  });
+
+  test('self-heal — Consumer No खाली हो तो पहले की तरह रुके ("unsafe")', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      var hq = 'टेस्ट HQ43', cat = 'कुल उपभोक्ता', puts = 0;
+      MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+      var raw = [{ acc: '1', name: 'क' }, { acc: '', name: 'ख' }];
+      window.fetch = function (url, opts) {
+        if (opts && opts.method === 'PUT') puts++;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(raw) });
+      };
+      _checkMigrationRevert(hq, cat, raw);
+      setTimeout(() => resolve({ puts: puts, logs: getLogs() }), 400);
+    }));
+    expect(r.puts).toBe(0);
+    expect(r.logs.filter((l) => l.c === 'migration-revert-unsafe').length).toBe(1);
+  });
+
+  test('Consumer No में आगे-पीछे space — live बदलाव (patch) और offline sync दोनों में दूसरा card न जुड़े', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var local = [{ acc: '1134019486 ', name: 'ASADU', o: 14, status: 'pending' }, { acc: '7', name: 'दूसरा', o: 15 }];
+      var p = _applyPatchToArray(local, { '1134019486': { acc: '1134019486', name: 'ASADU', o: 14, status: 'paid' } });
+      var m = mergeArrays([{ acc: ' 55', name: 'क', ts: 1 }], [{ acc: '55', name: 'क', ts: 2, status: 'paid' }]);
+      var d = _applyPatchToArray(local, { '1134019486': null });
+      return { pLen: p.length, pStatus: p[0].status, mLen: m.length, mStatus: m[0].status, dLen: d.length };
+    });
+    expect(r.pLen).toBe(2);
+    expect(r.pStatus).toBe('paid');
+    expect(r.mLen).toBe(1);
+    expect(r.mStatus).toBe('paid');
+    expect(r.dLen).toBe(1); // हटाना भी space वाले acc पर काम करे
+  });
+
   test('migrated HQ का data array में मिले तो एक बार चेतावनी log होती है, बार-बार नहीं (गेट)', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
@@ -4579,6 +4648,29 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     });
     expect(r.length).toBe(1);
     expect(r[0].x).toContain('AppCheck token'); // token था या नहीं — यही असली सुराग है
+  });
+
+  test('fetch stream की मनाही — लॉग में तरीका (fetch), HTTP status और सर्वर का जवाब भी दर्ज हो', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const logs = [];
+      window.logErr = function (c, m, x) { if (c === 'sse-never-opened') logs.push(String(x || '')); };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (opts && opts.headers && opts.headers.Accept === 'text/event-stream') {
+          return Promise.resolve(new Response('{\n  "error" : "Permission denied"\n}', { status: 403 }));
+        }
+        return orig(url, opts);
+      };
+      _sseNeverOpenedLogged = false;
+      _openLive(activeHQ, activeCat);
+      setTimeout(() => { window.fetch = orig; stopListen(); resolve(logs); }, 300);
+    }));
+    expect(r.length).toBe(1);
+    expect(r[0]).toContain('तरीका: fetch');
+    expect(r[0]).toContain('HTTP 403');
+    expect(r[0]).toContain('"error" : "Permission denied"');
   });
 
   test('जुड़ने के बाद टूटे (जैसे token expire) या नेट का झटका (readyState 0) हो — तो "कभी नहीं जुड़ा" वाला लॉग न बने', async ({ page }) => {
