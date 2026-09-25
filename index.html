@@ -152,6 +152,9 @@ try{
       <img class="bnav-ico-img" src="icons/scorecard-icon.svg" alt="">
       <span class="bnav-lbl">स्कोरकार्ड</span>
     </button>
+    <button class="bnav-item" onclick="openOfficeAssistant()">
+      <span class="bnav-ico">🔧</span><span class="bnav-lbl">Office</span>
+    </button>
     <button class="bnav-item" onclick="openProfileModal()">
       <span class="bnav-ico">&#128100;</span><span class="bnav-lbl">Profile</span>
     </button>
@@ -558,6 +561,45 @@ try{
   </div>
 </div>
 
+<!-- 🔧 Office Assistant — Master Data merge, VLOOKUP, village-wise split & export -->
+<div class="moverlay" id="office-assistant-overlay" onclick="if(event.target===this)closeOfficeAssistant()">
+  <div class="msheet" style="max-height:92vh;">
+    <div class="mhandle"></div>
+    <div class="mtitle">🔧 Office Assistant</div>
+    <div style="font-size:11px;color:var(--muted);padding:0 4px 10px;">मास्टर डेटा अपलोड करें (एक बार), फिर रॉ डेटा से VLOOKUP करके गांव-वार split Excel निकालें। सब कुछ offline काम करता है।</div>
+
+    <div style="padding:0 4px;">
+      <label class="f-label">1️⃣ मास्टर डेटा (CSV/Excel)</label>
+      <input type="file" id="office-assistant-master-upload" accept=".csv,.xlsx,.xls" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
+      <div id="office-assistant-master-status" style="display:none;font-size:10px;color:var(--green);margin-top:4px;margin-bottom:10px;">✅ मास्टर डेटा लोड हो गया</div>
+
+      <label class="f-label">2️⃣ रॉ डेटा (CSV/Excel)</label>
+      <input type="file" id="office-assistant-raw-upload" accept=".csv,.xlsx,.xls" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);">
+      <div id="office-assistant-raw-status" style="display:none;font-size:10px;color:var(--green);margin-top:4px;margin-bottom:10px;">✅ रॉ डेटा लोड हो गया</div>
+
+      <label class="f-label">🔑 Key Column (VLOOKUP के लिए)</label>
+      <div class="sel-wrap">
+        <select id="office-assistant-key-col" class="f-select" onchange="setKeyColumn(this.value)">
+          <option value="">-- Column चुनें --</option>
+        </select>
+      </div>
+
+      <label class="f-label">🏘️ Split By (गांव / HQ के लिए, optional)</label>
+      <div class="sel-wrap">
+        <select id="office-assistant-split-col" class="f-select" onchange="setSplitByColumn(this.value)">
+          <option value="None">-- Split न करें --</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="mfooter">
+      <button class="btn-cancel" onclick="clearMasterData()">🗑️ मास्टर हटाएं</button>
+      <button class="btn-save" id="office-assistant-process-btn" onclick="processAndExport()">⚙️ Process & Export</button>
+      <button class="btn-save" onclick="closeOfficeAssistant()">बंद करें</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="js/config.js"></script>
@@ -573,6 +615,7 @@ try{
 <script src="js/village.js"></script>
 <script src="js/migration.js"></script>
 <script src="js/home-scorecard.js"></script>
+<script src="js/office-assistant.js"></script>
 <script src="js/profile.js"></script>
 <script src="js/main.js"></script>
 </body>
