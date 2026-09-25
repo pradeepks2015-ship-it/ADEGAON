@@ -2413,6 +2413,8 @@ test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
         }
         return orig(url, opts);
       };
+      // v9.167: flags/रूप दोनों अनजान हों तो _fbPut पहले सर्वर पर रूप जांचता है — यह test पुराने (array) रास्ते का है, इसलिए रूप पहले से 'array' दर्ज
+      _noteShape('टेस्ट HQ7', 'कुल उपभोक्ता', []);
       _fbPut('टेस्ट HQ7', 'कुल उपभोक्ता', [{ acc: '1', status: 'pending' }], function () {
         window.fetch = orig;
         resolve(sentBody);
@@ -2433,6 +2435,8 @@ test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
         }
         return orig(url, opts);
       };
+      // v9.167: flags/रूप दोनों अनजान हों तो _fbPut पहले सर्वर पर रूप जांचता है — यह test पुराने (array) रास्ते का है, इसलिए रूप पहले से 'array' दर्ज
+      _noteShape('टेस्ट HQ8', 'कुल उपभोक्ता', []);
       _fbPut('टेस्ट HQ8', 'कुल उपभोक्ता', [{ acc: '1', status: 'pending' }], function () {
         window.fetch = orig;
         resolve();
@@ -2668,6 +2672,130 @@ test.describe('चरण 3 — migration-revert ऑटो-पहचान', () =
       setTimeout(() => resolve(logs.filter((c) => c === 'array-put-noflags').length), 100);
     }));
     expect(n).toBe(1);
+  });
+
+  // v9.167 — असली (बीबी/Movind, v9.166): flags लोड नहीं + रूप अज्ञात → पूरी array लिखी जाती, migrated
+  // list पलट जाती। अब पहले ?shallow=true से रूप जांचा जाता है
+  const probePut = (page, spec) => page.evaluate((sp) => new Promise((resolve) => {
+    MIGRATED = {};
+    try { localStorage.removeItem(SHAPE_KEY); } catch (e) {}
+    var hq = 'टेस्ट HQ46', cat = 'कुल उपभोक्ता', calls = [];
+    window.fetch = function (url, opts) {
+      calls.push({ url: String(url), method: (opts && opts.method) || 'GET', body: opts && opts.body });
+      if (String(url).indexOf('shallow=true') > -1) {
+        if (sp.fail) return Promise.reject(new Error('Failed to fetch'));
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(sp.keys) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+    };
+    var done = function (ok) {
+      var put = calls.filter((c) => c.method === 'PUT' && c.url.indexOf(fbPath(hq, cat) + '.json') > -1)[0]; // LOGS वाली PUT नहीं
+      resolve({ ok: ok, put: put ? JSON.parse(put.body) : null, probed: calls.some((c) => c.url.indexOf('shallow=true') > -1), pending: isPending(hq, cat), shape: lastShape(hq, cat) });
+    };
+    _fbPut(hq, cat, [{ acc: '1134000011', name: 'क' }, { acc: '1134000012', name: 'ख' }], done);
+  }), spec);
+
+  test('flags नहीं + रूप अज्ञात — सर्वर पर per-record मिले तो array नहीं, per-record ही लिखा जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await probePut(page, { keys: { 1134000011: true, 1134000012: true } });
+    expect(r.probed).toBe(true);
+    expect(Array.isArray(r.put)).toBe(false);
+    expect(Object.keys(r.put).sort()).toEqual(['1134000011', '1134000012']);
+    expect(r.shape).toBe('obj');
+  });
+
+  test('flags नहीं + रूप अज्ञात — सर्वर पर सच में array (0,1,2…) हो तो array ही लिखा जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await probePut(page, { keys: { 0: true, 1: true } });
+    expect(Array.isArray(r.put)).toBe(true);
+    expect(r.shape).toBe('arr');
+  });
+
+  test('flags नहीं + रूप की जांच ही नाकाम — कुछ न लिखा जाए, बदलाव pending रहे', async ({ page }) => {
+    await openApp(page);
+    const r = await probePut(page, { fail: true });
+    expect(r.ok).toBe(false);
+    expect(r.put).toBe(null);
+    expect(r.pending).toBe(true);
+  });
+
+  // JE का अनुरोध: per-record (नए फ़ॉर्मेट) वाली सूची पर असली काम (वसूल मार्क, रिमार्क) करके भी जांचें —
+  // flags हों या न हों, सर्वर पर सिर्फ़ बदले record का PATCH जाए, पूरी सूची कभी नहीं (न array, न object)
+  const perRecordFlow = (page, spec) => page.evaluate((sp) => new Promise((resolve) => {
+    var hq = activeHQ, cat = activeCat, path = fbPath(hq, cat);
+    var list = [
+      { acc: '1134000001', name: 'राम', status: 'pending', amount: 500, o: 0, remarksArr: [] },
+      { acc: '1134000002', name: 'श्याम', status: 'pending', amount: 700, o: 1, remarksArr: [] },
+      { acc: '1134000003', name: 'गीता', status: 'pending', amount: 900, o: 2, remarksArr: [] },
+    ];
+    cSet(hq, cat, JSON.parse(JSON.stringify(list)));
+    try { localStorage.removeItem(SHAPE_KEY); } catch (e) {}
+    MIGRATED = {};
+    if (sp.flags) { MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true; }
+    var writes = [], probes = 0;
+    window.confirm = () => true;
+    window.fetch = function (url, opts) {
+      var u = String(url), m = (opts && opts.method) || 'GET';
+      if (u.indexOf(path) > -1) {
+        if (u.indexOf('shallow=true') > -1) { probes++; return Promise.resolve({ ok: true, json: () => Promise.resolve({ 1134000001: true, 1134000002: true, 1134000003: true }) }); }
+        if (u.indexOf('/remarksArr.json') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(sp.serverRmk || null) });
+        if (m !== 'GET') writes.push({ m: m, u: u, body: JSON.parse(opts.body) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+    };
+    renderListWith(cGet(hq, cat));
+    if (sp.action === 'paid') markPaid(1, '1134000002');
+    if (sp.action === 'rmk') {
+      openRmkModal(1, '1134000002');
+      document.getElementById('rmk-text').value = 'कल आएंगे';
+      saveRmk();
+    }
+    setTimeout(() => resolve({ writes: writes.filter((w) => w.u.indexOf(path + '.json') > -1), probes: probes, shape: lastShape(hq, cat) }), 400);
+  }), spec);
+
+  for (const flags of [true, false]) {
+    const tag = flags ? 'flags लोड' : 'flags लोड नहीं (असली बीबी वाली हालत)';
+    test(`per-record सूची — "✓ वसूल" पर सिर्फ़ उसी उपभोक्ता का PATCH जाए (${tag})`, async ({ page }) => {
+      await openApp(page);
+      await loginLineman(page);
+      const r = await perRecordFlow(page, { flags: flags, action: 'paid' });
+      expect(r.writes.length).toBe(1);
+      expect(r.writes[0].m).toBe('PATCH');
+      expect(Object.keys(r.writes[0].body)).toEqual(['1134000002']);
+      expect(r.writes[0].body['1134000002'].status).toBe('paid');
+      expect(r.probes).toBe(flags ? 0 : 1); // flags न हों तो पहले एक हल्की जांच
+      if (!flags) expect(r.shape).toBe('obj');
+    });
+
+    test(`per-record सूची — रिमार्क सेव पर सिर्फ़ उसी उपभोक्ता का PATCH, सर्वर के पुराने रिमार्क भी बचें (${tag})`, async ({ page }) => {
+      await openApp(page);
+      await loginLineman(page);
+      const r = await perRecordFlow(page, { flags: flags, action: 'rmk', serverRmk: [{ text: 'पहले से', by: 'मोहन', at: '24/9/2026' }] });
+      expect(r.writes.length).toBe(1);
+      expect(r.writes[0].m).toBe('PATCH');
+      expect(Object.keys(r.writes[0].body)).toEqual(['1134000002']);
+      expect(r.writes[0].body['1134000002'].remarksArr.map((x) => x.text)).toEqual(['पहले से', 'कल आएंगे']);
+    });
+  }
+
+  test('loadMigratedFlags — पढ़ाई नाकाम हो तो थोड़ा रुककर दोबारा कोशिश हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      MIG_FLAG_RETRY_MS = 20; MIGRATED = {};
+      var n = 0;
+      window.fetch = function (url) {
+        if (String(url).indexOf('/MIGRATED.json') > -1) {
+          n++;
+          if (n === 1) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ error: 'Permission denied' }) });
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'बीबी': { 'कुल_उपभोक्ता': true } }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      loadMigratedFlags();
+      setTimeout(() => resolve({ n: n, flag: isMigrated('बीबी', 'कुल उपभोक्ता') }), 300);
+    }));
+    expect(r.n).toBe(2);
+    expect(r.flag).toBe(true);
   });
 
   test('self-heal — Consumer No खाली हो तो पहले की तरह रुके ("unsafe")', async ({ page }) => {
@@ -2911,6 +3039,8 @@ test.describe('बकाया ≤0 अपने-आप वसूल — migrati
         }
         return real(url, opts);
       };
+      // v9.167: flags/रूप दोनों अनजान हों तो _fbPut पहले सर्वर पर रूप जांचता है — यह test पुराने (array) रास्ते का है, इसलिए रूप पहले से 'array' दर्ज
+      _noteShape('टेस्ट HQ3', 'कुल उपभोक्ता', []);
       cSet('टेस्ट HQ3', 'कुल उपभोक्ता', []);
       var data = [{ acc: '7', status: 'pending', amount: 0 }];
       overlayOps('टेस्ट HQ3', 'कुल उपभोक्ता', data);
@@ -4928,6 +5058,37 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(r.got).toEqual([]);
     expect(r.errs).toEqual([]);
     expect(r.rs).toBe(2);
+  });
+
+  // v9.167 — असली (v9.166 लॉग): stream login/सही HQ account पक्का होने से पहले खुल जाता → "Permission denied"
+  test('FetchLiveSource — stream तभी खुले जब सही HQ account पक्का हो और उसका ताज़ा token मिल जाए', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var order = [];
+      var hqOk = null;
+      window.firebase = { auth: function () { return { currentUser: { email: 'x', getIdToken: function () { order.push('token'); return Promise.resolve('hq-token'); } } }; } };
+      AUTH_READY = true;
+      var origEnsure = window._ensureCorrectHqAuth;
+      window._ensureCorrectHqAuth = function (cb) { order.push('ensure'); hqOk = cb; }; // sign-in अभी चल रहा है
+      var raw = _rawFetch;
+      _rawFetch = function (url, opts) {
+        if (opts && opts.headers && opts.headers.Accept === 'text/event-stream') { order.push('stream:' + (String(url).indexOf('auth=hq-token') > -1 ? 'hq' : 'other')); return new Promise(function () {}); }
+        return raw(url, opts);
+      };
+      AC_READY = true;
+      var es = new FetchLiveSource(FB + '/' + fbPath('आदेगांव', 'कुल उपभोक्ता') + '.json');
+      setTimeout(() => {
+        var before = order.slice();
+        hqOk(); // अब सही account तय हुआ
+        setTimeout(() => {
+          es.close(); _rawFetch = raw; window._ensureCorrectHqAuth = origEnsure; window.firebase = undefined;
+          resolve({ before: before, after: order });
+        }, 100);
+      }, 100);
+    }));
+    expect(r.before).toEqual(['ensure']); // account पक्का होने तक stream नहीं खुला
+    expect(r.after).toEqual(['ensure', 'token', 'stream:hq']); // फिर ताज़ा token से खुला
   });
 
   test('असली fetch wrapper से जाए — login token (?auth=) और App Check header दोनों लगें', async ({ page }) => {

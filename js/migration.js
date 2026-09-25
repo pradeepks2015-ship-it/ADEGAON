@@ -183,7 +183,12 @@ function isMigrated(hq,cat){
   var hk=hqKey(hq), ck=catKey(cat);
   return !!(MIGRATED[hk]&&MIGRATED[hk][ck]);
 }
-function loadMigratedFlags(){
+// v9.167: पढ़ाई नाकाम हो (असली production — ऐप खुलते वक़्त login पूरा होने से पहले पढ़ा गया,
+// "Permission denied") तो पहले चुपचाप छोड़ देते थे और flags अगले 12 घंटे तक खाली रहते — उसी बीच
+// कोई भी सेव migrated list को array में पलट सकता था। अब नाकाम हो तो कुछ बार, थोड़ा रुककर दोबारा
+var MIG_FLAG_RETRY_MS=15000, MIG_FLAG_RETRY_MAX=4;
+function loadMigratedFlags(_try){
+  _try=_try||0;
   fetch(FB+"/MIGRATED.json?t="+Date.now())
     .then(_fbJson)
     .then(function(d){
@@ -193,7 +198,9 @@ function loadMigratedFlags(){
         try{localStorage.setItem(MIG_FLAG_KEY,JSON.stringify(d));}catch(e){}
       }
     })
-    .catch(function(){});
+    .catch(function(){
+      if(_try<MIG_FLAG_RETRY_MAX) setTimeout(function(){ loadMigratedFlags(_try+1); },MIG_FLAG_RETRY_MS);
+    });
 }
 
 // ── ऑटो-पहचान + ऑटो-सुधार: कोई पुराने version वाला device migrated list को बचाते समय
