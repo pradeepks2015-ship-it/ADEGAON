@@ -11,7 +11,7 @@
 ## Repo/Branch
 - GitHub: `pradeepks2015-ship-it/ADEGAON`
 - `main` branch से Netlify auto-deploy होता है
-- सारा development branch `claude/app-version-strengths-weaknesses-v19hwv` पर होता है, फिर PR बनाकर `main` में merge होता है
+- सारा development branch `claude/recovery-tractor-cloud-file-cx3d5z` पर होता है, फिर PR बनाकर `main` में merge होता है
 
 ## मुख्य फाइलें
 - `js/config.js` — HQS, CATS, APP_VER, HQ_AUTH_EMAIL, JE_EMAIL, CAT_NAMES
@@ -29,7 +29,7 @@
 - `sw.js` — service worker + CACHE_NAME
 - `tests/smoke.spec.js` — पूरा टेस्ट suite
 - `database.rules.json` — Firebase Realtime Database की Security Rules (source of truth — `main` पर push होते ही `.github/workflows/deploy-rules.yml` अपने-आप असली Firebase पर deploy कर देता है, देखें `scripts/deploy-rules.js`)
-- `eslint.config.js` / `eslint.shared-globals.json` — CI लिंट सेटअप; कोई नई top-level global var/function (जो दूसरी js/*.js फाइल में इस्तेमाल हो) जोड़ें तो `node scripts/gen-eslint-globals.js` चलाकर globals list दोबारा बनाएं
+- `eslint.config.js` / `eslint.shared-globals.json` — CI लिंट सेटअप; कोई नई top-level global var/function (जो दूसरी js/*.js फाइल में इस्तेमाल हो) जोड़ें तो `node scripts/gen-eslint-globals.js` चलाकर globals list दोबारा बनाएं। दो फ़ाइलों में ग़लती से एक ही नाम declare न हो जाए (global scope share होने से चुपचाप overwrite का ख़तरा) — यह `npm run check-globals` (CI में भी) से अपने-आप जांचा जाता है, देखें `scripts/check-duplicate-globals.js`
 
 ## काम शुरू करने से पहले
 `git log --oneline -20` और हाल के merged PRs देख लें — पूरा इतिहास (फ़ैसले, bug root-causes, fixes) commit messages और PR descriptions में दर्ज है।

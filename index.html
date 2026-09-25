@@ -27,7 +27,19 @@ try{
 </head>
 <body>
 <div class="loading-overlay" id="loader">
-  <div class="spinner"></div>
+  <!-- लोडिंग चिह्न — किसी तस्वीर/GIF से नहीं, सीधे SVG से बना है, इसलिए इसका कोई डाउनलोड नहीं
+       (न Firebase से, न Netlify से) और हर स्क्रीन पर साफ़ दिखता है। चलती हुई लहर = data आ रहा है।
+       लहर अटकल से नहीं खींची — यह असली AC तरंग है: v = Vm·sin(2πft), शून्य-रेखा (y=60) से ऊपर
+       की ओर शुरू, ठीक 2 पूरे चक्र, ऊपर-नीचे दोनों तरफ़ बराबर आयाम (±20), और अंत फिर शून्य पर।
+       हर आधे चक्र के नियंत्रण-बिंदु w/3 और 2w/3 पर तथा ऊँचाई 4A/3 हैं — इसी से Bezier का शिखर
+       ठीक A पर पड़ता है (0.75 × 4A/3 = A), यानी आकार सच्ची sine जैसा बनता है, नक़ल भर नहीं।
+       दोनों सिरों की सीधी रेखाएं = तार, जिस पर यह तरंग चल रही है -->
+  <svg class="ldr" viewBox="0 0 120 120" width="96" height="96" aria-hidden="true">
+    <circle class="ldr-ring" cx="60" cy="60" r="40"></circle>
+    <line class="ldr-axis" x1="14" y1="60" x2="106" y2="60"></line>
+    <path class="ldr-wave" d="M2,60 L22,60 C28.33,33.33 34.67,33.33 41,60 C47.33,86.67 53.67,86.67 60,60 C66.33,33.33 72.67,33.33 79,60 C85.33,86.67 91.67,86.67 98,60 L118,60"></path>
+    <path class="ldr-bolt" d="M64,34 L50,62 L59,62 L55,86 L72,56 L62,56 Z"></path>
+  </svg>
   <div class="loading-text" id="loader-text">लोड हो रहा है...</div>
 </div>
 
@@ -86,6 +98,9 @@ try{
       <span class="stime" id="stime"></span>
     </div>
   </div>
+  <!-- 🛑 डेटा बचाओ मोड की पट्टी — सिर्फ़ तभी दिखती है जब JE ने स्विच दबाया हो। ज़रूरी है:
+       वरना लाइनमैन को लगेगा ऐप ख़राब हो गई (दूसरों का ताज़ा डेटा आना रुक जाता है) -->
+  <div id="pause-bar" style="display:none;"></div>
   <div class="app-header">
     <img class="hdr-tower-deco" src="icons/tower-decoration.svg" alt="" aria-hidden="true">
     <div class="hdr1">
@@ -110,11 +125,14 @@ try{
             <button type="button" class="logout-item" id="hsc-menu-item" style="display:none;color:#7b3fd1;" onclick="openHscModal()">&#128421; होम पेज डिस्प्ले बोर्ड</button>
             <button type="button" class="logout-item" id="wasc-menu-item" style="display:none;color:#00695c;" onclick="openWaScorecard()">&#128202; स्कोरकार्ड डिस्प्ले</button>
             <button type="button" class="logout-item" id="todaysc-menu-item" style="display:none;color:#ef6c00;" onclick="openTodayScorecard()">&#128979;&#65039; आज की वसूली</button>
+            <button type="button" class="logout-item" id="voicesc-menu-item" style="display:none;color:#5e35b1;" onclick="openVoiceScorecard()">&#128203; मुख्यालय व टैरिफ रिपोर्ट</button>
             <button type="button" class="logout-item" id="village-menu-item" style="color:#a34d00;" onclick="openVillageModal()">&#127961; ग्राम-वार वसूली</button>
             <button type="button" class="logout-item" id="cash-menu-item" style="display:none;color:var(--green);" onclick="openCashModal()">&#128181; कैश लिस्ट</button>
             <button type="button" class="logout-item" id="backup-menu-item" style="display:none;color:var(--gold);" onclick="downloadFullBackup()">&#128190; पूरा बैकअप</button>
             <button type="button" class="logout-item" id="log-menu-item" style="display:none;color:var(--gold2);" onclick="openLogModal()">&#129534; एरर लॉग<span id="log-badge" class="log-badge" style="display:none;"></span></button>
             <button type="button" class="logout-item" id="usage-menu-item" style="display:none;color:#0288d1;" onclick="openUsageModal()">&#128246; डेटा उपयोग</button>
+            <button type="button" class="logout-item" id="pause-menu-item" style="display:none;color:#c62828;" onclick="openPauseModal()">&#128721; डेटा बचाओ मोड</button>
+            <button type="button" class="logout-item" id="dv-menu-item" style="display:none;color:#1565c0;" onclick="openDvModal()">&#128101; कर्मचारी सक्रियता</button>
             <button type="button" class="logout-item" id="mig-menu-item" style="display:none;color:#455a64;" onclick="openMigModal()">&#128736;&#65039; चरण 3 जांच</button>
             <button type="button" class="logout-item" id="pin-menu-item" style="display:none;color:#c41f3d;" onclick="openPinModal()">&#128274; Lineman PIN</button>
             <button type="button" class="logout-item" id="clearcats-menu-item" style="display:none;color:var(--red);" onclick="clearOldCategoriesData()">&#128465;&#65039; पुरानी categories मिटाएं</button>
@@ -171,7 +189,10 @@ try{
     <div class="mtitle">&#128100; प्रोफ़ाइल</div>
     <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:16px;">
       <div id="profile-avatar-wrap" style="width:88px;height:88px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#fff;margin-bottom:10px;box-shadow:var(--shadow-md);"></div>
-      <button class="btn-cancel" style="width:auto;padding:8px 16px;" onclick="document.getElementById('profile-photo-inp').click()">&#128247; फ़ोटो बदलें</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-cancel" style="width:auto;padding:8px 16px;" onclick="document.getElementById('profile-photo-inp').click()">&#128247; फ़ोटो बदलें</button>
+        <button class="btn-cancel" id="profile-photo-remove-btn" style="width:auto;padding:8px 16px;display:none;" onclick="removeProfilePhoto()">&#128465; फ़ोटो हटाएं</button>
+      </div>
       <input type="file" id="profile-photo-inp" accept="image/*" style="display:none;" onchange="onPhotoSelected(this)">
     </div>
     <div class="rmk-info">
@@ -181,6 +202,10 @@ try{
     <div class="theme-row">
       <span>&#127769; डार्क मोड <span style="font-weight:400;color:var(--muted);">(कम रोशनी में आँखों को आराम)</span></span>
       <button class="theme-switch" id="theme-switch-btn" onclick="toggleTheme()" aria-label="डार्क मोड टॉगल करें"><span class="theme-switch-knob"></span></button>
+    </div>
+    <div class="theme-row">
+      <span>&#128227; वसूली पर आवाज़ <span style="font-weight:400;color:var(--muted);">(ताली और घंटी — फ़ोन में ही बनती है)</span></span>
+      <button class="theme-switch" id="sound-switch-btn" onclick="toggleCelebSound()" aria-label="वसूली पर आवाज़ चालू/बंद करें"><span class="theme-switch-knob"></span></button>
     </div>
     <div class="mfooter">
       <button class="btn-save" onclick="closeProfileModal()">बंद करें</button>
@@ -216,23 +241,29 @@ try{
     <button class="tmpl-btn" onclick="dlTemplate()">&#11015; Template CSV डाउनलोड करें</button>
     <div class="up-sel2">
       <div class="fg" style="margin:0;"><label>HQ *</label>
-        <div class="sel-wrap" style="margin:0;"><select class="fs" id="up-hq" onchange="updateUpCounter()"></select></div>
+        <div class="sel-wrap" style="margin:0;"><select class="fs" id="up-hq" onchange="onUpHqChange()"></select></div>
       </div>
       <div class="fg" style="margin:0;"><label>Category *</label>
         <div class="sel-wrap" style="margin:0;">
-          <select class="fs" id="up-cat" onchange="updateUpCounter();onCatChange()">
-            <option value="">-- चुनें --</option>
-            <option>कुल उपभोक्ता</option>
-            <option>घरेलू</option><option>व्यवसाय</option><option>कृषि</option>
-            <option id="up-cat-4">गवर्नमेंट</option><option id="up-cat-5">इंडस्ट्रियल</option>
-            <option id="up-cat-6">सूची-2</option><option id="up-cat-7">सूची-3</option>
-          </select>
+          <!-- खाली — विकल्प js/upload.js का _buildUpCatOptions() चुने हुए मुख्यालय के मौजूदा
+               नामों से बनाता है। पहले ये यहीं hardcoded थे और सिर्फ़ 4-7 सिंक होते थे, इसलिए
+               बदले हुए घरेलू/व्यवसाय/कृषि यहाँ पुराने नाम से दिखते रहते थे, और HQ बदलने पर तो
+               किसी और मुख्यालय के नाम दिख जाते — यानी ग़लत पते पर अपलोड होने का ख़तरा -->
+          <select class="fs" id="up-cat" onchange="updateUpCounter();onCatChange()"></select>
         </div>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;margin:2px 2px 10px;">
-        <input type="checkbox" id="up-keeppaid" checked style="width:18px;height:18px;accent-color:var(--green);">
-        पुरानी ✅ वसूली सुरक्षित रखें <span style="color:var(--muted);font-size:11px;">(नए माह की fresh list पर इसे हटाएँ)</span>
-      </label>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;margin:10px 2px 6px;">
+      <input type="checkbox" id="up-keeppaid" checked onchange="_upKeepToggle()" style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;">
+      पुरानी ✅ वसूली सुरक्षित रखें
+    </label>
+    <!-- नया लेजर आने पर पिछले माह की वसूली नहीं रखनी चाहिए (वरना जिसने नया बिल जमा नहीं किया वो
+         भी "वसूल" दिखता रहेगा और लाइनमैन उस तक जाएगा ही नहीं)। पर 1-10 तारीख़ की खिड़की में जो
+         वसूली इसी माह दर्ज हुई है वो नए लेजर में भी बनी रहनी चाहिए — इसीलिए तारीख़ से छँटाई -->
+    <div id="up-keepfrom-wrap" style="margin:0 2px 10px;padding:9px 11px;background:rgba(0,200,150,.06);border:1px solid rgba(0,200,150,.25);border-radius:10px;">
+      <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:5px;">इस तारीख़ से दर्ज वसूली ही रखें — इससे पुरानी (पिछले लेजर की) हट जाएगी</label>
+      <input type="date" class="fi" id="up-keepfrom" onchange="_upKeepPreview()" style="margin-bottom:6px;">
+      <div id="up-keepnote" style="font-size:11.5px;color:var(--green);font-weight:700;line-height:1.5;"></div>
     </div>
     <!-- COUNTER BOX -->
     <div id="cat-hint" style="display:none;background:rgba(0,200,150,.08);border:1px solid rgba(0,200,150,.2);border-radius:9px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#086b52;"></div>
@@ -326,6 +357,19 @@ try{
   </div>
 </div>
 
+<!-- एक दिन की पूरी सूची — स्कोरकार्ड की तालिका में सिर्फ़ 3 नाम/नंबर ही आ पाते हैं (वो भी कटे हुए) -->
+<div class="moverlay" id="scday-overlay" style="z-index:600;" onclick="if(event.target===this)closeScDayModal()">
+  <div class="msheet" style="max-height:92vh;">
+    <div class="mhandle"></div>
+    <div class="mtitle" id="scday-title">📅 दिनांक-वार वसूली</div>
+    <div id="scday-sub" style="font-size:11px;color:var(--muted);margin:-4px 0 10px;font-weight:700;"></div>
+    <div id="scday-content"></div>
+    <div class="mfooter">
+      <button class="btn-cancel" onclick="closeScDayModal()">बंद करें</button>
+    </div>
+  </div>
+</div>
+
 
 <!-- PHONE ACTION POPUP -->
 <div class="ph-overlay" id="ph-overlay" onclick="closePhOutside(event)">
@@ -336,6 +380,19 @@ try{
     <div class="ph-msgtype" id="ph-msgtype">
       <button type="button" class="ph-mt-btn" data-type="reminder" onclick="_phSelectMsgType('reminder')">🔔 सामान्य रिमाइंडर</button>
       <button type="button" class="ph-mt-btn" data-type="disconnect" onclick="_phSelectMsgType('disconnect')">⚠️ विच्छेदन सूचना (धारा 56)</button>
+      <div class="ph-mt-custom-slot">
+        <button type="button" class="ph-mt-btn" data-type="custom" id="ph-mt-custom-btn" onclick="_phSelectMsgType('custom')">अपना संदेश</button>
+        <button type="button" class="ph-mt-edit-btn" id="ph-mt-edit-btn" onclick="_phOpenCustomEdit()" title="बदलें" style="display:none;">✏️</button>
+      </div>
+    </div>
+    <div class="ph-custom-wrap" id="ph-custom-wrap" style="display:none;">
+      <input type="text" class="fi" id="ph-custom-label" maxlength="24" placeholder="बटन का नाम (जैसे: अतिक्रमण सूचना)" oninput="_phCustomLabelInput()" style="margin-bottom:8px;">
+      <textarea class="fta" id="ph-custom-text" placeholder="जैसे: योजना की जानकारी, अवैध अतिक्रमण की सूचना, आदि..." oninput="_phCustomInput()"></textarea>
+      <div class="ph-custom-meta" id="ph-custom-meta"></div>
+      <div class="ph-custom-actions">
+        <button type="button" class="ph-custom-save" onclick="_phSaveCustomMsg()">💾 सेव करें (सभी मुख्यालयों में दिखेगा)</button>
+        <button type="button" class="ph-custom-cancel" onclick="_phCloseCustomEdit()">रद्द करें</button>
+      </div>
     </div>
     <div class="ph-btns">
       <a class="ph-btn ph-btn-call" id="ph-call-btn" href="#">
@@ -490,14 +547,39 @@ try{
     <div style="font-size:11px;color:var(--muted);padding:0 4px 10px;">यह सिर्फ पढ़ता है — Firebase में कुछ भी नहीं बदलता। मकसद: असली माइग्रेशन से पहले पक्का करना कि हर record का acc मौजूद, अलग-अलग और वैध है।</div>
     <div id="mig-content"></div>
 
-    <div class="log-sec-hdr" style="margin-top:14px;">&#128241; सक्रिय Devices — कोई पुराने version पर तो नहीं</div>
-    <div id="mig-devices"></div>
-    <div style="margin-top:6px;"><button class="btn-cancel" style="width:100%;" onclick="_dvRender()">&#128260; Devices दोबारा जांचें</button></div>
-
     <div class="mfooter">
       <button class="btn-cancel" id="mig-dl" style="display:none;" onclick="downloadMigReport()">&#128190; रिपोर्ट Excel</button>
       <button class="btn-save" onclick="_migRunDryRun()">&#128260; दोबारा जांचें</button>
       <button class="btn-save" onclick="closeMigModal()">बंद करें</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🛑 डेटा बचाओ मोड (JE only) — आपातकालीन ब्रेक, जिस दिन Firebase का रोज़ाना download quota
+     भरता दिखे -->
+<div class="moverlay" id="pause-overlay" onclick="if(event.target===this)closePauseModal()">
+  <div class="msheet" style="max-height:92vh;">
+    <div class="mhandle"></div>
+    <div class="mtitle">&#128721; डेटा बचाओ मोड</div>
+    <div id="pause-content"></div>
+    <div class="mfooter">
+      <button class="btn-save" onclick="closePauseModal()">बंद करें</button>
+    </div>
+  </div>
+</div>
+
+<!-- कर्मचारी सक्रियता (JE only) — रोज़ देखने वाली चीज़, इसलिए चरण 3 (कभी-कभार वाली माइग्रेशन
+     जांच) से अलग करके मेनू में अपना विकल्प दिया गया है -->
+<div class="moverlay" id="dv-overlay" onclick="if(event.target===this)closeDvModal()">
+  <div class="msheet" style="max-height:92vh;">
+    <div class="mhandle"></div>
+    <div class="mtitle">&#128101; कर्मचारी सक्रियता</div>
+    <div style="font-size:11px;color:var(--muted);padding:0 4px 10px;">आज कौन-कौन काम पर रहा, किसने कितनी वसूली की, और कौन पुराने version पर है।</div>
+    <div id="mig-devices"></div>
+
+    <div class="mfooter">
+      <button class="btn-save" onclick="_dvRender()">&#128260; ताज़ा करें</button>
+      <button class="btn-save" onclick="closeDvModal()">बंद करें</button>
     </div>
   </div>
 </div>
@@ -542,6 +624,22 @@ try{
   </div>
 </div>
 
+<!-- मुख्यालय व टैरिफ रिपोर्ट (JE only) — मुख्यालय-वार, टैरिफ-श्रेणी-वार कनेक्शन/बकाया/वसूल की सूची।
+     JE का सवाल था "network cost बढ़ाए बिना ऐसा बटन बन सकता है क्या" — जवाब: सिर्फ़ device के अपने
+     cache (cGet) से बनती है, कोई fetch() नहीं (देखें js/reports.js: _voiceHQBreakdown/_voiceScRender)।
+     बोलकर सुनाने वाला बटन पहले यहां था (v9.132), JE ने कहा "सिर्फ़ लिस्ट चाहिए" — हटा दिया (v9.133) -->
+<div class="moverlay" id="voicesc-overlay" onclick="if(event.target===this)closeVoiceScorecard()">
+  <div class="msheet" style="max-height:92vh;">
+    <div class="mhandle"></div>
+    <div class="mtitle">&#128203; मुख्यालय व टैरिफ रिपोर्ट</div>
+    <div style="font-size:10px;color:var(--muted);margin:-6px 0 8px;">यह device पर पहले से मौजूद (cache किए हुए) data से बनती है — कोई नया Firebase डाउनलोड नहीं होता। किसी HQ/श्रेणी को हाल ही में न खोला हो तो वहां data पुराना या खाली दिख सकता है।</div>
+    <div id="voicesc-content"></div>
+    <div class="mfooter">
+      <button class="btn-save" onclick="closeVoiceScorecard()">बंद करें</button>
+    </div>
+  </div>
+</div>
+
 <!-- ग्राम-वार वसूली (JE: सभी HQ चुनकर; Lineman: सिर्फ अपने HQ के गांव) -->
 <div class="moverlay" id="village-overlay" onclick="if(event.target===this)closeVillageModal()">
   <div class="msheet" style="max-height:92vh;">
@@ -553,6 +651,8 @@ try{
       <input type="text" class="si" id="vg-search" placeholder="गांव खोजें..." oninput="_vgRenderList()">
     </div>
     <div id="vg-list"></div>
+    <div class="mtitle" style="font-size:14px;margin-top:14px;">&#128100; व्यक्ति/सूची-वार गोद लिए गांव</div>
+    <div id="vg-adopt-list"></div>
     <div class="mfooter">
       <button class="btn-cancel" onclick="_vgRefresh()">&#128260; रिफ्रेश करें</button>
       <button class="btn-cancel" onclick="downloadVillageExcel()">&#128229; सुधरी Excel</button>
@@ -609,9 +709,13 @@ try{
 <script src="js/database.js"></script>
 <script src="js/usage.js"></script>
 <script src="js/ui-core.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/cat-admin.js"></script>
 <script src="js/list.js"></script>
+<script src="js/celebration.js"></script>
 <script src="js/upload.js"></script>
 <script src="js/reports.js"></script>
+<script src="js/scorecards.js"></script>
 <script src="js/village.js"></script>
 <script src="js/migration.js"></script>
 <script src="js/home-scorecard.js"></script>

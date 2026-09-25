@@ -1,8 +1,23 @@
 // ─── PHONE ACTION MODAL ───────────────────────────────────────────────────────
-// दो तरह के संदेश टेम्पलेट — "सामान्य रिमाइंडर" (पुराना) और "विच्छेदन सूचना धारा 56" (नया, कानूनी
-// भाषा वाला)। जो टाइप आख़िरी बार चुना गया वह localStorage में याद रहता है — अगली बार सीधे वही चुना
-// हुआ दिखता/भेजा जाता है, पर दूसरा विकल्प भी हमेशा वहीं मौजूद रहता है बदलने के लिए
+// तीन तरह के संदेश टेम्पलेट — "सामान्य रिमाइंडर" (पुराना), "विच्छेदन सूचना धारा 56" (कानूनी भाषा
+// वाला), और "अपना संदेश" (योजना का प्रचार, अवैध अतिक्रमण जैसी सीधी सूचना, या कोई और बात जो ऊपर के
+// दो टेम्पलेट में फिट नहीं बैठती)। जो टाइप आख़िरी बार चुना गया वह localStorage में याद रहता है।
+// "अपना संदेश" एक अकेला, सबका साझा टेक्स्ट है (PH_CUSTOM_MSG, js/config.js) — सिर्फ़ JE बदल सकते
+// हैं (database.rules.json), और बदलते ही सभी मुख्यालयों के सभी लाइनमैन को वही नया संदेश दिखता है
+// (CAT_NAMES जैसा ही पैटर्न)।
+// बटन और edit अलग-अलग हैं: "अपना संदेश" बटन बाकी दो जैसा ही सिर्फ़ select करता है (लाइनमैन के लिए
+// भी) — नीचे कोई box नहीं खुलता। JE को उसके बगल में एक अलग ✏️ बटन दिखता है, वही edit-box खोलता है;
+// लाइनमैन को यह बटन दिखता ही नहीं। सेव करते ही box अपने-आप बंद हो जाता है — permanent नहीं रहता।
+// बटन का नाम ("अपना संदेश") भी JE बदल सकते हैं (PH_CUSTOM_MSG.label) — असली काम (जैसे "अतिक्रमण
+// सूचना") के हिसाब से बटन पर ही सही नाम दिखे, बार-बार सबको याद न दिलाना पड़े कि यह बटन किसलिए है
 var _phCtx=null;
+function _phCustomLabel(){
+  return (PH_CUSTOM_MSG&&PH_CUSTOM_MSG.label&&PH_CUSTOM_MSG.label.trim())||"अपना संदेश";
+}
+function _phUpdateCustomBtnLabel(){
+  var b=document.getElementById("ph-mt-custom-btn");
+  if(b) b.textContent=_phCustomLabel();
+}
 function _phBuildMsg(type,ctx){
   if(type==="disconnect"){
     return "⚠️ वैधानिक सूचना\n"+ctx.name+" जी, आपके विद्युत संयोजन"+
@@ -13,6 +28,7 @@ function _phBuildMsg(type,ctx){
       "\n– आदेगांव बिजली वितरण केंद्र सिवनी"+
       "\n(नोट: यदि भुगतान कर दिया है तो कृपया इस संदेश को अनदेखा करें)";
   }
+  if(type==="custom") return (PH_CUSTOM_MSG&&PH_CUSTOM_MSG.text)||"";
   return "नमस्ते "+ctx.name+" जी, आपका बिजली संयोजन"+
     (ctx.acc?" क्रमांक "+ctx.acc:"")+
     " पर वर्तमान माह तक"+
@@ -32,238 +48,84 @@ function _phApplyMsgType(type){
   document.getElementById("ph-wa-btn").href="https://wa.me/91"+_phCtx.clean+"?text="+encodeURIComponent(msg);
 }
 function _phSelectMsgType(type){ _phApplyMsgType(type); }
+// सिर्फ़ JE — ✏️ बटन दबाकर "अपना संदेश" का edit-box खोलना
+function _phOpenCustomEdit(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह संदेश बदल सकते हैं","err");return;}
+  document.getElementById("ph-custom-wrap").style.display="block";
+  _phRefreshCustomView();
+  document.getElementById("ph-custom-text").focus();
+}
+function _phCloseCustomEdit(){
+  document.getElementById("ph-custom-wrap").style.display="none";
+}
+// PH_CUSTOM_MSG से edit-box को भरना — box खोलते ही, और दूसरे device से JE के बदलाव के live आते ही
+// (fetchPhCustomMsgFromFB, js/config.js) — पर सिर्फ़ तभी जब box अभी खुला हो। JE खुद टाइप कर रहे
+// हों (label/text में से जिस पर focus हो) तो उसे न छेड़ें — वरना बीच टाइपिंग में उनका ही अधूरा लिखा मिट जाता
+function _phRefreshCustomView(){
+  var wrap=document.getElementById("ph-custom-wrap");
+  if(!wrap||wrap.style.display!=="block") return;
+  var ta=document.getElementById("ph-custom-text");
+  var la=document.getElementById("ph-custom-label");
+  var meta=(PH_CUSTOM_MSG&&PH_CUSTOM_MSG.by)?("आख़िरी बार "+PH_CUSTOM_MSG.by+(PH_CUSTOM_MSG.at?" • "+PH_CUSTOM_MSG.at:"")+" ने बदला"):"अभी तक कोई संदेश सेव नहीं हुआ";
+  document.getElementById("ph-custom-meta").textContent=meta;
+  if(document.activeElement!==ta) ta.value=(PH_CUSTOM_MSG&&PH_CUSTOM_MSG.text)||"";
+  if(document.activeElement!==la) la.value=(PH_CUSTOM_MSG&&PH_CUSTOM_MSG.label)||"";
+}
+// टाइप करते ही सिर्फ़ SMS/WhatsApp लिंक (इसी device पर, अभी के लिए) ताज़ा हों — पर सिर्फ़ तब जब
+// "अपना संदेश" ही अभी चुना हुआ हो, वरना दिख किसी और टेम्पलेट का रहा है और लिंक उसी के होने चाहिए।
+// असली सेव अलग बटन से, ताकि हर अक्षर पर Firebase को न लिखा जाए और आधा-लिखा वाक्य सबको न दिख जाए
+function _phCustomInput(){
+  if(!_phCtx) return;
+  var active=document.querySelector(".ph-mt-btn.active");
+  if(!active||active.getAttribute("data-type")!=="custom") return;
+  var t=document.getElementById("ph-custom-text").value;
+  document.getElementById("ph-sms-btn").href="sms:"+_phCtx.clean+"?body="+encodeURIComponent(t);
+  document.getElementById("ph-wa-btn").href="https://wa.me/91"+_phCtx.clean+"?text="+encodeURIComponent(t);
+}
+// बटन का नाम टाइप करते ही तुरंत बटन पर भी दिखे (इसी device पर, अभी के लिए) — असली सेव अलग बटन से
+function _phCustomLabelInput(){
+  var v=document.getElementById("ph-custom-label").value.trim();
+  var b=document.getElementById("ph-mt-custom-btn");
+  if(b) b.textContent=v||"अपना संदेश";
+}
+function _phSaveCustomMsg(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह संदेश बदल सकते हैं","err");return;}
+  if(!navigator.onLine){toast("📴 सेव करने के लिए नेट ज़रूरी है — सभी मुख्यालयों तक यही भेजना है","err");return;}
+  var text=document.getElementById("ph-custom-text").value;
+  var label=document.getElementById("ph-custom-label").value.trim();
+  var now=new Date();
+  var body={text:text,label:label,by:CU.name,at:now.toLocaleString("hi-IN"),ts:serverNow()};
+  fetch(FB+"/PH_CUSTOM_MSG.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(function(d){
+      PH_CUSTOM_MSG=d&&typeof d==="object"?d:body;
+      try{localStorage.setItem("dc_ph_custom_msg",JSON.stringify(PH_CUSTOM_MSG));}catch(e){}
+      _phCloseCustomEdit();
+      _phUpdateCustomBtnLabel();
+      // अभी "अपना संदेश" ही चुना हुआ था तो SMS/WhatsApp लिंक भी नए (अभी-अभी सेव किए) टेक्स्ट पर अपडेट हों
+      var active=document.querySelector(".ph-mt-btn.active");
+      if(active&&active.getAttribute("data-type")==="custom") _phApplyMsgType("custom");
+      toast("✅ सेव हो गया — अब सभी मुख्यालयों में यही संदेश दिखेगा","ok");
+    })
+    .catch(function(e){logErr("ph-custom-save-fail",e);toast("⚠️ सेव नहीं हुआ — दोबारा कोशिश करें","err");});
+}
 function openPhModal(name, phone, acc, amt){
   var clean=phone.replace(/\D/g,"");
   _phCtx={name:name,acc:acc,amtN:Number(amt)||0,clean:clean};
   document.getElementById("ph-name").textContent=name;
   document.getElementById("ph-num").textContent="📞 "+phone;
   document.getElementById("ph-call-btn").href="tel:"+clean;
+  document.getElementById("ph-custom-wrap").style.display="none"; // हर बार बंद ही खुले
+  document.getElementById("ph-mt-edit-btn").style.display=(CU&&CU.role==="supervisor")?"flex":"none";
+  _phUpdateCustomBtnLabel();
   var savedType="reminder";
   try{savedType=localStorage.getItem("dc_ph_msgtype")||"reminder";}catch(e){}
-  if(savedType!=="disconnect") savedType="reminder";
+  if(savedType!=="disconnect"&&savedType!=="custom") savedType="reminder";
   _phApplyMsgType(savedType);
   document.getElementById("ph-overlay").classList.add("open");
 }
 function closePhModal(){document.getElementById("ph-overlay").classList.remove("open");}
 function closePhOutside(e){if(e.target===document.getElementById("ph-overlay"))closePhModal();}
-
-// ─── SCORECARD ───────────────────────────────────────────────
-var scActiveHQ = "";
-
-function openScorecard(){
-  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE स्कोरकार्ड देख सकते हैं","err");return;}
-  scActiveHQ = activeHQ;
-  document.getElementById("sc-overlay").classList.add("open");
-  buildScorecard();
-}
-function closeScModal(){document.getElementById("sc-overlay").classList.remove("open");}
-function closeScOutside(e){if(e.target===document.getElementById("sc-overlay"))closeScModal();}
-
-function buildScorecard(){
-  // Build HQ tabs
-  var tabsEl=document.getElementById("sc-hq-tabs");
-  tabsEl.innerHTML="";
-  var hqs=CU.role==="supervisor"?HQS:[CU.hq];
-  hqs.forEach(function(hq){
-    var b=document.createElement("button");
-    b.className="sc-tab"+(hq===scActiveHQ?" active":"");
-    b.textContent=hq;
-    b.onclick=function(){
-      scActiveHQ=hq;
-      document.querySelectorAll(".sc-tab").forEach(function(x){x.classList.remove("active");});
-      b.classList.add("active");
-      renderScBody();
-    };
-    tabsEl.appendChild(b);
-  });
-  // Build overview (all HQs summary from cache)
-  buildScOverview([scActiveHQ]);
-  renderScBody();
-}
-
-function buildScOverview(hqs){
-  var el=document.getElementById("sc-overview");
-  var totAmt=0,totCons=0;
-  var allPaidAccs={}; // hq+acc → true (unique paid consumer)
-  var allAccs={};     // hq+acc → true (unique total consumer from CATS[0])
-  hqs.forEach(function(hq){
-    // कुल उपभोक्ता — सिर्फ CATS[0] से unique acc count
-    var consData=cGet(hq,CATS[0]);
-    consData.forEach(function(x){ if(x.acc) allAccs[hq+"||"+x.acc]=true; else totCons++; });
-    // paid — सभी categories से unique acc, पर सिर्फ वही जो "कुल उपभोक्ता" (मास्टर) सूची में भी हों
-    // (वरना ग्राम-वार वसूली/स्कोरकार्ड डिस्प्ले से संख्या मेल नहीं खाती — देखें _waScRow का वही सुधार)
-    CATS.forEach(function(cat){
-      var d=cGet(hq,cat);
-      d.forEach(function(x){
-        if(x.status==="paid"){
-          var key=hq+"||"+(x.acc||Math.random());
-          if(x.acc&&!allAccs[key])return;
-          if(!allPaidAccs[key]){ allPaidAccs[key]=true; totAmt+=Number(x.amount)||0; }
-        }
-      });
-    });
-  });
-  totCons+=Object.keys(allAccs).length;
-  var totPaid=Object.keys(allPaidAccs).length;
-  var totPend=totCons-totPaid;
-  var fmt=function(a){return a>=100000?"₹"+(a/100000).toFixed(1)+"L":a>=1000?"₹"+(a/1000).toFixed(1)+"K":"₹"+a;};
-  el.innerHTML=
-    "<div class='sc-ov-box'><div class='sc-ov-num'>"+totCons+"</div><div class='sc-ov-lbl'>कुल उपभोक्ता</div></div>"+
-    "<div class='sc-ov-box'><div class='sc-ov-num' style='color:var(--green)'>"+totPaid+"</div><div class='sc-ov-lbl'>✅ वसूल</div></div>"+
-    "<div class='sc-ov-box'><div class='sc-ov-num' style='color:var(--red)'>"+totPend+"</div><div class='sc-ov-lbl'>⏳ बाकी</div></div>"+
-    "<div class='sc-ov-box'><div class='sc-ov-num' style='color:var(--gold)'>"+fmt(totAmt)+"</div><div class='sc-ov-lbl'>वसूल राशि</div></div>";
-}
-
-// सबसे पहले cache से तुरंत दिखाएं (पुराना तरीका — हर category पर बिना cooldown के fbGet() — खोलने
-// और मॉडल के अंदर हर HQ-tab बदलने पर 8 categories बार-बार डाउनलोड करता था, कोई रोक-टोक नहीं थी;
-// असली bandwidth bug यही था, header/bottom-nav का सबसे प्रमुख बटन होने से सबसे ज़्यादा असर यहीं से)।
-// अब background refresh भी _cashRefreshAll() से होता है, जो 5-मिनट cooldown पहले से देता है —
-// तो बार-बार खोलने/tab बदलने पर भी असल network call ज़्यादा से ज़्यादा हर 5 मिनट में एक बार ही हो
-function _scBodyFromCache(){
-  var combined=[];
-  for(var i=0;i<CATS_DEFAULT.length;i++){
-    var cat=(i>=4)?getCatName(scActiveHQ,i):CATS_DEFAULT[i];
-    combined=combined.concat(cGet(scActiveHQ,cat));
-  }
-  renderScDateTable(combined);
-}
-function renderScBody(){
-  var hdr=document.getElementById("sc-date-hdr");
-  hdr.textContent="📅 "+scActiveHQ+" — दिनांक-वार वसूली";
-  _scBodyFromCache();
-  if(!navigator.onLine) return;
-  _cashRefreshAll([scActiveHQ],function(){
-    var fx=reconcileHQ(scActiveHQ);
-    if(fx) toast("🔁 "+fx+" record का status हर tab में मिलाया","inf");
-    _scBodyFromCache();
-    buildScOverview([scActiveHQ]);
-  });
-}
-
-function normPayDate(v){
-  // हर format (yyyy-mm-dd / d/m/yyyy / dd-mm-yyyy) को d/m/yyyy बनाएँ; future date → आज
-  var d=null,m;
-  if((m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) d=new Date(+m[1],+m[2]-1,+m[3]);
-  else if((m=v.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/))) d=new Date(+m[3],+m[2]-1,+m[1]);
-  if(!d||isNaN(d.getTime())) return v; // पहचान न पाएँ तो जैसा है वैसा
-  var tdy=new Date(); tdy.setHours(0,0,0,0);
-  if(d>tdy) d=tdy;
-  return d.getDate()+"/"+(d.getMonth()+1)+"/"+d.getFullYear();
-}
-function payDateVal(v){
-  var m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  return m?(+m[3])*10000+(+m[2])*100+(+m[1]):0;
-}
-function renderScDateTable(data){
-  var el=document.getElementById("sc-body");
-  // Group paid records by paydate — unique acc only
-  var byDate={};
-  var seenAcc={}; // track unique acc across all dates
-  // सिर्फ वही acc गिनें जो "कुल उपभोक्ता" (मास्टर) सूची में भी हों — ग्राम-वार वसूली से मेल के लिए
-  var masterAcc={};
-  (cGet(scActiveHQ,CATS[0])||[]).forEach(function(m){ if(m&&m.acc) masterAcc[String(m.acc)]=1; });
-  data.forEach(function(x){
-    if(x.status==="paid"&&x.paydate){
-      if(x.acc&&!masterAcc[String(x.acc)]) return;
-      var dt=normPayDate(x.paydate.trim());
-      var accKey=x.acc||("__noAcc__"+x.name);
-      if(seenAcc[accKey]) return; // duplicate acc — skip
-      seenAcc[accKey]=true;
-      if(!byDate[dt]) byDate[dt]={count:0,amount:0,names:[],accs:[]};
-      byDate[dt].count++;
-      byDate[dt].amount+=Number(x.amount)||0;
-      byDate[dt].names.push(x.name||"");
-      if(x.acc) byDate[dt].accs.push(x.acc);
-    }
-  });
-  var dates=Object.keys(byDate).sort(function(a,b){
-    return payDateVal(b)-payDateVal(a); // असली date से desc sort
-  });
-  if(!dates.length){
-    el.innerHTML="<div class='empty'><div class='empty-ico'>📊</div><div class='empty-t'>कोई वसूली नहीं</div><div class='empty-s'>अभी तक कोई भुगतान दर्ज नहीं</div></div>";
-    return;
-  }
-  var totCount=0,totAmt=0;
-  var rows=dates.map(function(dt){
-    var d=byDate[dt];
-    totCount+=d.count; totAmt+=d.amount;
-    return "<tr>"+
-      "<td style='font-weight:600;'>"+escHtml(dt)+"</td>"+
-      "<td style='text-align:center;color:var(--green);font-weight:700;'>"+d.count+"</td>"+
-      "<td style='text-align:right;color:var(--gold);font-weight:700;'>₹"+d.amount.toLocaleString("hi-IN")+"</td>"+
-      "<td style='color:var(--muted);font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+escHtml(d.names.slice(0,3).join(", "))+(d.names.length>3?" +"+(d.names.length-3):"")+"</td>"+
-      "<td style='color:#64b5f6;font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"+escHtml(d.accs.slice(0,3).join(", "))+(d.accs.length>3?" +"+(d.accs.length-3):"")+"</td>"+
-    "</tr>";
-  }).join("");
-  // कुल उपभोक्ता CATS[0] से
-  var hqTotal=cGet(scActiveHQ,CATS[0]).length||0;
-  var pct=hqTotal?((totCount/hqTotal)*100).toFixed(1):"0.0";
-  el.innerHTML=
-    "<div style='font-size:11px;color:var(--muted);margin-bottom:6px;'>📊 कुल उपभोक्ता: <b style=\'color:var(--fg)\'>"+(hqTotal||"-")+"</b> &nbsp;|&nbsp; वसूल: <b style=\'color:var(--green)\'>"+(totCount)+"</b> &nbsp;|&nbsp; बाकी: <b style=\'color:var(--red)\'>"+(hqTotal-totCount)+"</b> &nbsp;|&nbsp; प्रतिशत: <b style=\'color:var(--gold)\'>"+(pct)+"%</b></div>"+
-    "<table class='sc-date-table'>"+
-      "<thead><tr><th>दिनांक</th><th style='text-align:center;'>संख्या</th><th style='text-align:right;'>राशि</th><th>उपभोक्ता</th><th>Consumer No</th></tr></thead>"+
-      "<tbody>"+rows+
-        "<tr class='sc-total-row'>"+
-          "<td>🏆 कुल ("+pct+"%)</td>"+
-          "<td style='text-align:center;'>"+totCount+" / "+hqTotal+"</td>"+
-          "<td style='text-align:right;'>₹"+totAmt.toLocaleString("hi-IN")+"</td>"+
-          "<td></td>"+
-          "<td></td>"+
-        "</tr>"+
-      "</tbody>"+
-    "</table>";
-}
-
-function downloadScPDF(){
-  // Gather all HQ data for scorecard PDF
-  var hqs=CU.role==="supervisor"?HQS:[CU.hq];
-  var rows="";
-  hqs.forEach(function(hq){
-    var combined=[];
-    CATS.forEach(function(cat){combined=combined.concat(cGet(hq,cat));});
-    var hqTotal=cGet(hq,CATS[0]).length||0;
-    var byDate={};
-    var seenAccPDF={};
-    var masterAccPDF={};
-    (cGet(hq,CATS[0])||[]).forEach(function(m){ if(m&&m.acc) masterAccPDF[String(m.acc)]=1; });
-    combined.forEach(function(x){
-      if(x.status==="paid"&&x.paydate){
-        if(x.acc&&!masterAccPDF[String(x.acc)]) return;
-        var accKey=x.acc||("__noAcc__"+x.name);
-        if(seenAccPDF[accKey]) return;
-        seenAccPDF[accKey]=true;
-        var dt=x.paydate.trim();
-        if(!byDate[dt]) byDate[dt]={count:0,amount:0,names:[],accs:[]};
-        byDate[dt].count++; byDate[dt].amount+=Number(x.amount)||0;
-        byDate[dt].names.push(x.name||'');
-        if(x.acc) byDate[dt].accs.push(x.acc);
-      }
-    });
-    var dates=Object.keys(byDate).sort(function(a,b){return b.localeCompare(a);});
-    if(!dates.length) return;
-    var totC=0,totA=0;
-    var hqRows=dates.map(function(dt){
-      var d=byDate[dt]; totC+=d.count; totA+=d.amount;
-      return "<tr><td>"+escHtml(dt)+"</td><td style='text-align:center;'>"+d.count+"</td><td style='text-align:right;font-weight:700;'>₹"+d.amount.toLocaleString("hi-IN")+"</td><td style='font-size:9px;color:#555;'>"+escHtml(d.names.slice(0,3).join(", "))+(d.names.length>3?" +"+(d.names.length-3):"")+"</td><td style='font-size:9px;color:#1a237e;'>"+escHtml(d.accs.slice(0,3).join(", "))+(d.accs.length>3?" +"+(d.accs.length-3):"")+"</td></tr>";
-    }).join("");
-    var pdfPct=hqTotal?((totC/hqTotal)*100).toFixed(1):"0.0";
-    hqRows+="<tr style='background:#e8f5e9;font-weight:700;'><td>कुल ("+pdfPct+"%)</td><td style='text-align:center;'>"+totC+" / "+hqTotal+"</td><td style='text-align:right;'>₹"+totA.toLocaleString("hi-IN")+"</td><td></td><td></td></tr>";
-    rows+="<h3 style='color:#4a148c;margin-top:18px;'>📍 "+escHtml(hq)+"</h3>"+
-      "<table style='width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px;'>"+
-      "<thead><tr style='background:#4a148c;color:#fff;'><th style='padding:5px;text-align:left;'>दिनांक</th><th style='padding:5px;text-align:center;'>संख्या</th><th style='padding:5px;text-align:right;'>राशि</th><th style='padding:5px;'>उपभोक्ता</th><th style='padding:5px;'>Consumer No</th></tr></thead>"+
-      "<tbody>"+hqRows+"</tbody></table>";
-  });
-  var html="<!DOCTYPE html><html><head><meta charset='UTF-8'>"+
-    "<style>body{font-family:Arial,sans-serif;font-size:11px;margin:15px;}h2{color:#4a148c;}td{padding:5px;border-bottom:1px solid #ddd;}"+
-    "@media print{.np{display:none}}</style></head><body>"+
-    "<h2>&#127942; DC स्कोरकार्ड — दिनांक-वार वसूली</h2>"+
-    "<p>दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+escHtml(CU.name)+"</p>"+
-    "<button class='np' onclick='window.print()' style='margin-bottom:8px;padding:6px 14px;background:#4a148c;color:#fff;border:none;border-radius:5px;cursor:pointer;'>Print / PDF Save</button>"+
-    rows+"</body></html>";
-  var w=window.open("","_blank");
-  if(w){w.document.write(html);w.document.close();setTimeout(function(){w.print();},600);}
-  else toast("Popup block है, allow करें","inf");
-}
 
 
 function dlTemplate(){
@@ -391,7 +253,7 @@ function downloadFullBackup(){
         var totalRecs=0;
         HQS.forEach(function(hq){
           for(var i=0;i<CATS_DEFAULT.length;i++){
-            var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+            var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
             var d=cGet(hq,cat);
             if(!d||!d.length)continue;
             var paid=0,pendAmt=0;
@@ -443,158 +305,3 @@ function downloadFullBackup(){
   });
 }
 
-// ─── स्कोरकार्ड डिस्प्ले (JE only) — सभी HQ की सारांश तालिका, WhatsApp पर screenshot शेयर के लिए ───
-// खोलते ही सीधे cache से दिखाएं (आज की वसूली/ग्राम-वार वसूली जैसा ही तरीका) — network refresh नहीं,
-// वरना हर बार खोलने पर सभी 6 HQ की सभी 8 categories दोबारा डाउनलोड होतीं (वही असली bandwidth bug,
-// तीसरी जगह भी मिला) — ताज़ा चाहिए तो "रिफ्रेश करें" बटन है (देखें loadWaScorecard)
-function openWaScorecard(){
-  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह देख सकते हैं","err");return;}
-  var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
-  document.getElementById("wasc-overlay").classList.add("open");
-  _waScRender();
-}
-function closeWaScorecard(){document.getElementById("wasc-overlay").classList.remove("open");}
-
-// एक HQ का सारांश — "कुल उपभोक्ता" श्रेणी को मास्टर सूची मानकर कुल/बकाया, बाकी सभी श्रेणियों से unique वसूल (जैसा मौजूदा स्कोरकार्ड करता है)
-// वसूल सिर्फ उन्हीं acc के लिए गिनें जो "कुल उपभोक्ता" (मास्टर) सूची में भी मौजूद हों — वरना ग्राम-वार वसूली
-// (जो सिर्फ मास्टर records पर आधारित है) से संख्या मेल नहीं खाती
-function _waScRow(hq){
-  var master=cGet(hq,CATS_DEFAULT[0])||[];
-  var seenTot={},tot=0,bakaya=0,masterAcc={};
-  master.forEach(function(x){
-    if(!x)return;
-    var key=x.acc?String(x.acc):("_t"+tot+Math.random());
-    if(seenTot[key])return; seenTot[key]=1;
-    if(x.acc) masterAcc[String(x.acc)]=1;
-    tot++;
-    if(x.status!=="paid") bakaya+=Number(x.amount)||0;
-  });
-  var seenPaid={},paid=0,paidAmt=0;
-  for(var i=0;i<CATS_DEFAULT.length;i++){
-    var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
-    var d=cGet(hq,cat)||[];
-    d.forEach(function(x){
-      if(!x||x.status!=="paid")return;
-      if(x.acc&&!masterAcc[String(x.acc)])return; // "कुल उपभोक्ता" में न हो तो न गिनें
-      var key=x.acc?String(x.acc):("_p"+paid+Math.random());
-      if(seenPaid[key])return; seenPaid[key]=1;
-      paid++; paidAmt+=Number(x.amount)||0;
-    });
-  }
-  return {hq:hq,tot:tot,bakaya:bakaya,paid:paid,paidAmt:paidAmt,pct:tot?(paid/tot*100):0};
-}
-
-function _waScRender(){
-  var el=document.getElementById("wasc-content");
-  var rows=HQS.map(_waScRow);
-  var gTot=0,gBak=0,gPaid=0,gPaidAmt=0;
-  rows.forEach(function(r){gTot+=r.tot;gBak+=r.bakaya;gPaid+=r.paid;gPaidAmt+=r.paidAmt;});
-  var gPct=gTot?(gPaid/gTot*100):0;
-  var fmt=function(n){return Number(n||0).toLocaleString("hi-IN");};
-  var now=new Date();
-  var html="<div class='wasc-hdr'><div class='wasc-hdr-t'>&#9889; वसूली ट्रैकर — आदेगांव DC</div>"+
-    "<div class='wasc-hdr-s'>अद्यतन: "+now.toLocaleDateString("hi-IN")+" "+now.toLocaleTimeString("hi-IN",{hour:"2-digit",minute:"2-digit"})+"</div></div>";
-  html+="<table class='wasc-table'><thead><tr><th>क्र.</th><th class='wasc-th-left'>मुख्यालय</th>"+
-    "<th>कुल उपभोक्ता<br><span class='wasc-sub'>बकाया राशि</span></th>"+
-    "<th class='wasc-col-paid'>वसूल उपभोक्ता<br><span class='wasc-sub'>वसूल राशि</span></th>"+
-    "<th>Paid Count %</th></tr></thead><tbody>";
-  rows.forEach(function(r,i){
-    html+="<tr><td>"+(i+1)+"</td><td class='wasc-hq'>"+escHtml(r.hq)+"</td>"+
-      "<td>"+fmt(r.tot)+"<br><span class='wasc-sub'>&#8377;"+fmt(r.bakaya)+"</span></td>"+
-      "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+fmt(r.paid)+"</span><br><span class='wasc-sub'>&#8377;"+fmt(r.paidAmt)+"</span></td>"+
-      "<td>"+r.pct.toFixed(1)+"%</td></tr>";
-  });
-  html+="</tbody><tfoot><tr><td colspan='2'>योग</td>"+
-    "<td>"+fmt(gTot)+"<br><span class='wasc-sub'>&#8377;"+fmt(gBak)+"</span></td>"+
-    "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+fmt(gPaid)+"</span><br><span class='wasc-sub'>&#8377;"+fmt(gPaidAmt)+"</span></td>"+
-    "<td>"+gPct.toFixed(1)+"%</td></tr></tfoot></table>";
-  el.innerHTML=html;
-}
-
-// सिर्फ़ "रिफ्रेश करें" बटन से बुलाया जाता है — force=true देकर cooldown नज़रअंदाज़ करके हमेशा असली ताज़ा data
-function loadWaScorecard(){
-  var el=document.getElementById("wasc-content");
-  el.innerHTML="<div class='sc-loading'>⏳ ताज़ा data लाया जा रहा है...</div>";
-  if(navigator.onLine){
-    _cashRefreshAll(HQS,function(){_waScRender();},true);
-  } else {
-    _waScRender();
-  }
-}
-
-// ── आज की वसूली — वर्तमान दिनांक का मुख्यालय-वार भुगतान संख्या स्कोरकार्ड (JE only) ──
-// खोलते ही सीधे cache से दिखाएं (WhatsApp स्कोरकार्ड — buildScorecard() — जैसा ही तरीका), network
-// refresh नहीं — वरना हर बार खोलने पर _cashRefreshAll() सभी 6 HQ के सभी 8 categories की पूरी लिस्ट
-// (कुल उपभोक्ता में 3500 तक records) दोबारा डाउनलोड करता, और यह फ़ीचर बार-बार खोला जाना स्वाभाविक है
-// (रोज़ का हिसाब चेक करने के लिए) — असली bandwidth bug यही था, ताज़ा चाहिए तो "रिफ्रेश करें" बटन है
-function openTodayScorecard(){
-  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह देख सकते हैं","err");return;}
-  var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
-  document.getElementById("todaysc-overlay").classList.add("open");
-  _todayScRender();
-}
-function closeTodayScorecard(){document.getElementById("todaysc-overlay").classList.remove("open");}
-
-function _todayDateStr(){
-  var d=new Date();
-  return d.getDate()+"/"+(d.getMonth()+1)+"/"+d.getFullYear(); // normPayDate() जैसा ही d/m/yyyy फॉर्मेट, तुलना के लिए
-}
-
-// एक HQ का आज का वसूल count/amount — "कुल उपभोक्ता" को मास्टर मानकर, बाकी categories से unique acc गिनना
-// (_waScRow जैसा ही dedup तरीका, सिर्फ आज की तारीख़ का filter जोड़ा)
-function _todayScRow(hq){
-  var todayStr=_todayDateStr();
-  var master=cGet(hq,CATS_DEFAULT[0])||[];
-  var masterAcc={};
-  master.forEach(function(x){ if(x&&x.acc) masterAcc[String(x.acc)]=1; });
-  var seen={},count=0,amt=0;
-  for(var i=0;i<CATS_DEFAULT.length;i++){
-    var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
-    var d=cGet(hq,cat)||[];
-    d.forEach(function(x){
-      if(!x||x.status!=="paid"||!x.paydate)return;
-      if(x.acc&&!masterAcc[String(x.acc)])return; // "कुल उपभोक्ता" में न हो तो न गिनें
-      if(normPayDate(String(x.paydate).trim())!==todayStr)return;
-      var key=x.acc?String(x.acc):("_"+count+Math.random());
-      if(seen[key])return; seen[key]=1;
-      count++; amt+=Number(x.amount)||0;
-    });
-  }
-  return {hq:hq,count:count,amt:amt};
-}
-
-function _todayScRender(){
-  var el=document.getElementById("todaysc-content");
-  var rows=HQS.map(_todayScRow);
-  var gCount=0,gAmt=0;
-  rows.forEach(function(r){gCount+=r.count;gAmt+=r.amt;});
-  var fmt=function(n){return Number(n||0).toLocaleString("hi-IN");};
-  var html="<div class='wasc-hdr'><div class='wasc-hdr-t'>&#128979;&#65039; आज की वसूली — "+escHtml(_todayDateStr())+"</div></div>";
-  if(!gCount){
-    html+="<div class='empty'><div class='empty-ico'>📅</div><div class='empty-t'>आज तक कोई वसूली नहीं</div><div class='empty-s'>अभी तक किसी भी HQ में आज का कोई भुगतान दर्ज नहीं</div></div>";
-    el.innerHTML=html;
-    return;
-  }
-  html+="<table class='wasc-table'><thead><tr><th>क्र.</th><th class='wasc-th-left'>मुख्यालय</th><th class='wasc-col-paid'>बिल भुगतान संख्या</th><th>आज राशि</th></tr></thead><tbody>";
-  rows.forEach(function(r,i){
-    html+="<tr><td>"+(i+1)+"</td><td class='wasc-hq'>"+escHtml(r.hq)+"</td>"+
-      "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+fmt(r.count)+"</span></td>"+
-      "<td>&#8377;"+fmt(r.amt)+"</td></tr>";
-  });
-  html+="</tbody><tfoot><tr><td colspan='2'>योग</td>"+
-    "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+fmt(gCount)+"</span></td>"+
-    "<td>&#8377;"+fmt(gAmt)+"</td></tr></tfoot></table>";
-  el.innerHTML=html;
-}
-
-// सिर्फ़ "रिफ्रेश करें" बटन से बुलाया जाता है (JE ने खुद मांगा है) — इसलिए force=true देकर
-// 5-मिनट वाली cooldown नज़रअंदाज़ करके हमेशा असली ताज़ा data लाया जाए
-function loadTodayScorecard(){
-  var el=document.getElementById("todaysc-content");
-  el.innerHTML="<div class='sc-loading'>⏳ ताज़ा data लाया जा रहा है...</div>";
-  if(navigator.onLine){
-    _cashRefreshAll(HQS,function(){_todayScRender();},true);
-  } else {
-    _todayScRender();
-  }
-}

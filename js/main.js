@@ -3,19 +3,29 @@ var _appStarted=false;
 function startApp(){
   if(_appStarted)return; _appStarted=true;
   loadCatNames();
+  loadPhCustomMsg();
   loadMigratedFlags();
   loadHQPins();
+  // 🛑 डेटा बचाओ मोड — पहले device की याद से (ताकि जवाब आने से पहले भी सही व्यवहार हो, वरना
+  // उन्हीं कुछ सेकंडों में live sync जुड़कर पूरी लिस्ट उतार लेता), फिर server से पक्का करें
+  loadPauseLocal();
+  renderPauseBar();
   rebuildCatsForHQ(HQS[0]);
   hideLoader();
   setSyncStatus(navigator.onLine);
   hscLoadLocal(); renderHomeSc();
-  if(navigator.onLine){ensureLibs();flushPending();hscFetch();}
-  // Pull-to-refresh जैसा असली page reload भी CU (JS memory) मिटा देता है — सेव किया हुआ session
-  // मिले तो login screen दिखाए बिना चुपचाप वापस अंदर ले जाएं (Firebase का अपना auth session वैसे
-  // भी reload के बाद बना रहता है — यह सिर्फ़ app की अपनी UI उसी के साथ मिला रहा है)
-  var savedCU=null;
-  try{var s=sessionStorage.getItem("dc_cu"); if(s) savedCU=JSON.parse(s);}catch(e){}
-  if(savedCU&&savedCU.role&&savedCU.hq&&savedCU.name){
+  // असली जश्न-आवाज़ें (कुल 63 KB) पहले से उतार लें, ताकि पहली वसूली पर ही असली तालियाँ बजें।
+  // Netlify से आती हैं, Firebase से नहीं — रोज़ाना download quota पर कोई असर नहीं। आवाज़ बंद
+  // रखने वाले device पर एक बाइट भी नहीं जाती (देखें list.js: _sndWarm)
+  if(navigator.onLine){ensureLibs();flushPending();fetchPause();hscFetch();try{_sndWarm();}catch(e){}}
+  startPausePoll();
+  // Pull-to-refresh जैसा असली page reload, और मोबाइल पर ऐप minimize होने के बाद OS का tab मार
+  // देना — दोनों CU (JS memory) मिटा देते हैं। सेव किया हुआ session मिले तो login screen दिखाए
+  // बिना चुपचाप वापस अंदर ले जाएं (Firebase का अपना auth session वैसे भी बना रहता है — यह सिर्फ़
+  // app की अपनी UI उसी के साथ मिला रहा है)। _finishLogin() अंदर saveSession() से समय ताज़ा कर
+  // देता है, यानी रोज़ इस्तेमाल करने वाले को कभी दोबारा login नहीं करना पड़ता
+  var savedCU=loadSession();
+  if(savedCU){
     CU=savedCU;
     _finishLogin(CU.name,true);
   } else {

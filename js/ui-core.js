@@ -7,14 +7,22 @@ function toast(msg,type){
   clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove("show");},3500);
 }
 
+// पट्टी में अब सिर्फ़ हरी/लाल बत्ती — कोई शब्द नहीं। पहले वाला लंबा वाक्य छोटी स्क्रीन (360px)
+// पर संस्था का नाम काट देता था ("आदेगांव बिजली वि…")।
+// उस वाक्य में एक और जानकारी भी थी — कितने बदलाव अभी भेजे जाने बाक़ी हैं। वह दिखनी बंद हो गई,
+// इसलिए बत्ती के title/aria-label में डाल दी गई है: बत्ती दबाकर रखने पर पूरी बात दिख जाती है,
+// और चौड़ाई भी नहीं घेरती। (रंग-अंधता वालों के लिए भी यही सहारा है, ताकि बत्ती का मतलब अटकल
+// का विषय न रहे।)
 function setSyncStatus(ok){
   var d=document.getElementById("sdot"),t=document.getElementById("stxt");
   if(!d)return;
   var n=pendingCount();
   d.className=ok?"sdot":"sdot off";
-  t.className=ok?"stxt":"stxt off";
-  if(ok) t.textContent=n?("🔄 "+n+" बदलाव sync हो रहे…"):"Live Sync ✓";
-  else t.textContent=n?("📴 ऑफलाइन • "+n+" बदलाव save — नेट पर sync होंगे"):"📴 ऑफलाइन — data device पर save है";
+  var lbl=ok?"ऑनलाइन":"ऑफलाइन — डेटा device पर सुरक्षित है";
+  if(n) lbl+=" • "+n+" बदलाव भेजना बाक़ी";
+  d.setAttribute("title",lbl);
+  d.setAttribute("aria-label",lbl);
+  if(t) t.textContent=""; // जान-बूझकर खाली — पट्टी में सिर्फ़ बत्ती रहे
 }
 
 function updTime(){
@@ -36,9 +44,11 @@ function fmtDateTime(dt){
 window.addEventListener("online",function(){
   setSyncStatus(true);
   ensureLibs();
+  fetchPause(); // 🛑 स्विच का ताज़ा हाल — नेट बंद रहते हुए JE ने बदला हो सकता है
   _ensureCorrectHqAuth(); // पहले सही account पक्का करें, तभी flushPending() को असली मौक़ा मिलेगा
   flushPending();
   fetchCatNamesFromFB(false);
+  fetchPhCustomMsgFromFB();
   hscFetch();
   if(CU&&activeHQ&&activeCat&&!isPending(activeHQ,activeCat)){
     fbGet(activeHQ,activeCat,function(d){renderSummaryWith(d);renderListWith(d);});
@@ -49,12 +59,34 @@ window.addEventListener("offline",function(){setSyncStatus(false);});
 // टाइमर रोक दो — वरना background में पड़ा device घंटों तक चुपचाप Firebase bandwidth खर्च करता रहता,
 // चाहे कोई देख भी नहीं रहा हो। वापस दिखने पर फिर से जोड़ लेते हैं — EventSource खुद जुड़ते ही ताज़ा
 // data दे देता है, कुछ छूटता नहीं।
+// ...लेकिन तुरंत बंद कर देना उससे भी महंगा निकला। startListen() हर बार नया EventSource खोलता है, और
+// Firebase जुड़ते ही अपने पहले "put" event में *पूरी* list भेजता है (यह SSE का तरीक़ा है, इसमें ETag
+// जैसा कुछ नहीं) — यानी ऐप से बाहर जाकर वापस आने पर हर बार पूरी "कुल उपभोक्ता" लिस्ट दोबारा उतरती थी।
+// लाइनमैन दिन भर WhatsApp/कैमरा/कॉल के लिए ऐप से बाहर-अंदर होता रहता है, तो यह दिन में दर्जनों बार
+// होता था — Firebase के रोज़ाना download quota का सबसे बड़ा हिस्सा यही खा रहा था।
+// अब: थोड़ी देर के लिए बाहर जाने पर connection चालू ही रहने दो (SSE खुला रहने में कुछ खर्च नहीं होता,
+// वो सिर्फ़ असली बदलाव भेजता है)। सच में लंबे समय के लिए background में पड़ा रहे, तभी बंद करो —
+// मूल मक़सद (घंटों पड़ा device चुपचाप खर्च न करे) वैसे का वैसा पूरा होता है।
+// v9.154: database.js के TAB_REVISIT_GRACE_MS जैसा ही 3→10 मिनट किया (असली Firebase Console
+// usage देखकर JE का फ़ैसला — देखें वहां का कमेंट)। पूरे ऐप में एक ही नियम बना रहे, इसलिए दोनों
+// साथ बदले
+var LISTEN_HIDE_GRACE_MS=10*60*1000;
+var _hideTimer=null;
 document.addEventListener("visibilitychange",function(){
   if(document.hidden){
-    stopListen();
-    if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
-  } else if(CU&&activeHQ&&activeCat){
-    startListen(activeHQ,activeCat);
+    if(_hideTimer) clearTimeout(_hideTimer);
+    _hideTimer=setTimeout(function(){
+      _hideTimer=null;
+      stopListen();
+      if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
+    },LISTEN_HIDE_GRACE_MS);
+  } else {
+    if(_hideTimer){ // इतनी जल्दी वापस आ गए कि connection बंद ही नहीं हुआ — कुछ करने की ज़रूरत नहीं
+      clearTimeout(_hideTimer); _hideTimer=null;
+      return;
+    }
+    fetchPause(); // वापस सामने आए — स्विच बीच में बदला हो सकता है
+    if(CU&&activeHQ&&activeCat) startListen(activeHQ,activeCat);
   }
 });
 // हर 20 sec — pending बदलाव हों और नेट हो तो sync करते रहो
@@ -83,8 +115,9 @@ function goBack(){
     fbGet(activeHQ,activeCat,function(d){renderListWith(d);});
     return;
   }
-  if(activeCat!=="घरेलू"){
-    activeCat="घरेलू"; activeFilter="all";
+  // slot 1 का नाम अब JE बदल सकता है, इसलिए "घरेलू" hardcoded नहीं — मौजूदा नाम CATS[1] से लो
+  if(activeCat!==CATS[1]){
+    activeCat=CATS[1]; activeFilter="all";
     buildCatTabs();
     fbGet(activeHQ,activeCat,function(d){renderSummaryWith(d);renderListWith(d);});
     startListen(activeHQ,activeCat);
@@ -126,220 +159,64 @@ function selectRole(r){
 
 function togglePw(){var i=document.getElementById("sup-pw");i.type=i.type==="password"?"text":"password";}
 
-// ── JE पासवर्ड verify — असली जाँच Firebase Authentication करता है, code में पासवर्ड कहीं नहीं ──
-function _sha256(str){
-  if(!(window.crypto&&crypto.subtle&&window.TextEncoder)) return Promise.reject(new Error("no-crypto"));
-  return crypto.subtle.digest("SHA-256",new TextEncoder().encode(str)).then(function(buf){
-    return Array.prototype.map.call(new Uint8Array(buf),function(b){return ("0"+b.toString(16)).slice(-2);}).join("");
-  });
+// ── 🛑 डेटा बचाओ मोड — पट्टी और JE का स्विच (असली रोक js/database.js में है) ───────────────
+function renderPauseBar(){
+  var el=document.getElementById("pause-bar");
+  if(!el) return;
+  if(!isDataPaused()){ el.style.display="none"; el.textContent=""; return; }
+  el.style.display="block";
+  // textContent — कोई user-typed नाम यहां HTML बनकर नहीं जा सकता
+  el.textContent="🛑 डेटा बचाओ मोड चालू — आपकी वसूली दर्ज हो रही है, बस दूसरों का ताज़ा डेटा अभी नहीं आ रहा";
 }
-// online login सफल होने पर hash device पर save — ताकि बाद में offline भी JE login चले
-function _saveJEHash(pw){_sha256("dcje|"+pw).then(function(h){try{localStorage.setItem("dc_jeh",h);}catch(e){}}).catch(function(){});}
-function _checkJEHash(pw,cb){
-  var h=null; try{h=localStorage.getItem("dc_jeh");}catch(e){}
-  if(!h){cb(false,"पहली बार JE login के लिए इन्टरनेट ज़रूरी है");return;}
-  _sha256("dcje|"+pw).then(function(x){cb(x===h,x===h?null:"गलत पासवर्ड!");}).catch(function(){cb(false,"यह ब्राउज़र offline JE login support नहीं करता");});
-}
-var JE_VERIFY_TIMEOUT_MS=6000; // टेस्ट में छोटा करके तेज़ जांच की जा सकती है
-function verifyJE(pw,cb){
-  if(!pw){cb(false,"पासवर्ड डालें");return;}
-  var fbAuthOk=false;
-  try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
-  if(navigator.onLine&&fbAuthOk){
-    showLoader("JE पासवर्ड जाँच रहे हैं...");
-    // navigator.onLine सही होते हुए भी सिग्नल कमज़ोर हो तो सर्वर जवाब देर से दे सकता है —
-    // तय समय में जवाब न आए तो हमेशा के लिए न अटकें, offline hash से आगे बढ़ जाएं
-    var settled=false;
-    var tm=setTimeout(function(){
-      if(settled)return; settled=true;
-      hideLoader();
-      _checkJEHash(pw,cb);
-    },JE_VERIFY_TIMEOUT_MS);
-    firebase.auth().signInWithEmailAndPassword(JE_EMAIL,pw)
-      .then(function(){
-        _saveJEHash(pw); // भले cb timeout से जा चुका हो, hash फिर भी ताज़ा रख दो
-        if(settled)return; settled=true; clearTimeout(tm);
-        hideLoader();cb(true,null);
-      })
-      .catch(function(e){
-        if(settled)return; settled=true; clearTimeout(tm);
-        hideLoader();
-        if(e&&e.code==="auth/network-request-failed"){_checkJEHash(pw,cb);return;} // नेट बीच में टूटा — offline hash से
-        cb(false,"गलत पासवर्ड!");
-      });
-  } else {
-    _checkJEHash(pw,cb); // offline — पिछले online login के hash से
-  }
-}
-
-// ── Lineman PIN: हर HQ का एक साझा PIN (सामान्य सुरक्षा-मज़बूती — कोई भी नाम भरकर न घुस सके) ──
-// असली access-control नहीं (Security Rules अलग से restrict नहीं करतीं) — JE खुद /HQ_PIN में सेट/बदल सकते हैं
-var HQ_PINS={};
-function loadHQPins(){
-  try{var s=localStorage.getItem("dc_hqpins");if(s)HQ_PINS=JSON.parse(s);}catch(e){}
-  fetchHQPinsFromFB();
-}
-function fetchHQPinsFromFB(){
-  fetch(FB+"/HQ_PIN.json?t="+Date.now())
-    .then(_fbJson)
-    .then(function(d){
-      if(d&&typeof d==="object"){
-        HQ_PINS=d;
-        try{localStorage.setItem("dc_hqpins",JSON.stringify(d));}catch(e){}
-      }
-    }).catch(function(){});
-}
-function openPinModal(){
-  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE PIN सेट कर सकते हैं","err");return;}
+function openPauseModal(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह कर सकते हैं","err");return;}
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
-  var el=document.getElementById("pin-fields");
-  el.innerHTML=HQS.map(function(hq){
-    var v=HQ_PINS[hqKey(hq)]||"";
-    return "<label class='f-label'>"+escHtml(hq)+"</label><input type='text' inputmode='numeric' class='f-input' id='pin-"+hqKey(hq)+"' value='"+escHtml(v)+"' placeholder='खाली = PIN ज़रूरी नहीं' style='margin-bottom:10px;'>";
-  }).join("");
-  document.getElementById("pin-overlay").classList.add("open");
+  document.getElementById("pause-overlay").classList.add("open");
+  _pauseRender();
+  fetchPause(); // खोलते ही ताज़ा हाल — दूसरे device से बदला हो तो वही दिखे
+  setTimeout(_pauseRender,900);
 }
-function closePinModal(){document.getElementById("pin-overlay").classList.remove("open");}
-function savePins(){
-  var d={};
-  HQS.forEach(function(hq){
-    var v=document.getElementById("pin-"+hqKey(hq)).value.trim();
-    if(v) d[hqKey(hq)]=v;
-  });
-  fetch(FB+"/HQ_PIN.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)})
+function closePauseModal(){document.getElementById("pause-overlay").classList.remove("open");}
+function _pauseRender(){
+  var el=document.getElementById("pause-content");
+  if(!el) return;
+  var on=isDataPaused();
+  var who="",when="";
+  if(PAUSE_INFO&&PAUSE_INFO.by) who=String(PAUSE_INFO.by);
+  if(PAUSE_INFO&&PAUSE_INFO.at) { try{ when=new Date(Number(PAUSE_INFO.at)).toLocaleString("hi-IN"); }catch(e){} }
+  var h="";
+  h+="<div style='background:"+(on?"rgba(240,80,80,.10)":"rgba(0,200,150,.08)")+";border:1px solid "+(on?"rgba(240,80,80,.35)":"rgba(0,200,150,.3)")+";border-radius:12px;padding:12px;margin-bottom:10px;'>";
+  h+="<div style='font-size:15px;font-weight:800;color:"+(on?"var(--red)":"var(--green)")+";'>"+(on?"🛑 अभी चालू है — डाउनलोड रुका हुआ है":"✅ अभी बंद है — सब सामान्य चल रहा है")+"</div>";
+  if(on&&(who||when)) h+="<div style='font-size:11px;color:var(--muted);margin-top:5px;'>"+escHtml(who?(who+" ने"):"")+(when?(" "+escHtml(when)+" को"):"")+" चालू किया</div>";
+  if(on) h+="<div style='font-size:11px;color:var(--gold2);font-weight:700;margin-top:5px;'>⏱ आज रात अपने आप हट जाएगा — भूल जाने पर भी टीम कल पुराने डेटा पर नहीं रहेगी</div>";
+  h+="</div>";
+  h+="<div style='font-size:12px;line-height:1.75;color:var(--muted);margin-bottom:12px;'>"+
+     "<b style='color:var(--text);'>चालू करने पर क्या रुकता है:</b> live sync, सभी लिस्ट का background refresh, prefetch, स्कोरकार्ड का ताज़ा डेटा।<br>"+
+     "<b style='color:var(--green);'>क्या चलता रहता है:</b> पूरी ऐप device के अपने डेटा से, और सबसे ज़रूरी — <b>वसूली दर्ज करना</b> (वह upload है, quota में नहीं गिनता)।<br>"+
+     "<b style='color:var(--gold2);'>ध्यान रखें:</b> चालू रहने तक आपको दूसरों की वसूली दिखना बंद हो जाएगी। बाक़ी devices तक यह ~5 मिनट में पहुँचता है।"+
+     "</div>";
+  h+="<button class='btn-save' style='width:100%;background:"+(on?"var(--green)":"var(--red)")+";' onclick='_pauseToggle()'>"+
+     (on?"✅ वापस सामान्य करें":"🛑 अभी डाउनलोड रोकें")+"</button>";
+  // audit-verified: सिर्फ़ hardcoded markup + escHtml() से गुज़रे who/when
+  // eslint-disable-next-line no-unsanitized/property
+  el.innerHTML=h;
+}
+function _pauseToggle(){
+  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह कर सकते हैं","err");return;}
+  var next=!isDataPaused();
+  if(next&&!confirm("डाउनलोड रोक दें?\n\nसभी devices पर दूसरों का ताज़ा डेटा आना बंद हो जाएगा। वसूली दर्ज करना चलता रहेगा।")) return;
+  var body={on:next,by:CU.name,at:{".sv":"timestamp"}};
+  fetch(FB+"/PAUSE.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
     .then(function(r){
       if(!r.ok) throw new Error("HTTP "+r.status);
-      HQ_PINS=d;
-      try{localStorage.setItem("dc_hqpins",JSON.stringify(d));}catch(e){}
-      toast("✅ PIN सेव हो गए","ok");
-      closePinModal();
+      return r.json();
     })
-    .catch(function(e){logErr("pin-save-fail",e);toast("⚠️ सेव नहीं हुआ — दोबारा कोशिश करें","err");});
-}
-
-function doLogin(){
-  var role=selectedRole,name=document.getElementById("uname-inp").value.trim();
-  if(!role){toast("भूमिका चुनें","err");return;}
-  if(!name){toast("अपना नाम लिखें","err");return;}
-  if(role==="supervisor"){
-    verifyJE(document.getElementById("sup-pw").value,function(ok,msg){
-      if(!ok){toast(msg||"गलत पासवर्ड!","err");return;}
-      CU={role:"supervisor",name:name,hq:HQS[0]};
-      _finishLogin(name);
-    });
-    return;
-  }
-  var hq=document.getElementById("hq-sel").value;
-  if(!hq){toast("HQ चुनें","err");return;}
-  var expectedPin=HQ_PINS[hqKey(hq)];
-  var typedPin=document.getElementById("lin-pin").value.trim();
-  if(expectedPin&&typedPin!==expectedPin){
-    toast("गलत PIN! JE से सही PIN लें","err");return;
-  }
-  // PIN सही है और उस HQ का असली Firebase account मौजूद है — anonymous की जगह उसी से sign-in करें
-  // (Security Rules अब सिर्फ़ यही असली पहचान जांचती हैं — असली access-control server से)
-  var hqEmail=HQ_AUTH_EMAIL[hq];
-  var fbAuthOk=false;
-  try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
-  if(expectedPin&&hqEmail&&navigator.onLine&&fbAuthOk){
-    showLoader("लॉगिन हो रहा है...");
-    firebase.auth().signInWithEmailAndPassword(hqEmail,_hqAuthPassword(typedPin))
-      .then(function(){
-        hideLoader();
-        CU={role:"lineman",name:name,hq:hq};
-        _finishLogin(name);
-      })
-      .catch(function(e){
-        hideLoader();
-        if(e&&e.code==="auth/network-request-failed"){ // नेट बीच में टूटा — पुराने session/cache पर आगे बढ़ें
-          CU={role:"lineman",name:name,hq:hq};
-          _finishLogin(name);
-          return;
-        }
-        toast("गलत PIN या सर्वर से जुड़ नहीं पाया — दोबारा कोशिश करें","err");
-      });
-    return;
-  }
-  // PIN सेट नहीं है इस HQ का, या ऑफलाइन हैं — पुराने (anonymous) तरीके से आगे बढ़ें
-  try{
-    var u=firebase.auth().currentUser;
-    if(u&&u.email) firebase.auth().signOut();
-  }catch(e){}
-  CU={role:"lineman",name:name,hq:hq};
-  _finishLogin(name);
-}
-// PIN से Firebase password बनाना — कम से कम 6 अक्षर चाहिए, इसलिए आगे एक तय prefix जोड़ते हैं
-// (असली secret PIN ही है, यह prefix कोई गोपनीयता नहीं जोड़ता, सिर्फ़ Firebase की न्यूनतम लंबाई पूरी करता है)
-function _hqAuthPassword(pin){ return "vasuli-"+pin; }
-
-// login के ठीक उसी वक़्त नेटवर्क कमज़ोर/बंद हो तो doLogin() पुराने anonymous रास्ते पर चला जाता है
-// (device UI में तो लाइनमैन logged-in दिखता है, पर Firebase में असल में anonymous ही रहता है) —
-// उस HQ का हर save तब तक 401 देता रहता है जब तक कोई मैन्युअल logout+login न करे। अब network वापस
-// आते ही ("online" event पर) यहां से अपने-आप सही HQ account से दोबारा sign-in की कोशिश होती है,
-// ताकि लाइनमैन को कुछ पता ही न चले और उसका pending data भी अपने आप sync हो जाए
-function _ensureCorrectHqAuth(){
-  if(!CU||CU.role!=="lineman"||!navigator.onLine) return;
-  var hqEmail=HQ_AUTH_EMAIL[CU.hq];
-  var pin=HQ_PINS[hqKey(CU.hq)];
-  if(!hqEmail||!pin) return; // इस HQ का PIN सेट ही नहीं — पुराना anonymous रास्ता ही सही व्यवहार है
-  var fbAuthOk=false;
-  try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
-  if(!fbAuthOk) return;
-  var u=firebase.auth().currentUser;
-  if(u&&u.email===hqEmail) return; // पहले से सही account से sign-in है — कुछ करने की ज़रूरत नहीं
-  firebase.auth().signInWithEmailAndPassword(hqEmail,_hqAuthPassword(pin))
-    .then(function(){
-      _resetAuthFailForHQ(CU.hq); // पुरानी "अनधिकृत" गिनती अब मान्य नहीं — दोबारा भेजने दो
-      flushPending();
+    .then(function(d){
+      _applyPause(d&&typeof d==="object"?d:{on:next,by:CU.name});
+      _pauseRender();
+      toast(next?"🛑 डाउनलोड रोक दिया — बाक़ी devices तक ~5 मिनट में":"✅ वापस सामान्य — live sync फिर चालू","ok");
     })
-    .catch(function(){}); // अभी भी नाकाम (PIN बदल गया होगा) — अगली बार "online" event पर फिर कोशिश होगी
-}
-
-function _finishLogin(name,silent){
-  // ताकि pull-to-refresh या कोई और असली page reload login session न मिटाए — reload के बाद
-  // startApp() इसी से चुपचाप वापस अंदर ले आता है, दोबारा login नहीं करना पड़ता
-  try{sessionStorage.setItem("dc_cu",JSON.stringify(CU));}catch(e){}
-  activeHQ=CU.hq; activeFilter="all";
-  rebuildCatsForHQ(activeHQ);
-  activeCat=CATS[0];
-  document.getElementById("login-screen").classList.remove("active");
-  document.getElementById("app-screen").classList.add("active");
-  buildUI();
-  showLoader("डेटा लोड हो रहा है...");
-  fbGet(activeHQ,activeCat,function(data){
-    renderSummaryWith(data); renderListWith(data);
-    startListen(activeHQ,activeCat);
-    hideLoader(); if(!silent) toast("स्वागत है "+name+"!","ok");
-    setTimeout(prefetchAll,1500); // सभी लिस्ट offline के लिए download
-    startDevicePing(); // यह device किस app version पर है — Firebase पर दर्ज करें
-  });
-}
-
-function doLogout(askConfirm){
-  if(askConfirm===undefined) askConfirm=true;
-  if(askConfirm&&!confirm("लॉगआउट करना चाहते हैं?"))return;
-  // JE था तो Firebase session भी हटाएं — अपने आप anonymous पर लौट जाएगा (firebase.js का onIdTokenChanged)
-  try{
-    var u=firebase.auth().currentUser;
-    if(u&&u.email) firebase.auth().signOut();
-  }catch(e){}
-  stopListen();
-  if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
-  stopDevicePing();
-  try{sessionStorage.removeItem("dc_cu");}catch(e){}
-  CU=null; selectedRole="";
-  document.getElementById("app-screen").classList.remove("active");
-  document.getElementById("login-screen").classList.add("active");
-  document.getElementById("uname-inp").value="";
-  document.getElementById("sup-pw").value="";
-  document.getElementById("hq-sel").value="";
-  document.getElementById("lin-pin").value=""; // वरना shared device पर अगला लाइनमैन पुराने PIN से ही login कोशिश करता रह जाता (PIN mismatch से login fail — दिखता है जैसे logout ने कुछ किया ही नहीं)
-  document.getElementById("rc-sup").classList.remove("selected");
-  document.getElementById("rc-lin").classList.remove("selected");
-  document.getElementById("sup-fields").style.display="none";
-  document.getElementById("lin-fields").style.display="none";
-  var m=document.getElementById("logout-menu");
-  if(m) m.classList.remove("open");
+    .catch(function(e){logErr("pause-save-fail",e);toast("⚠️ बदल नहीं पाया — दोबारा कोशिश करें","err");});
 }
 
 // नाम से तय रंग — बिना किसी फ़ोटो/स्टोरेज के हर व्यक्ति का अपना अलग एवतार रंग
@@ -363,7 +240,7 @@ function buildUI(){
   document.getElementById("hdr-sub").textContent=CU.role==="supervisor"?"JE | सभी HQ":"Lineman | "+CU.hq;
   var info=document.getElementById("user-info-menu");
   if(info) info.textContent=(CU.role==="supervisor"?"👨‍💼 JE":"🔧 Lineman")+" | "+CU.hq+" | "+CU.name+" | v"+APP_VER;
-  ["log-menu-item","hsc-menu-item","cash-menu-item","backup-menu-item","wasc-menu-item","todaysc-menu-item","mig-menu-item","pin-menu-item","usage-menu-item","clearcats-menu-item"].forEach(function(id){
+  ["log-menu-item","hsc-menu-item","cash-menu-item","backup-menu-item","wasc-menu-item","todaysc-menu-item","voicesc-menu-item","pause-menu-item","dv-menu-item","mig-menu-item","pin-menu-item","usage-menu-item","clearcats-menu-item"].forEach(function(id){
     var el=document.getElementById(id);
     if(el) el.style.display=CU.role==="supervisor"?"flex":"none";
   });
@@ -396,6 +273,7 @@ function buildHQTabs(){
       buildHQTabs();
       buildCatTabs();
       showLoader();
+      _afterAuthReady(function(){ _ensureCorrectHqAuth(function(){ reconcileHQ(hq); }); }); // पुराने मिसमैच के लिए, सही account तय होने के बाद (देखें _finishLogin वाला comment)
       fbGet(activeHQ,activeCat,function(data){
         renderSummaryWith(data); renderListWith(data);
         startListen(activeHQ,activeCat); hideLoader();
@@ -418,6 +296,7 @@ function buildCatTabs(){
       document.querySelectorAll(".filter-btn").forEach(function(x){x.className="filter-btn";});
       document.querySelector("[data-f='all']").className="filter-btn active-all";
       buildCatTabs(); showLoader();
+      _afterAuthReady(function(){ _ensureCorrectHqAuth(function(){ reconcileHQ(activeHQ); }); }); // पुराने मिसमैच के लिए, सही account तय होने के बाद (देखें _finishLogin वाला comment)
       fbGet(activeHQ,activeCat,function(data){
         renderSummaryWith(data); renderListWith(data);
         startListen(activeHQ,activeCat); hideLoader();
@@ -425,8 +304,9 @@ function buildCatTabs(){
     };
     b.textContent=CICO[i]+" "+cat;
     wrap.appendChild(b);
-    // Edit button — सिर्फ JE (supervisor) को, घरेलू/व्यवसाय/कृषि/कुल उपभोक्ता fixed
-    if(i!==0&&i!==1&&i!==2&&i!==3&&CU&&CU.role==="supervisor"){
+    // Edit button — सिर्फ JE (supervisor) को। सिर्फ़ "कुल उपभोक्ता" (0) fixed है, बाक़ी सब बदली
+    // जा सकती हैं (JE का अनुरोध: घरेलू/व्यवसाय/कृषि भी बदलने लायक हों)
+    if(isCatEditable(i)&&CU&&CU.role==="supervisor"){
       var slotKey="cat"+i;
       var e2=document.createElement("button");
       e2.textContent="✏️";
@@ -439,52 +319,6 @@ function buildCatTabs(){
     }
     c.appendChild(wrap);
   });
-}
-
-function openEditCat(i, slotKey){
-  if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE नाम बदल सकते हैं","err");return;}
-  var cur=CATS[i];
-  var newName=prompt(activeHQ+" — श्रेणी का नया नाम डालें:",cur);
-  if(!newName||!newName.trim()||newName.trim()===cur) return;
-  newName=newName.trim();
-  // "/" (या .#$[]) नाम में हो तो Firebase पर गलत जगह (नेस्टेड path) सेव होकर हमेशा के लिए
-  // permission-denied (401) देने लगता है — असली bug यही मिला था ("vig/O&m Cases" जैसा नाम)
-  if(/[.#$\[\]\/]/.test(newName)){
-    toast("⚠️ नाम में ये चिह्न न लिखें: . # $ [ ] /","err");
-    return;
-  }
-  var oldCat=CATS[i];
-  // 1. Cache rename
-  var d=cGet(activeHQ,oldCat);
-  if(d&&d.length) cSet(activeHQ,newName,d);
-  cSet(activeHQ,oldCat,[]);
-  // 2. Local CAT_NAMES update
-  if(!CAT_NAMES[activeHQ]) CAT_NAMES[activeHQ]={};
-  CAT_NAMES[activeHQ][i]=newName;
-  saveCatNames();
-  // 3. CATS rebuild + UI update immediately
-  rebuildCatsForHQ(activeHQ);
-  if(activeCat===oldCat) activeCat=newName;
-  buildCatTabs();
-  // 4. Firebase save — single PUT for this HQ's all cat names
-  var hqData={};
-  [4,5,6,7].forEach(function(idx){
-    if(CAT_NAMES[activeHQ]&&CAT_NAMES[activeHQ][idx]!=null){
-      hqData[idx]=CAT_NAMES[activeHQ][idx];
-    }
-  });
-  fetch(FB+"/CAT_NAMES/"+hqKey(activeHQ)+".json",{
-    method:"PUT",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(hqData)
-  }).then(function(r){
-    if(r.ok){toast("✅ नाम बदला: "+newName+" (सभी को दिखेगा)","ok");return;}
-    logErr("catname-save",new Error("HTTP "+r.status));
-    if(r.status===401||r.status===403)
-      toast("🔐 नाम server पर नहीं गया — JE नेट चालू रखकर logout करके दोबारा login करें","err");
-    else
-      toast("⚠️ नाम बदला पर sync नहीं हुआ (HTTP "+r.status+")","err");
-  }).catch(function(){try{localStorage.setItem("dc_catpending3","1");}catch(e){}toast("📴 ऑफलाइन — नाम save है, नेट आने पर सभी को दिखेगा","inf");});
 }
 
 function buildActionBtns(){

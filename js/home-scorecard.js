@@ -30,9 +30,11 @@ function hscFetch(){
     if(CU&&CU.role==="supervisor"){_hscRetryPublish();return;}
     _setHscPending(false); // JE के अलावा किसी device पर pending होने का कोई मतलब नहीं (पुराना bug — नीचे देखें)
   }
+  if(isDataPaused()) return; // 🛑 डेटा बचाओ मोड — बोर्ड device के अपने cache से दिखता रहेगा
   fetch(FB+"/HOME_SCORECARD.json?t="+Date.now())
     .then(_fbJson)
     .then(function(d){
+      trackUsageOf(d); // होम बोर्ड — हर ऐप खुलने पर आता है
       if(d&&typeof d==="object"){
         // सिर्फ़ JE (supervisor) के device पर local, server से नया हो तो ही असली "अभी तक प्रकाशित न
         // हुआ बदलाव" माना जाए — lineman/login-से-पहले वाले किसी भी device के पुराने cached data को
@@ -184,6 +186,10 @@ function renderHomeSc(){
       "</div>")+
     "</div>";
   }
+  // audit-verified: सभी free-text फ़ील्ड (HSC.pbiMonth, HSC.growMonth, HSC.asOn) ऊपर escHtml() से
+  // गुज़रते हैं, बाक़ी सब संख्या/hardcoded HTML है — plugin ternary/member-expression के अंदर देख
+  // नहीं पाता इसलिए flag करता है
+  // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=
   "<div style='background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;'>"+
     "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;'>"+
@@ -287,6 +293,9 @@ function cashCollect(cells){
   }
   document.getElementById("cash-ico").textContent="✅";
   st.textContent=list.length+" IVRS मिले";
+  // audit-verified: list खुद ही cashCollect() में \D हटाकर सिर्फ़ digits रखा गया है, फिर भी escHtml
+  // लगा है — plugin .slice().join() के अंदर की escHtml() call नहीं देख पाता
+  // eslint-disable-next-line no-unsanitized/property
   document.getElementById("cash-result").innerHTML="फाइल से <b style='color:var(--text);'>"+list.length+"</b> IVRS नंबर मिले (जैसे: "+escHtml(list.slice(0,3).join(", "))+(list.length>3?" ...":"")+")। नीचे बटन दबाते ही सभी tabs में वसूल mark होंगे।";
   document.getElementById("cash-apply").style.display="";
 }
@@ -299,40 +308,118 @@ var _CASH_REFRESH_TIMEOUT_MS=8000; // टेस्ट में छोटा क
 // ज़्यादा ज़रूरी है इसलिए वहां cooldown लागू नहीं होता, हमेशा पूरा ताज़ा data मंगाया जाता है।
 var _CASH_REFRESH_COOLDOWN_MS=5*60*1000;
 var _lastRefreshAt={};
-function _cashRefreshAll(hqs,cb,force){
-  if(!navigator.onLine){cb();return;}
+// असली production लॉग (JE, कमज़ोर नेट): "रिफ्रेश करें" दबाते ही सभी 48 सूचियां एक साथ मंगाई जाती
+// थीं — एक ही कमज़ोर पाइप 48 हिस्सों में बंटता, और क्रम में आख़िरी मुख्यालय (पाटन/बीबी/मढ़ी) 8 सेकंड
+// में कभी पूरे नहीं हो पाते (19/48 नाकाम)। ऊपर से JE ने दोबारा दबाया तो पहले की अधूरी requests के
+// ऊपर 48 नई और चढ़ गईं — सब नाकाम (48/48), और timeout हुई requests रद्द नहीं होतीं, पीछे डाउनलोड
+// होती रहती हैं, यानी हर अतिरिक्त दबाव Firebase data भी खाता था। अब: (1) एक बार में सिर्फ़
+// _CASH_REFRESH_CONCURRENCY सूचियां, हर एक का 8 सेकंड उसके अपने शुरू होने से; (2) रिफ्रेश चलते
+// दोबारा बुलाया जाए तो नया नहीं चलता — उसी में जुड़कर उसका नतीजा पाता है; (3) timeout के बाद
+// देर से पहुंची सूची पर caller का onLate बुलाया जाता है ताकि स्क्रीन पुरानी न दिखती रहे
+var _CASH_REFRESH_CONCURRENCY=6;
+var _cashRun=null;   // अभी चल रहा रिफ्रेश: {hqs:{hq:1}, force, waiters:[{cb,onLate}]}
+var _cashQueue=[];   // जो चल रहे में जुड़ नहीं सके (दूसरे मुख्यालय, या force चाहिए) — उसके बाद चलेंगे
+function _cashRefreshBusy(){ return !!_cashRun; }
+function _cashRefreshAll(hqs,cb,force,onLate){
+  if(!navigator.onLine){cb(0);return;}
+  if(_cashRun){
+    var covered=hqs.every(function(h){return _cashRun.hqs[h];});
+    // चल रहा रिफ्रेश force वाला न हो तो उसने हाल में ताज़ा हुई (cooldown) सूचियां छोड़ी होंगी —
+    // force चाहने वाला (कैश-लिस्ट apply) उसमें नहीं जुड़ सकता, बाद में अपना अलग चलाएगा
+    if(covered&&(!force||_cashRun.force)){ _cashRun.waiters.push({cb:cb,onLate:onLate}); return; }
+    _cashQueue.push([hqs,cb,force,onLate]);
+    return;
+  }
   var jobs=[];
   var now=Date.now();
   hqs.forEach(function(hq){
     for(var i=0;i<CATS_DEFAULT.length;i++){
-      var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+      var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
       if(isPending(hq,cat)) continue; // pending offline बदलाव हों तो overwrite मत करो
       var key=hq+"/"+cat;
       if(!force&&_lastRefreshAt[key]&&(now-_lastRefreshAt[key])<_CASH_REFRESH_COOLDOWN_MS) continue; // हाल ही में ताज़ा हो चुका
       jobs.push({hq:hq,cat:cat,key:key});
     }
   });
-  if(!jobs.length){cb();return;}
-  var done=0;
-  function fin(){done++;if(done>=jobs.length)cb();}
+  if(!jobs.length){cb(0);return;}
+  var run=_cashRun={hqs:{},force:!!force,waiters:[{cb:cb,onLate:onLate}]};
+  hqs.forEach(function(h){run.hqs[h]=1;});
+  var done=0,next=0,finished=false,failed=[],lateT=null;
+  // timeout के बाद देर से पहुंची सूची — सब पूरा होने से पहले पहुंची तो "नाकाम" गिनती से हटा दो (उसका
+  // ताज़ा data caller के render में आ ही जाएगा); बाद में पहुंची और data बदला तो caller दोबारा रंगे
+  function recovered(j,changed){
+    if(!finished){
+      var i=failed.indexOf(j.hq+"/"+j.cat);
+      if(i>-1) failed.splice(i,1);
+      return;
+    }
+    if(!changed) return; // 304 — cache पहले से सही था, स्क्रीन भी
+    clearTimeout(lateT);
+    lateT=setTimeout(function(){
+      run.waiters.forEach(function(w){ if(w.onLate){ try{w.onLate();}catch(e){} } });
+    },500);
+  }
+  // पहले टाइमआउट/fetch-fail पर चुपचाप पुरानी cache से आगे बढ़ जाते थे — JE को पता ही नहीं चलता था
+  // कि "रिफ्रेश करें" दबाने पर भी कुछ मुख्यालय/श्रेणी असल में ताज़ा नहीं हो पाईं (कमज़ोर नेट पर
+  // असली शिकायत यही थी)। अब कितनी नाकाम रहीं गिनकर caller को बताते हैं, और एक बार साफ़ लॉग भी
+  // करते हैं ताकि "एरर लॉग" में अगली बार यही समस्या आने पर कौन-सी HQ/श्रेणी अटकी वो दिख जाए
+  function fin(ok,j){
+    if(!ok) failed.push(j.hq+"/"+j.cat);
+    done++;
+    if(next<jobs.length) start(jobs[next++]);
+    if(done>=jobs.length){
+      finished=true;
+      _cashRun=null;
+      if(failed.length) logErr("cash-refresh-partial","रिफ्रेश पर "+failed.length+"/"+jobs.length+" श्रेणी ताज़ा नहीं हो पाईं (कमज़ोर नेट/timeout) — पुराना data दिख रहा है: "+failed.join(", "));
+      var n=failed.length;
+      run.waiters.forEach(function(w){ try{w.cb(n);}catch(e){ logErr("cash-refresh-cb",e); } });
+      _cashQueue.splice(0).forEach(function(a){ _cashRefreshAll(a[0],a[1],a[2],a[3]); });
+    }
+  }
   // कमज़ोर नेटवर्क पर एक भी HQ/श्रेणी अटक जाए तो पूरी स्क्रीन हमेशा के लिए "लोड हो रहा है" पर न रुके —
   // 8 सेकंड में जवाब न आए तो उस एक की पुरानी cache से आगे बढ़ो; असली जवाब देर से भी आए तो cache फिर भी अपडेट होगा
-  jobs.forEach(function(j){
+  while(next<Math.min(_CASH_REFRESH_CONCURRENCY,jobs.length)) start(jobs[next++]);
+  function start(j){
     var finned=false;
-    function safeFin(){ if(finned)return; finned=true; fin(); }
-    var tm=setTimeout(safeFin,_CASH_REFRESH_TIMEOUT_MS);
-    fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
-      .then(_fbJson)
+    function safeFin(ok){ if(finned)return; finned=true; fin(ok,j); }
+    var tm=setTimeout(function(){safeFin(false);},_CASH_REFRESH_TIMEOUT_MS);
+    // ETag के साथ — यह रास्ता एक HQ की सभी 8 श्रेणियाँ पढ़ता है और स्कोरकार्ड खोलने/HQ-tab बदलने
+    // पर बार-बार चलता है। JE को सभी 6 मुख्यालय दिखते हैं, इसलिए उनके device पर यही सबसे भारी खर्च
+    // था (असली नाप: JE के तीन device मिलकर पूरे DC का 36%)। ETag से जिस सूची में कुछ नहीं बदला
+    // उस पर Firebase खाली 304 भेजता है — डेटा पुराना नहीं होता, फ़ैसला सर्वर करता है: बदला हो तो
+    // पूरी नई सूची आती ही है। fbGet और prefetchAll में यह पहले से लगा था, बस यहाँ रह गया था
+    var _tag=null,_done304=false;
+    fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now(),{headers:_etagHeaders(j.hq,j.cat)})
+      .then(function(r){
+        if(r.status===304){ // कुछ नहीं बदला — cache पहले से सही है
+          _done304=true;
+          clearTimeout(tm);
+          _lastRefreshAt[j.key]=Date.now();
+          if(finned) recovered(j,false);
+          safeFin(true);
+          return null;
+        }
+        _tag=r.headers.get("ETag");
+        return _fbJson(r);
+      })
       .then(function(d){
+        // अलग झंडे से — "d खाली है" से नहीं। सूची सचमुच खाली हो जाए (सब records हटा दिए गए) तो
+        // Firebase 200 के साथ null भेजता है, और वह हालत 304 से बिल्कुल अलग है: तब cache खाली
+        // करना ज़रूरी है, वरना हटाई हुई सूची स्क्रीन पर बनी रहती
+        if(_done304) return;
         clearTimeout(tm);
+        trackUsageOf(d);
+        _noteShape(j.hq,j.cat,d);
         var data=normList(d);
         overlayOps(j.hq,j.cat,data);
         cSet(j.hq,j.cat,data);
+        _etagSet(j.hq,j.cat,_tag); // cache लिखने के *बाद* ही — तभी अगली बार 304 पर भरोसा किया जा सकता है
         _lastRefreshAt[j.key]=Date.now();
-        safeFin();
+        if(finned) recovered(j,true);
+        safeFin(true);
       })
-      .catch(function(){clearTimeout(tm);safeFin();}); // fetch fail — उस tab के लिए cache से ही चलेगा
-  });
+      .catch(function(){clearTimeout(tm);safeFin(false);}); // fetch fail — उस tab के लिए cache से ही चलेगा
+  }
 }
 
 function applyCashList(){
@@ -351,7 +438,7 @@ function _applyCashMatched(hqs){
   var matched={},newly=0,already=0,tabsChanged=0,reconciled=0;
   hqs.forEach(function(hq){
     for(var i=0;i<CATS_DEFAULT.length;i++){
-      var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+      var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
       var d=cGet(hq,cat);
       if(!d||!d.length)continue;
       var prevSnap=JSON.parse(JSON.stringify(d));
@@ -377,6 +464,9 @@ function _applyCashMatched(hqs){
   });
   var mCount=Object.keys(matched).length,noMatch=CASH_IVRS.length-mCount;
   CASH_NOMATCH=CASH_IVRS.filter(function(x){return !matched[x];});
+  // audit-verified: newly/tabsChanged/already/reconciled/noMatch सभी संख्या हैं, कोई free-text
+  // field नहीं — plugin ternary के अंदर की संख्याओं को पहचान नहीं पाता
+  // eslint-disable-next-line no-unsanitized/property
   document.getElementById("cash-result").innerHTML=
     "✅ <b style='color:var(--green);'>"+newly+"</b> नई वसूली दर्ज ("+tabsChanged+" tabs में)<br>"+
     (already?"ℹ "+already+" records पहले से वसूल थे<br>":"")+

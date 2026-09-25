@@ -27,21 +27,44 @@ function updateUpCounter(){
   }
 }
 
+// अपलोड वाली श्रेणी-सूची हमेशा *चुने हुए* मुख्यालय के मौजूदा नामों से बनाओ।
+// पहले ये विकल्प index.html में hardcoded थे और सिर्फ़ slots 4-7 सिंक होते थे — दो नतीजे:
+//   (क) v9.124 से घरेलू/व्यवसाय/कृषि भी बदले जा सकते हैं, पर यहाँ पुराने नाम ही दिखते रहते,
+//       इसलिए JE बदली हुई श्रेणी में लिस्ट अपलोड ही नहीं कर पाते थे;
+//   (ख) modal के अपने HQ-चयन से दूसरा मुख्यालय चुनने पर भी नाम पिछले HQ के ही रहते — यानी
+//       "मढ़ी" चुनकर आदेगांव के नाम पर अपलोड हो जाता, यानी ग़लत पते पर (यह ज़्यादा ख़तरनाक था)
+function _buildUpCatOptions(){
+  var hqSel=document.getElementById("up-hq");
+  var hq=(hqSel&&hqSel.value)||activeHQ;
+  var sel=document.getElementById("up-cat");
+  if(!sel) return;
+  var prev=sel.value;
+  sel.innerHTML="";
+  var o0=document.createElement("option"); o0.value=""; o0.textContent="-- चुनें --";
+  sel.appendChild(o0);
+  CATS_DEFAULT.forEach(function(_,i){
+    var name=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
+    var o=document.createElement("option");
+    // textContent/value — नाम JE का टाइप किया हुआ है, कभी HTML बनकर न जाए
+    o.value=name; o.textContent=name;
+    sel.appendChild(o);
+  });
+  // HQ बदलने पर पुराना चुनाव तभी बचाओ जब नए मुख्यालय में भी वही नाम मौजूद हो
+  sel.value=prev;
+  if(sel.value!==prev) sel.value="";
+}
+function onUpHqChange(){
+  _buildUpCatOptions();
+  onCatChange();
+  updateUpCounter();
+}
 function openUpModal(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE लिस्ट अपलोड कर सकते हैं","err");return;}
-  // Sync editable category names in upload dropdown
-  var o4=document.getElementById("up-cat-4");
-  var o5=document.getElementById("up-cat-5");
-  var o6=document.getElementById("up-cat-6");
-  var o7=document.getElementById("up-cat-7");
-  if(o4){ o4.textContent=CATS[4]; o4.value=CATS[4]; }
-  if(o5){ o5.textContent=CATS[5]; o5.value=CATS[5]; }
-  if(o6){ o6.textContent=CATS[6]; o6.value=CATS[6]; }
-  if(o7){ o7.textContent=CATS[7]; o7.value=CATS[7]; }
   var sel=document.getElementById("up-hq"); sel.innerHTML="";
   var hqs=CU.role==="supervisor"?HQS:[CU.hq];
   hqs.forEach(function(hq){var o=document.createElement("option");o.value=hq;o.textContent=hq;sel.appendChild(o);});
   sel.value=activeHQ;
+  _buildUpCatOptions(); // HQ तय होने के *बाद* — तभी सही मुख्यालय के नाम बनेंगे
   document.getElementById("up-cat").value=activeCat;
   var hint=document.getElementById("cat-hint");
   if(hint) hint.style.display="none";
@@ -54,25 +77,75 @@ function openUpModal(){
   document.getElementById("btn-up-ok").disabled=true;
   document.getElementById("btn-up-ok").style.opacity=".5";
   setUpMode("merge"); // DEFAULT: merge
+  // डिफ़ॉल्ट कट-ऑफ़ = चालू महीने की 1 तारीख़ — नया लेजर आने पर पिछले माह की वसूली आगे न जाए,
+  // पर 1-10 की खिड़की में इसी माह दर्ज हुई वसूली बनी रहे (देखें confirmUpload)
+  var kf=document.getElementById("up-keepfrom");
+  if(kf){ var n=new Date(); kf.value=n.getFullYear()+"-"+("0"+(n.getMonth()+1)).slice(-2)+"-01"; }
+  _upKeepToggle();
   updateUpCounter();
   document.getElementById("up-overlay").classList.add("open");
+}
+
+// checkbox बंद हो तो तारीख़ वाला हिस्सा भी छुप जाए
+function _upKeepToggle(){
+  var el=document.getElementById("up-keepfrom-wrap");
+  var cb=document.getElementById("up-keeppaid");
+  if(el) el.style.display=(cb&&cb.checked)?"block":"none";
+  _upKeepPreview();
+}
+
+// चुनी तारीख़ से कितने उपभोक्ताओं की वसूली आगे जाएगी — अपलोड से पहले ही साफ़ दिखे
+// (सिर्फ़ पहले से मौजूद local list पर गिनती — कोई network call नहीं)
+function _upKeepPreview(){
+  var note=document.getElementById("up-keepnote");
+  if(!note) return;
+  var cb=document.getElementById("up-keeppaid");
+  if(!cb||!cb.checked){ note.textContent=""; return; }
+  var hq=document.getElementById("up-hq")?document.getElementById("up-hq").value:activeHQ;
+  var cat=document.getElementById("up-cat")?document.getElementById("up-cat").value:activeCat;
+  var cut=_upKeepCutoff();
+  var ex=cGet(hq,cat)||[];
+  var keep=0,drop=0;
+  ex.forEach(function(e){
+    if(!e||!e.acc||e.status!=="paid") return;
+    if(latestPayVal(e)>=cut) keep++; else drop++;
+  });
+  note.textContent="🛡 "+keep+" उपभोक्ता की वसूली बनी रहेगी"+(drop?"  •  🧹 "+drop+" पुरानी (पिछले लेजर की) हट जाएगी":"");
+}
+
+// चुनी हुई तारीख़ को payDateVal जैसे तुलना-योग्य अंक (yyyymmdd) में बदलें
+function _upKeepCutoff(){
+  var kf=document.getElementById("up-keepfrom");
+  var v=kf&&kf.value?kf.value:""; // yyyy-mm-dd
+  var m=v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return 0; // तारीख़ न हो तो पुराना व्यवहार (सब रखो)
+  return (+m[1])*10000+(+m[2])*100+(+m[3]);
 }
 function onCatChange(){
   var cat=document.getElementById("up-cat").value;
   var hint=document.getElementById("cat-hint");
+  // कौन-सा slot चुना गया — नाम से नहीं, *चुने हुए मुख्यालय* के नामों में ढूंढकर। पहले यहाँ
+  // CATS[6]/CATS[7] से तुलना होती थी, जो हमेशा मौजूदा HQ के नाम होते हैं; modal में दूसरा
+  // मुख्यालय चुना हो तो वह तुलना ग़लत slot बताती
+  var hqSel=document.getElementById("up-hq");
+  var hq=(hqSel&&hqSel.value)||activeHQ;
+  var slot=-1;
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    if((isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i])===cat){ slot=i; break; }
+  }
   // कुल उपभोक्ता के लिए auto Replace mode
-  if(cat==="कुल उपभोक्ता"||cat===CATS[0]){
+  if(slot===0){
     setUpMode("replace");
   }
   if(!hint) return;
-  if(cat==="कुल उपभोक्ता"){
+  if(slot===0){
     hint.style.display="block";
     hint.innerHTML="👥 <b>कुल उपभोक्ता</b> — अधिकतम <b>3500</b> records | <b>Net Bill/Amount optional</b> है<br>"+
       "जरूरी columns: <b>Consumer No</b> और <b>Consumer Name</b> बस काफी है";
-  } else if(cat==="सूची-2"||cat===CATS[6]){
+  } else if(slot===6){
     hint.style.display="block";
     hint.innerHTML="📋 <b>"+escHtml(cat)+"</b> — अधिकतम <b>1000</b> records | Consumer No, Name और Net Bill जरूरी";
-  } else if(cat==="सूची-3"||cat===CATS[7]){
+  } else if(slot===7){
     hint.style.display="block";
     hint.innerHTML="📌 <b>"+escHtml(cat)+"</b> — अधिकतम <b>1000</b> records | Consumer No, Name और Net Bill जरूरी";
   } else if(cat){
@@ -225,6 +298,8 @@ function processRows(rows){
     wb2.textContent="";
   }
   document.getElementById("prev-title").textContent="पूर्वावलोकन ("+parsedRows.length+" records)";
+  // audit-verified: नीचे हर r.name/r.father/r.acc escHtml() से गुज़रता है
+  // eslint-disable-next-line no-unsanitized/property
   document.getElementById("prev-rows").innerHTML=parsedRows.slice(0,5).map(function(r,i){
     return "<div class='prev-row'><span class='pr-name'>"+(i+1)+". "+escHtml(r.name)+(r.father?" / "+escHtml(r.father):"")+"</span><span class='pr-acc'>"+escHtml(r.acc)+"</span><span class='pr-amt'>₹"+Number(r.amount).toLocaleString("hi-IN")+"</span></div>";
   }).join("");
@@ -238,6 +313,66 @@ function processRows(rows){
   var canUpload=parsedRows.length>0;
   document.getElementById("btn-up-ok").disabled=!canUpload;
   document.getElementById("btn-up-ok").style.opacity=canUpload?"1":".5";
+}
+
+// ── अपलोड में पुराने रिमार्क सुरक्षित — JE की शिकायत (बीबी): कल डाले रिमार्क आज गायब ──
+// Replace/"हटाएं → अपलोड" में पहले सिर्फ़ "वसूल" उपभोक्ताओं के रिमार्क नई सूची में जाते थे, बाकी
+// (अवसूल) उपभोक्ताओं के सब मिट जाते थे। और नई सूची (जैसे JE की कोई खास सूची) में आया उपभोक्ता
+// बाकी categories में पहले से पड़े अपने रिमार्क के बिना आता था। अब इस HQ की हर category (इसी समेत)
+// की device-कॉपी + "हटाएं" के समय बना backup (7 दिन, देखें fbDel) — सबसे उसी Consumer No के
+// रिमार्क इकट्ठा करके नई सूची के record में जोड़े जाते हैं (text|by|at से dedup — दोहराव नहीं)
+var RMK_BK_MAX_AGE_MS=7*24*60*60*1000;
+function _upCollectOldRemarks(hq,cat){
+  var byAcc={};
+  function add(acc,arr,srcCat){
+    if(!acc||!arr||!arr.length) return;
+    var k=String(acc).trim();
+    var list=byAcc[k]||(byAcc[k]=[]);
+    arr.forEach(function(r){
+      if(!r||!r.text) return;
+      var e=JSON.parse(JSON.stringify(r));
+      // दूसरी category से आया और मूल-category टैग नहीं है — 📁 टैग के लिए जोड़ दें (openRmkModal)
+      if(!e.cat&&srcCat&&srcCat!==cat) e.cat=srcCat;
+      list.push(e);
+    });
+  }
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var c=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
+    (cGet(hq,c)||[]).forEach(function(x){ if(x) add(x.acc,x.remarksArr,c); });
+  }
+  ["vt_rmkbk_","vt_paidbk_"].forEach(function(pre){
+    try{
+      var raw=localStorage.getItem(pre+cKey(hq,cat));
+      if(!raw) return;
+      var o=JSON.parse(raw);
+      if(Date.now()-(o.t||0)>=RMK_BK_MAX_AGE_MS) return;
+      Object.keys(o.m||{}).forEach(function(acc){
+        var v=o.m[acc];
+        add(acc,Array.isArray(v)?v:(v&&v.remarksArr),cat);
+      });
+    }catch(e){}
+  });
+  return byAcc;
+}
+// पुराने रिमार्क पहले, फ़ाइल में आया रिमार्क (अगर हो) आखिर में — दोहराव हटाकर। लौटाता है कितने
+// records में कुछ जुड़ा
+function _upApplyOldRemarks(recs,byAcc){
+  var n=0;
+  (recs||[]).forEach(function(r){
+    if(!r||!r.acc) return;
+    var old=byAcc[String(r.acc).trim()];
+    if(!old||!old.length) return;
+    var seen={},out=[];
+    old.concat(r.remarksArr||[]).forEach(function(x){
+      var k=rmkKeyOf(x);
+      if(!seen[k]){ seen[k]=1; out.push(x); }
+    });
+    if(out.length===(r.remarksArr||[]).length) return;
+    r.remarksArr=out;
+    r.remarks=out[out.length-1].text; // backward-compat field — saveRmk जैसा ही
+    n++;
+  });
+  return n;
 }
 
 function confirmUpload(){
@@ -255,27 +390,61 @@ function confirmUpload(){
       var _maxR=getMaxRecords(cat);
       if(ex.length>0){
         var merged=ex.slice();
-        var added=0,dupes=0;
+        var added=0,dupes=0,newRecs=[];
         arr.forEach(function(r){
           if(merged.find(function(e){return e.acc===r.acc;})){dupes++;}
-          else if(merged.length<_maxR){merged.push(r);added++;}
+          else if(merged.length<_maxR){merged.push(r);newRecs.push(r);added++;}
         });
+        // नए जुड़े उपभोक्ता बाकी categories में पहले से हों तो उनके रिमार्क साथ आएं (पुराने records अछूते)
+        var rmkKeptM=_upApplyOldRemarks(newRecs,_upCollectOldRemarks(hq,cat));
         arr=merged;
         var msg="✅ "+added+" नए जोड़े";
+        if(rmkKeptM) msg+=" | 💬 "+rmkKeptM+" के रिमार्क साथ आए";
         if(dupes>0) msg+=" | "+dupes+" duplicate skip";
         msg+=" | कुल: "+arr.length+"/"+_maxR;
-        _doSave(hq,cat,arr); toast(msg,"ok"); return;
+        _doSave(hq,cat,arr);
+        // इस HQ की किसी और category में वसूल हो चुके acc (या इसी अपलोड से नए वसूल हुए) दोनों
+        // तरफ़ मिल जाएं — देखें नीचे reconcileHQ वाला मुख्य comment
+        var _rec1=reconcileHQ(hq);
+        if(_rec1) msg+=" | 🔁 "+_rec1+" अन्य categories में मिलाया";
+        toast(msg,"ok"); return;
       }
     }
-    
+
+    // Replace mode (या merge मोड में खाली category — ऊपर वाला block तभी चलता है जब ex.length>0) —
+    // फ़ाइल में ही duplicate Consumer No हो सकता है (जैसे मीटर बदलने पर वही उपभोक्ता दो बार चढ़ आना)।
+    // Merge mode के उलट यहां पहले कोई जांच नहीं थी — असली production bug (JE की रिपोर्ट, मढ़ी):
+    // एक ही Consumer No के दो अलग card एक साथ दिखते, और migrated (per-record) श्रेणी में दोनों की
+    // Firebase-key वही acc होती, तो एक को "वसूल" मार्क करने पर patch उसी key पर टकराता — array में
+    // जो record बाद में आए वही जीतता, दूसरे की वसूली चुपचाप overwrite हो सकती थी।
+    // अब पहला occurrence रखें, बाकी skip — ठीक Merge mode जैसा ही नियम
+    var dupSkip=0;
+    (function(){
+      var seenAcc={};
+      arr=arr.filter(function(r){
+        if(!r.acc) return true; // acc-रहित record अपनी अलग समस्या है (चरण 3 पकड़ता है), यहां न छेड़ें
+        var k=String(r.acc).trim();
+        if(seenAcc[k]){dupSkip++;return false;}
+        seenAcc[k]=1;
+        return true;
+      });
+    })();
+
     // Replace mode या पहली बार — पुरानी वसूली सुरक्षित रखें (checkbox on हो तो)
-    var kept=0;
+    var kept=0,dropped=0;
     var keepEl=document.getElementById("up-keeppaid");
     if(!keepEl||keepEl.checked){
+      // सिर्फ़ चुनी तारीख़ (डिफ़ॉल्ट: चालू माह की 1) से दर्ज वसूली ही नए लेजर में जाए।
+      // पहले यहां कोई तारीख़-जांच नहीं थी — पिछले लेजर का हर "वसूल" नए लेजर में भी चिपक जाता था,
+      // इसलिए जिसने नया बिल जमा नहीं किया वो भी "वसूल" दिखता, लाइनमैन उस तक जाता ही नहीं और
+      // वसूली चुपचाप छूट जाती — असली bug यही था। अब पिछले माह वाले हट जाते हैं, पर 1-10 तारीख़ की
+      // खिड़की में (जब पुराना लेजर ही ऐप में होता है) दर्ज हुई वसूली बनी रहती है
+      var _cut=_upKeepCutoff();
       var exOld=cGet(hq,cat)||[];
       var paidByAcc={};
       exOld.forEach(function(e){
         if(e&&e.acc&&e.status==="paid"){
+          if(_cut&&latestPayVal(e)<_cut){ dropped++; return; } // पिछले लेजर की — आगे न ले जाएं
           paidByAcc[String(e.acc).trim()]={paydate:e.paydate||"",by:e.updatedBy||"",at:e.updatedAt||"",ts:e.ts||0,remarksArr:e.remarksArr||[]};
         }
       });
@@ -285,7 +454,14 @@ function confirmUpload(){
         if(bkRaw){
           var bkO=JSON.parse(bkRaw);
           if(Date.now()-(bkO.t||0)<604800000){
-            Object.keys(bkO.m||{}).forEach(function(k){if(!paidByAcc[k])paidByAcc[k]=bkO.m[k];});
+            // backup से वापस लेते समय भी वही तारीख़-कट-ऑफ़ लगे, वरना पिछले लेजर की वसूली
+            // पिछले दरवाज़े से नए लेजर में लौट आती
+            Object.keys(bkO.m||{}).forEach(function(k){
+              if(paidByAcc[k]) return;
+              var bm=bkO.m[k];
+              if(_cut&&latestPayVal({status:"paid",paydate:bm&&bm.paydate})<_cut){ dropped++; return; }
+              paidByAcc[k]=bm;
+            });
           }
         }
       }catch(e){}
@@ -294,14 +470,22 @@ function confirmUpload(){
         if(pm&&r.status!=="paid"){
           r.status="paid";r.paydate=pm.paydate;
           if(pm.by){r.updatedBy=pm.by;r.updatedAt=pm.at;}
-          if(pm.remarksArr&&pm.remarksArr.length)r.remarksArr=pm.remarksArr;
           r.ts=pm.ts||r.ts;kept++;
         }
       });
     }
+    // रिमार्क "वसूली सुरक्षित रखें" checkbox से बंधे नहीं — वसूल हो या बाकी, हर उपभोक्ता के पुराने
+    // रिमार्क नई सूची में जाएं (पहले सिर्फ़ ऊपर वाले paid-restore में जाते थे)
+    var rmkKept=_upApplyOldRemarks(arr,_upCollectOldRemarks(hq,cat));
     _doSave(hq,cat,arr);
-    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" पुरानी वसूली सुरक्षित":"")+" 🔥","ok");
-    
+    // असली bug (JE की रिपोर्ट): एक category में लेजर अपलोड होने से उसकी "वसूल" स्थिति बहाल होती है
+    // (ऊपर वाला backup-restore), पर वह सिर्फ़ उसी category तक सीमित थी — किसी और category के अपने
+    // लेजर में (जैसे "कुल उपभोक्ता") वही उपभोक्ता अब भी पुराना (बाकी) दिखता रहता, भले ही असल में
+    // वसूल हो चुका हो। कैश-लिस्ट अपलोड में reconcileHQ() पहले से यही ठीक करता था — अब सामान्य
+    // लेजर अपलोड के बाद भी यही चले, ताकि "किसी भी category में वसूल = हर category में वसूल" हमेशा सच रहे
+    var _rec2=reconcileHQ(hq);
+    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+(rmkKept?" 💬 "+rmkKept+" के रिमार्क सुरक्षित":"")+(dupSkip?" | "+dupSkip+" duplicate Consumer No skip":"")+(_rec2?" 🔁 "+_rec2+" अन्य categories में मिलाया":"")+" 🔥","ok");
+
   }catch(err){
     logErr("upload-confirm",err,activeHQ+"/"+(document.getElementById("up-cat")?document.getElementById("up-cat").value:""));
     toast("Error: "+err.message,"err");
@@ -336,8 +520,18 @@ function _doSave(hq,cat,arr){
   },300);
 }
 
-function downloadExcel(){
+// ऊपर जो filter बटन (सभी/बाकी/वसूल) चुना है, download भी उसी को माने — पहले यहां हमेशा
+// activeCat की पूरी (unfiltered) list जाती थी, यानी "बाकी" पर होते हुए भी PDF/Excel में
+// वसूल-वाले भी आ जाते थे। असली bug यही था — स्क्रीन पर जो दिख रहा है वही download होना चाहिए।
+function _filteredForDownload(){
   var data=cGet(activeHQ,activeCat);
+  if(activeFilter==="all") return data;
+  return data.filter(function(x){return x.status===activeFilter;});
+}
+var _FILTER_LABEL={all:"सभी",pending:"बाकी",paid:"वसूल"};
+
+function downloadExcel(){
+  var data=_filteredForDownload();
   if(!data.length){toast("कोई data नहीं","err");return;}
   if(typeof XLSX==="undefined"){ensureLibs();toast("📴 Excel download के लिए इन्टरनेट चाहिए","err");return;}
   var rows=[["क्र.","नाम","पिता/पति","Consumer No","बकाया","Tariff","Load","Unit","Mobile","पता","स्थिति","भुगतान तिथि","पिछला भुगतान","पिछला तिथि","रिमार्क (सभी)","अपडेट by"]];
@@ -348,18 +542,21 @@ function downloadExcel(){
   var ws=XLSX.utils.aoa_to_sheet(rows);
   ws["!cols"]=[{wch:4},{wch:20},{wch:18},{wch:14},{wch:10},{wch:8},{wch:8},{wch:6},{wch:13},{wch:18},{wch:8},{wch:13},{wch:12},{wch:13},{wch:35},{wch:14}];
   var wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,activeHQ+"_"+activeCat);
-  XLSX.writeFile(wb,activeHQ+"_"+activeCat+"_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx");
+  var tag=activeHQ+"_"+activeCat+(activeFilter!=="all"?"_"+_FILTER_LABEL[activeFilter]:"");
+  XLSX.utils.book_append_sheet(wb,ws,tag.slice(0,31)); // sheet-नाम 31 अक्षर से ज़्यादा नहीं हो सकता
+  XLSX.writeFile(wb,tag+"_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx");
   toast("📊 Excel download!","ok");
 }
 
 function downloadPDF(){
-  var data=cGet(activeHQ,activeCat);
+  var data=_filteredForDownload();
   if(!data.length){toast("कोई data नहीं","err");return;}
   var paid=data.filter(function(x){return x.status==="paid";});
   var pending=data.filter(function(x){return x.status!=="paid";});
   var pendAmt=pending.reduce(function(s,x){return s+(Number(x.amount)||0);},0);
-  var paidAmt=paid.reduce(function(s,x){return s+(Number(x.amount)||0);},0);
+  // negative बकाया (advance/credit balance) वाले उपभोक्ता का योगदान वसूल-राशि के जोड़ में 0 माना
+  // जाता है — देखें reports.js: buildScOverview का fmt() वाला comment, वही वजह
+  var paidAmt=paid.reduce(function(s,x){return s+Math.max(0,Number(x.amount)||0);},0);
   var rows=data.map(function(x,i){
     var isPaid=x.status==="paid";
     // remarksArr का text लाइनमैन/JE का free-typed इनपुट है — escHtml के बिना यहां (document.write
@@ -367,28 +564,38 @@ function downloadPDF(){
     var allRmk=(x.remarksArr||[]).map(function(r){return escHtml(r.text)+" <small>("+escHtml(r.by)+")</small>";}).join("<br>");
     return "<tr style='border-bottom:1px solid #ddd;background:"+(i%2===0?"#fff":"#f9f9f9")+";'>"+
       "<td style='padding:5px;text-align:center;'>"+(i+1)+"</td>"+
-      "<td style='padding:5px;font-weight:600;'>"+escHtml(x.name)+"</td>"+
-      "<td style='padding:5px;color:#555;'>"+escHtml(x.father||"-")+"</td>"+
-      "<td style='padding:5px;color:#1565c0;'>"+escHtml(x.acc)+"</td>"+
-      "<td style='padding:5px;color:#333;'>"+escHtml(x.phone||"-")+"</td>"+
+      "<td style='padding:5px;text-align:center;font-weight:600;'>"+escHtml(x.name)+"</td>"+
+      "<td style='padding:5px;text-align:center;color:#555;'>"+escHtml(x.father||"-")+"</td>"+
+      "<td style='padding:5px;text-align:center;color:#1565c0;'>"+escHtml(x.acc)+"</td>"+
+      "<td style='padding:5px;text-align:center;color:#333;'>"+escHtml(x.phone||"-")+"</td>"+
       "<td style='padding:5px;text-align:right;font-weight:700;'>₹"+Number(x.amount).toLocaleString("hi-IN")+"</td>"+
-      "<td style='padding:5px;'>"+escHtml(x.tariff||"-")+"</td>"+
-      "<td style='padding:5px;'>"+escHtml(x.load||"-")+"</td>"+
+      "<td style='padding:5px;text-align:center;'>"+escHtml(x.tariff||"-")+"</td>"+
+      "<td style='padding:5px;text-align:center;'>"+escHtml(x.load||"-")+"</td>"+
       "<td style='padding:5px;text-align:center;font-weight:700;color:"+(isPaid?"#2e7d32":"#c62828")+"'>"+
         (isPaid?"✓ वसूल":"✗ बाकी")+(x.paydate?"<br><small>"+escHtml(x.paydate)+"</small>":"")+
       "</td>"+
-      "<td style='padding:5px;background:"+(allRmk?"#fff8e1":"")+"'>"+(allRmk||"-")+"</td>"+
-      "<td style='padding:5px;font-size:10px;color:#555;'>"+(x.lastPaidAmt?"₹"+escHtml(String(x.lastPaidAmt))+(x.lastPayDate?"<br>"+escHtml(x.lastPayDate):""): "-")+"</td>"+
+      "<td style='padding:5px;text-align:left;background:"+(allRmk?"#fff8e1":"")+"'>"+(allRmk||"-")+"</td>"+
+      "<td style='padding:5px;text-align:center;font-size:10px;color:#555;'>"+(x.lastPaidAmt?"₹"+escHtml(String(x.lastPaidAmt))+(x.lastPayDate?"<br>"+escHtml(x.lastPayDate):""): "-")+"</td>"+
     "</tr>";
   }).join("");
+  // table-layout:fixed + हर कॉलम की तय चौड़ाई (नीचे <th> पर width%) — पहले चौड़ाई content के
+  // हिसाब से अपने-आप बनती थी, तो नाम/मोबाइल जैसे कॉलम पेज-दर-पेज अलग-अलग जगह खिसक जाते थे
+  // (जिस वजह से नीचे का data ऊपर के header से मेल नहीं खाता दिखता था) — असली bug यही था।
+  // साथ में vertical-align:top ताकि रिमार्क/पिछला-भुगतान जैसे दो-लाइन वाले सेल पड़ोसी row में
+  // घुसते हुए न दिखें, और रिमार्क को सबसे ज़्यादा चौड़ाई (18%) दी — वही सबसे लंबा free-text है
   var html="<!DOCTYPE html><html><head><meta charset='UTF-8'>"+
     "<style>body{font-family:Arial,sans-serif;font-size:11px;margin:15px;}h2{color:#1a237e;}"+
     ".info{display:flex;gap:12px;flex-wrap:wrap;background:#f5f5f5;padding:8px;border-radius:6px;margin:8px 0;}"+
     ".ib{text-align:center;}.ib b{font-size:15px;display:block;}"+
-    "table{width:100%;border-collapse:collapse;}th{background:#1a237e;color:#fff;padding:5px;}"+
+    "table{width:100%;border-collapse:collapse;table-layout:fixed;}"+
+    "th{background:#1a237e;color:#fff;padding:5px;text-align:center;}"+
+    "td{vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;}"+
+    "tr{page-break-inside:avoid;}"+
     "@media print{.np{display:none}}</style></head><body>"+
     "<h2>आदेगांव DC वसूली रिपोर्ट</h2>"+
-    "<p>HQ: <b>"+escHtml(activeHQ)+"</b> | Category: <b>"+escHtml(activeCat)+"</b> | दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+escHtml(CU.name)+"</p>"+
+    "<p>HQ: <b>"+escHtml(activeHQ)+"</b> | Category: <b>"+escHtml(activeCat)+"</b>"+
+      (activeFilter!=="all"?" | सूची: <b>"+_FILTER_LABEL[activeFilter]+"</b>":"")+
+      " | दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+escHtml(CU.name)+"</p>"+
     "<div class='info'>"+
       "<div class='ib'><b>"+data.length+"</b>कुल</div>"+
       "<div class='ib'><b style='color:green'>"+paid.length+"</b>वसूल</div>"+
@@ -398,9 +605,15 @@ function downloadPDF(){
     "</div>"+
     "<button class='np' onclick='window.print()' style='margin-bottom:8px;padding:6px 14px;background:#1a237e;color:#fff;border:none;border-radius:5px;cursor:pointer;'>Print / PDF Save</button>"+
     "<table><thead><tr>"+
-      "<th>#</th><th>नाम</th><th>पिता/पति</th><th>Consumer No</th><th>Mobile</th><th>बकाया</th><th>Tariff</th><th>Load</th><th>स्थिति</th><th>रिमार्क</th><th>पिछला भुगतान</th>"+
+      "<th style='width:3%'>#</th><th style='width:13%'>नाम</th><th style='width:12%'>पिता/पति</th>"+
+      "<th style='width:10%'>Consumer No</th><th style='width:10%'>Mobile</th><th style='width:8%'>बकाया</th>"+
+      "<th style='width:6%'>Tariff</th><th style='width:5%'>Load</th><th style='width:9%'>स्थिति</th>"+
+      "<th style='width:18%'>रिमार्क</th><th style='width:6%'>पिछला भुगतान</th>"+
     "</tr></thead><tbody>"+rows+"</tbody></table></body></html>";
   var w=window.open("","_blank");
+  // audit-verified: rows ऊपर .map().join() से बना (हर field escHtml() से गुज़रा — देखें ऊपर
+  // allRmk/x.name/x.acc आदि), activeHQ/activeCat/CU.name भी escHtml() से गुज़रे
+  // eslint-disable-next-line no-unsanitized/method
   if(w){w.document.write(html);w.document.close();setTimeout(function(){w.print();},600);}
   else toast("Popup block है, allow करें","inf");
 }

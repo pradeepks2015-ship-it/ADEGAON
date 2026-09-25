@@ -5,9 +5,30 @@ function fbPath(hq,cat){
   return hq.replace(/[\s.#$\[\]\/]/g,"_")+"/"+cat.replace(/[\s.#$\[\]\/]/g,"_");
 }
 
-// fbGet() के background silent refresh के लिए per-(hq+"/"+cat) ETag — Firebase 304 देता है अगर data नहीं बदला
-// तो हर बार list खोलने पर पूरा data दोबारा डाउनलोड करने की ज़रूरत नहीं
-var _fbGetEtag={};
+// per-(hq+"/"+cat) ETag — Firebase 304 (खाली जवाब) देता है अगर data नहीं बदला, तो पूरा data दोबारा
+// डाउनलोड करने की ज़रूरत नहीं। पहले यह सिर्फ़ JS memory में था, यानी ऐप बंद/minimize होते ही मिट जाता
+// और अगली बार खुलने पर हर list फिर से पूरी डाउनलोड होती थी — मोबाइल पर ऐप दिन में कई बार मरता-खुलता
+// है, इसलिए असल में यह बचत मिलती ही नहीं थी। अब localStorage में, cache के साथ-साथ।
+// शर्त: ETag पर तभी भरोसा करें जब उसी key का cache भी मौजूद हो — वरना 304 आने पर हमारे पास न नया
+// data होगा न पुराना (cache अलग से मिट सकता है, जैसे quota भरने पर)
+var ETAG_KEY="dc_etag3";
+function _etagAll(){try{return JSON.parse(localStorage.getItem(ETAG_KEY))||{};}catch(e){return {};}}
+function _etagGet(hq,cat){
+  if(!cGet(hq,cat).length) return null; // cache ही नहीं है — पूरा data मंगाना ही पड़ेगा
+  return _etagAll()[hq+"/"+cat]||null;
+}
+function _etagSet(hq,cat,tag){
+  if(!tag) return;
+  var a=_etagAll(); a[hq+"/"+cat]=tag;
+  try{localStorage.setItem(ETAG_KEY,JSON.stringify(a));}catch(e){}
+}
+// ETag भेजने वाले request के headers — एक ही जगह, ताकि हर caller एक जैसा व्यवहार करे
+function _etagHeaders(hq,cat){
+  var h={"X-Firebase-ETag":"true"};
+  var t=_etagGet(hq,cat);
+  if(t) h["if-none-match"]=t;
+  return h;
+}
 
 // ── FORMAT NORMALIZER: server से आई लिस्ट को हमेशा एक जैसा array बनाओ ──
 // पुराना ढांचा: array | नया (आने वाला) per-record ढांचा: object {IVRS: record}
@@ -23,6 +44,178 @@ function normList(d){
   return arr;
 }
 
+// ── 🛑 डेटा बचाओ मोड (मास्टर स्विच) ────────────────────────────────────────────
+// Firebase का no-cost download quota रोज़ 360 MB का है। किसी दिन वह भरता दिखे तो JE एक ही
+// स्विच से सभी devices पर आगे का download रोक सकें — यह आपातकालीन ब्रेक है, रोज़ का हथियार नहीं।
+//
+// रुकता क्या है: live sync (SSE), prefetch, खुली list का background refresh, स्कोरकार्ड का
+// ताज़ा data। चलता क्या रहता है: पूरी ऐप device के अपने cache से (यह ऐप वैसे भी offline-first
+// है), और सबसे ज़रूरी — *वसूली दर्ज करना*। वह upload है, download quota में गिनता ही नहीं,
+// इसलिए लाइनमैन का काम एक पल के लिए भी नहीं रुकता।
+//
+// स्विच पढ़ने का अपना खर्च: /PAUSE में बस {on:true/false} है। हर device इसे 5 मिनट में एक बार
+// देखता है, और वह भी सिर्फ़ तब जब ऐप सामने खुली हो — background में पड़े device को कुछ पूछने की
+// ज़रूरत ही नहीं, वह वैसे भी कुछ खर्च नहीं कर रहा। पूरे DC का दिन भर का हिसाब ~150 KB, यानी
+// 360 MB का 0.04% — जो यह बचाता है उसके सामने कुछ भी नहीं।
+var DATA_PAUSED=false;
+var PAUSE_INFO=null;          // {on, by, at} — किसने, कब दबाया
+var PAUSE_KEY="dc_paused";    // device पर याद, ताकि ऐप खुलते ही (जवाब आने से पहले भी) सही व्यवहार हो
+var PAUSE_POLL_MS=5*60*1000;
+var _pauseTimer=null;
+function isDataPaused(){ return !!DATA_PAUSED; }
+function loadPauseLocal(){
+  try{
+    var s=JSON.parse(localStorage.getItem(PAUSE_KEY));
+    if(s&&typeof s==="object"){
+      PAUSE_INFO=s.i||null;
+      // device पर सहेजी हालत पर भी वही "आज तक" वाली शर्त लगती है — वरना कल का रुका हुआ स्विच
+      // ऐप खुलते ही फिर से लागू हो जाता, जबकि quota तब तक रीसेट हो चुका होता है
+      DATA_PAUSED=PAUSE_INFO?_pauseStillValid(PAUSE_INFO):!!s.on;
+    }
+  }catch(e){}
+}
+// स्विच अपने आप उसी दिन तक चलता है — आधी रात के बाद अपने आप हट जाता है।
+// वजह दो हैं: (1) Firebase का quota वैसे भी रोज़ रीसेट होता है, तो कल इसे चालू रखने का कोई
+// मतलब ही नहीं; (2) सबसे संभावित गड़बड़ी यही है कि JE शाम को दबाकर भूल जाएँ और पूरी टीम कई दिन
+// पुराने डेटा पर चलती रहे। समय की तुलना serverNow() से होती है (device की घड़ी ग़लत हो सकती है)
+function _pauseStillValid(d){
+  if(!d||!d.on) return false;
+  var at=Number(d.at)||0;
+  if(!at) return true; // कब दबाया पता ही नहीं — भरोसा कर लो, चालू मानो
+  var s=new Date(serverNow()); s.setHours(0,0,0,0);
+  return at>=s.getTime(); // आज ही दबाया गया हो, तभी
+}
+function _applyPause(d){
+  var on=_pauseStillValid(d);
+  var was=DATA_PAUSED;
+  DATA_PAUSED=on;
+  PAUSE_INFO=(d&&typeof d==="object")?d:null;
+  try{ localStorage.setItem(PAUSE_KEY,JSON.stringify({on:on,i:PAUSE_INFO})); }catch(e){}
+  renderPauseBar();
+  if(on===was) return;
+  if(on){
+    stopListen(); // सबसे बड़ा खर्च यही है — तुरंत बंद
+  } else if(CU&&activeHQ&&activeCat){
+    startListen(activeHQ,activeCat); // वापस चालू — जुड़ते ही ताज़ा data अपने आप आ जाता है
+  }
+}
+function fetchPause(){
+  if(!navigator.onLine) return;
+  fetch(FB+"/PAUSE.json?t="+Date.now()).then(_fbJson).then(function(d){trackUsageOf(d);_applyPause(d);}).catch(function(){});
+}
+// सिर्फ़ तब पूछो जब ऐप सामने खुली हो — छुपे/बंद device को स्विच जानने की ज़रूरत ही नहीं
+function startPausePoll(){
+  if(_pauseTimer) return;
+  _pauseTimer=setInterval(function(){
+    if(document.hidden||!navigator.onLine) return;
+    fetchPause();
+  },PAUSE_POLL_MS);
+}
+
+// ── सर्वर पर लिस्ट किस रूप में है — flag नहीं, असली सबूत ───────────────────────────────────
+// माइग्रेशन बार-बार पलटने की जड़ यह थी कि "पूरी array लिखूं या per-record object" का फ़ैसला पूरी
+// तरह MIGRATED flag पर टिका था — और उस flag की दो बिल्कुल अलग हालतें कोड में एक जैसी (false)
+// दिखती हैं:
+//   (क) "यह श्रेणी सचमुच migrate नहीं हुई"      → array लिखना सही
+//   (ख) "मुझे पता ही नहीं चला, flag लोड न हुआ"  → array लिखना विनाशकारी (माइग्रेशन पलट जाता है)
+// यानी अनिश्चितता में कोड सबसे ख़तरनाक रास्ता चुनता था। (असली production: मढ़ी/कुल उपभोक्ता एक ही
+// दिन में दो बार पलटी, जबकि सभी devices v9.117 पर थे — यानी "पुराना version" वाली वजह ग़लत थी।)
+//
+// अब flag के अलावा असली सबूत भी देखते हैं: ऐप हर बार लिस्ट पढ़ती ही है, तो उसी पढ़ाई से याद रख
+// लेते हैं कि सर्वर पर वह लिस्ट array थी या object। पूरी array लिखने से पहले अगर आख़िरी बार object
+// देखी थी, तो array कभी नहीं लिखते — चाहे flag कुछ भी कहे। इसके लिए एक भी नई network call नहीं।
+var SHAPE_KEY="dc_shape3";
+function _shapeAll(){ try{ return JSON.parse(localStorage.getItem(SHAPE_KEY))||{}; }catch(e){ return {}; } }
+// हर बार जब सर्वर से कच्चा data मिले, उसका रूप दर्ज कर लें
+function _noteShape(hq,cat,raw){
+  if(raw==null||typeof raw!=="object") return; // खाली/अजीब — इससे कुछ नहीं कह सकते, पुरानी याद रहने दो
+  var s=Array.isArray(raw)?"arr":"obj";
+  var a=_shapeAll(), k=hq+"/"+cat;
+  if(a[k]===s) return; // बदला नहीं — localStorage को बेवजह न छेड़ें
+  a[k]=s;
+  try{ localStorage.setItem(SHAPE_KEY,JSON.stringify(a)); }catch(e){}
+}
+function lastShape(hq,cat){ return _shapeAll()[hq+"/"+cat]||null; }
+// श्रेणी का नाम बदलने पर device की तीनों यादें भी साथ चलें — वरना नए नाम की पहली पढ़ाई में
+// ETag/shape दोनों अनजान रहते, और shape अनजान होने का मतलब है _fbPut का माइग्रेशन-बचाव अंधा
+function _moveLocalKeys(hq,oldCat,newCat){
+  try{
+    var e=_etagAll(); if(e[hq+"/"+oldCat]!=null){ e[hq+"/"+newCat]=e[hq+"/"+oldCat]; delete e[hq+"/"+oldCat]; localStorage.setItem(ETAG_KEY,JSON.stringify(e)); }
+  }catch(err){}
+  try{
+    var s=_shapeAll(); if(s[hq+"/"+oldCat]!=null){ s[hq+"/"+newCat]=s[hq+"/"+oldCat]; delete s[hq+"/"+oldCat]; localStorage.setItem(SHAPE_KEY,JSON.stringify(s)); }
+  }catch(err2){}
+}
+
+// ── श्रेणी का नाम बदलना = Firebase पर उसका पता बदलना ─────────────────────────────────────────
+// fbPath(hq,cat) श्रेणी के *नाम* से ही बनता है, इसलिए नाम बदलते ही डेटा का पता बदल जाता है।
+// पहले rename सिर्फ़ device के cache और CAT_NAMES में होता था — सर्वर पर डेटा पुराने पते पर ही
+// पड़ा रहता और नया पता खाली रहता। कुछ ही सेकंड में fbGet उस खाली पते से जवाब लाकर
+// cSet(hq,cat,[]) कर देता, यानी सूची सबकी स्क्रीन से ग़ायब (डेटा Firebase पर बचा रहता, पर ऐप में
+// कुछ न दिखता) और पुराना नोड हमेशा के लिए अनाथ पड़ा रह जाता। अब पूरा सामान साथ ले जाया जाता है।
+//
+// क्रम जान-बूझकर ऐसा है कि किसी भी क़दम पर रुक जाने से डेटा न मरे:
+//   पढ़ो → नए पते पर लिखो → MIGRATED flag ले जाओ → *तब* पुराना हटाओ
+// यानी बीच में नेट टूटे तो सबसे बुरी हालत यह है कि डेटा दोनों पतों पर है (दिखता रहेगा) —
+// कभी किसी पते पर नहीं, ऐसा नहीं हो सकता
+function renameCatData(hq,oldCat,newCat,cb){
+  if(!navigator.onLine){ cb({ok:false,why:"offline"}); return; }
+  fetch(FB+"/"+fbPath(hq,oldCat)+".json?t="+Date.now())
+    .then(_fbJson)
+    .then(function(raw){
+      trackUsageOf(raw);
+      var n=raw?(Array.isArray(raw)?raw.filter(Boolean).length:Object.keys(raw).length):0;
+      if(!raw||!n){ // खाली श्रेणी — ले जाने को कुछ नहीं, सिर्फ़ नाम बदलेगा
+        _moveLocalKeys(hq,oldCat,newCat);
+        cb({ok:true,moved:0});
+        return null;
+      }
+      _noteShape(hq,oldCat,raw);
+      var wasObj=!Array.isArray(raw);
+      return fetch(FB+"/"+fbPath(hq,newCat)+".json",{
+        method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(raw)
+      }).then(function(r){
+        if(!r.ok) throw new Error("HTTP "+r.status);
+        // MIGRATED flag भी नए नाम पर — वरना नए पते की per-record list "माइग्रेट नहीं हुई" मानी
+        // जाती और पहली ही पूरी लिखाई उसे वापस array बना देती (वही पुराना पलटने वाला bug)
+        if(!isMigrated(hq,oldCat)) return null;
+        return fetch(FB+"/MIGRATED/"+hqKey(hq)+"/"+catKey(newCat)+".json",{
+          method:"PUT",headers:{"Content-Type":"application/json"},body:"true"
+        }).catch(function(){}); // सिर्फ़ JE लिख सकता है; न लिख पाए तो भी डेटा तो पहुँच ही चुका
+      }).then(function(){
+        // अब पुराना हटाना सुरक्षित है — डेटा नए पते पर पहुँच चुका
+        return fetch(FB+"/"+fbPath(hq,oldCat)+".json",{method:"DELETE"}).catch(function(){});
+      }).then(function(){
+        if(isMigrated(hq,oldCat)){
+          fetch(FB+"/MIGRATED/"+hqKey(hq)+"/"+catKey(oldCat)+".json",{method:"DELETE"}).catch(function(){});
+          if(!MIGRATED[hqKey(hq)]) MIGRATED[hqKey(hq)]={};
+          MIGRATED[hqKey(hq)][catKey(newCat)]=true;
+          delete MIGRATED[hqKey(hq)][catKey(oldCat)];
+          try{localStorage.setItem(MIG_FLAG_KEY,JSON.stringify(MIGRATED));}catch(e){}
+        }
+        _moveLocalKeys(hq,oldCat,newCat);
+        _noteShape(hq,newCat,wasObj?{}:[]); // जो रूप भेजा वही अब सर्वर पर है
+        cb({ok:true,moved:n});
+      });
+    })
+    .catch(function(e){
+      logErr("catrename-move",e,hq+"/"+oldCat+" → "+newCat);
+      cb({ok:false,why:"net"});
+    });
+}
+// नाम बदलने से पहले JE को गिनती दिखा सकें — सिर्फ़ गिनती चाहिए, पूरा data नहीं, इसलिए
+// shallow=true: Firebase तब हर record की जगह सिर्फ़ {key:true} भेजता है (कहीं हल्का)
+function catRecordCount(hq,cat,cb){
+  if(!navigator.onLine){ cb(null); return; }
+  fetch(FB+"/"+fbPath(hq,cat)+".json?shallow=true&t="+Date.now())
+    .then(_fbJson)
+    .then(function(d){
+      trackUsageOf(d);
+      cb(!d?0:(Array.isArray(d)?d.filter(Boolean).length:Object.keys(d).length));
+    })
+    .catch(function(){ cb(null); });
+}
+
 var FB_GET_TIMEOUT_MS=8000; // टेस्ट में छोटा करके तेज़ जांच की जा सकती है
 function fbGet(hq,cat,cb){
   var cached=cGet(hq,cat);
@@ -34,23 +227,23 @@ function fbGet(hq,cat,cb){
   }
   if(cached.length){
     cb(cached); // तुरंत cache से दिखाएं — fast!
+    if(isDataPaused()) return; // 🛑 डेटा बचाओ मोड — cache से दिखाया जा चुका, refresh नहीं करेंगे
     // background silent refresh — ETag भेजने पर अगर data नहीं बदला तो Firebase 304 देता है (खाली response,
     // पूरी list दोबारा नहीं) — list बार-बार खोलने पर bandwidth बचत; पहली बार ETag मिलता है, अगली बार भेजते हैं
-    var _ekey=hq+"/"+cat;
-    var _bgh={"X-Firebase-ETag":"true"};
-    if(_fbGetEtag[_ekey]) _bgh["if-none-match"]=_fbGetEtag[_ekey];
-    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_bgh})
+    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_etagHeaders(hq,cat)})
       .then(function(r){
         if(r.status===304) return; // कुछ नहीं बदला — यहीं रुक जाओ (bandwidth बचत)
         if(!r.ok) throw new Error("HTTP "+r.status);
-        _fbGetEtag[_ekey]=r.headers.get("ETag")||_fbGetEtag[_ekey];
+        var _tag=r.headers.get("ETag");
         return r.json().then(function(d){
-          trackUsageBytes(JSON.stringify(d||"").length);
+          trackUsageOf(d);
+          _noteShape(hq,cat,d);
           _checkMigrationRevert(hq,cat,d); // migrated list कहीं पुराने device ने वापस array में तो नहीं बदल दी
           var data=normList(d);
           overlayOps(hq,cat,data);
           var changed=JSON.stringify(data)!==JSON.stringify(cached);
           cSet(hq,cat,data);
+          _etagSet(hq,cat,_tag); // cache लिखने के *बाद* ही — तभी अगली बार 304 पर भरोसा किया जा सकता है
           if(changed) cb(data);
           setSyncStatus(true);
         });
@@ -65,14 +258,17 @@ function fbGet(hq,cat,cb){
     cb([]);
     setSyncStatus(false);
   },FB_GET_TIMEOUT_MS);
-  fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now())
-    .then(_fbJson)
+  var _tag0=null;
+  fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:{"X-Firebase-ETag":"true"}})
+    .then(function(r){ _tag0=r.headers.get("ETag"); return _fbJson(r); })
     .then(function(d){
-      trackUsageBytes(JSON.stringify(d||"").length);
+      trackUsageOf(d);
+      _noteShape(hq,cat,d);
       _checkMigrationRevert(hq,cat,d);
       var data=normList(d);
       overlayOps(hq,cat,data);
       cSet(hq,cat,data);
+      _etagSet(hq,cat,_tag0); // पहली बार का ETag भी सहेजो — अगली बार यह list मुफ़्त में ताज़ा होगी
       if(settled){
         // देर से जवाब आया — अगर अभी भी यही list खुली है तो ताज़ा data दिखा दो
         if(typeof CU!=="undefined"&&CU&&hq===activeHQ&&cat===activeCat){renderSummaryWith(data);renderListWith(data);}
@@ -100,27 +296,107 @@ function fbSet(hq,cat,arr,prevArr,cb){
   if(arr.length>200){
     toast("⏳ "+arr.length+" records सेव हो रहे हैं...","inf");
   }
-  if(isMigrated(hq,cat)) _fbPutPerRecord(hq,cat,prevArr||[],arr,cb);
-  else _fbPut(hq,cat,arr,cb);
+  // v9.167: flag न भी हो, पर सर्वर पर list per-record दिखी हो (या अभी जांच में दिखे) तो भी सिर्फ़ बदले
+  // records का PATCH — पूरी list लिखने से उसी पल किसी और लाइनमैन का बदलाव दब सकता था
+  if(isMigrated(hq,cat)||lastShape(hq,cat)==="obj"){ _fbPutPerRecord(hq,cat,prevArr||[],arr,cb); return; }
+  if(!lastShape(hq,cat)&&!Object.keys(MIGRATED||{}).length){
+    // flags लोड नहीं + रूप अज्ञात — _fbPut की जांच चलाओ; per-record निकले तो PATCH, वरना वही array
+    fetch(FB+"/"+fbPath(hq,cat)+".json?shallow=true&t="+Date.now())
+      .then(_fbJson)
+      .then(function(d){
+        var sh=_shapeFromShallow(d);
+        _noteShape(hq,cat,sh==="obj"?{}:[]);
+        if(sh==="obj") _fbPutPerRecord(hq,cat,prevArr||[],arr,cb);
+        else _fbPutNow(hq,cat,arr,cb);
+      })
+      .catch(function(e){
+        if(navigator.onLine) logErr("save-shape-probe-fail",e,hq+"/"+cat);
+        markPending(hq,cat,"put",null,e);
+        setSyncStatus(false);
+        _saveFailToast(e);
+        if(cb) cb(false);
+      });
+    return;
+  }
+  _fbPut(hq,cat,arr,cb);
 }
 
 // पूरी array PUT करने वाला इकलौता (legacy) रास्ता — इसीलिए यहीं गारंटी दी गई है कि यह किसी
 // migrated (per-record/object) HQ/श्रेणी पर कभी raw array नहीं भेजेगा, चाहे कोई भी caller
 // (कोई भी 'acc missing' fallback वगैरह) इसे बुलाए — वरना माइग्रेशन चुपचाप पलट जाता (असली bug यही था)
+function _asPerRecord(hq,cat,arr){
+  var obj={},skip=0;
+  (arr||[]).forEach(function(x,i){
+    if(!x||x.acc==null||String(x.acc).trim()===""){skip++;return;}
+    var rec=JSON.parse(JSON.stringify(x));
+    if(rec.o==null) rec.o=i;
+    obj[String(x.acc).trim()]=rec;
+  });
+  if(skip) logErr("mig-noacc-skip",skip+" record बिना acc के मिले — उन्हें सेव नहीं किया (मैन्युअल जांच ज़रूरी), बाकी सुरक्षित रूप से per-record फॉर्मेट में सेव किए",hq+"/"+cat);
+  return obj;
+}
+var _arrayPutLogged={};
+// ── flags लोड हुए बिना array लिखने से पहले सर्वर पर list का असली रूप जांचो (v9.167) ──
+// असली production (v9.166 लॉग, बीबी/कुल उपभोक्ता, Movind): "array-put-noflags" — इस device पर MIGRATED
+// flags लोड ही नहीं हुए (ऐप खुलते वक़्त login पूरा होने से पहले /MIGRATED पढ़ा गया → Permission denied)
+// और list का रूप भी पहले कभी नहीं देखा था। ऐसे में पूरी array लिखना migrated list को पलट देता — यही
+// मढ़ी/1134019486 के duplicate card की जड़ थी। अब पहले ?shallow=true से सिर्फ़ keys (हल्का) मंगाकर
+// रूप पक्का करते हैं: key Consumer No जैसी (गैर-क्रमांक) = per-record; सब 0,1,2… = array। जांच ही नाकाम
+// हो तो array नहीं लिखते — बदलाव device पर pending रहता है, flushPending बाद में पूरा रूप देखकर भेजेगा
+function _shapeFromShallow(d){
+  if(!d||typeof d!=="object") return null;
+  var ks=Object.keys(d);
+  if(!ks.length) return null;
+  // Consumer No भी अंकों वाले ही हैं (जैसे 1134019486) — इसलिए "सिर्फ़ अंक" से फ़र्क़ नहीं पता चलता।
+  // array के क्रमांक 0…(records-1) होते हैं, जो getMaxRecords (3500) से कभी ऊपर नहीं जाते;
+  // Consumer No उससे कहीं बड़े (10 अंक)
+  return ks.every(function(k){ return /^\d+$/.test(k)&&Number(k)<=10000; })?"arr":"obj";
+}
 function _fbPut(hq,cat,arr,cb){
-  var body;
+  if(!isMigrated(hq,cat)&&!lastShape(hq,cat)&&!Object.keys(MIGRATED||{}).length){
+    fetch(FB+"/"+fbPath(hq,cat)+".json?shallow=true&t="+Date.now())
+      .then(_fbJson)
+      .then(function(d){
+        var sh=_shapeFromShallow(d);
+        _noteShape(hq,cat,sh==="obj"?{}:[]); // खाली/नहीं = array लिखना सुरक्षित
+        _fbPutNow(hq,cat,arr,cb);
+      })
+      .catch(function(e){
+        if(navigator.onLine) logErr("save-shape-probe-fail",e,hq+"/"+cat);
+        markPending(hq,cat,"put",null,e);
+        setSyncStatus(false);
+        _saveFailToast(e);
+        if(cb) cb(false);
+      });
+    return;
+  }
+  _fbPutNow(hq,cat,arr,cb);
+}
+function _fbPutNow(hq,cat,arr,cb){
+  var body,wrote;
   if(isMigrated(hq,cat)){
-    var obj={},skip=0;
-    (arr||[]).forEach(function(x,i){
-      if(!x||x.acc==null||String(x.acc).trim()===""){skip++;return;}
-      var rec=JSON.parse(JSON.stringify(x));
-      if(rec.o==null) rec.o=i;
-      obj[String(x.acc).trim()]=rec;
-    });
-    if(skip) logErr("mig-noacc-skip",skip+" record बिना acc के मिले — उन्हें सेव नहीं किया (मैन्युअल जांच ज़रूरी), बाकी सुरक्षित रूप से per-record फॉर्मेट में सेव किए",hq+"/"+cat);
-    body=JSON.stringify(obj);
+    wrote=_asPerRecord(hq,cat,arr);
+    body=JSON.stringify(wrote);
+  } else if(lastShape(hq,cat)==="obj"){
+    // flag कहता है "migrated नहीं" — पर सर्वर पर आख़िरी बार यही list per-record (object) रूप में
+    // देखी गई थी। दोनों में से सच वही है जो आँखों-देखा है: flag इस device पर लोड न हो पाया होगा।
+    // यहाँ array लिखना पूरी माइग्रेशन पलटा देता (असली production bug — मढ़ी/कुल उपभोक्ता एक दिन में
+    // दो बार पलटी)। इसलिए array नहीं, per-record ही लिखते हैं — यूज़र का बदलाव भी बचता है और
+    // format भी। साथ ही एक बार लॉग कर देते हैं ताकि JE को पता चले कि किस device का flag अटका है
+    logErr("array-put-blocked","इस device का MIGRATED flag इस list के लिए लोड नहीं हुआ था, पर सर्वर पर list per-record रूप में है — पूरी array लिखने से रोका और सही (per-record) रूप में ही सेव किया। माइग्रेशन पलटने से बच गया",hq+"/"+cat);
+    wrote=_asPerRecord(hq,cat,arr);
+    body=JSON.stringify(wrote);
   } else {
+    wrote=arr;
     body=JSON.stringify(arr);
+    // जांच: migrated list को array में पलटने वाला device कौन है? सबसे संभावित वजह — इस device पर
+    // MIGRATED flags लोड ही नहीं हुए (बिल्कुल खाली)। ऐसे में पूरी array लिखते वक़्त एक बार लॉग करो
+    // (logErr अपने-आप लाइनमैन/version/device जोड़ता है) — ताकि असली लिखने वाला पकड़ा जा सके
+    var _ak=hq+"/"+cat;
+    if(!_arrayPutLogged[_ak]&&!Object.keys(MIGRATED||{}).length){
+      _arrayPutLogged[_ak]=true;
+      logErr("array-put-noflags","MIGRATED flags लोड हुए बिना पूरी list array रूप में लिखी जा रही है — अगर यह list migrated है तो यही उसे पलट देगा",hq+"/"+cat+" • पिछला रूप: "+(lastShape(hq,cat)||"अज्ञात"));
+    }
   }
   fetch(FB+"/"+fbPath(hq,cat)+".json",{
     method:"PUT",
@@ -128,6 +404,8 @@ function _fbPut(hq,cat,arr,cb){
     body:body
   }).then(function(r){
     if(!r.ok) throw new Error("HTTP "+r.status);
+    // अभी-अभी हमने सर्वर पर जो रूप लिखा, अब सर्वर पर वही है — याद रख लो (कोई network call नहीं)
+    _noteShape(hq,cat,wrote);
     clearPendingKey(cKey(hq,cat));
     updTime(); setSyncStatus(true);
     if(cb) cb(true);
@@ -154,19 +432,22 @@ function _saveFailToast(e){
 
 // migrated (per-record) HQ/श्रेणी के लिए — prev/arr में जो record बदले/जुड़े/हटे हों सिर्फ उन्हें PATCH करना,
 // पूरी लिस्ट दोबारा नहीं भेजना (bandwidth बचत + concurrent-edit टकराव खत्म)
-// किसी record में acc न हो तो null लौटाएं — caller पुराने सुरक्षित array-PUT पर वापस जाए
+// acc-रहित record को छोड़कर बाक़ी सबका patch बनाएं।
+// पहले यह ऐसे record पर null लौटाता था और caller पूरी लिस्ट का array-PUT कर देता था — पर वह
+// "सुरक्षित" रास्ता असल में सुरक्षित था ही नहीं: _fbPut का guard उस array को object में बदलकर
+// वही acc-रहित record वैसे भी छोड़ देता था (mig-noacc-skip), यानी वो record किसी भी हाल में सेव
+// नहीं होता था — उल्टा पूरा node overwrite हो जाता, जिससे उसी वक़्त किसी और लाइनमैन की दर्ज की
+// वसूली मिट सकती थी (per-record PATCH बनाया ही इसीलिए गया था), और पूरी लिस्ट दोबारा भेजने से
+// नेट भी लगता। असली production लॉग में यही जोड़ी बार-बार दिखी: mig-noacc-fallback + mig-noacc-skip
 function _diffToPatch(prev,arr){
-  for(var i=0;i<arr.length;i++){
-    var x=arr[i];
-    if(!x||x.acc==null||String(x.acc).trim()==="") return null;
-  }
   var prevByAcc={};
-  (prev||[]).forEach(function(x){ if(x&&x.acc!=null) prevByAcc[String(x.acc)]=x; });
+  (prev||[]).forEach(function(x){ if(x&&x.acc!=null&&String(x.acc).trim()!=="") prevByAcc[String(x.acc).trim()]=x; });
   var maxO=-1;
   (prev||[]).forEach(function(x){ if(x&&x.o!=null&&Number(x.o)>maxO) maxO=Number(x.o); });
   var patch={},changed=false,nextO=maxO+1,newAccSet={};
-  arr.forEach(function(x){
-    var k=String(x.acc);
+  (arr||[]).forEach(function(x){
+    if(!x||x.acc==null||String(x.acc).trim()==="") return; // acc नहीं — इसे per-record key दी ही नहीं जा सकती
+    var k=String(x.acc).trim();
     newAccSet[k]=1;
     if(x.o==null) x.o=nextO++; // नया record — मौजूदा क्रम के आखिर में जुड़े
     var old=prevByAcc[k];
@@ -178,14 +459,79 @@ function _diffToPatch(prev,arr){
   return changed?patch:{};
 }
 
+// acc-रहित records की पहचान — नाम/पता/मोबाइल से, ताकि JE उन्हें ढूंढकर Consumer No भर सके
+// (acc खुद ही गायब है, इसलिए पहचानने का और कोई ज़रिया नहीं — _migRender की probRows जैसा ही तरीक़ा)
+function _noAccLabels(arr){
+  return (arr||[]).filter(function(x){ return x&&(x.acc==null||String(x.acc).trim()===""); })
+    .map(function(x){ return (x.name||"(नाम नहीं)")+(x.addr?" — "+x.addr:"")+(x.phone?" — "+x.phone:""); });
+}
+
+// ── सर्वर पर पहले से पड़े रिमार्क कभी न दबें — JE की शिकायत (बीबी): कल डाले रिमार्क आज गायब ──
+// per-record PATCH पूरा record भेजता है। जिस फ़ोन पर उस उपभोक्ता की कॉपी पुरानी हो (किसी और ने बाद
+// में रिमार्क डाला, इस फ़ोन तक अभी नहीं पहुंचा), वह "वसूल" मार्क करे या अपना रिमार्क डाले तो सर्वर
+// का record उसी पुरानी कॉपी से बदल जाता — दूसरे का रिमार्क चुपचाप मिट जाता। अब PATCH से ठीक पहले
+// बदले records के सर्वर वाले remarksArr (सिर्फ़ वही छोटा हिस्सा) पढ़कर अपने में मिला लेते हैं
+// (text|by|at से dedup — ऐप में रिमार्क हटाने का कोई रास्ता नहीं, इसलिए जोड़ना हमेशा सुरक्षित है)।
+// थोक बदलाव (अपलोड जैसे, REMARK_MERGE_MAX से ज़्यादा records) में नहीं — वहां हर record की अलग
+// पढ़ाई भारी पड़ती, और अपलोड पुराने रिमार्क पहले ही खुद जोड़ लेता है (देखें upload.js)।
+// पढ़ाई नाकाम (offline) हो तो patch जैसा है वैसा — PATCH भी fail होकर pending बनेगा, और
+// flushPending भेजने से पहले यही मिलान दोबारा करेगा
+var REMARK_MERGE_MAX=10;
+var REMARK_MERGE_TIMEOUT_MS=5000;
+function _mergeServerRemarks(hq,cat,patch){
+  var keys=Object.keys(patch||{}).filter(function(k){ return patch[k]&&typeof patch[k]==="object"&&k.indexOf("/")<0; });
+  if(!keys.length||keys.length>REMARK_MERGE_MAX||!navigator.onLine) return Promise.resolve(patch);
+  var gained={};
+  return Promise.all(keys.map(function(k){
+    // धीमे नेट पर यह पढ़ाई असली सेव को देर तक न रोके — REMARK_MERGE_TIMEOUT_MS बाद जैसा है वैसा भेजो
+    return Promise.race([
+      fetch(FB+"/"+fbPath(hq,cat)+"/"+encodeURIComponent(k)+"/remarksArr.json?t="+Date.now()).then(_fbJson),
+      new Promise(function(_,rej){ setTimeout(function(){ rej(new Error("timeout")); },REMARK_MERGE_TIMEOUT_MS); })
+    ])
+      .then(function(srv){
+        trackUsageOf(srv);
+        if(!srv||typeof srv!=="object") return;
+        var srvArr=Array.isArray(srv)?srv:Object.keys(srv).map(function(i){ return srv[i]; });
+        var mine=patch[k].remarksArr||[];
+        var seen={},out=[];
+        srvArr.concat(mine).forEach(function(r){
+          if(!r||typeof r!=="object") return;
+          var rk=rmkKeyOf(r);
+          if(!seen[rk]){ seen[rk]=1; out.push(r); }
+        });
+        if(out.length===mine.length) return; // सर्वर पर ऐसा कुछ नहीं जो इस फ़ोन पर न हो
+        patch[k].remarksArr=out;
+        patch[k].remarks=out[out.length-1].text; // backward-compat field — saveRmk जैसा ही
+        gained[k]=out;
+      })
+      .catch(function(){});
+  })).then(function(){
+    // सर्वर से मिले रिमार्क इस फ़ोन की कॉपी में भी तुरंत दिखें (SSE के भरोसे न रहें)
+    if(Object.keys(gained).length){
+      var d=cGet(hq,cat)||[];
+      d.forEach(function(x){
+        var k=x&&x.acc!=null?String(x.acc).trim():"";
+        if(k&&gained[k]){ x.remarksArr=JSON.parse(JSON.stringify(gained[k])); x.remarks=gained[k][gained[k].length-1].text; }
+      });
+      cSet(hq,cat,d);
+      if(CU&&hq===activeHQ&&cat===activeCat){ renderSummaryWith(d); renderListWith(d); }
+    }
+    return patch;
+  });
+}
+
 function _fbPutPerRecord(hq,cat,prev,arr,cb){
-  var patch=_diffToPatch(prev,arr);
-  if(patch===null){
-    logErr("mig-noacc-fallback","record बिना acc मिला — सुरक्षा के लिए पूरी लिस्ट (array) से सेव किया",hq+"/"+cat);
-    _fbPut(hq,cat,arr,cb);
-    return;
+  // acc-रहित record किसी भी तरीक़े से per-record सेव नहीं हो सकता (acc ही उसकी key है) — बाक़ी
+  // सबका patch भेज दें, और JE को साफ़ बताएं कि किस उपभोक्ता का Consumer No भरना है
+  var noAcc=_noAccLabels(arr);
+  if(noAcc.length){
+    logErr("mig-noacc-skip",noAcc.length+" record बिना Consumer No के हैं, इसलिए वो सेव नहीं हो पा रहे (बाक़ी सब सेव हो गए)। ठीक करने के लिए: चरण 3 जांच → दोबारा जांचें → \"समस्या वाले records\"। "+noAcc.slice(0,2).join(" | "),hq+"/"+cat);
   }
+  var patch=_diffToPatch(prev,arr);
   if(!Object.keys(patch).length){ if(cb) cb(true); return; } // कुछ बदला ही नहीं — network call भी नहीं
+  _mergeServerRemarks(hq,cat,patch).then(function(){ _fbSendPatch(hq,cat,patch,cb); });
+}
+function _fbSendPatch(hq,cat,patch,cb){
   fetch(FB+"/"+fbPath(hq,cat)+".json",{
     method:"PATCH",
     headers:{"Content-Type":"application/json"},
@@ -208,11 +554,13 @@ function _fbPutPerRecord(hq,cat,prev,arr,cb){
 // या acc: null यानी हटाया गया) local array पर लगाना, ताकि पूरी लिस्ट दोबारा मंगाने की ज़रूरत न पड़े
 function _applyPatchToArray(arr,patch){
   var byAcc={};
-  (arr||[]).forEach(function(x,i){ if(x&&x.acc!=null) byAcc[String(x.acc)]=i; });
+  // trimmed मिलान — देखें storage.js: accKeyOf (वरना space वाले acc पर एक ही उपभोक्ता का दूसरा card जुड़ जाता)
+  (arr||[]).forEach(function(x,i){ var ak=accKeyOf(x); if(ak) byAcc[ak]=i; });
   var out=(arr||[]).slice();
   var removeIdx=[];
-  Object.keys(patch).forEach(function(k){
-    var val=patch[k];
+  Object.keys(patch).forEach(function(pk){
+    var val=patch[pk];
+    var k=String(pk).trim();
     if(val===null){
       if(byAcc.hasOwnProperty(k)) removeIdx.push(byAcc[k]);
     } else if(byAcc.hasOwnProperty(k)){
@@ -236,6 +584,16 @@ function fbDel(hq,cat,cb){
       if(e&&e.acc&&e.status==="paid")bk[String(e.acc).trim()]={paydate:e.paydate||"",by:e.updatedBy||"",at:e.updatedAt||"",ts:e.ts||0,remarksArr:e.remarksArr||[]};
     });
     if(Object.keys(bk).length)localStorage.setItem("vt_paidbk_"+cKey(hq,cat),JSON.stringify({t:Date.now(),m:bk}));
+  }catch(e){}
+  // बाकी (अवसूल) उपभोक्ताओं के रिमार्क का भी backup — ऊपर वाला सिर्फ़ "वसूल" का रखता था, इसलिए
+  // "हटाएं → अपलोड" के बाद बाकी उपभोक्ताओं पर लिखे रिमार्क हमेशा के लिए मिट जाते थे (JE की शिकायत,
+  // बीबी)। अपलोड इसे _upCollectOldRemarks() में वापस लेता है (देखें js/upload.js)
+  try{
+    var rbk={};
+    (cGet(hq,cat)||[]).forEach(function(e){
+      if(e&&e.acc&&e.remarksArr&&e.remarksArr.length) rbk[String(e.acc).trim()]=e.remarksArr;
+    });
+    if(Object.keys(rbk).length)localStorage.setItem("vt_rmkbk_"+cKey(hq,cat),JSON.stringify({t:Date.now(),m:rbk}));
   }catch(e){}
   cSet(hq,cat,[]);
   fetch(FB+"/"+fbPath(hq,cat)+".json",{method:"DELETE"})
@@ -268,9 +626,181 @@ var liveSource = null; // real-time SSE stream (Firebase REST streaming)
 // list देर तक खुली रहने से। अब पहले ताज़ा token के साथ EventSource दोबारा जोड़ने की कोशिश होती है
 var _esReconnectAttempts = 0;
 
+// ── नेट-झटके पर रुक-रुक कर दोबारा जुड़ना ──────────────────────────────────────────────────────
+// असली production नाप: कमज़ोर नेट वाले एक लाइनमैन (आनंद कुमार कवरेती, आदेगांव) ने अकेले पूरे DC
+// का 27% (54.5 MB) खाया — उसी दिन उसके device पर बार-बार "Failed to fetch" भी दर्ज थे। वजह:
+// नेट का हर छोटा झटका (readyState 0) EventSource को ~3 सेकंड में अपने-आप दोबारा जोड़ देता है, और
+// Firebase हर बार जुड़ते ही *पूरी* list भेजता है — ऊपर वाली token-expiry की सस्ती ETag जांच सिर्फ़
+// पूरी तरह बंद (readyState 2) होने पर चलती है, इन झटकों पर नहीं। SSE पर "कुछ बदला?" पूछकर भी
+// बचत नहीं होती (जुड़ना ही पूरी list है), इसलिए उपाय जुड़ने की गिनती घटाना है: टूटने पर browser का
+// अपना reconnect रोककर खुद ES_BACKOFF_BASE_MS बाद जुड़ें, और कनेक्शन टिके बिना फिर टूटे तो इंतज़ार
+// दोगुना (अधिकतम ES_BACKOFF_MAX_MS)। ES_STABLE_MS तक टिक जाए तो फिर शुरू से। पुराने तरीक़े से कभी
+// ज़्यादा जुड़ना नहीं होता; कीमत बस इतनी कि कमज़ोर नेट के दौरान दूसरों के बदलाव थोड़ी देर से दिखें —
+// वसूली सेव करना (PATCH) इस पर निर्भर नहीं, वह अलग से तुरंत जाता है
+var ES_BACKOFF_BASE_MS=5000;
+var ES_BACKOFF_MAX_MS=2*60*1000;
+var ES_STABLE_MS=60*1000;
+var _esBackoffMs=0;
+var _esOpenedAt=0;
+var _esRetryT=null;
+
+// ── जांच: क्या Firebase live-sync को मना कर रहा है? ──────────────────────────────────────────
+// Firebase Console (App Check) में ~15% requests "Unverified: outdated client" दिख रही थीं, जबकि
+// Database "Enforced" पर है — यानी बिना App Check token वाली हर request मना होती है। बाक़ी सारी
+// requests js/firebase.js के fetch-wrapper से token (X-Firebase-AppCheck header) के साथ जाती हैं,
+// पर EventSource में header भेजने का कोई तरीक़ा ही नहीं — तो शक है कि live-sync हर बार मना होकर
+// चुपचाप polling पर चला जाता है (ज़्यादा data, और लाइनमैन को कोई गड़बड़ी दिखती भी नहीं)।
+// पक्का करने के लिए: connection एक बार भी खुले बिना सीधे CLOSED हो तो "एरर लॉग" में दर्ज करो —
+// हर ऐप-खुलने पर सिर्फ़ एक बार, ताकि LOGS न भरे
+var _sseNeverOpenedLogged=false;
+// v9.164: v9.163 (fetch stream) के बाद भी एक device (मढ़ी) से यह entry आई — अब साथ में यह भी दर्ज
+// होता है कि किस तरीक़े से जुड़ने की कोशिश थी (fetch stream या पुराना EventSource — बहुत पुराने
+// browser पर fetch stream नहीं चलता), और fetch में सर्वर ने कौन-सा HTTP status/जवाब दिया
+function _sseLogNeverOpened(hq,cat,es){
+  if(_sseNeverOpenedLogged) return;
+  _sseNeverOpenedLogged=true;
+  var how=(typeof FetchLiveSource==="function"&&es instanceof FetchLiveSource)?"fetch":"EventSource";
+  var extra=" • तरीका: "+how;
+  if(es&&es.httpStatus) extra+=" • HTTP "+es.httpStatus;
+  if(es&&es.errText) extra+=" • जवाब: "+es.errText;
+  extra+=" • खाता: "+_liveAcctKind();
+  logErr("sse-never-opened",
+    "live-sync एक बार भी नहीं जुड़ा — सर्वर ने connection मना किया (App Check या account की दिक़्क़त)",
+    hq+"/"+cat+" • AppCheck token: "+(AC_TOKEN?"था":"नहीं था")+" • login token: "+(ID_TOKEN?"था":"नहीं था")+extra);
+}
+
+// ── कदम 2: header भेज सकने वाला live-sync (fetch stream) ────────────────────────────────────
+// ऊपर वाली जांच ने पक्का कर दिया (24 सितंबर, सभी 6 HQ के लगभग हर device पर "sse-never-opened",
+// ज़्यादातर "AppCheck token: था • login token: था" के साथ): EventSource किसी भी device पर जुड़ ही
+// नहीं रहा था — App Check "Enforced" है और EventSource App Check header भेज नहीं सकता, तो सर्वर
+// हर बार मना कर देता, ऐप 3 कोशिशों बाद 15-सेकंड polling पर चला जाता (हर मना हुई कोशिश + हर poll
+// एक अलग request, और दूसरों के बदलाव देर से दिखते)।
+// यह उसी Firebase streaming endpoint से fetch() के ज़रिए जुड़ता है — fetch js/firebase.js के wrapper
+// से जाता है, जो login token (?auth=) और App Check header दोनों जोड़ता है, token बनने तक (4 सेकंड
+// तक) इंतज़ार करता है ("login token: नहीं था" वाली entries — ऐप login पूरा होने से पहले जुड़ रहा था),
+// और 401/403 पर token ताज़ा करके एक बार दोबारा कोशिश करता है। बाक़ी ऐप के लिए यह बिल्कुल EventSource
+// जैसा दिखता है (readyState 0/1/2, onopen, onerror, addEventListener, close) — इसलिए _openLive का
+// सारा पुराना व्यवहार (backoff, token-expiry की सस्ती ETag जांच, patch event, polling fallback) वैसा ही:
+//   • HTTP मनाही (जवाब ok नहीं) या सर्वर का "cancel"/"auth_revoked" event → readyState 2 (CLOSED)
+//   • जुड़ने के बाद stream टूटना / नेट की गड़बड़ी → readyState 0 (नेट का झटका — रुककर दोबारा)
+// ── v9.167: live-sync सही login पक्का होने के बाद ही ─────────────────────────────────────────
+// v9.166 के बाद App Check पास होने लगा (अब "Missing appcheck token" नहीं), पर सर्वर "Permission
+// denied" देने लगा — दो तरह से: "login token: नहीं था" (ऐप खुलते ही stream login token बनने से पहले
+// खुल गया) और "login token: था" (token था, पर उस वक़्त device का Firebase account अभी गुमनाम/
+// anonymous था — _ensureCorrectHqAuth उसी पल पीछे से सही HQ account में sign-in कर रहा था; Security
+// Rules HQ का data सिर्फ़ उसी HQ के account को पढ़ने देती हैं)। यानी stream उस दौड़ में हार जाता था।
+// अब stream खोलने से पहले: Firebase का auth तय हो (_afterAuthReady) → लाइनमैन का सही HQ account
+// पक्का हो (_ensureCorrectHqAuth) → उसी account का ताज़ा token लिया जाए। Firebase ही न हो (offline
+// पहली बार / tests) तो तुरंत
+function _liveAuthReady(fn){
+  var fbOk=false;
+  try{ fbOk=typeof firebase!=="undefined"&&!!firebase&&typeof firebase.auth==="function"; }catch(e){}
+  if(!fbOk) return fn();
+  _afterAuthReady(function(){
+    var go=function(){
+      var u=null;
+      try{ u=firebase.auth().currentUser; }catch(e){}
+      if(!u) return fn();
+      u.getIdToken().then(function(t){ ID_TOKEN=t; fn(); },function(){ fn(); });
+    };
+    if(typeof _ensureCorrectHqAuth==="function") _ensureCorrectHqAuth(go); else go();
+  });
+}
+// लॉग के लिए — device किस Firebase account पर है (email नहीं, सिर्फ़ किस्म)
+function _liveAcctKind(){
+  try{
+    var u=firebase.auth().currentUser;
+    if(!u) return "कोई नहीं";
+    if(u.isAnonymous||!u.email) return "anonymous";
+    if(u.email===JE_EMAIL) return "JE";
+    if(CU&&HQ_AUTH_EMAIL[CU.hq]===u.email) return "सही HQ";
+    return "दूसरा HQ";
+  }catch(e){ return "अज्ञात"; }
+}
+function _fetchStreamSupported(){
+  return typeof fetch==="function"&&typeof AbortController==="function"&&typeof TextDecoder==="function"&&
+    typeof ReadableStream!=="undefined"&&typeof Response!=="undefined"&&("body" in Response.prototype);
+}
+function FetchLiveSource(url){
+  var self=this;
+  self.readyState=0;
+  self.onopen=null;
+  self.onerror=null;
+  self._l={};
+  self._closed=false;
+  self._ctrl=new AbortController();
+  // stream तभी खोलें जब सही account (लाइनमैन = उसी HQ का account) और उसका ताज़ा login token पक्का
+  // हो — देखें _liveAuthReady। तब तक readyState 0 (जुड़ रहा है) रहता है
+  _liveAuthReady(function(){ if(!self._closed) self._start(url); });
+}
+FetchLiveSource.prototype._start=function(url){
+  var self=this;
+  fetch(url,{headers:{"Accept":"text/event-stream"},cache:"no-store",signal:self._ctrl.signal})
+    .then(function(r){
+      if(self._closed) return;
+      if(!r.ok||!r.body){
+        // मनाही की असली वजह "एरर लॉग" के लिए रख लो — HTTP status + सर्वर का छोटा-सा जवाब
+        // (जैसे "Permission denied" या App Check वाली error) — देखें _sseLogNeverOpened
+        self.httpStatus=r.status;
+        var done=function(t){ self.errText=String(t||"").replace(/\s+/g," ").slice(0,120); self._fail(2); };
+        if(r.text) r.text().then(done,function(){ done(""); }); else done("");
+        return;
+      }
+      self.readyState=1;
+      if(self.onopen) self.onopen();
+      var reader=r.body.getReader(),dec=new TextDecoder(),buf="";
+      function pump(){
+        return reader.read().then(function(res){
+          if(self._closed) return;
+          if(res.done){ self._fail(0); return; } // सर्वर ने stream बंद की — नेट के झटके जैसा
+          buf+=dec.decode(res.value,{stream:true});
+          var blocks=buf.split(/\r?\n\r?\n/);
+          buf=blocks.pop();
+          for(var i=0;i<blocks.length&&!self._closed;i++) self._dispatch(blocks[i]);
+          if(!self._closed) return pump();
+        });
+      }
+      return pump();
+    })
+    .catch(function(){ if(!self._closed) self._fail(0); });
+};
+FetchLiveSource.prototype.addEventListener=function(type,fn){ (this._l[type]||(this._l[type]=[])).push(fn); };
+FetchLiveSource.prototype.close=function(){
+  this._closed=true;
+  this.readyState=2;
+  try{ this._ctrl.abort(); }catch(e){}
+};
+FetchLiveSource.prototype._fail=function(state){
+  if(this._closed) return;
+  this.readyState=state;
+  if(state===2) this.close();
+  if(this.onerror) this.onerror({});
+};
+FetchLiveSource.prototype._dispatch=function(block){
+  var type="message",data=[];
+  block.split(/\r?\n/).forEach(function(line){
+    if(line.indexOf("event:")===0) type=line.slice(6).trim();
+    else if(line.indexOf("data:")===0) data.push(line.slice(5).replace(/^ /,""));
+  });
+  // cancel = अब पढ़ने की अनुमति नहीं; auth_revoked = login token expire — दोनों में सर्वर आगे कुछ नहीं
+  // भेजेगा, EventSource जैसा CLOSED मानो (वहीं से ताज़ा token के साथ सस्ता reconnect होता है)
+  if(type==="cancel"||type==="auth_revoked"){ this._fail(2); return; }
+  var fns=this._l[type];
+  if(!fns||!fns.length) return; // keep-alive वगैरह
+  var ev={type:type,data:data.join("\n")};
+  fns.slice().forEach(function(f){ try{ f(ev); }catch(e){} });
+};
+// live-sync किससे जुड़े — fetch stream (header जाता है) जहां चले, वरना पुराना EventSource, वरना कुछ नहीं (polling)
+function _liveSourceFor(hq,cat){
+  if(_fetchStreamSupported()) return new FetchLiveSource(FB+"/"+fbPath(hq,cat)+".json");
+  if(typeof EventSource==="function") return new EventSource(FB+"/"+fbPath(hq,cat)+".json"+(ID_TOKEN?("?auth="+encodeURIComponent(ID_TOKEN)):""));
+  return null;
+}
+
 function stopListen(){
   if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
   if(liveSource){liveSource.close();liveSource=null;}
+  if(_esRetryT){clearTimeout(_esRetryT);_esRetryT=null;}
 }
 
 // SSE "put" event का data पार्स करना — Firebase पूरे node (path:"/") के बदलाव पर event में ही नया data दे देता है
@@ -283,10 +813,89 @@ function _sseFullPutData(evData){
   return {ok:false};
 }
 
+// ── TOKEN-EXPIRY RECONNECT से पहले हल्की ETag जांच ──────────────────────────────────────────
+// Firebase ID token हर ~1 घंटे expire होता है, तो EventSource बंद (readyState=2) होकर दोबारा
+// जुड़ता है — और हर बार जुड़ते ही SSE पूरी list भेजता है (ETag जैसा कुछ नहीं)। JE का सवाल: "ऐप
+// खुला छोड़ने पर cost बढ़ती है क्या?" — जवाब था हां, ठीक इसी वजह से। असल में list ज़्यादातर बार
+// उस एक घंटे में बदली ही नहीं होती (खासकर देर रात या device बस स्क्रीन जगाए पड़ा हो), इसलिए यहां
+// भारी reconnect से पहले पहले एक हल्की (304 पर लगभग-मुफ़्त) जांच कर लेते हैं।
+// कुछ नहीं बदला: अभी भारी reconnect मत करो, TOKEN_RECHECK_MS बाद फिर जांच लो — तब तक SSE बंद रहेगा
+// (किसी और device का इसी बीच का बदलाव थोड़ी देर बाद दिखेगा, live नहीं — पर कुछ खोता नहीं)।
+// कुछ बदला निकले, जांच ही नाकाम हो, या offline/pause हो — पुराने, हमेशा-safe रास्ते पर लौट जाओ
+var TOKEN_RECHECK_MS=2*60*1000;
+var ES_RECONNECT_DELAY_MS=2000; // token-expiry के बाद जांच से पहले थोड़ा रुकना — token सर्वर-साइड settle हो जाए
+function _tokenExpiryRecheck(hq,cat){
+  if(!(CU&&activeHQ===hq&&activeCat===cat)) return; // यह tab अब सक्रिय ही नहीं — असली tab की अपनी startListen संभाल लेगी
+  if(!navigator.onLine||isDataPaused()){
+    setTimeout(function(){_tokenExpiryRecheck(hq,cat);},TOKEN_RECHECK_MS);
+    return;
+  }
+  fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_etagHeaders(hq,cat)})
+    .then(function(r){
+      if(r.status===304){ setTimeout(function(){_tokenExpiryRecheck(hq,cat);},TOKEN_RECHECK_MS); return; }
+      _openLive(hq,cat); // कुछ बदला — असली (पूरा) reconnect करो
+    })
+    .catch(function(){ _openLive(hq,cat); }); // जांच नाकाम — पुराने रास्ते पर लौट जाओ
+}
+
+// ── TAB-REVISIT ऑप्टिमाइज़ेशन ──────────────────────────────────────────────────────────────
+// यह ठीक वही समस्या है जो ऊपर token-expiry reconnect के लिए हल की — SSE जुड़ते ही हमेशा *पूरी*
+// list भेजता है, कभी सिर्फ़ 304 नहीं। JE का सवाल: "बैंडविथ cost घटाने के और उपाय?" — किसी और
+// tab पर जाकर (नंबर चेक करना, तुलना करना) वापस उसी tab पर आना दिन में कई बार होता है, और हर बार
+// पूरी "कुल उपभोक्ता" जैसी बड़ी list दोबारा उतरती थी।
+// अब: अगर यही list हाल ही में (TAB_REVISIT_GRACE_MS के अंदर) एक बार पूरी तरह ताज़ा देखी जा चुकी है,
+// तो सीधे भारी SSE न खोलें — पहले एक हल्की ETag जांच करें। कुछ नहीं बदला (304, लगभग मुफ़्त) तो
+// cache पर टिके रहो, असली live-connection उस खिड़की के बीतते ही (उपयोगकर्ता अब भी उसी tab पर हो
+// तभी) अपने-आप जुड़ जाएगी। कुछ बदला निकले तो सीधे _openLive — वही नई data समेत live जोड़ देगा,
+// दोबारा data को हाथ से लागू करने की ज़रूरत नहीं (कोई logic दोहराया नहीं, इसलिए दोनों जगह एक जैसा
+// व्यवहार पक्का रहता है)। जांच नाकाम, offline, pause, या pending बदलाव हों — पुराने, हमेशा-safe
+// रास्ते पर लौट जाओ। पहली बार खोलने पर (_lastLiveAt खाली) यह छूट लागू ही नहीं होती — वहां हमेशा
+// जैसा असली live sync चलता है।
+// JE का सवाल: "90 सेकंड को कुछ बड़ा नहीं कर सकते?" — किया, और ui-core.js के LISTEN_HIDE_GRACE_MS
+// (background में जाने पर connection कितनी देर खुला रखें) जितना ही रखा — पूरे ऐप में एक ही नियम,
+// चाहे tab बदलकर हो या background से। नुक़सान भी वैसा ही जाना-पहचाना: इस खिड़की में किसी और
+// device का बदलाव उतनी देर live नहीं दिखेगा (डेटा नहीं खोता, बस देर से दिखता है) — जितनी बड़ी
+// खिड़की, उतनी ज़्यादा बचत पर उतनी ही ज़्यादा (हानिरहित) देरी भी।
+// v9.153 के दिन असली Firebase Console में देखा गया कि रोज़ाना 360MB मुफ़्त-कोटा का 86% तक खर्च
+// हो रहा है, और यह ज़्यादातर उन devices से आ रहा था जो category/मुख्यालय के बीच बार-बार आते-जाते
+// हैं — हर बार जो tab 3 मिनट के अंदर दोबारा न खुले, उस पर पूरी list दोबारा SSE से उतरती थी।
+// JE का फ़ैसला: 3 मिनट से बढ़ाकर 10 मिनट — "थोड़ी देर से दिखे" का जोखिम इस ऐप के इस्तेमाल के
+// हिसाब से बहुत छोटा है, पर ज़्यादातर आम आना-जाना (नंबर compare करना, दूसरी category देखकर वापस
+// आना) अब सस्ते (304) रास्ते में आ जाएगा
+var TAB_REVISIT_GRACE_MS=10*60*1000;
+var _lastLiveAt={};
+
 function startListen(hq,cat){
+  var key=hq+"/"+cat;
+  var recent=_lastLiveAt[key]&&(Date.now()-_lastLiveAt[key]<TAB_REVISIT_GRACE_MS);
+  if(recent&&navigator.onLine&&!isDataPaused()&&!isPending(hq,cat)){
+    stopListen();
+    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_etagHeaders(hq,cat)})
+      .then(function(r){
+        if(r.status===304){
+          // कुछ नहीं बदला — cache भरोसेमंद है; असली live-connection अभी नहीं, टाल दो
+          setTimeout(function(){
+            if(activeHQ===hq&&activeCat===cat&&!liveSource&&!pollTimer) _openLive(hq,cat);
+          },TAB_REVISIT_GRACE_MS);
+          return;
+        }
+        _openLive(hq,cat); // कुछ बदला — सीधे असली reconnect, वही ताज़ा data ले आएगा
+      })
+      .catch(function(){ _openLive(hq,cat); }); // जांच नाकाम — पुराने, हमेशा-safe रास्ते पर लौट जाओ
+    return;
+  }
+  _openLive(hq,cat);
+}
+
+function _openLive(hq,cat){
   stopListen();
+  // 🛑 डेटा बचाओ मोड — live sync ही सबसे बड़ा download खर्च है, इसलिए जुड़ें ही नहीं।
+  // स्विच हटते ही _applyPause खुद दोबारा जोड़ देता है, और जुड़ते ही पूरा ताज़ा data आ जाता है
+  if(isDataPaused()) return;
 
   function applyIncoming(d){
+    trackUsageOf(d); // SSE का सबसे भारी हिस्सा — जुड़ते ही पूरी list आती है; पहले यह बिल्कुल नहीं गिनी जाती थी
+    _noteShape(hq,cat,d);
     _checkMigrationRevert(hq,cat,d); // migrated list कहीं पुराने device ने वापस array में तो नहीं बदल दी
     var data=normList(d);
     overlayOps(hq,cat,data);
@@ -298,12 +907,14 @@ function startListen(hq,cat){
       renderListWith(data);
     }
     setSyncStatus(true); updTime();
+    _lastLiveAt[hq+"/"+cat]=Date.now(); // tab-revisit gate के लिए — "आख़िरी बार कब पक्का ताज़ा देखा"
   }
 
   // migrated (per-record) HQ/श्रेणी में "patch" event से मिला delta local array पर लगाना —
   // पूरी लिस्ट दोबारा मंगाने की ज़रूरत नहीं (bandwidth बचत, वैसे ही जैसे "put" event के लिए ऊपर की गई)
   // migration-revert जांच यहां ज़रूरी नहीं — "patch" event खुद सबूत है कि data अब भी सही per-record रूप में है
   function applyPatchLocal(patchData){
+    trackUsageOf(patchData);
     var merged=_applyPatchToArray(cGet(hq,cat)||[],patchData);
     var data=normList(merged);
     overlayOps(hq,cat,data);
@@ -315,23 +926,23 @@ function startListen(hq,cat){
       renderListWith(data);
     }
     setSyncStatus(true); updTime();
+    _lastLiveAt[hq+"/"+cat]=Date.now();
   }
 
   // Firebase का ETag तरीक़ा — "X-Firebase-ETag" भेजने पर जवाब में एक ETag मिलता है; अगली बार वही
   // "if-none-match" में भेजने पर, अगर list बिल्कुल नहीं बदली, तो सर्वर सिर्फ़ खाली HTTP 304 देता है
   // (पूरी list दोबारा नहीं) — यह fallback (पहले से महंगा तरीक़ा) है, तो इसे जितना हल्का बना सकें उतना अच्छा;
   // ज़्यादातर 15-सेकंड वाले poll में असल में कुछ बदला ही नहीं होता, तो यह लगभग-मुफ़्त हो जाएगा
-  var _pollEtag=null;
+  // ETag अब सबका साझा (localStorage वाला) है — पहले यहां अपना अलग in-memory _pollEtag था, यानी
+  // हर बार polling शुरू होने पर पहला poll हमेशा पूरी list डाउनलोड करता था
   function pollOnce(){
     if(isPending(hq,cat)){if(navigator.onLine)flushPending();return;}
-    var h={"X-Firebase-ETag":"true"};
-    if(_pollEtag) h["if-none-match"]=_pollEtag;
-    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:h})
+    fetch(FB+"/"+fbPath(hq,cat)+".json?t="+Date.now(),{headers:_etagHeaders(hq,cat)})
       .then(function(r){
         if(r.status===304) return; // कुछ नहीं बदला — यहीं रुक जाओ (असली null value से अलग रखना ज़रूरी)
         if(!r.ok) throw new Error("HTTP "+r.status);
-        _pollEtag=r.headers.get("ETag")||_pollEtag;
-        return r.json().then(applyIncoming);
+        var tag=r.headers.get("ETag");
+        return r.json().then(function(d){ applyIncoming(d); _etagSet(hq,cat,tag); });
       })
       .catch(function(){setSyncStatus(false);});
   }
@@ -343,10 +954,10 @@ function startListen(hq,cat){
   }
 
   // असली real-time: Firebase REST streaming (Server-Sent Events) — बदलाव होते ही तुरंत मिलता है, हर 15 sec पूछने की ज़रूरत नहीं
-  if(typeof EventSource==="function"){
+  var es=null;
+  try{ es=_liveSourceFor(hq,cat); }catch(e){ es=null; }
+  if(es){
     try{
-      var url=FB+"/"+fbPath(hq,cat)+".json"+(ID_TOKEN?("?auth="+encodeURIComponent(ID_TOKEN)):"");
-      var es=new EventSource(url);
       liveSource=es;
       // "put" event में Firebase पहले से पूरा नया data भेज देता है — उसी को इस्तेमाल करो,
       // दोबारा fetch करके एक ही data दो बार डाउनलोड मत करो (bandwidth बचत)
@@ -367,22 +978,43 @@ function startListen(hq,cat){
         }catch(e){}
         pollOnce(); // सुरक्षित fallback
       });
-      es.onopen=function(){setSyncStatus(true);_esReconnectAttempts=0;};
+      var esOpened=false;
+      es.onopen=function(){esOpened=true;setSyncStatus(true);_esReconnectAttempts=0;_esOpenedAt=Date.now();};
       es.onerror=function(){
         setSyncStatus(false);
+        // एक बार भी जुड़े बिना सीधे CLOSED = सर्वर ने HTTP स्तर पर मना किया (नेट का झटका होता तो
+        // readyState 0 होता) — देखें _sseLogNeverOpened
+        if(!esOpened&&es.readyState===2&&navigator.onLine) _sseLogNeverOpened(hq,cat,es);
+        if(es.readyState===0){ // CONNECTING — नेट का झटका, browser ~3 सेकंड में खुद जोड़ने वाला है
+          var stable=_esOpenedAt&&(Date.now()-_esOpenedAt>=ES_STABLE_MS);
+          _esBackoffMs=stable||!_esBackoffMs?ES_BACKOFF_BASE_MS:Math.min(_esBackoffMs*2,ES_BACKOFF_MAX_MS);
+          _esOpenedAt=0;
+          es.close(); // browser का अपना (तुरंत, बिना गिनती) reconnect रोको
+          // liveSource जान-बूझकर यही (बंद) es रहता है — "live अभी इसी tab का है, बस रुककर जुड़ेगा";
+          // कोई और रास्ता (tab-revisit वाला timer) इसे खाली देखकर बीच में ही भारी reconnect न कर दे
+          if(_esRetryT) clearTimeout(_esRetryT);
+          _esRetryT=setTimeout(function(){
+            _esRetryT=null;
+            // इस बीच tab बदला / stopListen हुआ (liveSource बदल गया), polling चालू हुई, या डेटा-बचाओ — कुछ न करें
+            if(liveSource!==es||pollTimer||!(CU&&activeHQ===hq&&activeCat===cat)||isDataPaused()) return;
+            _openLive(hq,cat);
+          },_esBackoffMs);
+          return;
+        }
         if(es.readyState===2){ // CLOSED — स्ट्रीम पूरी तरह टूट गई (जैसे token expire)
           if(liveSource===es) liveSource=null;
           if(_esReconnectAttempts<3){
             // पहले ताज़ा ID_TOKEN के साथ सस्ता live-sync दोबारा जोड़ने की कोशिश — token expire होना
-            // सामान्य बात है (हर ~1 घंटे), भारी polling पर जाने की ज़रूरत नहीं
+            // सामान्य बात है (हर ~1 घंटे), भारी polling पर जाने की ज़रूरत नहीं। सीधे startListen नहीं —
+            // पहले _tokenExpiryRecheck की हल्की ETag जांच (देखें ऊपर) ताकि कुछ न बदला हो तो भारी
+            // पूरी-list reconnect टाला जा सके
             _esReconnectAttempts++;
-            setTimeout(function(){ startListen(hq,cat); },2000);
+            setTimeout(function(){ _tokenExpiryRecheck(hq,cat); },ES_RECONNECT_DELAY_MS);
           } else {
             // लगातार 3 बार तुरंत बंद हो रहा है (शायद असली permission समस्या) — तभी polling पर जाओ
             startPolling();
           }
         }
-        // वरना EventSource खुद reconnect करने की कोशिश करता रहेगा
       };
       // यहां pollOnce() जान-बूझकर नहीं बुलाया — caller (fbGet, हमेशा startListen से ठीक पहले/इसी
       // callback में चलता है) पहले ही ताज़ा data दिखा चुका होता है, और EventSource जुड़ते ही खुद अपना
@@ -403,6 +1035,7 @@ function startListen(hq,cat){
   if(catNamesTimer) clearInterval(catNamesTimer);
   catNamesTimer=setInterval(function(){
     fetchCatNamesFromFB(true);
+    fetchPhCustomMsgFromFB();
     loadMigratedFlags();
   },12*60*60*1000);
 }

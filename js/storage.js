@@ -31,6 +31,11 @@ function _bumpAuthFail(k,err){
   var msg=(err&&err.message)||"";
   if(/HTTP (401|403)/.test(msg)){
     entry.authFailCount=(entry.authFailCount||0)+1;
+    // हार मानने से पहले खुद ठीक होने की एक कोशिश: 401 की सबसे आम वजह यह है कि device सही HQ
+    // account की जगह anonymous पर है। _ensureCorrectHqAuth सही account से दोबारा sign-in करके
+    // अटका डेटा अपने आप भेज देता है (उसमें अपना guard है, इसलिए बार-बार नहीं चलेगा)।
+    // पहले यह सिर्फ़ "online" event पर होता था — यानी जो device पहले से online था उस पर कभी नहीं
+    if(entry.authFailCount===1){ try{_ensureCorrectHqAuth();}catch(e){} }
     if(entry.authFailCount===STUCK_AUTH_MAX){
       logErr("pending-stuck-auth","लगातार "+STUCK_AUTH_MAX+" बार 401/403 — यह account/device "+entry.hq+"/"+entry.cat+" के लिए अधिकृत नहीं लगता, auto-retry रोका। डेटा device पर सुरक्षित है — सही account से login करें या JE को बताएं",entry.hq+"/"+entry.cat);
       toast("⚠️ "+entry.hq+"/"+entry.cat+" के बदलाव भेजे नहीं जा पा रहे (login/account समस्या) — JE को बताएं","err");
@@ -85,18 +90,24 @@ function mergeRecord(l,st){
   out.remarksArr=arr;
   return out;
 }
+// Consumer No का मिलान हमेशा खाली जगह हटाकर — असली bug (JE की रिपोर्ट, मढ़ी/कुल उपभोक्ता, 1134019486):
+// कहीं acc में आगे-पीछे space रह जाए तो एक ही उपभोक्ता "अलग" मान लिया जाता और सूची में दूसरा card
+// जुड़ जाता (Firebase की per-record key हमेशा trimmed acc होती है, इसलिए दोनों तरफ़ ऐसा ही मिलान चाहिए)
+function accKeyOf(x){ return (x&&x.acc!=null)?String(x.acc).trim():""; }
 function mergeArrays(local,server){
   if(!server||!server.length) return local||[];
   if(!local||!local.length) return server;
   var sMap={};
-  server.forEach(function(x){if(x&&x.acc)sMap[x.acc]=x;});
+  server.forEach(function(x){var k=accKeyOf(x);if(k)sMap[k]=x;});
   var usedAcc={};
   var out=local.map(function(l){
-    if(l&&l.acc&&sMap[l.acc]){usedAcc[l.acc]=1;return mergeRecord(l,sMap[l.acc]);}
+    var k=accKeyOf(l);
+    if(k&&sMap[k]){usedAcc[k]=1;return mergeRecord(l,sMap[k]);}
     return l;
   });
   server.forEach(function(st){
-    if(st&&st.acc&&!usedAcc[st.acc]) out.push(st);
+    var k=accKeyOf(st);
+    if(k&&!usedAcc[k]) out.push(st);
   });
   return out;
 }
@@ -136,8 +147,12 @@ function flushPending(){
     if(it.patch){
       // migrated HQ/श्रेणी — सिर्फ offline में बदले records PATCH करो; server के बाकी records को हाथ मत लगाओ
       // (इसलिए यहां fetch+merge की ज़रूरत नहीं — PATCH अपने-आप बाकी keys को बिना छेड़े रहने देता है)
-      fetch(FB+"/"+fbPath(it.hq,it.cat)+".json",{
-        method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(it.patch)
+      // offline में बने patch में भी भेजने से पहले सर्वर के रिमार्क मिलाओ — इस बीच किसी और ने
+      // उसी उपभोक्ता पर रिमार्क डाला हो तो वो न दबे (देखें database.js: _mergeServerRemarks)
+      _mergeServerRemarks(it.hq,it.cat,it.patch).then(function(){
+        return fetch(FB+"/"+fbPath(it.hq,it.cat)+".json",{
+          method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(it.patch)
+        });
       }).then(function(r){
         if(!r.ok)throw new Error("HTTP "+r.status);
         clearPendingKey(k);
@@ -152,6 +167,15 @@ function flushPending(){
     fetch(FB+"/"+fbPath(it.hq,it.cat)+".json?t="+Date.now())
       .then(_fbJson)
       .then(function(d){
+        trackUsageOf(d); // offline बदलाव भेजने से पहले वाली पढ़ाई
+        // सर्वर का असली रूप ठीक यहीं, हाथ में है — नीचे _fbPut() से पूरी array लिखने से *पहले*
+        // इसे दर्ज करना ज़रूरी है। v9.118 में यही जगह छूट गई थी और असली production में माइग्रेशन
+        // फिर पलटा (बीबी/3 month nonpayee, v9.118 वाले device से): dc_shape3 हर device पर खाली
+        // से शुरू होता है, और यह रास्ता ऐप खुलते ही (main.js का flushPending) चल जाता है — यानी
+        // उस list को इस device ने अभी तक एक बार भी पढ़ा नहीं होता, इसलिए lastShape() कुछ नहीं
+        // जानता और guard चुपचाप array लिखने दे देता। normList() नीचे रूप मिटा देता है (object हो
+        // या array, दोनों से सादी array बनाता है), इसलिए दर्ज करने का मौक़ा बस यही एक है।
+        _noteShape(it.hq,it.cat,d);
         var server=normList(d);
         var merged=mergeArrays(cGet(it.hq,it.cat),server);
         cSet(it.hq,it.cat,merged);
@@ -165,7 +189,7 @@ function flushPending(){
   if(needCat){
     var reqs=Object.keys(CAT_NAMES).map(function(hq){
       var hqData={};
-      [4,5,6,7].forEach(function(i){if(CAT_NAMES[hq]&&CAT_NAMES[hq][i]!=null)hqData[i]=CAT_NAMES[hq][i];});
+      CATS_DEFAULT.forEach(function(_,i){if(isCatEditable(i)&&CAT_NAMES[hq]&&CAT_NAMES[hq][i]!=null)hqData[i]=CAT_NAMES[hq][i];});
       return fetch(FB+"/CAT_NAMES/"+hqKey(hq)+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(hqData)});
     });
     Promise.all(reqs).then(function(){
@@ -177,32 +201,64 @@ function flushPending(){
 
 // ── PREFETCH: login के बाद सभी HQ/category की लिस्ट background में download —
 // ताकि हर लिस्ट बिना खोले भी offline available रहे ──
+// यह हर cold-start पर चलता था, और यही सबसे बड़ा छुपा हुआ bandwidth खर्च था: लाइनमैन के लिए
+// 8 पूरी लिस्ट (1 HQ × 8 श्रेणी), JE के लिए 48 (6 HQ × 8) — हर बार ऐप खुलने पर, चाहे वही लिस्ट
+// पहले से device पर सेव हो। मोबाइल पर ऐप दिन में कई बार minimize होकर मरता-खुलता है, तो यह दिन
+// में दर्जनों बार दोहराता था। अब दिन में एक बार से ज़्यादा नहीं। इससे कुछ छूटता नहीं —
+// जो लिस्ट खुली है वो हमेशा की तरह fbGet()+startListen() से ताज़ा ही रहती है, और पहले prefetch
+// की हुई लिस्टें device पर पड़ी रहती हैं (offline इस्तेमाल पर कोई असर नहीं)
 var _prefetchRun=false;
-function prefetchAll(){
+var PREFETCH_MIN_GAP_MS=24*60*60*1000;
+function _prefetchKey(){
+  return "dc_prefetch_"+(CU&&CU.role==="supervisor"?"je":hqKey(CU&&CU.hq));
+}
+function _prefetchDue(){
+  var last=0;
+  try{last=parseInt(localStorage.getItem(_prefetchKey())||"0",10)||0;}catch(e){}
+  var now=Date.now();
+  if(!last||last>now) return true; // कभी हुआ ही नहीं, या फ़ोन की घड़ी पीछे हो गई — भरोसा न करें
+  return (now-last)>=PREFETCH_MIN_GAP_MS;
+}
+// force=true — JE के "सब कुछ दोबारा लाओ" जैसे जान-बूझकर किए गए काम के लिए (अभी कोई caller नहीं)
+function prefetchAll(force){
   if(!CU||!navigator.onLine||_prefetchRun) return;
+  if(isDataPaused()) return; // 🛑 डेटा बचाओ मोड — force हो तब भी नहीं, यही तो सबसे भारी काम है
+  if(!force&&!_prefetchDue()) return;
   _prefetchRun=true;
   var hqs=CU.role==="supervisor"?HQS:[CU.hq];
   var jobs=[];
   hqs.forEach(function(hq){
     for(var i=0;i<CATS_DEFAULT.length;i++){
-      jobs.push({hq:hq,cat:(i>=4)?getCatName(hq,i):CATS_DEFAULT[i]});
+      jobs.push({hq:hq,cat:isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i]});
     }
   });
   var idx=0,got=0;
   (function next(){
     if(idx>=jobs.length){
       _prefetchRun=false;
+      // पूरा चक्र सफल हुआ तभी समय दर्ज करें — बीच में नेटवर्क टूटा तो नीचे वाला catch बिना
+      // समय लिखे लौटता है, यानी अगली बार ऐप खुलते ही दोबारा पूरी कोशिश होगी
+      try{localStorage.setItem(_prefetchKey(),String(Date.now()));}catch(e){}
       if(got>0) toast("📥 "+got+" लिस्ट offline के लिए device पर save हो गईं","inf");
       return;
     }
     var j=jobs[idx++];
     if(isPending(j.hq,j.cat)){next();return;}
-    fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now())
-      .then(_fbJson)
-      .then(function(d){
-        var data=normList(d);
-        if(data.length){cSet(j.hq,j.cat,data);got++;}
-        setTimeout(next,250);
+    // ETag के साथ — जिस list में कुछ नहीं बदला उस पर Firebase खाली 304 देता है, पूरी list दोबारा
+    // नहीं। पहले यहां ETag इस्तेमाल ही नहीं होता था, इसलिए हर device रोज़ अपनी सारी श्रेणियां पूरी
+    // दोबारा डाउनलोड करता था — चाहे उनमें एक भी बदलाव न हुआ हो
+    var _tag=null;
+    fetch(FB+"/"+fbPath(j.hq,j.cat)+".json?t="+Date.now(),{headers:_etagHeaders(j.hq,j.cat)})
+      .then(function(r){
+        if(r.status===304){ setTimeout(next,250); return null; } // कुछ नहीं बदला — cache पहले से सही
+        _tag=r.headers.get("ETag");
+        return _fbJson(r).then(function(d){
+          trackUsageOf(d); // login वाला prefetch — सभी HQ/श्रेणी, यानी एक भारी खर्च; यह भी गिना जाए
+          _noteShape(j.hq,j.cat,d);
+          var data=normList(d);
+          if(data.length){cSet(j.hq,j.cat,data);_etagSet(j.hq,j.cat,_tag);got++;}
+          setTimeout(next,250);
+        });
       }).catch(function(){_prefetchRun=false;});
   })();
 }

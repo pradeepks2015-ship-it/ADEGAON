@@ -10,6 +10,15 @@ const path = require('path');
 /** @param {import('@playwright/test').Page} page */
 async function blockExternal(page) {
   await page.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (route) => route.abort());
+  // Service Worker कभी-कभी किसी पहले चले test से बचे हुए worker-profile cache से Firebase CDN
+  // scripts सीधे serve कर देता है — यह कभी network तक जाता ही नहीं, इसलिए ऊपर वाला route() इसे
+  // रोक नहीं पाता। page.addInitScript(() => window.firebase = undefined) से रोकने की कोशिश भी
+  // नाकाम रही (diagnostics से पक्का हुआ, देखें reloadAndWaitForApp का git history) — वह पहले चल
+  // तो जाता है, पर उसके बाद असली <script src="firebase-*.js"> tag (जो SW ने cache से परोसा) फिर
+  // से execute होकर window.firebase को वापस असली बना देता है। असली, पक्का fix अब playwright.config.js
+  // में है: serviceWorkers:'block' — कोई भी test असली browser-registered SW पर निर्भर नहीं (sw.js
+  // की जांच सिर्फ़ static/mocked-scope से होती है), इसलिए SW को सिरे से रजिस्टर ही न होने देना
+  // सबसे पक्का रास्ता है, हर navigation पर window.firebase को दोबारा साफ़ करने की ज़रूरत ही नहीं
 }
 
 /** @param {import('@playwright/test').Page} page */
@@ -22,11 +31,67 @@ async function openApp(page) {
 
 /** @param {import('@playwright/test').Page} page */
 async function loginLineman(page, name = 'टेस्ट लाइनमैन') {
+  // असली जड़ diagnostics से मिली: Service Worker कभी-कभी किसी पहले चले test से बचे हुए
+  // worker-profile cache से Firebase CDN scripts सीधे Cache Storage से serve कर देता है — यह
+  // कभी network तक जाता ही नहीं, इसलिए blockExternal का page.route() इसे रोक ही नहीं पाता।
+  // नतीजा: firebase असल में defined मिल जाता, doLogin() खाली PIN के साथ भी असली Firebase
+  // sign-in आज़माता, और "auth/network-request-failed" के अलावा कोई और error code मिलते ही
+  // CU कभी सेट नहीं होता — login-screen हमेशा के लिए अटक जाती (CI पर बार-बार यही TimeoutError,
+  // firebaseType:"object" + CU:"null" ने पक्का किया)। यहां तय offline-fallback रास्ता ही चले,
+  // इसके लिए हर बार साफ़ कर देते हैं — यही व्यवहार बाकी सैकड़ों loginLineman() calls में पहले से
+  // (संयोग से undefined रहने की वजह से) भरोसेमंद रहा है
+  await page.evaluate(() => { window.firebase = undefined; });
   await page.click('#rc-lin');
   await page.fill('#uname-inp', name);
   await page.selectOption('#hq-sel', { index: 1 });
   await page.click('.login-btn');
-  await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+  try {
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+  } catch (e) {
+    // असली bug न मिलने पर स्थानीय रूप से दोहराया नहीं जा सका (सिर्फ़ CI पर) — पिछली कोशिश में
+    // यहां console.log() से diagnostics भेजी थी, पर CI का "github" reporter उसे job log में
+    // दिखाता ही नहीं (local "list" reporter दिखाता है, इसलिए local जांच में यह गलती पकड़ में
+    // नहीं आई)। अब सीधे thrown error के message में जोड़ रहे हैं — वह हर reporter हमेशा दिखाता है
+    const diag = await page.evaluate(() => ({
+      selectedRole: typeof selectedRole !== 'undefined' ? selectedRole : 'undef',
+      hqSelVal: document.getElementById('hq-sel') && document.getElementById('hq-sel').value,
+      unameVal: document.getElementById('uname-inp') && document.getElementById('uname-inp').value,
+      loginActive: document.getElementById('login-screen').classList.contains('active'),
+      appActive: document.getElementById('app-screen').classList.contains('active'),
+      firebaseType: typeof firebase,
+      navOnline: navigator.onLine,
+      CU: typeof CU !== 'undefined' ? JSON.stringify(CU) : 'undef',
+      appStarted: typeof _appStarted !== 'undefined' ? _appStarted : 'undef',
+    })).catch((err) => ({ evalError: String(err) }));
+    e.message = '[loginLineman DIAG] ' + JSON.stringify(diag) + '\n\n' + e.message;
+    throw e;
+  }
+}
+
+// addInitScript वाला fix (blockExternal) दूसरी बार भी असफल रहा — दोनों reload-आधारित tests
+// अब भी CI पर वैसे ही TimeoutError पर अटके। असली वजह अब भी पता नहीं, इसलिए तीसरी बार अंदाज़ा
+// लगाने की बजाय (जो पिछली बार ग़लत निकला) यहां वही सिद्ध तरीक़ा दोहरा रहे हैं जिससे loginLineman
+// का असली bug पकड़ में आया था: timeout पर page-side state को thrown error के .message में जोड़ दें
+/** @param {import('@playwright/test').Page} page */
+async function reloadAndWaitForApp(page) {
+  await page.reload();
+  try {
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+  } catch (e) {
+    const diag = await page.evaluate(() => ({
+      firebaseType: typeof firebase,
+      CU: typeof CU !== 'undefined' ? JSON.stringify(CU) : 'undef',
+      loginActive: document.getElementById('login-screen').classList.contains('active'),
+      appActive: document.getElementById('app-screen').classList.contains('active'),
+      dcCu: localStorage.getItem('dc_cu'),
+      appStarted: typeof _appStarted !== 'undefined' ? _appStarted : 'undef',
+      toastText: (function () { var t = document.getElementById('toast'); return t ? t.textContent : 'no-toast-el'; })(),
+      toastShown: (function () { var t = document.getElementById('toast'); return t ? t.classList.contains('show') : 'no-toast-el'; })(),
+      navOnline: navigator.onLine,
+    })).catch((err) => ({ evalError: String(err) }));
+    e.message = '[reload DIAG] ' + JSON.stringify(diag) + '\n\n' + e.message;
+    throw e;
+  }
 }
 
 /** @param {import('@playwright/test').Page} page */
@@ -97,19 +162,92 @@ test.describe('बूट और login', () => {
   test('login session reload में बना रहे — pull-to-refresh जैसा असली page reload दोबारा login न मांगे', async ({ page }) => {
     await openApp(page);
     await loginLineman(page, 'रिलोड लाइनमैन');
-    expect(await page.evaluate(() => sessionStorage.getItem('dc_cu'))).toContain('रिलोड लाइनमैन');
-    await page.reload();
-    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+    expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toContain('रिलोड लाइनमैन');
+    await reloadAndWaitForApp(page);
     expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(false);
     expect(await page.evaluate(() => CU && CU.name)).toBe('रिलोड लाइनमैन');
     // चुपचाप वापस आया — "स्वागत है" toast दोबारा न दिखे
     expect(await page.evaluate(() => document.getElementById('toast').classList.contains('show'))).toBe(false);
   });
 
+  // मोबाइल पर ऐप minimize होने पर OS पूरा tab मार देता है। असली दुनिया में यह "नया tab, वही
+  // browser profile" जैसा है — sessionStorage खाली, localStorage भरा हुआ। पहले session
+  // sessionStorage में था, इसलिए हर बार दोबारा नाम+PIN भरना पड़ता था
+  test('मोबाइल में ऐप minimize होकर मरने के बाद भी login बना रहे (sessionStorage उड़ जाए तब भी)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'मिनिमाइज़ लाइनमैन');
+    await page.evaluate(() => sessionStorage.clear()); // OS ने tab मार दिया
+    await reloadAndWaitForApp(page);
+    expect(await page.evaluate(() => CU && CU.name)).toBe('मिनिमाइज़ लाइनमैन');
+    expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(false);
+  });
+
+  test('loadSession — SESSION_MAX_DAYS से पुराना session न चले (खोया/छोड़ा हुआ फ़ोन हमेशा अंदर न रहे)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var day = 24 * 60 * 60 * 1000;
+      var cu = { role: 'lineman', name: 'पुराना', hq: HQS[1] };
+      localStorage.setItem('dc_cu', JSON.stringify({ cu: cu, at: Date.now() - (SESSION_MAX_DAYS - 1) * day }));
+      var justInside = loadSession();
+      localStorage.setItem('dc_cu', JSON.stringify({ cu: cu, at: Date.now() - (SESSION_MAX_DAYS + 1) * day }));
+      var expired = loadSession();
+      // फ़ोन की घड़ी आगे कर दी गई हो (at भविष्य में) — भरोसा न करें, session चलने दें
+      localStorage.setItem('dc_cu', JSON.stringify({ cu: cu, at: Date.now() + 90 * day }));
+      var future = loadSession();
+      return { justInside: justInside && justInside.name, expired: expired, future: future && future.name };
+    });
+    expect(r.justInside).toBe('पुराना');
+    expect(r.expired).toBeNull();
+    expect(r.future).toBe('पुराना');
+  });
+
+  test('loadSession — v9.107 तक के पुराने sessionStorage वाले session से भी एक बार अंदर आ जाए (अपडेट के दिन कोई बाहर न हो)', async ({ page }) => {
+    await openApp(page);
+    const name = await page.evaluate(() => {
+      localStorage.removeItem('dc_cu');
+      sessionStorage.setItem('dc_cu', JSON.stringify({ role: 'lineman', name: 'पुराने रूप वाला', hq: HQS[1] }));
+      var s = loadSession();
+      return s && s.name;
+    });
+    expect(name).toBe('पुराने रूप वाला');
+  });
+
+  test('loadSession — अधूरा/टूटा session data पर login screen ही दिखे (crash न हो)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var out = [];
+      ['{ टूटा json', JSON.stringify({ cu: { role: 'lineman', name: 'बिना HQ' }, at: Date.now() }), JSON.stringify({ cu: null, at: Date.now() }), 'null'].forEach(function (v) {
+        localStorage.setItem('dc_cu', v);
+        out.push(loadSession());
+      });
+      return out;
+    });
+    expect(r).toEqual([null, null, null, null]);
+  });
+
+  // login अब 30 दिन तक टिकता है, इसलिए यह और ज़रूरी हो गया: हर कोई (लाइनमैन भी, सिर्फ़ JE नहीं)
+  // बिना किसी की मदद के खुद लॉगआउट कर सके — साझा फ़ोन पर अगला कर्मचारी अपने नाम से आ सके
+  test('लाइनमैन खुद लॉगआउट कर सके — मेनू में बटन दिखे, दबाते ही login screen पर लौटे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'खुद लॉगआउट');
+    await page.click('.user-pill'); // हेडर में अपना नाम — हर भूमिका को दिखता है
+    const btn = page.locator('#logout-menu .logout-item', { hasText: 'लॉगआउट करें' });
+    await expect(btn).toBeVisible();
+    page.on('dialog', (d) => d.accept()); // "लॉगआउट करना चाहते हैं?"
+    await btn.click();
+    await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
+    expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toBeNull();
+    // reload पर भी वापस अंदर न आ जाए
+    await page.reload();
+    await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
+    expect(await page.evaluate(() => document.getElementById('app-screen').classList.contains('active'))).toBe(false);
+  });
+
   test('explicit logout के बाद session साफ़ हो जाए — अगला reload login screen पर ही रुके', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
     await page.evaluate(() => doLogout(false));
+    expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toBeNull();
     expect(await page.evaluate(() => sessionStorage.getItem('dc_cu'))).toBeNull();
     await page.reload();
     await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
@@ -258,10 +396,11 @@ test.describe('रोल-आधारित UI', () => {
       openCashModal(); results.push(document.getElementById('cash-overlay').classList.contains('open')); closeCashModal();
       openWaScorecard(); results.push(document.getElementById('wasc-overlay').classList.contains('open')); closeWaScorecard();
       openTodayScorecard(); results.push(document.getElementById('todaysc-overlay').classList.contains('open')); closeTodayScorecard();
+      openVoiceScorecard(); results.push(document.getElementById('voicesc-overlay').classList.contains('open')); closeVoiceScorecard();
       openMigModal(); results.push(document.getElementById('mig-overlay').classList.contains('open')); closeMigModal();
       return results;
     });
-    expect(ok).toEqual([true, true, true, true, true, true, true, true]);
+    expect(ok).toEqual([true, true, true, true, true, true, true, true, true]);
   });
 
   test('स्कोरकार्ड डिस्प्ले — सभी HQ की सही गिनती और वसूल% बनता है', async ({ page }) => {
@@ -322,6 +461,21 @@ test.describe('रोल-आधारित UI', () => {
     expect(txt).toContain('0✅ वसूल');
   });
 
+  test('स्कोरकार्ड (buildScOverview) — negative बकाया (advance/credit) वाले "वसूल" record गिनती में गिनें, पर राशि-जोड़ में उनका योगदान 0 माना जाए (bug: 11/9 को पिंडरई में "वसूल राशि" ही negative दिख गई थी)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', status: 'paid', amount: 100 },
+        { acc: '2', status: 'paid', amount: -500 }, // advance/credit balance — बकायादार नहीं
+      ]);
+      buildScOverview(['आदेगांव']);
+      return document.getElementById('sc-overview').textContent;
+    });
+    expect(txt).toContain('2✅ वसूल'); // दोनों "वसूल"/निपटे हुए गिने गए
+    expect(txt).toContain('₹100वसूल राशि'); // राशि सिर्फ़ +100 — -500 का योगदान 0 माना गया, राशि negative नहीं हुई
+  });
+
   test('दिनांक-वार वसूली (renderScDateTable) — "कुल उपभोक्ता" में न हो ऐसे paid acc को न गिने', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
@@ -337,6 +491,187 @@ test.describe('रोल-आधारित UI', () => {
       return document.getElementById('sc-body').textContent;
     });
     expect(txt).toContain('कोई वसूली नहीं'); // acc '99' मास्टर सूची में नहीं — कोई paid record नहीं बचना चाहिए
+  });
+
+  test('दिनांक-वार वसूली (renderScDateTable) — negative बकाया (advance) वाले paid record का योगदान उस दिन की राशि में 0 माना जाए, राशि कभी negative न दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      var today = _todayDateStr();
+      var master = [
+        { acc: '1', name: 'राम', status: 'paid', amount: 500, paydate: today },
+        { acc: '2', name: 'श्याम', status: 'paid', amount: -800, paydate: today }, // advance
+      ];
+      cSet('आदेगांव', 'कुल उपभोक्ता', master);
+      renderScDateTable(master);
+      return document.getElementById('sc-body').innerHTML;
+    });
+    expect(txt).toContain('₹500'); // सिर्फ़ +500 — -800 का योगदान 0 माना गया
+    expect(txt).not.toContain('-300'); // असली bug: 500-800=-300 जैसा जोड़ नहीं होना चाहिए
+    expect(txt).not.toContain('₹-'); // राशि कहीं भी negative चिह्न के साथ न दिखे
+  });
+
+  // तालिका में "उपभोक्ता"/"Consumer No" दो बार कटते हैं (पहले सिर्फ़ 3, फिर max-width+ellipsis) —
+  // असली रिपोर्ट में एक दिन में 86 उपभोक्ता थे, JE उनमें से 3 भी पूरे नहीं देख पाते थे
+  test('तारीख़ पर टैप → उस दिन के सारे उपभोक्ता और पूरे Consumer No दिखें (एक भी न छूटे)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      // दो अलग-अलग तारीख़ें — दोनों चालू बिलिंग-चक्र खिड़की (_scCycleWindow) के अंदर पक्का रहें,
+      // इसलिए "आज" के सापेक्ष (हार्डकोड तारीख़ महीना बदलते ही खिड़की से बाहर निकल जाती)
+      var d2 = new Date(); d2.setDate(d2.getDate() - 2);
+      var day1 = d2.getDate() + '/' + (d2.getMonth() + 1) + '/' + d2.getFullYear();
+      var day2 = _todayDateStr();
+      var master = [];
+      for (var i = 0; i < 40; i++) master.push({ acc: '11340' + (10000 + i), name: 'उपभोक्ता ' + i, status: 'paid', amount: 100, paydate: day1 });
+      master.push({ acc: '9999', name: 'अकेला', status: 'paid', amount: 50, paydate: day2 });
+      cSet('आदेगांव', 'कुल उपभोक्ता', master);
+      renderScDateTable(cGet('आदेगांव', 'कुल उपभोक्ता'));
+      var rows = document.querySelectorAll('#sc-body tr.sc-day-row');
+      openScDayModal(SC_DAY_DATES.indexOf(day1));
+      var el = document.getElementById('scday-content');
+      var txt = el.textContent;
+      var chips = el.querySelectorAll('.chip-acc').length;
+      var open = document.getElementById('scday-overlay').classList.contains('open');
+      closeScDayModal();
+      return { clickable: rows.length, chips: chips, open: open, txt: txt,
+        title: document.getElementById('scday-title').textContent,
+        sub: document.getElementById('scday-sub').textContent,
+        closed: !document.getElementById('scday-overlay').classList.contains('open'), day1: day1 };
+    });
+    expect(r.clickable).toBe(2);            // दोनों तारीख़ें दबाने लायक
+    expect(r.open).toBe(true);
+    expect(r.chips).toBe(40);               // सारे 40 — कोई "+37" नहीं
+    expect(r.txt).toContain('1134010000');  // पहला पूरा नंबर
+    expect(r.txt).toContain('1134010039');  // आख़िरी भी पूरा
+    expect(r.txt).toContain('उपभोक्ता 39');
+    expect(r.title).toContain(r.day1);
+    expect(r.sub).toContain('40 उपभोक्ता');
+    expect(r.closed).toBe(true);
+  });
+
+  test('सूची में नाम/नंबर टेक्स्ट ही रहें — HTML हो तो भी markup न बने', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: "5'><img src=x onerror=alert(1)>", name: '<img src=y onerror=alert(2)>', status: 'paid', amount: 10, paydate: _todayDateStr() },
+      ]);
+      renderScDateTable(cGet('आदेगांव', 'कुल उपभोक्ता'));
+      openScDayModal(0);
+      var el = document.getElementById('scday-content');
+      var out = { imgs: el.querySelectorAll('img').length, txt: el.textContent };
+      closeScDayModal();
+      return out;
+    });
+    expect(r.imgs).toBe(0);
+    expect(r.txt).toContain('<img src=y onerror=alert(2)>'); // सादे टेक्स्ट की तरह दिखा
+  });
+
+  test('जिस record में Consumer No न हो वह भी सूची में दिखे (चुपचाप गायब न हो)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '7001', name: 'नंबर वाला', status: 'paid', amount: 10, paydate: _todayDateStr() },
+        { name: 'बिना नंबर वाला', status: 'paid', amount: 20, paydate: _todayDateStr() },
+      ]);
+      renderScDateTable(cGet('आदेगांव', 'कुल उपभोक्ता'));
+      openScDayModal(0);
+      var el = document.getElementById('scday-content');
+      var out = { txt: el.textContent, chips: el.querySelectorAll('.chip-acc').length,
+        rows: el.querySelectorAll('tbody tr').length };
+      closeScDayModal();
+      return out;
+    });
+    expect(r.rows).toBe(2);                       // दोनों दिखे
+    expect(r.txt).toContain('बिना नंबर वाला');
+    expect(r.chips).toBe(1);                      // सिर्फ़ एक के पास नंबर है
+    expect(r.txt).toContain('कॉपी करें (1)');      // कॉपी बटन सिर्फ़ असली नंबरों की गिनती दिखाए
+  });
+});
+
+test.describe('स्कोरकार्ड "दिनांक-वार वसूली" अब चालू बिलिंग-चक्र तक सीमित (bug: जुलाई/अगस्त जैसे पुराने महीनों की वसूली भी गिन ली जाती थी, जिससे चालू चक्र की प्रगति भ्रामक दिखती — JE: मीटर-रीडिंग 24 तारीख़ से शुरू होकर अगले महीने 8-9 तक चलती है, नया लेजर 10 को आता है, 25-महीना-अंत के बीच के भुगतान भी अगले चक्र के गिने जाने चाहिए — इसलिए खिड़की पिछले महीने की 27 से आज तक)', () => {
+  test('चक्र-खिड़की से पुराना भुगतान (70 दिन पहले) — तालिका/कुल में न गिने', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      var old = new Date(); old.setDate(old.getDate() - 70); // हमेशा सबसे बड़ी संभव खिड़की (~35 दिन) से भी पुराना
+      var oldDate = old.getDate() + '/' + (old.getMonth() + 1) + '/' + old.getFullYear();
+      var master = [{ acc: '1', name: 'पुराना', status: 'paid', amount: 100, paydate: oldDate }];
+      cSet('आदेगांव', 'कुल उपभोक्ता', master);
+      renderScDateTable(master);
+      return document.getElementById('sc-body').textContent;
+    });
+    expect(txt).toContain('कोई वसूली नहीं');
+  });
+
+  test('चक्र-खिड़की की शुरुआत (पिछले महीने की 27) पर हुआ भुगतान गिना जाए — सीमा-रेखा शामिल', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      var t = new Date();
+      var boundary = new Date(t.getFullYear(), t.getMonth() - 1, 27);
+      var boundaryDate = boundary.getDate() + '/' + (boundary.getMonth() + 1) + '/' + boundary.getFullYear();
+      var master = [{ acc: '1', name: 'सीमारेखा', status: 'paid', amount: 100, paydate: boundaryDate }];
+      cSet('आदेगांव', 'कुल उपभोक्ता', master);
+      renderScDateTable(master);
+      return document.getElementById('sc-body').textContent;
+    });
+    expect(txt).toContain('सीमारेखा');
+    expect(txt).toContain('1 / 1'); // वसूल/कुल — गिना गया
+  });
+
+  test('चक्र-खिड़की से ठीक एक दिन पहले (पिछले महीने की 26) का भुगतान न गिने', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      var t = new Date();
+      var beforeBoundary = new Date(t.getFullYear(), t.getMonth() - 1, 26);
+      var d = beforeBoundary.getDate() + '/' + (beforeBoundary.getMonth() + 1) + '/' + beforeBoundary.getFullYear();
+      var master = [{ acc: '1', name: 'सीमारेखा-से-पहले', status: 'paid', amount: 100, paydate: d }];
+      cSet('आदेगांव', 'कुल उपभोक्ता', master);
+      renderScDateTable(master);
+      return document.getElementById('sc-body').textContent;
+    });
+    expect(txt).toContain('कोई वसूली नहीं');
+  });
+
+  test('renderScBody का header चालू चक्र की तारीख़-सीमा दिखाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      scActiveHQ = 'आदेगांव';
+      renderScBody();
+      return { hdr: document.getElementById('sc-date-hdr').textContent, label: _scCycleWindow().label };
+    });
+    expect(r.hdr).toContain('चालू चक्र');
+    expect(r.hdr).toContain(r.label);
+  });
+
+  test('downloadScPDF — पुराना (चक्र-खिड़की से बाहर) भुगतान वाली HQ का सेक्शन ही न बने', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      var old = new Date(); old.setDate(old.getDate() - 70);
+      var oldDate = old.getDate() + '/' + (old.getMonth() + 1) + '/' + old.getFullYear();
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'पुराना', status: 'paid', amount: 100, paydate: oldDate }]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadScPDF();
+    }));
+    expect(html).not.toContain('पुराना');
+    expect(html).not.toContain('📍 आदेगांव');
   });
 });
 
@@ -373,6 +708,374 @@ test.describe('डेटा और वसूली', () => {
       return { ts: ts, before: before };
     });
     expect(r.ts - r.before).toBeGreaterThan(29 * 24 * 60 * 60 * 1000); // offset लागू हुआ, कच्चा Date.now() नहीं
+  });
+
+  // JE का कहा: "जब कोई वसूल मार्क करे तो 🎉 इस तरह का कुछ सेलिब्रेशन आ सकता है क्या, बहुत शानदार
+  // <नाम>, लेकिन कॉस्ट नहीं बढ़नी चाहिए" — इसीलिए यह पूरी तरह device के अंदर है
+  test('वसूल मार्क करने पर जश्न दिखे — कर्मचारी का नाम और रकम के साथ, और एक भी network call न हो', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '777', name: 'राम कुमार', status: 'pending', amount: 4500 }]);
+    });
+    await loginLineman(page, 'सोहन यादव');
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      var calls = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf(FB) === 0) calls++; return orig(u, o); };
+      // असली record की तरह पूरा object — यहीं पकड़ में आया था कि code ग़लत field (amt) पढ़ रहा था
+      _celebPaid(cGet('आदेगांव', 'कुल उपभोक्ता')[0]);
+      window.fetch = orig;
+      var el = document.getElementById('celeb');
+      return {
+        shown: !!el,
+        text: el ? el.textContent : '',
+        bits: el ? el.querySelectorAll('.celeb-bit').length : 0,
+        clickThrough: el ? getComputedStyle(el).pointerEvents : '',
+        calls: calls,
+      };
+    });
+    expect(r.shown).toBe(true);
+    expect(r.text).toContain('सोहन यादव');
+    expect(r.text).toContain('4,500');
+    expect(r.bits).toBeGreaterThan(0);
+    expect(r.clickThrough).toBe('none'); // जश्न अगला "✓ वसूल" दबाने से न रोके
+    expect(r.calls).toBe(0);             // एक भी Firebase call नहीं — कॉस्ट शून्य
+  });
+
+  test('जश्न अपने आप हट जाए, और नाम/रकम में HTML हो तो भी टेक्स्ट ही रहे (कभी markup न बने)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, '<img src=x onerror=alert(1)>');
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      CELEB_MS = 60; // टेस्ट में तेज़
+      _celebPaid({ amount: 100 });
+      var el = document.getElementById('celeb');
+      // मैस्कॉट अपने आप में एक जायज़ <img> है — यहां सिर्फ़ यह देखना है कि *नाम* से
+      // कोई नया img न बना हो
+      var hasImg = el.querySelectorAll('img:not(.celeb-mascot)').length > 0;
+      var txt = el.textContent;
+      setTimeout(() => resolve({ hasImg: hasImg, txt: txt, gone: !document.getElementById('celeb') }), 700);
+    }));
+    expect(r.hasImg).toBe(false);           // नाम कभी असली HTML बनकर न जाए (मैस्कॉट वाला img अलग है)
+    expect(r.txt).toContain('<img src=x');  // सिर्फ़ दिखने वाला टेक्स्ट
+    expect(r.gone).toBe(true);              // अपने आप हट गया
+  });
+
+  // JE ने बताया: "सेलिब्रेशन बहुत कम समय के लिए दिखाई देता है, समझ ही नहीं आ पाता"। 1700ms में
+  // पलक झपकते ही चला जाता था — यह test उसे चुपचाप दोबारा छोटा होने से रोकता है
+  test('जश्न इतनी देर टिके कि दिख जाए (कम से कम 3 सेकंड)', async ({ page }) => {
+    await openApp(page);
+    const ms = await page.evaluate(() => CELEB_MS);
+    expect(ms).toBeGreaterThanOrEqual(3000);
+  });
+
+  test('जश्न में अंगूठा, ताली और मैस्कॉट तीनों दिखें', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'सुनील');
+    const r = await page.evaluate(() => {
+      _celebPaid({ amount: 500 });
+      var el = document.getElementById('celeb');
+      var out = {
+        thumb: el.querySelectorAll('.celeb-thumb').length,
+        thumbTxt: (el.querySelector('.celeb-thumb') || {}).textContent,
+        claps: el.querySelectorAll('.celeb-clap').length,
+        clapTxt: (el.querySelector('.celeb-clap') || {}).textContent,
+        mascot: el.querySelectorAll('.celeb-mascot').length
+      };
+      el.parentNode.removeChild(el);
+      return out;
+    });
+    expect(r.thumb).toBe(1);
+    expect(r.thumbTxt).toBe('👍');
+    expect(r.claps).toBe(2);      // दोनों हाथ
+    expect(r.clapTxt).toBe('👏');
+    expect(r.mascot).toBe(1);
+  });
+
+  // JE ने बनी हुई तालियाँ सुनकर कहा "तालियां सही नहीं आ रही हैं" और असली रिकॉर्डिंग भेजीं
+  test('असली आवाज़ें तैयार हों तो वही बजें — तालियाँ, और दोनों "वाओ" में से कोई एक', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var played = [], synth = 0;
+      var oPlay = window._sndPlay, oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt;
+      window._sndPlay = function (k) { played.push(k); return true; };  // सब तैयार हैं
+      window._applauseBed = function () { synth++; };
+      window._cheerAt = function () { synth++; };
+      window._clapAt = function () { synth++; };
+      var wows = {};
+      try {
+        for (var i = 0; i < 30; i++) { played = []; _celebSound(false); played.forEach((k) => { if (k !== 'clap') wows[k] = 1; }); }
+        played = []; _celebSound(false);
+      } finally {
+        window._sndPlay = oPlay; window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap;
+      }
+      return { first: played[0], count: played.length, wowKinds: Object.keys(wows).sort(), synth: synth };
+    });
+    expect(r.first).toBe('clap');                        // तालियाँ सबसे पहले
+    expect(r.count).toBe(2);                             // तालियाँ + एक "वाओ" (दूसरा नहीं)
+    expect(r.wowKinds).toEqual(['wow1', 'wow2']);        // दोनों आवाज़ें बारी-बारी आती हैं
+    expect(r.synth).toBe(0);                             // असली मिल गईं तो बनी हुई बिल्कुल न बजे
+  });
+
+  test('असली आवाज़ न उतरी हो तो बनी हुई आवाज़ पर लौट जाए (offline पहली बार)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var bed = 0, cheer = 0;
+      var oPlay = window._sndPlay, oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt;
+      window._sndPlay = function () { return false; };   // कोई फ़ाइल तैयार नहीं
+      window._applauseBed = function () { bed++; };
+      window._cheerAt = function () { cheer++; };
+      window._clapAt = function () {};
+      try { _celebSound(false); } finally {
+        window._sndPlay = oPlay; window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap;
+      }
+      return { bed: bed, cheer: cheer };
+    });
+    expect(r.bed).toBe(1);    // बनी हुई गड़गड़ाहट
+    expect(r.cheer).toBe(1);  // बनी हुई चीयर
+  });
+
+  test('आवाज़ बंद हो तो असली फ़ाइलें उतरें ही नहीं (एक बाइट भी खर्च न हो)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var hits = 0;
+      var oLoad = window._sndLoad, oOn = window.celebSoundOn;
+      window._sndLoad = function () { hits++; };
+      window.celebSoundOn = function () { return false; };
+      try { _sndWarm(); } finally { window._sndLoad = oLoad; window.celebSoundOn = oOn; }
+      return hits;
+    });
+    expect(r).toBe(0);
+  });
+
+  test('तीनों आवाज़ फ़ाइलें मौजूद हों, छोटी हों, और service worker उन्हें cache करे', async () => {
+    const root = path.join(__dirname, '..');
+    let total = 0;
+    ['clap.mp3', 'wow1.mp3', 'wow2.mp3'].forEach((n) => {
+      const st = fs.statSync(path.join(root, 'sounds', n));
+      expect(st.size).toBeGreaterThan(1000);
+      total += st.size;
+    });
+    // JE की दी हुई मूल फ़ाइलें 1.88 MB की थीं — काटकर/mono करके इतनी छोटी की गईं
+    expect(total).toBeLessThan(120 * 1024);
+    const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+    ['clap', 'wow1', 'wow2'].forEach((n) => expect(sw).toContain('./sounds/' + n + '.mp3'));
+    // CORE में नहीं — इनके बिना भी ऐप पूरा चलता है (बनी हुई आवाज़ पर लौट जाता है)
+    const core = sw.slice(sw.indexOf('var CORE='), sw.indexOf('var OPTIONAL='));
+    expect(core).not.toContain('sounds/');
+  });
+
+  // "जो साउंड आता है उसमें तालियों की गड़गड़ाहट सुनाई ही नहीं देती … wow का साउंड भी आना चाहिए"
+  test('आवाज़ में भीड़ की गड़गड़ाहट और "वाओ" चीयर दोनों बनें, अलग-अलग तालियों के साथ', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var bed = 0, cheer = 0, claps = 0, bedDur = 0, cheerDur = 0;
+      var oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt, oPlay = window._sndPlay;
+      window._sndPlay = function () { return false; }; // असली फ़ाइलें हटाकर बनी हुई आवाज़ ही जाँचें
+      window._applauseBed = function (c, t, d) { bed++; bedDur = d; };
+      window._cheerAt = function (c, t, d) { cheer++; cheerDur = d; };
+      window._clapAt = function () { claps++; };
+      try { _celebSound(false); } finally {
+        window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap; window._sndPlay = oPlay;
+      }
+      return { bed: bed, cheer: cheer, claps: claps, bedDur: bedDur, cheerDur: cheerDur };
+    });
+    expect(r.bed).toBe(1);                       // गड़गड़ाहट का बिछावन
+    expect(r.cheer).toBe(1);                     // "वाआआओ"
+    expect(r.claps).toBeGreaterThanOrEqual(8);   // पहले सिर्फ़ 4 थीं — गड़गड़ाहट लगती ही नहीं थी
+    expect(r.bedDur).toBeGreaterThanOrEqual(2);  // पूरे जश्न भर चले, आधे सेकंड में ख़त्म न हो
+    expect(r.cheerDur).toBeGreaterThan(1);
+  });
+
+  test('आवाज़ बंद हो तो कुछ न बजे (JE का switch)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var hits = 0;
+      var oBed = window._applauseBed, oCheer = window._cheerAt, oClap = window._clapAt, oOn = window.celebSoundOn, oPlay = window._sndPlay;
+      window._applauseBed = function () { hits++; };
+      window._cheerAt = function () { hits++; };
+      window._clapAt = function () { hits++; };
+      window._sndPlay = function () { hits++; return true; }; // असली आवाज़ भी न बजे
+      window.celebSoundOn = function () { return false; };
+      try { _celebSound(false); } finally {
+        window._applauseBed = oBed; window._cheerAt = oCheer; window._clapAt = oClap; window.celebSoundOn = oOn; window._sndPlay = oPlay;
+      }
+      return hits;
+    });
+    expect(r).toBe(0);
+  });
+
+  // JE की चिंता: "यदि कोई जानबूझकर बार-बार वसूल मार्क करे और फिर वापस करके फिर वसूल मार्क करे तो
+  // एक्युमुलेटेड नेटवर्क कॉस्ट बहुत ज़्यादा हो जाएगी"। जश्न खुद एक बाइट खर्च नहीं करता, पर वह
+  // टॉगल करने का लालच पैदा करता है — और हर मार्क Firebase पर लिखा जाकर बाक़ी फ़ोनों पर push होता है
+  test('एक ही उपभोक्ता पर दिन में एक ही बार जश्न — वापस करके दोबारा मार्क करने पर नहीं', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '900', name: 'राम', status: 'pending', amount: 500 },
+        { acc: '901', name: 'श्याम', status: 'pending', amount: 700 },
+      ]);
+    });
+    await loginLineman(page, 'सोहन');
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      localStorage.removeItem(CELEB_DONE_KEY);
+      window.confirm = () => true;
+      var shown = function () { var el = document.getElementById('celeb'); if (el) el.remove(); return !!el; };
+      markPaid(0, '900');   var first = shown();
+      markUnpaid(0, '900'); markPaid(0, '900'); var again = shown();  // वही उपभोक्ता — दोबारा नहीं
+      markPaid(1, '901');   var other = shown();                     // दूसरा उपभोक्ता — दिखे
+      return { first: first, again: again, other: other };
+    });
+    expect(r.first).toBe(true);
+    expect(r.again).toBe(false); // टॉगल करने से कुछ नया नहीं मिलता — लालच ख़त्म
+    expect(r.other).toBe(true);  // असली नई वसूली पर पूरा जश्न
+  });
+
+  test('एक ही उपभोक्ता को हद से ज़्यादा बार वसूल मार्क करने पर JE के लॉग में एक बार चेतावनी जाए (रोके नहीं)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '950', name: 'बार-बार', status: 'pending', amount: 300 }]);
+    });
+    await loginLineman(page, 'सोहन');
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      localStorage.removeItem(CELEB_DONE_KEY);
+      window.confirm = () => true;
+      var logged = [];
+      var orig = window.logErr;
+      window.logErr = function (t, m, c) { logged.push({ t: t, m: String(m) }); return orig(t, m, c); };
+      var atCount = [];
+      for (var i = 0; i < 6; i++) {              // 6 बार वसूल मार्क (बीच में वापस करके)
+        if (i) markUnpaid(0, '950');
+        markPaid(0, '950');
+        // सिर्फ़ repeat-mark गिनें — बाक़ी असंबंधित लॉग (जैसे flags लोड न होने पर array-put-noflags) गिनती न बिगाड़ें
+        atCount.push(logged.filter(function (x) { return x.t === 'repeat-mark'; }).length);
+      }
+      var stillPaid = cGet('आदेगांव', 'कुल उपभोक्ता')[0].status;
+      window.logErr = orig;
+      return { warns: logged.filter(function (x) { return x.t === 'repeat-mark'; }), atCount: atCount, stillPaid: stillPaid, threshold: TOGGLE_WARN_AT };
+    });
+    expect(r.warns.length).toBe(1);                       // दिन में एक ही बार लॉग, हर बार नहीं
+    expect(r.warns[0].m).toContain('बार-बार');            // उपभोक्ता का नाम लॉग में हो
+    expect(r.warns[0].m).toContain('950');                // और क्रमांक भी
+    expect(r.atCount[r.threshold - 1]).toBe(1);           // ठीक तय गिनती पर ही चेतावनी
+    expect(r.stillPaid).toBe('paid');                     // काम रोका नहीं गया
+  });
+
+  test('_celebFirstTimeToday — दिन बदलने पर हिसाब फिर से शुरू हो, और सूची बढ़ती न जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      localStorage.removeItem(CELEB_DONE_KEY);
+      var a = _celebFirstTimeToday('55');
+      var b = _celebFirstTimeToday('55');
+      // जैसे कल का बचा हुआ हिसाब पड़ा हो
+      localStorage.setItem(CELEB_DONE_KEY, JSON.stringify({ d: '1/1/2020', a: { '55': 1, '66': 1 } }));
+      var newDay = _celebFirstTimeToday('55');
+      var stored = JSON.parse(localStorage.getItem(CELEB_DONE_KEY));
+      // acc ही न हो तो जश्न रोका न जाए
+      var noAcc = _celebFirstTimeToday('');
+      return { a: a, b: b, newDay: newDay, keys: Object.keys(stored.a), noAcc: noAcc };
+    });
+    expect(r.a).toBe(true);
+    expect(r.b).toBe(false);
+    expect(r.newDay).toBe(true);        // नया दिन — फिर से जश्न
+    expect(r.keys).toEqual(['55']);     // कल का हिसाब हटा, सूची बढ़ती नहीं
+    expect(r.noAcc).toBe(true);
+  });
+
+  test('जश्न में मैस्कॉट और ताली दिखे, और मैस्कॉट लोड न हो पाए तो चुपचाप छुप जाए (जश्न फिर भी पूरा)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'सोहन');
+    const r = await page.evaluate(() => {
+      _celebPaid({ amount: 500 });
+      var el = document.getElementById('celeb');
+      var img = el.querySelector('.celeb-mascot');
+      var claps = el.querySelectorAll('.celeb-clap').length;
+      img.onerror(); // जैसे पुराने फ़ोन पर WebP न चले
+      return { hasImg: !!img, src: img.getAttribute('src'), claps: claps, hiddenOnError: img.style.display, text: el.textContent };
+    });
+    expect(r.hasImg).toBe(true);
+    expect(r.src).toBe('icons/mascot.webp');
+    expect(r.claps).toBe(2);                 // दोनों तरफ़ ताली
+    expect(r.hiddenOnError).toBe('none');    // न चले तो छुप जाए
+    expect(r.text).toContain('सोहन');        // बाक़ी जश्न फिर भी पूरा
+  });
+
+  test('वसूली की आवाज़ — डिफ़ॉल्ट चालू, बंद करने पर कोई ध्वनि न बने, और याद रहे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'सोहन');
+    const r = await page.evaluate(() => {
+      var made = 0;
+      var realCtx = window.AudioContext;
+      // असली आवाज़ न बजे, सिर्फ़ यह जांचें कि बनाने की कोशिश हुई या नहीं
+      window.AudioContext = function () {
+        made++;
+        // असली Web Audio जितना ही सतह-क्षेत्र — गड़गड़ाहट/चीयर वाला कोड buffer में सचमुच लिखता है
+        // और filter की frequency को समय के साथ घुमाता है, इसलिए इनका होना ज़रूरी है
+        return { currentTime: 0, sampleRate: 44100, state: 'running', destination: {},
+          createBuffer: (chs, len) => ({ getChannelData: () => new Float32Array(len || 10) }),
+          createBufferSource: () => ({ connect() {}, start() {}, stop() {} }),
+          createBiquadFilter: () => ({ connect() {}, type: '',
+            frequency: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {} }, Q: {} }),
+          createGain: () => ({ connect() {}, gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} } }),
+          createOscillator: () => ({ connect() {}, start() {}, stop() {}, frequency: {} }) };
+      };
+      window.webkitAudioContext = window.AudioContext;
+      var onByDefault = celebSoundOn();
+      _ac = null; _celebSound(false);
+      var whenOn = made;
+      toggleCelebSound();                 // बंद करो
+      var offNow = celebSoundOn();
+      var stored = localStorage.getItem('dc_celebsound');
+      made = 0; _ac = null; _celebSound(false);
+      var whenOff = made;
+      window.AudioContext = realCtx;
+      return { onByDefault: onByDefault, whenOn: whenOn, offNow: offNow, stored: stored, whenOff: whenOff };
+    });
+    expect(r.onByDefault).toBe(true); // बिना कुछ किए आवाज़ चालू
+    expect(r.whenOn).toBe(1);
+    expect(r.offNow).toBe(false);
+    expect(r.stored).toBe('0');       // localStorage में याद रहे
+    expect(r.whenOff).toBe(0);        // बंद है तो कुछ बने ही नहीं
+  });
+
+  test('आवाज़ का बटन प्रोफ़ाइल में हो और मौजूदा सेटिंग दिखाए', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'सोहन');
+    const r = await page.evaluate(() => {
+      localStorage.setItem('dc_celebsound', '0');
+      openProfileModal();
+      var off = document.getElementById('sound-switch-btn').className;
+      localStorage.setItem('dc_celebsound', '1');
+      _syncSoundSwitch();
+      var on = document.getElementById('sound-switch-btn').className;
+      closeProfileModal();
+      return { off: off, on: on };
+    });
+    expect(r.off).not.toContain('on');
+    expect(r.on).toContain('on');
+  });
+
+  test('_celebTodayCount — आज की अपनी वसूली गिने: एक ही उपभोक्ता कई श्रेणियों में हो तो एक बार, दूसरे कर्मचारी की न गिने, पुरानी तारीख़ की न गिने', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page, 'Sohan Yadav');
+    const n = await page.evaluate(() => {
+      var today = new Date().toLocaleDateString('hi-IN');
+      var kal = new Date(Date.now() - 86400000).toLocaleDateString('hi-IN');
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: 'A', status: 'paid', paydate: today, updatedBy: 'Sohan Yadav' },
+        { acc: 'B', status: 'paid', paydate: today, updatedBy: 'SOHAN YADAV' }, // वही व्यक्ति, अलग वर्तनी
+        { acc: 'C', status: 'paid', paydate: today, updatedBy: 'कोई और' },      // दूसरा कर्मचारी
+        { acc: 'D', status: 'paid', paydate: kal, updatedBy: 'Sohan Yadav' },   // कल की
+        { acc: 'E', status: 'pending', paydate: '', updatedBy: 'Sohan Yadav' },
+      ]);
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: 'A', status: 'paid', paydate: today, updatedBy: 'sohan yadav' }, // वही A — दोबारा न गिने
+      ]);
+      return _celebTodayCount('आदेगांव');
+    });
+    expect(n).toBe(2); // सिर्फ़ A और B
   });
 
   test('रिमार्क मोडल खुला रहते हुए लिस्ट का क्रम बदल जाए (background sync) — फिर भी सही record में सेव हो, acc से मिलान करके', async ({ page }) => {
@@ -455,6 +1158,48 @@ test.describe('डेटा और वसूली', () => {
     expect(sentBody).toBeTruthy(); // PATCH भेजा ही नहीं गया तो यहीं fail होगा
     expect(sentBody['555666']).toBeTruthy();
     expect(sentBody['555666'].remarksArr[0].text).toBe('बकाया माफ़ी की मांग');
+  });
+
+  test('रिमार्क अब सिर्फ़ उसी category तक सीमित नहीं — उसी acc की बाकी सभी categories (कुल उपभोक्ता समेत) में भी दिखे (bug: JE की शिकायत, "घरेलू" में डाला कमेंट "कुल उपभोक्ता" में कभी नहीं दिखता था)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '777', name: 'मोहन', status: 'pending', amount: 400 }]);
+      cSet('आदेगांव', 'घरेलू', [{ acc: '777', name: 'मोहन', status: 'pending', amount: 400 }]);
+      cSet('आदेगांव', 'व्यवसाय', [{ acc: '888', name: 'कोई और', status: 'pending', amount: 100 }]); // अलग acc — न छुए
+    });
+    await loginLineman(page);
+    await page.evaluate(() => { activeHQ = 'आदेगांव'; activeCat = 'घरेलू'; });
+    await page.evaluate(() => {
+      openRmkModal(0, '777');
+      document.getElementById('rmk-text').value = 'मीटर खराब है';
+      saveRmk();
+    });
+    await page.waitForTimeout(300);
+    const r = await page.evaluate(() => ({
+      master: cGet('आदेगांव', 'कुल उपभोक्ता').find((x) => x.acc === '777'),
+      ghar: cGet('आदेगांव', 'घरेलू').find((x) => x.acc === '777'),
+      vyapar: cGet('आदेगांव', 'व्यवसाय').find((x) => x.acc === '888'),
+    }));
+    expect(r.master.remarksArr[0].text).toBe('मीटर खराब है'); // "कुल उपभोक्ता" में भी पहुंचा
+    expect(r.master.remarksArr[0].cat).toBe('घरेलू'); // असल स्रोत category टैग हुई
+    expect(r.ghar.remarksArr[0].cat).toBe('घरेलू'); // जहां सीधे डाला वहां भी टैग हो (अपनी ही category)
+    expect(r.vyapar.remarksArr).toBeFalsy(); // अलग acc — बिल्कुल न छुआ
+  });
+
+  test('openRmkModal — दूसरी category से आया रिमार्क 📁 टैग के साथ दिखे, अपनी ही category का रिमार्क बिना टैग', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '999', name: 'सीता', status: 'pending', amount: 200, remarksArr: [
+        { text: 'यहीं का रिमार्क', by: 'X', at: 'कल', cat: 'कुल उपभोक्ता' },
+        { text: 'घरेलू से आया', by: 'X', at: 'आज', cat: 'घरेलू' },
+      ] }]);
+    });
+    await loginLineman(page);
+    await page.evaluate(() => { activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; openRmkModal(0, '999'); });
+    const html = await page.evaluate(() => document.getElementById('prev-rmk-list').innerHTML);
+    expect(html).toContain('घरेलू से आया');
+    expect(html).toContain('📁 घरेलू'); // दूसरी category से आया — टैग दिखे
+    expect((html.match(/📁/g) || []).length).toBe(1); // सिर्फ़ एक टैग — अपनी ही category वाले पर नहीं
   });
 
   test('कैश लिस्ट: नया-पुराना timestamp नियम (बोर्ड टकराव)', async ({ page }) => {
@@ -652,6 +1397,20 @@ test.describe('ग्राम-वार वसूली', () => {
     expect(row.paidAmt).toBe(300);
   });
 
+  test('ग्राम-वार वसूली (_vgComputeRows) — negative बकाया (advance) वाले "वसूल" उपभोक्ता का योगदान paidAmt में 0 माना जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '601', addr: 'गांवए', status: 'paid', amount: 400 },
+        { acc: '602', addr: 'गांवए', status: 'paid', amount: -900 }, // advance/credit balance
+      ]);
+    });
+    const row = await page.evaluate(() => _vgComputeRows('आदेगांव')[0]);
+    expect(row.paid).toBe(2); // दोनों "वसूल"/निपटे हुए गिने गए
+    expect(row.paidAmt).toBe(400); // सिर्फ़ +400 — -900 का योगदान 0 माना गया
+  });
+
   test('मिलते-जुलते गांव-नाम (केस भिन्नता + अलग-टोकन) रिपोर्ट में मर्ज होते हैं', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
@@ -770,6 +1529,90 @@ test.describe('ग्राम-वार वसूली', () => {
       pindariRaiyat: [_vgNormKey('पिंडरई', 'PINDARI RAIYAT'), _vgNormKey('पिंडरई', 'PINDRAI RAIYAT')],
     }));
     expect(new Set(r.pindariRaiyat).size).toBe(1);
+  });
+});
+
+test.describe('व्यक्ति/सूची-वार गोद लिए गांव — JE अनुरोध: हर HQ की जिन categories का नाम किसी व्यक्ति (या status) पर बदला गया है, उनमें मौजूद गांव दिखें', () => {
+  test('_vgComputeAdoptions — नाम-बदली category के गांव-वार आंकड़े (कुल/बकाया/वसूल/%) लौटाए, मिलते-जुलते गांव मर्ज हों, default-नाम वाली category छूट जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 1: 'किशन' }; // सिर्फ़ index 1 (घरेलू) का नाम बदला — बाकी default ही रहे
+      cSet('आदेगांव', 'किशन', [
+        { acc: '1', name: 'राम', addr: 'HAMEERGAGH', status: 'pending', amount: 150 },   // alias वाला ग़लत spelling
+        { acc: '2', name: 'श्याम', addr: 'hameergarh', status: 'paid', amount: 200 },     // वही गांव, केस/alias दोनों भिन्न — वसूल
+        { acc: '3', name: 'गीता', addr: 'CHHOTA BICHHUA', status: 'pending', amount: 100 },
+      ]);
+      cSet('आदेगांव', 'व्यवसाय', [ // default नाम — इसे adoptions में नहीं आना चाहिए
+        { acc: '9', name: 'मोहन', addr: 'कोई और गांव', status: 'pending', amount: 100 },
+      ]);
+      return _vgComputeAdoptions('आदेगांव');
+    });
+    expect(r.length).toBe(1);              // सिर्फ़ "किशन" — "व्यवसाय" (default नाम) नहीं
+    expect(r[0].cat).toBe('किशन');
+    expect(r[0].villages.length).toBe(2);  // HAMEERGAGH/hameergarh मर्ज होकर एक ही गांव, CHHOTA BICHHUA अलग
+    const norm = await page.evaluate((vs) => vs.map((v) => _vgNormKey('आदेगांव', v.village)), r[0].villages);
+    var hameergarh = r[0].villages[norm.indexOf('HAMEERGARH')];
+    expect(hameergarh.tot).toBe(2);
+    expect(hameergarh.paid).toBe(1);
+    expect(hameergarh.paidAmt).toBe(200);
+    expect(hameergarh.bakaya).toBe(150);
+    expect(hameergarh.pct).toBeCloseTo(50, 1);
+    var bichhua = r[0].villages[norm.indexOf('CHHOTA BICHHUA')];
+    expect(bichhua.tot).toBe(1);
+    expect(bichhua.paid).toBe(0);
+    expect(bichhua.bakaya).toBe(100);
+  });
+
+  test('कोई भी category नाम-बदली न हो तो खाली सूची लौटे, और UI में साफ़ संदेश दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['पिंडरई'] = {};
+      vgActiveHQ = 'पिंडरई';
+      _vgRenderAdoptions();
+      return { rows: _vgComputeAdoptions('पिंडरई'), txt: document.getElementById('vg-adopt-list').textContent };
+    });
+    expect(r.rows.length).toBe(0);
+    expect(r.txt).toContain('कोई नाम-बदली हुई सूची नहीं');
+  });
+
+  test('openVillageModal खुलते ही सक्रिय HQ के लिए adoptions section अपने-आप बन जाए (नाम/गांव escape होकर, XSS न बने)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 1: '<img src=x onerror=alert(1)>' };
+      cSet('आदेगांव', CAT_NAMES['आदेगांव'][1], [
+        { acc: '1', name: 'राम', addr: '<script>alert(2)</script>', status: 'pending', amount: 100 },
+      ]);
+      openVillageModal();
+      var el = document.getElementById('vg-adopt-list');
+      return { html: el.innerHTML, imgs: el.querySelectorAll('img').length };
+    });
+    expect(r.imgs).toBe(0);
+    expect(r.html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(r.html).not.toContain('<script>alert(2)</script>');
+    expect(r.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(r.html).toContain('&lt;script&gt;alert(2)&lt;/script&gt;');
+  });
+
+  test('HQ tab बदलने पर adoptions section भी उस HQ के हिसाब से बदल जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 1: 'आदेगांव-वाला' };
+      CAT_NAMES['जोबा'] = { 1: 'जोबा-वाला' };
+      cSet('आदेगांव', 'आदेगांव-वाला', [{ acc: '1', name: 'क', addr: 'गांव-अ', status: 'pending', amount: 100 }]);
+      cSet('जोबा', 'जोबा-वाला', [{ acc: '2', name: 'ख', addr: 'गांव-ब', status: 'pending', amount: 100 }]);
+      openVillageModal();
+      var before = document.getElementById('vg-adopt-list').textContent;
+      Array.from(document.querySelectorAll('#vg-hq-tabs .hq-tab')).find((t) => t.textContent === 'जोबा').click();
+      var after = document.getElementById('vg-adopt-list').textContent;
+      return { before: before, after: after };
+    });
+    expect(r.before).toContain('आदेगांव-वाला');
+    expect(r.before).not.toContain('जोबा-वाला');
+    expect(r.after).toContain('जोबा-वाला');
+    expect(r.after).not.toContain('आदेगांव-वाला');
   });
 });
 
@@ -947,7 +1790,37 @@ test.describe('चरण 3 माइग्रेशन — Dry-run जांच'
     expect(r.dup.dupSamples).toContain('5');
     expect(r.illegal).toEqual(expect.objectContaining({ tot: 3, illegalAcc: 2 }));
     expect(r.alreadyObjFmt).toEqual(expect.objectContaining({ tot: 2, alreadyObj: true }));
-    expect(r.empty).toEqual(expect.objectContaining({ tot: 0 }));
+    // खाली श्रेणी "ठीक" मानी जाए — alreadyObj:true. पहले यह false था, जिससे _migRunDryRun का
+    // reverted = isMigrated && !alreadyObj हर खाली-पर-migrated श्रेणी को लाल "(पलटा हुआ)" दिखा
+    // देता था (असली रिपोर्ट में 10+ ऐसी झूठी पंक्तियां, सबमें 0 records)
+    expect(r.empty).toEqual(expect.objectContaining({ tot: 0, alreadyObj: true }));
+  });
+
+  test('खाली श्रेणी झूठी "(पलटा हुआ)" न दिखे — dry-run में सिर्फ़ असली array-format वाली दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openMigModal());
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      MIGRATED[hqKey('आदेगांव')] = {};
+      MIGRATED[hqKey('आदेगांव')][catKey('कुल उपभोक्ता')] = true; // खाली, पर flag लगा है
+      MIGRATED[hqKey('आदेगांव')][catKey('घरेलू')] = true;        // सच में array में पलटी हुई
+      window.fetch = function (url) {
+        var s = String(url);
+        if (s.indexOf(fbPath('आदेगांव', 'घरेलू')) > -1) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', name: 'क' }]) }); // array = असली revert
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) }); // बाक़ी सब खाली
+      };
+      _migRunDryRun();
+      var t = setInterval(function () {
+        if (MIG_REPORT && MIG_REPORT.length) {
+          clearInterval(t);
+          resolve(MIG_REPORT.filter(function (x) { return x.a.reverted; })
+            .map(function (x) { return x.hq + '/' + x.cat; }));
+        }
+      }, 100);
+    }));
+    expect(r).toEqual(['आदेगांव/घरेलू']); // सिर्फ़ असली वाली — कोई खाली श्रेणी नहीं
   });
 
   test('_migAnalyzeList — acc खाली वाले record की नाम/पता/मोबाइल से पहचान (missingAccSamples) देता है', async ({ page }) => {
@@ -1086,6 +1959,320 @@ test.describe('डिवाइस Version ट्रैकिंग', () => {
   });
 });
 
+// असली production में यह सूची ~38 entries तक पहुंच गई थी जबकि असली कर्मचारी ~28 ही थे — DEVICE_VERSIONS
+// की key DEV_ID (localStorage में) है, तो browser data साफ़ होने/ऐप दोबारा install होने पर हर बार नई
+// entry बनती थी ("Pradeep (JE)" की अकेले 20+ entries मिलीं)। साथ ही "पुराने version" चेतावनी उन मरे
+// हुए devices से हमेशा लाल रहती थी जो अब कभी अपडेट होंगे ही नहीं — असली bug यही था
+test.describe('कर्मचारी सक्रियता सूची — नाम-वार समूह, 7-दिन अवधि, पुरानी entries हटाना (JE only)', () => {
+  // एक ही व्यक्ति के 3 devices + एक पुराना (40 दिन) + एक और कर्मचारी
+  const mockDV = () => {
+    window.fetch = function (url, opts) {
+      if (String(url).indexOf('/DEVICE_VERSIONS.json') > -1) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({
+          d1: { v: APP_VER, hq: 'आदेगांव', role: 'supervisor', name: 'Pradeep (JE)', t: Date.now() - 60000 },
+          d2: { v: APP_VER, hq: 'आदेगांव', role: 'supervisor', name: 'pradeep (je)', t: Date.now() - 2 * 86400000 },
+          d3: { v: '9.0', hq: 'आदेगांव', role: 'supervisor', name: 'PRADEEP (JE)', t: Date.now() - 3 * 86400000 },
+          d4: { v: APP_VER, hq: 'पाटन', role: 'lineman', name: 'Vaibhav', t: Date.now() - 40 * 86400000 },
+          d5: { v: APP_VER, hq: 'जोबा', role: 'lineman', name: 'Devendra kumar', t: Date.now() - 3600000 },
+        }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+    };
+  };
+
+  // पहले यह चरण 3 (कभी-कभार वाली माइग्रेशन जांच) के अंदर दबी थी, जबकि JE इसे रोज़ देखते हैं
+  test('कर्मचारी सक्रियता की अपनी स्क्रीन हो — मेनू से खुले, चरण 3 से अलग, और खुलते ही "आज" पर हो', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      _DV_WINDOW = 30; // पिछली बार कुछ और चुना हुआ था
+      openDvModal();
+      var dvOpen = document.getElementById('dv-overlay').classList.contains('open');
+      var migOpen = document.getElementById('mig-overlay').classList.contains('open');
+      var inDv = document.getElementById('dv-overlay').contains(document.getElementById('mig-devices'));
+      closeDvModal();
+      return { dvOpen: dvOpen, migOpen: migOpen, inDv: inDv, win: _DV_WINDOW, closed: !document.getElementById('dv-overlay').classList.contains('open') };
+    });
+    expect(r.dvOpen).toBe(true);
+    expect(r.migOpen).toBe(false); // चरण 3 वाला मॉडल इससे न खुले
+    expect(r.inDv).toBe(true);     // सूची अब इसी स्क्रीन के अंदर है
+    expect(r.win).toBe(1);         // हर बार खुलते ही "आज"
+    expect(r.closed).toBe(true);
+  });
+
+  test('चरण 3 खोलने पर DEVICE_VERSIONS की बेवजह fetch न हो (अब वह अलग स्क्रीन है)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const hits = await page.evaluate(() => new Promise((resolve) => {
+      var n = 0;
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/DEVICE_VERSIONS') > -1) n++;
+        return orig(url, opts);
+      };
+      openMigModal();
+      setTimeout(() => { window.fetch = orig; closeMigModal(); resolve(n); }, 600);
+    }));
+    expect(hits).toBe(0);
+  });
+
+  test('कर्मचारी सक्रियता — lineman सीधे function बुलाए तो भी न खुले (JE only)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const opened = await page.evaluate(() => {
+      openDvModal();
+      return document.getElementById('dv-overlay').classList.contains('open');
+    });
+    expect(opened).toBe(false);
+  });
+
+  test('डिफ़ॉल्ट अवधि "आज" हो, और वह कैलेंडर-दिन हो (रात 12 बजे से) — पिछले 24 घंटे नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var d = new Date(); d.setHours(0, 0, 0, 0);
+      var deflt = _DV_WINDOW;
+      var todayCut = _dvCutoff();
+      _dvSetWindow(7);
+      var weekCut = _dvCutoff();
+      _dvSetWindow(0);
+      var allCut = _dvCutoff();
+      _dvSetWindow(1);
+      return { deflt: deflt, todayCut: todayCut, midnight: d.getTime(), weekRolling: weekCut > 0 && weekCut < d.getTime(), allCut: allCut };
+    });
+    expect(r.deflt).toBe(1);              // खुलते ही "आज"
+    expect(r.todayCut).toBe(r.midnight);  // आज रात 12 बजे से, न कि "अभी − 24 घंटे"
+    expect(r.weekRolling).toBe(true);     // 7 दिन पहले की तरह rolling ही रहे
+    expect(r.allCut).toBe(0);
+  });
+
+  test('"आज" चुना हो तो "पुरानी हटाएं" बटन न दिखे (एक क्लिक में लगभग पूरी सूची मिटने से बचाव)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openDvModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => _dvRender());
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('कर्मचारी सक्रिय') > -1);
+    const r = await page.evaluate(() => {
+      var el = document.getElementById('mig-devices');
+      var onToday = el.textContent.indexOf('पुरानी') > -1;
+      _dvSetWindow(7);
+      var on7 = el.textContent.indexOf('पुरानी') > -1;
+      var toastBefore = document.getElementById('toast').textContent;
+      _dvSetWindow(1);
+      _dvClearOld(); // "आज" पर बुलाने से कुछ न मिटे
+      return { onToday: onToday, on7: on7, toastBefore: toastBefore, toastAfter: document.getElementById('toast').textContent };
+    });
+    expect(r.onToday).toBe(false);                     // "आज" पर बटन नहीं
+    expect(r.on7).toBe(true);                          // 7 दिन पर दिखता है (Vaibhav 40 दिन पुराना)
+    expect(r.toastAfter).toContain('पहले 7 या 30 दिन'); // "आज" पर _dvClearOld मना कर दे
+  });
+
+  test('एक ही व्यक्ति की अलग-अलग वर्तनी/कई devices एक ही पंक्ति में जुड़ें (3 devices दिखे), अलग नाम अलग पंक्ति में', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openDvModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => { _dvSetWindow(7); _dvRender(); }); // यह test 7-दिन वाली सूची जांचता है
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
+    const r = await page.evaluate(() => {
+      const t = document.getElementById('mig-devices').textContent;
+      return { text: t, rows: document.querySelectorAll('#mig-devices tbody tr').length };
+    });
+    expect(r.rows).toBe(2); // Pradeep के तीनों + Devendra = सिर्फ़ 2 पंक्तियां (Vaibhav 40 दिन पुराना, 7-दिन में नहीं)
+    expect(r.text).toContain('3 devices'); // तीनों वर्तनी एक ही व्यक्ति मानी गईं
+    expect(r.text).not.toContain('Vaibhav');
+  });
+
+  // JE का असली सवाल "आज कितने लोग काम पर थे" — उसे "आज कितने login हुए" से नापना v9.108 के बाद
+  // ग़लत नाप है (session 30 दिन टिकता है, लोग दोबारा login करते ही नहीं)। इसलिए "सक्रिय" गिना जाता है
+  test('_dvTodayStrip — आज ऐप खोलने वाले कर्मचारी/मुख्यालय गिने जाएं, एक व्यक्ति के कई device एक ही गिनें', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var now = Date.now();
+      var html = _dvTodayStrip({
+        a1: { v: APP_VER, hq: 'आदेगांव', name: 'Pradeep (JE)', t: now - 60000 },
+        a2: { v: APP_VER, hq: 'आदेगांव', name: 'PRADEEP (JE)', t: now - 120000 }, // वही व्यक्ति, दूसरा device
+        b1: { v: APP_VER, hq: 'जोबा', name: 'Devendra kumar', t: now - 3600000 },
+        c1: { v: APP_VER, hq: 'पाटन', name: 'पुराना', t: now - 5 * 86400000 },   // आज नहीं
+      });
+      var div = document.createElement('div');
+      div.innerHTML = html;
+      return div.textContent;
+    });
+    expect(r).toContain('2 कर्मचारी सक्रिय'); // Pradeep के दो device = एक ही व्यक्ति
+    expect(r).toContain('2/' + 6 + ' मुख्यालय');
+    expect(r).toContain('आज किसी ने ऐप नहीं खोला:');
+    expect(r).toContain('पाटन'); // 5 दिन पुराना — आज चुप
+  });
+
+  test('_dvTodayStrip — आज कोई सक्रिय न हो तो साफ़ कहे (0 न दिखाए), और सभी मुख्यालय चुप-सूची में आएं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var div = document.createElement('div');
+      div.innerHTML = _dvTodayStrip({ x: { v: APP_VER, hq: 'आदेगांव', name: 'क', t: Date.now() - 3 * 86400000 } });
+      return div.textContent;
+    });
+    expect(r).toContain('आज अभी तक किसी ने ऐप नहीं खोला');
+    expect(r).toContain('आदेगांव');
+  });
+
+  test('_dvTodayStrip — अवधि (7/30/सभी) बदलने पर भी "आज" वाली पट्टी वैसी ही रहे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openDvModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => _dvRender());
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('आज') > -1);
+    const r = await page.evaluate(() => {
+      var el = document.getElementById('mig-devices');
+      var grab = function () { var m = el.textContent.match(/(\d+) कर्मचारी सक्रिय/); return m ? m[1] : null; };
+      var at7 = grab();
+      _dvSetWindow(30);
+      var at30 = grab();
+      _dvSetWindow(0);
+      var atAll = grab();
+      return { at7: at7, at30: at30, atAll: atAll };
+    });
+    expect(r.at7).toBe('2');   // Pradeep (1 मिनट पहले) + Devendra (1 घंटा पहले)
+    expect(r.at30).toBe(r.at7);
+    expect(r.atAll).toBe(r.at7);
+  });
+
+  // लाइनमैन अपना नाम जैसे मन आए वैसे टाइप करते हैं ("SOHAN YADAV", "pradeep", "Devendra kumar") —
+  // सूची बेतरतीब दिखती थी
+  test('_dvTitle — सभी नाम एक ही रूप में दिखें (देवनागरी नाम ज्यों के त्यों), पर समूह-पहचान पर असर न हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      caps: _dvTitle('SOHAN YADAV'),
+      small: _dvTitle('pradeep'),
+      mixed: _dvTitle('Devendra kumar'),
+      dotted: _dvTitle('ANIRAM.PARTE'),
+      hindi: _dvTitle('आनंद कुमार कवरेती'),
+      // तीनों वर्तनी की समूह-पहचान एक ही रहनी चाहिए
+      sameKey: _dvNameKey('PRADEEP') === _dvNameKey('pradeep') && _dvNameKey('pradeep') === _dvNameKey('Pradeep'),
+    }));
+    expect(r.caps).toBe('Sohan Yadav');
+    expect(r.small).toBe('Pradeep');
+    expect(r.mixed).toBe('Devendra Kumar');
+    expect(r.dotted).toBe('Aniram.Parte');
+    expect(r.hindi).toBe('आनंद कुमार कवरेती'); // देवनागरी में छोटे/बड़े अक्षर होते ही नहीं
+    expect(r.sameKey).toBe(true);
+  });
+
+  test('7 दिन चुनने पर पुरानी entry छुपे और "पुरानी हटाएं" बटन उसकी गिनती के साथ दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openDvModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => { _dvSetWindow(7); _dvRender(); });
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
+    const txt = await page.evaluate(() => document.getElementById('mig-devices').textContent);
+    expect(await page.evaluate(() => _DV_WINDOW)).toBe(7);
+    expect(txt).toContain('पुरानी 1 हटाएं'); // सिर्फ़ Vaibhav (40 दिन) छुपा
+  });
+
+  test('अवधि बदलने पर एक भी नई network call न हो (bandwidth) — "सभी" चुनने पर पुरानी entry भी दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openDvModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => _dvRender());
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
+    const r = await page.evaluate(() => {
+      let calls = 0;
+      window.fetch = function () { calls++; return Promise.resolve({ ok: true, json: () => Promise.resolve(null) }); };
+      _dvSetWindow(0); // "सभी"
+      return { calls: calls, text: document.getElementById('mig-devices').textContent };
+    });
+    expect(r.calls).toBe(0); // पहले से लाया हुआ data दोबारा रंगा गया, कोई नई fetch नहीं
+    expect(r.text).toContain('Vaibhav'); // अब 40-दिन पुरानी entry भी दिखे
+  });
+
+  test('_dvActivity — वसूली में एक ही उपभोक्ता कई श्रेणियों में हो तो एक ही बार गिने (status propagate होता है)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const a = await page.evaluate(() => {
+      const now = Date.now();
+      // एक ही acc दो श्रेणियों में (propagateStatus से ऐसा होता ही है) — dedup होना चाहिए
+      cSet('जोबा', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'A', status: 'paid', amount: 100, updatedBy: 'Devendra kumar', ts: now - 3600000 },
+        { acc: '2', name: 'B', status: 'pending', amount: 100, updatedBy: 'Devendra kumar', ts: now - 3600000 },
+        { acc: '3', name: 'C', status: 'paid', amount: 100, updatedBy: 'कोई और', ts: now - 40 * 86400000 }, // बहुत पुराना
+      ]);
+      cSet('जोबा', 'घरेलू', [
+        { acc: '1', name: 'A', status: 'paid', amount: 100, updatedBy: 'Devendra kumar', ts: now - 3600000 },
+      ]);
+      return _dvActivity(now - 7 * 86400000);
+    });
+    expect(a['devendra kumar']).toEqual({ work: 2, paid: 1, rmk: 0 }); // acc "1" दो जगह था पर एक ही बार गिना
+    expect(a['कोई और']).toBeUndefined(); // 7-दिन की खिड़की से बाहर
+  });
+
+  test('_dvActivity — रिमार्क अलग से गिने जाएं: हर श्रेणी के अपने (propagateStatus remarksArr copy नहीं करता), और सिर्फ़ चुनी अवधि वाले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const a = await page.evaluate(() => {
+      const now = Date.now();
+      const dmy = (ago) => { const d = new Date(now - ago); return d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear() + ', 2:15:30 pm'; };
+      cSet('जोबा', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'A', status: 'pending', amount: 100, remarksArr: [
+          { text: 'घर बंद', by: 'Devendra kumar', at: dmy(2 * 86400000) },
+          { text: 'फिर जाना है', by: 'Devendra kumar', at: dmy(3 * 86400000) },
+          { text: 'बहुत पुराना', by: 'Devendra kumar', at: dmy(40 * 86400000) }, // खिड़की से बाहर
+        ] },
+      ]);
+      // वही acc दूसरी श्रेणी में — पर रिमार्क अलग हैं, इसलिए ये भी गिनने चाहिए (dedup नहीं)
+      cSet('जोबा', 'घरेलू', [
+        { acc: '1', name: 'A', status: 'pending', amount: 100, remarksArr: [
+          { text: 'दूसरी श्रेणी का रिमार्क', by: 'Devendra kumar', at: dmy(86400000) },
+        ] },
+      ]);
+      return _dvActivity(now - 7 * 86400000);
+    });
+    expect(a['devendra kumar'].rmk).toBe(3); // 2 + 1 दूसरी श्रेणी का; 40-दिन पुराना नहीं
+    expect(a['devendra kumar'].paid).toBe(0);
+  });
+
+  test('_dvClearOld — सिर्फ़ चुनी अवधि से पुरानी entries DELETE हों, हाल की न छुएं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openDvModal());
+    await page.evaluate(mockDV);
+    await page.evaluate(() => { _dvSetWindow(7); _dvRender(); }); // हटाना 7/30 दिन पर ही होता है
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Devendra Kumar') > -1);
+    const deleted = await page.evaluate(() => {
+      window.confirm = () => true;
+      const gone = [];
+      window.fetch = function (url, opts) {
+        if (opts && opts.method === 'DELETE') gone.push(String(url));
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      _dvClearOld();
+      return new Promise((res) => setTimeout(() => res(gone), 200));
+    });
+    expect(deleted.length).toBe(1);
+    expect(deleted[0]).toContain('/DEVICE_VERSIONS/d4.json'); // सिर्फ़ 40-दिन पुराना Vaibhav वाला
+  });
+
+  test('_dvClearOld — lineman सीधे function बुलाए तो भी कुछ न मिटे (defense-in-depth)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const deleted = await page.evaluate(() => {
+      _DV_RAW = { d4: { v: '9.0', hq: 'पाटन', role: 'lineman', name: 'Vaibhav', t: Date.now() - 40 * 86400000 } };
+      _DV_WINDOW = 7;
+      window.confirm = () => true;
+      const gone = [];
+      window.fetch = function (url, opts) {
+        if (opts && opts.method === 'DELETE') gone.push(String(url));
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      _dvClearOld();
+      return new Promise((res) => setTimeout(() => res(gone), 200));
+    });
+    expect(deleted.length).toBe(0);
+  });
+});
+
 test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
   test('बदले/नए/हटाए गए records का सही PATCH payload बनता है', async ({ page }) => {
     await openApp(page);
@@ -1118,10 +2305,53 @@ test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
     expect(r).toEqual({});
   });
 
-  test('किसी record में acc न हो तो null (असुरक्षित — caller array-PUT पर वापस जाए)', async ({ page }) => {
+  // पहले acc-रहित record मिलने पर यह null लौटाता था और caller पूरी लिस्ट का array-PUT कर देता था।
+  // असली production लॉग (बीबी/कुल उपभोक्ता) में दिखा कि वह रास्ता सुरक्षित था ही नहीं — _fbPut का
+  // guard उसी record को वैसे भी छोड़ देता था, पर पूरा node overwrite हो जाता (साथ काम कर रहे किसी
+  // और लाइनमैन की वसूली मिट सकती थी) और पूरी लिस्ट दोबारा नेट पर जाती
+  test('acc-रहित record को छोड़कर बाक़ी सबका patch बने (पूरी लिस्ट का array-PUT न हो)', async ({ page }) => {
     await openApp(page);
-    const r = await page.evaluate(() => _diffToPatch([], [{ status: 'pending' }]));
-    expect(r).toBeNull();
+    const r = await page.evaluate(() => _diffToPatch(
+      [{ acc: '1', status: 'pending', o: 0 }],
+      [{ acc: '1', status: 'paid', o: 0 }, { name: 'बिना Consumer No वाला', status: 'pending' }]
+    ));
+    expect(r['1']).toEqual(expect.objectContaining({ status: 'paid' })); // बाक़ी record सामान्य रूप से patch हुआ
+    expect(Object.keys(r).length).toBe(1); // acc-रहित record न जुड़ा, न किसी को हटाया गया
+  });
+
+  test('acc-रहित record सिर्फ़ छूटे — पहले से सेव किसी record को हटाया न जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => _diffToPatch(
+      [{ acc: '1', status: 'pending', o: 0 }, { acc: '2', status: 'pending', o: 1 }],
+      [{ acc: '1', status: 'pending', o: 0 }, { acc: '2', status: 'pending', o: 1 }, { name: 'नया, बिना acc' }]
+    ));
+    expect(r).toEqual({}); // कुछ नहीं बदला — कोई network call भी नहीं होनी चाहिए
+  });
+
+  test('_fbPutPerRecord — acc-रहित record पर पूरी लिस्ट PUT न हो, सिर्फ़ PATCH जाए, और लॉग में उपभोक्ता की पहचान आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      MIGRATED[hqKey('टेस्ट HQ30')] = {}; MIGRATED[hqKey('टेस्ट HQ30')][catKey('कुल उपभोक्ता')] = true;
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf(fbPath('टेस्ट HQ30', 'कुल उपभोक्ता')) > -1 && opts && opts.method) {
+          window.fetch = orig;
+          resolve({ method: opts.method, body: JSON.parse(opts.body), logs: getLogs().filter((l) => l.c === 'mig-noacc-skip') });
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+        }
+        return orig(url, opts);
+      };
+      fbSet('टेस्ट HQ30', 'कुल उपभोक्ता',
+        [{ acc: '1', status: 'paid', o: 0 }, { name: 'रामू', addr: 'बीबी', phone: '9999999999', status: 'pending' }],
+        [{ acc: '1', status: 'pending', o: 0 }], null);
+    }));
+    expect(r.method).toBe('PATCH');            // पूरी लिस्ट का PUT नहीं
+    expect(r.body['1']).toBeTruthy();
+    expect(r.logs.length).toBe(1);
+    expect(r.logs[0].m).toContain('रामू');     // JE को पता चले किसका Consumer No भरना है
+    expect(r.logs[0].m).toContain('9999999999');
   });
 
   test('offline में fbSet — migrated HQ/श्रेणी पर पेंडिंग queue में सिर्फ patch बनता है, पूरी array नहीं', async ({ page }) => {
@@ -1183,6 +2413,8 @@ test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
         }
         return orig(url, opts);
       };
+      // v9.167: flags/रूप दोनों अनजान हों तो _fbPut पहले सर्वर पर रूप जांचता है — यह test पुराने (array) रास्ते का है, इसलिए रूप पहले से 'array' दर्ज
+      _noteShape('टेस्ट HQ7', 'कुल उपभोक्ता', []);
       _fbPut('टेस्ट HQ7', 'कुल उपभोक्ता', [{ acc: '1', status: 'pending' }], function () {
         window.fetch = orig;
         resolve(sentBody);
@@ -1203,6 +2435,8 @@ test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
         }
         return orig(url, opts);
       };
+      // v9.167: flags/रूप दोनों अनजान हों तो _fbPut पहले सर्वर पर रूप जांचता है — यह test पुराने (array) रास्ते का है, इसलिए रूप पहले से 'array' दर्ज
+      _noteShape('टेस्ट HQ8', 'कुल उपभोक्ता', []);
       _fbPut('टेस्ट HQ8', 'कुल उपभोक्ता', [{ acc: '1', status: 'pending' }], function () {
         window.fetch = orig;
         resolve();
@@ -1246,8 +2480,9 @@ test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
       let count = 0;
       const orig = window.fetch;
       window.fetch = function (url, opts) {
-        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ10/कुल_उपभोक्ता') > -1 && opts && opts.method === 'PATCH') {
-          count++;
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ10/कुल_उपभोक्ता') > -1) {
+          // असली 401 device पर PATCH से पहले वाली रिमार्क-पढ़ाई (_mergeServerRemarks) भी 401 ही पाती है
+          if (opts && opts.method === 'PATCH') count++;
           return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) });
         }
         return orig(url, opts);
@@ -1316,6 +2551,288 @@ test.describe('चरण 3 — migration-revert ऑटो-पहचान', () =
     expect(r.length).toBe(0);
   });
 
+  // पहले सिर्फ़ "unsafe" वाला नतीजा लॉग होता था; "ok"/"already" चुपचाप निकल जाते (सिर्फ़ toast)।
+  // असली production में इसी वजह से घंटों तय नहीं हो पाया कि "migration-reverted" हल हुआ या नहीं
+  test('self-heal सफल हो तो "ठीक कर दिया" भी लॉग हो (सिर्फ़ toast दिखाकर चुप न रहे)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const logs = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      MIGRATED[hqKey('टेस्ट HQ40')] = {}; MIGRATED[hqKey('टेस्ट HQ40')][catKey('कुल उपभोक्ता')] = true;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf(fbPath('टेस्ट HQ40', 'कुल उपभोक्ता')) > -1 && (!opts || !opts.method)) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', name: 'क' }]) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+      };
+      _checkMigrationRevert('टेस्ट HQ40', 'कुल उपभोक्ता', [{ acc: '1', name: 'क' }]);
+      setTimeout(() => resolve(getLogs()), 400);
+    }));
+    expect(logs.filter((l) => l.c === 'migration-revert-fixed').length).toBe(1);
+    expect(logs.filter((l) => l.c === 'migration-revert-fixed')[0].m).toContain('1 records');
+  });
+
+  test('self-heal के वक़्त list पहले से ठीक मिले तो "already" भी लॉग हो — पता चले कि कुछ करना बाक़ी नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const logs = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      MIGRATED[hqKey('टेस्ट HQ41')] = {}; MIGRATED[hqKey('टेस्ट HQ41')][catKey('कुल उपभोक्ता')] = true;
+      window.fetch = function (url) {
+        if (String(url).indexOf(fbPath('टेस्ट HQ41', 'कुल उपभोक्ता')) > -1) {
+          // दोबारा पढ़ने पर object मिला — किसी और device ने बीच में ठीक कर दिया
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ '1': { acc: '1' } }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+      };
+      _checkMigrationRevert('टेस्ट HQ41', 'कुल उपभोक्ता', [{ acc: '1' }]);
+      setTimeout(() => resolve(getLogs()), 400);
+    }));
+    expect(logs.filter((l) => l.c === 'migration-revert-already').length).toBe(1);
+  });
+
+  // असली (JE, मढ़ी/कुल उपभोक्ता): सूची पुराने format में पलटी और उसमें 1134019486 के दो card थे —
+  // self-heal "unsafe" पर रुक गया। अब duplicate मिलाकर एक कर दिए जाते हैं, फिर सूची ठीक होती है
+  test('self-heal — duplicate Consumer No मिलाकर एक हों (नया बदलाव जीते, दोनों के रिमार्क बचें), फिर सूची ठीक हो', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      var hq = 'टेस्ट HQ42', cat = 'कुल उपभोक्ता', put = null;
+      MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+      var raw = [
+        { acc: '5', name: 'पहला' },
+        { acc: '1134019486', name: 'ASADU LAL', status: 'pending', ts: 100, remarksArr: [{ text: 'सी फॉर्म में दिया गया', by: 'Vishnu', at: '2:39' }] },
+        { acc: '1134019486 ', name: 'ASADU LAL', status: 'paid', paydate: '24/9/2026', ts: 200, remarksArr: [{ text: '?', by: 'Vishnu', at: '2:46' }] },
+      ];
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf(fbPath(hq, cat)) > -1 && String(url).indexOf('/MIGRATED/') < 0) {
+          if (opts && opts.method === 'PUT') { put = JSON.parse(opts.body); return Promise.resolve({ ok: true, json: () => Promise.resolve(true) }); }
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(raw) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+      };
+      _checkMigrationRevert(hq, cat, raw);
+      setTimeout(() => resolve({ put: put, logs: getLogs() }), 400);
+    }));
+    expect(Object.keys(r.put).sort()).toEqual(['1134019486', '5']);
+    const rec = r.put['1134019486'];
+    expect(rec.status).toBe('paid'); // नया (ts 200) बदलाव जीता
+    expect(rec.remarksArr.map((x) => x.text)).toEqual(['सी फॉर्म में दिया गया', '?']);
+    expect(rec.o).toBe(1); // पहले वाले card की जगह पर
+    expect(r.logs.filter((l) => l.c === 'migration-revert-fixed').length).toBe(1);
+    expect(r.logs.filter((l) => l.c === 'migration-dup-merged')[0].m).toContain('1 duplicate');
+    expect(r.logs.filter((l) => l.c === 'migration-revert-unsafe').length).toBe(0);
+  });
+
+  // असली (JE, मढ़ी): v9.164 के बाद भी 1134019486 के 3 card — पलटी (array) list पर नए devices के
+  // per-record PATCH ने Consumer No-key जोड़ दी, node "मिली-जुली" object बन गया और पहचान चुप रही
+  test('मिली-जुली list (क्रमांक-key + Consumer No-key) पहचानी जाए और एक-एक card में ठीक हो', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      var hq = 'टेस्ट HQ44', cat = 'कुल उपभोक्ता', put = null;
+      MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+      var raw = {
+        0: { acc: '501', name: 'क', o: 0 },
+        1: { acc: '502', name: 'ASADU', o: 1, ts: 1, remarksArr: [{ text: 'सी फॉर्म', by: 'V', at: '1' }] },
+        2: { acc: '503', name: 'ग', o: 2 },
+        502: { acc: '502', name: 'ASADU', o: 1, ts: 5, status: 'paid', remarksArr: [{ text: 'सी फॉर्म', by: 'V', at: '1' }, { text: 'जमा', by: 'V', at: '2' }] },
+      };
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf(fbPath(hq, cat)) > -1 && String(url).indexOf('/MIGRATED/') < 0) {
+          if (opts && opts.method === 'PUT') { put = JSON.parse(opts.body); return Promise.resolve({ ok: true, json: () => Promise.resolve(true) }); }
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(raw) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+      };
+      var shapes = { mixed: _isBadShape(raw), good: _isBadShape({ 7: { acc: '7' }, 8: { acc: '8' } }), arr: _isBadShape([{ acc: '1' }]) };
+      _checkMigrationRevert(hq, cat, raw);
+      setTimeout(() => resolve({ shapes: shapes, put: put, logs: getLogs() }), 400);
+    }));
+    expect(r.shapes).toEqual({ mixed: true, good: false, arr: true });
+    expect(Object.keys(r.put).sort()).toEqual(['501', '502', '503']);
+    expect(r.put['502'].status).toBe('paid');
+    expect(r.put['502'].remarksArr.map((x) => x.text)).toEqual(['सी फॉर्म', 'जमा']);
+    expect(r.logs.filter((l) => l.c === 'migration-mixed').length).toBe(1);
+    expect(r.logs.filter((l) => l.c === 'migration-revert-fixed').length).toBe(1);
+  });
+
+  test('flags लोड हुए बिना array लिखी जाए तो एक बार "array-put-noflags" लॉग हो (पलटाने वाला device पकड़ में आए)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const n = await page.evaluate(() => new Promise((resolve) => {
+      var logs = [];
+      window.logErr = function (c) { logs.push(c); };
+      MIGRATED = {};
+      window.fetch = function () { return Promise.resolve({ ok: true, json: () => Promise.resolve(true) }); };
+      _fbPut('टेस्ट HQ45', 'कुल उपभोक्ता', [{ acc: '1' }]);
+      _fbPut('टेस्ट HQ45', 'कुल उपभोक्ता', [{ acc: '1' }]);
+      setTimeout(() => resolve(logs.filter((c) => c === 'array-put-noflags').length), 100);
+    }));
+    expect(n).toBe(1);
+  });
+
+  // v9.167 — असली (बीबी/Movind, v9.166): flags लोड नहीं + रूप अज्ञात → पूरी array लिखी जाती, migrated
+  // list पलट जाती। अब पहले ?shallow=true से रूप जांचा जाता है
+  const probePut = (page, spec) => page.evaluate((sp) => new Promise((resolve) => {
+    MIGRATED = {};
+    try { localStorage.removeItem(SHAPE_KEY); } catch (e) {}
+    var hq = 'टेस्ट HQ46', cat = 'कुल उपभोक्ता', calls = [];
+    window.fetch = function (url, opts) {
+      calls.push({ url: String(url), method: (opts && opts.method) || 'GET', body: opts && opts.body });
+      if (String(url).indexOf('shallow=true') > -1) {
+        if (sp.fail) return Promise.reject(new Error('Failed to fetch'));
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(sp.keys) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+    };
+    var done = function (ok) {
+      var put = calls.filter((c) => c.method === 'PUT' && c.url.indexOf(fbPath(hq, cat) + '.json') > -1)[0]; // LOGS वाली PUT नहीं
+      resolve({ ok: ok, put: put ? JSON.parse(put.body) : null, probed: calls.some((c) => c.url.indexOf('shallow=true') > -1), pending: isPending(hq, cat), shape: lastShape(hq, cat) });
+    };
+    _fbPut(hq, cat, [{ acc: '1134000011', name: 'क' }, { acc: '1134000012', name: 'ख' }], done);
+  }), spec);
+
+  test('flags नहीं + रूप अज्ञात — सर्वर पर per-record मिले तो array नहीं, per-record ही लिखा जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await probePut(page, { keys: { 1134000011: true, 1134000012: true } });
+    expect(r.probed).toBe(true);
+    expect(Array.isArray(r.put)).toBe(false);
+    expect(Object.keys(r.put).sort()).toEqual(['1134000011', '1134000012']);
+    expect(r.shape).toBe('obj');
+  });
+
+  test('flags नहीं + रूप अज्ञात — सर्वर पर सच में array (0,1,2…) हो तो array ही लिखा जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await probePut(page, { keys: { 0: true, 1: true } });
+    expect(Array.isArray(r.put)).toBe(true);
+    expect(r.shape).toBe('arr');
+  });
+
+  test('flags नहीं + रूप की जांच ही नाकाम — कुछ न लिखा जाए, बदलाव pending रहे', async ({ page }) => {
+    await openApp(page);
+    const r = await probePut(page, { fail: true });
+    expect(r.ok).toBe(false);
+    expect(r.put).toBe(null);
+    expect(r.pending).toBe(true);
+  });
+
+  // JE का अनुरोध: per-record (नए फ़ॉर्मेट) वाली सूची पर असली काम (वसूल मार्क, रिमार्क) करके भी जांचें —
+  // flags हों या न हों, सर्वर पर सिर्फ़ बदले record का PATCH जाए, पूरी सूची कभी नहीं (न array, न object)
+  const perRecordFlow = (page, spec) => page.evaluate((sp) => new Promise((resolve) => {
+    var hq = activeHQ, cat = activeCat, path = fbPath(hq, cat);
+    var list = [
+      { acc: '1134000001', name: 'राम', status: 'pending', amount: 500, o: 0, remarksArr: [] },
+      { acc: '1134000002', name: 'श्याम', status: 'pending', amount: 700, o: 1, remarksArr: [] },
+      { acc: '1134000003', name: 'गीता', status: 'pending', amount: 900, o: 2, remarksArr: [] },
+    ];
+    cSet(hq, cat, JSON.parse(JSON.stringify(list)));
+    try { localStorage.removeItem(SHAPE_KEY); } catch (e) {}
+    MIGRATED = {};
+    if (sp.flags) { MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true; }
+    var writes = [], probes = 0;
+    window.confirm = () => true;
+    window.fetch = function (url, opts) {
+      var u = String(url), m = (opts && opts.method) || 'GET';
+      if (u.indexOf(path) > -1) {
+        if (u.indexOf('shallow=true') > -1) { probes++; return Promise.resolve({ ok: true, json: () => Promise.resolve({ 1134000001: true, 1134000002: true, 1134000003: true }) }); }
+        if (u.indexOf('/remarksArr.json') > -1) return Promise.resolve({ ok: true, json: () => Promise.resolve(sp.serverRmk || null) });
+        if (m !== 'GET') writes.push({ m: m, u: u, body: JSON.parse(opts.body) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+    };
+    renderListWith(cGet(hq, cat));
+    if (sp.action === 'paid') markPaid(1, '1134000002');
+    if (sp.action === 'rmk') {
+      openRmkModal(1, '1134000002');
+      document.getElementById('rmk-text').value = 'कल आएंगे';
+      saveRmk();
+    }
+    setTimeout(() => resolve({ writes: writes.filter((w) => w.u.indexOf(path + '.json') > -1), probes: probes, shape: lastShape(hq, cat) }), 400);
+  }), spec);
+
+  for (const flags of [true, false]) {
+    const tag = flags ? 'flags लोड' : 'flags लोड नहीं (असली बीबी वाली हालत)';
+    test(`per-record सूची — "✓ वसूल" पर सिर्फ़ उसी उपभोक्ता का PATCH जाए (${tag})`, async ({ page }) => {
+      await openApp(page);
+      await loginLineman(page);
+      const r = await perRecordFlow(page, { flags: flags, action: 'paid' });
+      expect(r.writes.length).toBe(1);
+      expect(r.writes[0].m).toBe('PATCH');
+      expect(Object.keys(r.writes[0].body)).toEqual(['1134000002']);
+      expect(r.writes[0].body['1134000002'].status).toBe('paid');
+      expect(r.probes).toBe(flags ? 0 : 1); // flags न हों तो पहले एक हल्की जांच
+      if (!flags) expect(r.shape).toBe('obj');
+    });
+
+    test(`per-record सूची — रिमार्क सेव पर सिर्फ़ उसी उपभोक्ता का PATCH, सर्वर के पुराने रिमार्क भी बचें (${tag})`, async ({ page }) => {
+      await openApp(page);
+      await loginLineman(page);
+      const r = await perRecordFlow(page, { flags: flags, action: 'rmk', serverRmk: [{ text: 'पहले से', by: 'मोहन', at: '24/9/2026' }] });
+      expect(r.writes.length).toBe(1);
+      expect(r.writes[0].m).toBe('PATCH');
+      expect(Object.keys(r.writes[0].body)).toEqual(['1134000002']);
+      expect(r.writes[0].body['1134000002'].remarksArr.map((x) => x.text)).toEqual(['पहले से', 'कल आएंगे']);
+    });
+  }
+
+  test('loadMigratedFlags — पढ़ाई नाकाम हो तो थोड़ा रुककर दोबारा कोशिश हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      MIG_FLAG_RETRY_MS = 20; MIGRATED = {};
+      var n = 0;
+      window.fetch = function (url) {
+        if (String(url).indexOf('/MIGRATED.json') > -1) {
+          n++;
+          if (n === 1) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ error: 'Permission denied' }) });
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'बीबी': { 'कुल_उपभोक्ता': true } }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      loadMigratedFlags();
+      setTimeout(() => resolve({ n: n, flag: isMigrated('बीबी', 'कुल उपभोक्ता') }), 300);
+    }));
+    expect(r.n).toBe(2);
+    expect(r.flag).toBe(true);
+  });
+
+  test('self-heal — Consumer No खाली हो तो पहले की तरह रुके ("unsafe")', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      var hq = 'टेस्ट HQ43', cat = 'कुल उपभोक्ता', puts = 0;
+      MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+      var raw = [{ acc: '1', name: 'क' }, { acc: '', name: 'ख' }];
+      window.fetch = function (url, opts) {
+        if (opts && opts.method === 'PUT') puts++;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(raw) });
+      };
+      _checkMigrationRevert(hq, cat, raw);
+      setTimeout(() => resolve({ puts: puts, logs: getLogs() }), 400);
+    }));
+    expect(r.puts).toBe(0);
+    expect(r.logs.filter((l) => l.c === 'migration-revert-unsafe').length).toBe(1);
+  });
+
+  test('Consumer No में आगे-पीछे space — live बदलाव (patch) और offline sync दोनों में दूसरा card न जुड़े', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var local = [{ acc: '1134019486 ', name: 'ASADU', o: 14, status: 'pending' }, { acc: '7', name: 'दूसरा', o: 15 }];
+      var p = _applyPatchToArray(local, { '1134019486': { acc: '1134019486', name: 'ASADU', o: 14, status: 'paid' } });
+      var m = mergeArrays([{ acc: ' 55', name: 'क', ts: 1 }], [{ acc: '55', name: 'क', ts: 2, status: 'paid' }]);
+      var d = _applyPatchToArray(local, { '1134019486': null });
+      return { pLen: p.length, pStatus: p[0].status, mLen: m.length, mStatus: m[0].status, dLen: d.length };
+    });
+    expect(r.pLen).toBe(2);
+    expect(r.pStatus).toBe('paid');
+    expect(r.mLen).toBe(1);
+    expect(r.mStatus).toBe('paid');
+    expect(r.dLen).toBe(1); // हटाना भी space वाले acc पर काम करे
+  });
+
   test('migrated HQ का data array में मिले तो एक बार चेतावनी log होती है, बार-बार नहीं (गेट)', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
@@ -1354,6 +2871,70 @@ test.describe('चरण 3 — migration-revert ऑटो-पहचान', () =
     }));
     expect(r.result.status).toBe('ok');
     expect(r.logs.length).toBe(0);
+  });
+
+  // असली production लॉग में चार अलग-अलग HQ (पाटन/आदेगांव/बीबी/जोबा) से "migration-reverted" आ रहा
+  // था, सब नए version वाले devices से। जड़: MIGRATED सिर्फ़ memory में था और हर बार खाली से शुरू
+  // होकर network से भरता था — कमज़ोर नेट पर वो fetch नाकाम होते ही isMigrated() झूठा "नहीं" कहता,
+  // और _fbPut() का guard भी उसी खाली flag को देखकर धोखा खाकर पूरा array लिख देता → माइग्रेशन पलट जाता
+  test('loadMigratedFlags — सफल होने पर flags localStorage में भी सेव हों (सिर्फ़ memory में नहीं)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const saved = await page.evaluate(() => new Promise((resolve) => {
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/MIGRATED.json') > -1) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ 'टेस्ट_HQ20': { 'कुल_उपभोक्ता': true } }) });
+        }
+        return orig(url, opts);
+      };
+      loadMigratedFlags();
+      setTimeout(() => { window.fetch = orig; resolve(localStorage.getItem('dc_migrated3')); }, 300);
+    }));
+    expect(JSON.parse(saved)).toEqual({ 'टेस्ट_HQ20': { 'कुल_उपभोक्ता': true } });
+  });
+
+  test('reload के बाद network से पहले ही MIGRATED localStorage से बहाल हो जाए — isMigrated() सही जवाब दे', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      localStorage.setItem('dc_migrated3', JSON.stringify({ 'टेस्ट_HQ21': { 'कुल_उपभोक्ता': true } }));
+    });
+    await page.reload();
+    await page.waitForFunction(() => typeof isMigrated === 'function', null, { timeout: 15000 });
+    expect(await page.evaluate(() => isMigrated('टेस्ट HQ21', 'कुल उपभोक्ता'))).toBe(true);
+  });
+
+  test('MIGRATED का network-fetch नाकाम हो तो भी migrated list पर पूरा array PUT न हो (bug: माइग्रेशन चुपचाप पलट जाता था)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      localStorage.setItem('dc_migrated3', JSON.stringify({ 'टेस्ट_HQ22': { 'कुल_उपभोक्ता': true } }));
+    });
+    // page.reload() के बाद इसी टेस्ट में आगे loginLineman() से क्लिक-इंटरैक्शन करना था — यही जोड़ी
+    // (reload + तुरंत क्लिक) CI पर बार-बार loginLineman() के अंदर TimeoutError देती थी (धीमी/व्यस्त
+    // मशीन पर), जबकि बाकी पूरी suite में हर जगह page.goto('/') (openApp() के ज़रिए) के बाद क्लिक
+    // करना हमेशा भरोसेमंद रहा — इसी origin पर goto भी वैसा ही असली reload है (localStorage बना
+    // रहता है) पर यहां वही आज़माया-परखा रास्ता इस्तेमाल कर रहे हैं
+    await page.goto('/');
+    await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
+    await loginLineman(page);
+    const body = await page.evaluate(() => new Promise((resolve) => {
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/MIGRATED.json') > -1) return Promise.reject(new Error('Failed to fetch')); // कमज़ोर नेट
+        if (String(url).indexOf(fbPath('टेस्ट HQ22', 'कुल उपभोक्ता')) > -1 && opts && (opts.method === 'PUT' || opts.method === 'PATCH')) {
+          window.fetch = orig;
+          resolve({ method: opts.method, body: JSON.parse(opts.body) });
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+        }
+        return orig(url, opts);
+      };
+      loadMigratedFlags(); // नाकाम — पर cache से flags पहले से मौजूद हैं
+      setTimeout(() => {
+        fbSet('टेस्ट HQ22', 'कुल उपभोक्ता', [{ acc: '1', name: 'क', amount: 100 }], [], null);
+      }, 100);
+    }));
+    expect(Array.isArray(body.body)).toBe(false); // सबसे ज़रूरी: raw array नहीं गया
+    expect(body.body['1']).toBeTruthy();          // per-record (acc-keyed) फॉर्मेट ही गया
   });
 
   test('_migRender — "पलटा हुआ" HQ को लाल चेतावनी के साथ अलग दिखाता है, और माइग्रेट बटन भी दिखता रहता है (मैन्युअल ठीक करने के लिए)', async ({ page }) => {
@@ -1458,6 +3039,8 @@ test.describe('बकाया ≤0 अपने-आप वसूल — migrati
         }
         return real(url, opts);
       };
+      // v9.167: flags/रूप दोनों अनजान हों तो _fbPut पहले सर्वर पर रूप जांचता है — यह test पुराने (array) रास्ते का है, इसलिए रूप पहले से 'array' दर्ज
+      _noteShape('टेस्ट HQ3', 'कुल उपभोक्ता', []);
       cSet('टेस्ट HQ3', 'कुल उपभोक्ता', []);
       var data = [{ acc: '7', status: 'pending', amount: 0 }];
       overlayOps('टेस्ट HQ3', 'कुल उपभोक्ता', data);
@@ -1469,7 +3052,19 @@ test.describe('बकाया ≤0 अपने-आप वसूल — migrati
 test.describe('Lineman PIN — सामान्य सुरक्षा-मज़बूती', () => {
   test('HQ का PIN सेट हो तो गलत PIN से login रुकता है, सही PIN से चलता है', async ({ page }) => {
     await openApp(page);
-    await page.evaluate(() => { HQ_PINS[hqKey('आदेगांव')] = '4321'; });
+    // v9.146: PIN अब client पर मिलान नहीं होता (HQ_PIN सिर्फ़ JE पढ़ सकते हैं) — असली फ़ैसला
+    // Firebase signInWithEmailAndPassword ही करता है, इसलिए यहां उसे mock करना ज़रूरी है
+    await page.evaluate(() => {
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: null,
+          signInWithEmailAndPassword: function (email, pw) {
+            return pw === 'vasuli-4321' ? Promise.resolve({}) : Promise.reject({ code: 'auth/wrong-password' });
+          },
+        };
+      };
+    });
     await page.click('#rc-lin');
     await page.fill('#uname-inp', 'टेस्ट लाइनमैन');
     await page.selectOption('#hq-sel', { label: 'आदेगांव' });
@@ -1484,7 +3079,6 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
 
   test('logout पर PIN फ़ील्ड भी साफ़ हो जाए — वरना shared device पर अगले लाइनमैन को पुराने PIN से login fail दिखता (गड़बड़ी जो "logout ठीक से काम नहीं करता" जैसी दिखती थी)', async ({ page }) => {
     await openApp(page);
-    await page.evaluate(() => { HQ_PINS[hqKey('आदेगांव')] = '4321'; });
     await page.click('#rc-lin');
     await page.fill('#uname-inp', 'टेस्ट लाइनमैन');
     await page.selectOption('#hq-sel', { label: 'आदेगांव' });
@@ -1500,7 +3094,6 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('सही PIN पर उस HQ के असली Firebase account से sign-in होता है (email + PIN से बना password)', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => new Promise((resolve) => {
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return {
@@ -1522,10 +3115,26 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
   });
 
+  test('सफल login पर CU.pin भी याद रखा जाए (v9.146: HQ_PIN अब server से दोबारा नहीं पढ़ी जा सकती, इसी device पर याद रखे pin से ही _ensureCorrectHqAuth बाद में दोबारा sign-in कर पाता है)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: null, signInWithEmailAndPassword: function () { return Promise.resolve({}); } };
+      };
+      selectRole('lineman');
+      document.getElementById('uname-inp').value = 'टेस्ट लाइनमैन';
+      document.getElementById('hq-sel').value = 'आदेगांव';
+      document.getElementById('lin-pin').value = '4321';
+      doLogin();
+    });
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+    expect(await page.evaluate(() => CU.pin)).toBe('4321');
+  });
+
   test('HQ sign-in reject (गलत password/server) हो तो login रुक जाता है', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return {
@@ -1546,7 +3155,6 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('HQ sign-in के बीच नेट टूटे तो भी login आगे बढ़ जाता है (offline-सहनशील)', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return {
@@ -1566,8 +3174,9 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('_ensureCorrectHqAuth — anonymous auth में login हो तो online होते ही सही HQ account से sign-in हो (bug: login के वक़्त network कमज़ोर होने पर device हमेशा के लिए anonymous रह जाता, हर save 401 देता रहता)', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => new Promise((resolve) => {
-      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव' };
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      // v9.146: PIN अब server (HQ_PIN, सिर्फ़ JE पढ़ सकते हैं) से नहीं — पिछले सफल login पर इसी
+      // device पर याद रखा गया CU.pin इस्तेमाल होता है
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव', pin: '4321' };
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return {
@@ -1584,11 +3193,97 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     expect(r.pw).toBe('vasuli-4321');
   });
 
+  // v9.108 का regression (असली production लॉग: SOHAN YADAV/बीबी, Satendra/बीबी, आनंद/आदेगांव —
+  // v9.108 पर लगातार HTTP 401)। पहले tab मरने के बाद दोबारा login करना पड़ता था और वही login हर
+  // बार सही HQ account पक्का कर देता था। v9.108 में session बहाल होकर चुपचाप अंदर आ जाते हैं, तो
+  // Firebase का अपना session खोने/anonymous पर लौटने पर device हमेशा के लिए anonymous रह जाता।
+  // "online" event यहां बचाता नहीं — वो सिर्फ़ offline→online बदलने पर चलता है
+  test('सेव किया हुआ session बहाल होने पर सही HQ account पक्का हो (v9.108 regression: चुपचाप अंदर आने पर device anonymous रह जाता, हर save 401)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null }, // Firebase अपने session से anonymous पर लौट आया
+          signInWithEmailAndPassword: function (email, pw) { resolve({ email: email, pw: pw }); return Promise.resolve({}); },
+        };
+      };
+      // असली restored session में pin भी साथ बहाल होता है (पिछले सफल login पर याद रखा गया — देखें doLogin)
+      CU = { role: 'lineman', name: 'बहाल लाइनमैन', hq: 'आदेगांव', pin: '4321' };
+      _finishLogin(CU.name, true); // silent = सेव किया session बहाल हुआ
+      setTimeout(() => resolve({ email: null, pw: null }), 8000);
+    }));
+    expect(r.email).toBe('hq-adegaon@adegaondc.internal');
+    expect(r.pw).toBe('vasuli-4321');
+  });
+
+  test('ताज़ा login (silent नहीं) पर दोबारा sign-in की कोशिश न हो — doLogin खुद सही account से जोड़ चुका है', async ({ page }) => {
+    await openApp(page);
+    const calls = await page.evaluate(() => new Promise((resolve) => {
+      var n = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          // doLogin() खुद अपना signInWithEmailAndPassword() पहले ही सफल कर चुका है (silent नहीं),
+          // तभी _finishLogin(name) बुलाया जाता है — इसलिए currentUser यहां पहले से सही account है
+          currentUser: { email: 'hq-adegaon@adegaondc.internal' },
+          signInWithEmailAndPassword: function () { n++; return Promise.resolve({}); },
+        };
+      };
+      CU = { role: 'lineman', name: 'ताज़ा लाइनमैन', hq: 'आदेगांव' };
+      _finishLogin(CU.name); // silent नहीं
+      setTimeout(() => resolve(n), 6000);
+    }));
+    expect(calls).toBe(0); // _ensureCorrectHqAuth ने account पहले से सही पाया — दोबारा sign-in नहीं किया
+  });
+
+  test('_ensureCorrectHqAuth — सही account पहले से हो तो भी पुरानी "अटकी" गिनती साफ़ हो (bug: मैन्युअल logout+login के बाद भी अटका डेटा हमेशा के लिए अटका रह जाता था)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'अटका', hq: 'आदेगांव' };
+      _authHealed = {};
+      var p = {};
+      p[cKey('आदेगांव', 'कुल उपभोक्ता')] = { hq: 'आदेगांव', cat: 'कुल उपभोक्ता', type: 'put', authFailCount: STUCK_AUTH_MAX };
+      setPendingObj(p);
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: { email: 'hq-adegaon@adegaondc.internal' }, signInWithEmailAndPassword: function () { return Promise.resolve({}); } };
+      };
+      _ensureCorrectHqAuth();
+      var after = getPending()[cKey('आदेगांव', 'कुल उपभोक्ता')].authFailCount;
+      // दोबारा चलाने पर बार-बार रीसेट न हो (401 ↔ रीसेट का झूला न बने)
+      var p2 = getPending();
+      p2[cKey('आदेगांव', 'कुल उपभोक्ता')].authFailCount = STUCK_AUTH_MAX;
+      setPendingObj(p2);
+      _ensureCorrectHqAuth();
+      return { after: after, second: getPending()[cKey('आदेगांव', 'कुल उपभोक्ता')].authFailCount, max: STUCK_AUTH_MAX };
+    });
+    expect(r.after).toBe(0);       // पहली बार साफ़ हुई — अटका डेटा दोबारा भेजा जा सकेगा
+    expect(r.second).toBe(r.max);  // दूसरी बार नहीं — guard काम कर रहा है
+  });
+
+  test('पहला 401 आते ही सही account से जुड़ने की कोशिश हो (हार मानने का इंतज़ार न करे)', async ({ page }) => {
+    await openApp(page);
+    const tried = await page.evaluate(() => new Promise((resolve) => {
+      CU = { role: 'lineman', name: '401', hq: 'आदेगांव', pin: '4321' };
+      _authHealed = {};
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null }, // anonymous — यही 401 की असली वजह
+          signInWithEmailAndPassword: function (email) { resolve(email); return Promise.resolve({}); },
+        };
+      };
+      markPending('आदेगांव', 'कुल उपभोक्ता', 'put', null, new Error('HTTP 401'));
+      setTimeout(() => resolve(null), 5000);
+    }));
+    expect(tried).toBe('hq-adegaon@adegaondc.internal');
+  });
+
   test('_ensureCorrectHqAuth — पहले से सही HQ account से sign-in हो तो दोबारा sign-in न हो (redundant auth call से बचाव)', async ({ page }) => {
     await openApp(page);
     const called = await page.evaluate(() => {
       CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव' };
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       var calls = 0;
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
@@ -1603,27 +3298,63 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     expect(called).toBe(0);
   });
 
-  test('_ensureCorrectHqAuth — HQ का PIN सेट न हो तो कुछ न करे (anonymous ही पुराना/सही व्यवहार है)', async ({ page }) => {
+  test('_ensureCorrectHqAuth — PIN याद न हो (v9.146 से पहले login हुआ था) तो चुपचाप न अटके, साफ़ logout करके login screen पर भेज दे (bug: पहले हमेशा के लिए ग़लत account पर अटका रह जाता, हर save 401)', async ({ page }) => {
     await openApp(page);
-    const called = await page.evaluate(() => {
-      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा' };
-      delete HQ_PINS[hqKey('जोबा')];
-      var calls = 0;
+    await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा' }; // .pin जान-बूझकर सेट नहीं किया
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
-        return { currentUser: { email: null }, signInWithEmailAndPassword: function () { calls++; return Promise.resolve({}); } };
+        return { currentUser: { email: null }, signInWithEmailAndPassword: function () { return Promise.resolve({}); } };
       };
       _ensureCorrectHqAuth();
-      return calls;
     });
-    expect(called).toBe(0);
+    expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(true);
+    expect(await page.evaluate(() => document.getElementById('app-screen').classList.contains('active'))).toBe(false);
+    expect(await page.evaluate(() => CU)).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toBeNull();
+  });
+
+  test('_ensureCorrectHqAuth — याद रखा PIN ग़लत निकले (auth/wrong-password) तो चुपचाप न अटके, साफ़ logout करके दोबारा सही PIN मांगे (bug: JE ने बाद में PIN बदल दिया हो तो device हमेशा के लिए पुराने PIN से अटका रह जाता, हर श्रेणी में हर save 401 — पाटन/Vaibhav पर v9.152 में यही मिला)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा', pin: '1234' }; // PIN याद है, पर अब ग़लत मान लो
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null },
+          signInWithEmailAndPassword: function () { return Promise.reject({ code: 'auth/wrong-password' }); },
+        };
+      };
+      _ensureCorrectHqAuth();
+    });
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => document.getElementById('login-screen').classList.contains('active'))).toBe(true);
+    expect(await page.evaluate(() => document.getElementById('app-screen').classList.contains('active'))).toBe(false);
+    expect(await page.evaluate(() => CU)).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem('dc_cu'))).toBeNull();
+  });
+
+  test('_ensureCorrectHqAuth — re-auth के बीच नेट टूटे (auth/network-request-failed) तो logout न हो, session बना रहे (सच में PIN ग़लत नहीं, सिर्फ़ नेट की समस्या — अगली बार online पर अपने आप दोबारा कोशिश होगी)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा', pin: '1234' };
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null },
+          signInWithEmailAndPassword: function () { return Promise.reject({ code: 'auth/network-request-failed' }); },
+        };
+      };
+      _ensureCorrectHqAuth();
+    });
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => CU && CU.hq)).toBe('जोबा'); // session बना रहा, logout नहीं हुआ (doLogout होता तो CU null हो जाता)
   });
 
   test('_ensureCorrectHqAuth — JE (supervisor) के लिए कुछ न करे (सिर्फ़ lineman पर लागू)', async ({ page }) => {
     await openApp(page);
     const called = await page.evaluate(() => {
       CU = { role: 'supervisor', name: 'टेस्ट जेई', hq: 'आदेगांव' };
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
       var calls = 0;
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
@@ -1638,8 +3369,7 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('_ensureCorrectHqAuth — sign-in सफल होने पर flushPending() भी बुलाया जाए (ताकि अटका data तुरंत भेजने की कोशिश हो)', async ({ page }) => {
     await openApp(page);
     const called = await page.evaluate(() => new Promise((resolve) => {
-      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव' };
-      HQ_PINS[hqKey('आदेगांव')] = '4321';
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'आदेगांव', pin: '4321' };
       window.firebase = window.firebase || {};
       window.firebase.auth = function () {
         return { currentUser: { email: null }, signInWithEmailAndPassword: function () { return Promise.resolve({}); } };
@@ -1790,6 +3520,117 @@ test.describe('Firebase auth token — 401 पर force-refresh', () => {
     expect(r.calls).toBe(2);
     expect(r.status).toBe(403);
   });
+
+  // असली production bug (v9.165 का sse-never-opened लॉग, सर्वर का जवाब "Missing appcheck token"):
+  // पहला App Check getToken() नाकाम रहा तो AC_TOKEN null रह जाता, और 401 पर पुराना retry सिर्फ़
+  // login token ताज़ा करता — App Check का नहीं, इसलिए retry भी उसी कमी के साथ फिर 401 खाता
+  test('_fbFetchWithAuth — 401 पर AC_TOKEN missing हो तो login token के साथ App Check token भी ताज़ा हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      AC_TOKEN = null;
+      let calls = 0;
+      _rawFetch = function () {
+        calls++;
+        if (calls === 1) return Promise.resolve({ status: 401, ok: false });
+        return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({ ok: true }) });
+      };
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: { getIdToken: function () { ID_TOKEN = 'fresh-token'; return Promise.resolve('fresh-token'); } } };
+      };
+      window.firebase.appCheck = function () {
+        return { getToken: function () { AC_TOKEN = 'fresh-ac-token'; return Promise.resolve({ token: 'fresh-ac-token' }); } };
+      };
+      _fbFetchWithAuth(FB + '/test.json', { method: 'GET' }).then((res) => {
+        resolve({ calls: calls, status: res.status, idToken: ID_TOKEN, acToken: AC_TOKEN });
+      });
+    }));
+    expect(r.calls).toBe(2);
+    expect(r.status).toBe(200);
+    expect(r.idToken).toBe('fresh-token');
+    expect(r.acToken).toBe('fresh-ac-token');
+  });
+
+  test('_fbFetchWithAuth — 401 पर AC_TOKEN पहले से मौजूद हो तो सिर्फ़ login token ताज़ा हो (पुराना व्यवहार बरकरार)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      AC_TOKEN = 'already-there';
+      let calls = 0;
+      _rawFetch = function () {
+        calls++;
+        if (calls === 1) return Promise.resolve({ status: 401, ok: false });
+        return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({ ok: true }) });
+      };
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: { getIdToken: function () { ID_TOKEN = 'fresh-token'; return Promise.resolve('fresh-token'); } } };
+      };
+      _fbFetchWithAuth(FB + '/test.json', { method: 'GET' }).then((res) => {
+        resolve({ calls: calls, status: res.status, acToken: AC_TOKEN });
+      });
+    }));
+    expect(r.calls).toBe(2);
+    expect(r.acToken).toBe('already-there'); // छेड़ा नहीं गया
+  });
+
+  // असली bug: पहला App Check getToken() नाकाम रहे तो पहले अगला मौका 30 मिनट बाद मिलता — तब तक हर
+  // request बिना App Check header के जाती
+  test('_acRefresh (App Check) — पहली कोशिश नाकाम रहे तो 30 मिनट नहीं, जल्दी (AC_RETRY_MS में) दोबारा कोशिश हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      AC_TOKEN = null; AC_READY = false;
+      if (_acRetryT) { clearTimeout(_acRetryT); _acRetryT = null; }
+      AC_RETRY_MS = 20;
+      var attempts = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = function () {
+        return {
+          getToken: function () {
+            attempts++;
+            if (attempts === 1) return Promise.reject(new Error('अभी तैयार नहीं'));
+            return Promise.resolve({ token: 'ac-second-try' });
+          },
+        };
+      };
+      _acRefresh();
+      setTimeout(() => resolve({ attempts: attempts, token: AC_TOKEN }), 200);
+    }));
+    expect(r.attempts).toBe(2); // पहली नाकाम, दूसरी जल्दी ही सफल
+    expect(r.token).toBe('ac-second-try');
+  });
+
+  test('_acRefresh — token मिल जाए तो दोबारा जल्दी कोशिश वाला timer न लगे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      AC_TOKEN = null; AC_READY = false;
+      if (_acRetryT) { clearTimeout(_acRetryT); _acRetryT = null; }
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = function () {
+        return { getToken: function () { return Promise.resolve({ token: 'ok-first-try' }); } };
+      };
+      _acRefresh();
+      setTimeout(() => resolve({ token: AC_TOKEN, retryScheduled: !!_acRetryT }), 50);
+    }));
+    expect(r.token).toBe('ok-first-try');
+    expect(r.retryScheduled).toBe(false);
+  });
+
+  // असली bug: login token 4 सेकंड में भी न बने तो पहले यहां से बिल्कुल raw fetch चला जाता — App
+  // Check token उसी बीच तैयार हो चुका हो तब भी उसका header नहीं लगता था
+  test('window.fetch — 4 सेकंड में login token न बने तो भी, जो App Check token तैयार हो चुका हो वह लगे', async ({ page }) => {
+    await openApp(page);
+    test.setTimeout(15000);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      ID_TOKEN = null; AC_TOKEN = 'ac-ready'; AC_READY = true;
+      var seenHeader = null;
+      _rawFetch = function (url, opts) {
+        seenHeader = opts && opts.headers && opts.headers['X-Firebase-AppCheck'];
+        return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({ ok: true }) });
+      };
+      fetch(FB + '/test.json').then(() => resolve({ header: seenHeader })); // असली 4-sec wait पूरा होने का इंतज़ार
+    }));
+    expect(r.header).toBe('ac-ready');
+  });
 });
 
 test.describe('लॉगिन और डेटा-लोड — कमज़ोर नेटवर्क पर हमेशा के लिए न अटकें', () => {
@@ -1846,7 +3687,7 @@ test.describe('_cashRefreshAll — कमज़ोर नेटवर्क प�
           return new Promise(() => {}); // कभी resolve/reject नहीं होगा — अटकी हुई श्रेणी
         }
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ8') > -1) {
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };
@@ -1864,6 +3705,77 @@ test.describe('_cashRefreshAll — कमज़ोर नेटवर्क प�
     expect(r.ms).toBeLessThan(2000);
     expect(r.stuckStillOld).toBe(true);
     expect(r.othersUpdated).toBe(true);
+  });
+
+  // असली लॉग (JE, कमज़ोर नेट): सभी 48 सूचियां एक साथ मंगाने से पीछे वाले मुख्यालय (पाटन/बीबी/मढ़ी)
+  // 8 सेकंड में पूरे नहीं हो पाते थे (19/48 नाकाम)
+  test('एक बार में सिर्फ़ _CASH_REFRESH_CONCURRENCY (6) सूचियां मंगाई जाएं, बाकी पहले वालों के निपटने पर', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      _CASH_REFRESH_TIMEOUT_MS = 80;
+      let calls = 0, first = -1;
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ50') > -1) { calls++; return new Promise(() => {}); }
+        return orig(url, opts);
+      };
+      _cashRefreshAll(['टेस्ट HQ50'], function (n) { window.fetch = orig; resolve({ first: first, calls: calls, n: n }); }, true);
+      first = calls; // सिर्फ़ शुरुआती (synchronous) requests
+    }));
+    expect(r.first).toBe(6);  // एक साथ सिर्फ़ 6
+    expect(r.calls).toBe(8);  // बाकी 2 बाद में — आख़िर में सभी 8 श्रेणियां मंगाई गईं
+    expect(r.n).toBe(8);      // कोई जवाब नहीं आया — सब timeout गिनी गईं
+  });
+
+  // असली लॉग: JE ने रिफ्रेश चलते-चलते दोबारा दबाया, पहले की अधूरी requests के ऊपर 48 नई चढ़ गईं (48/48 नाकाम)
+  test('रिफ्रेश चलते दोबारा बुलाने पर नया रिफ्रेश न चले — उसी में जुड़कर उसका नतीजा मिले', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      let calls = 0;
+      const results = [];
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ51') > -1) {
+          calls++;
+          return new Promise((res) => setTimeout(() => res({ status: 304, ok: false, headers: { get: () => null } }), 30));
+        }
+        return orig(url, opts);
+      };
+      const done = (n) => { results.push(n); if (results.length === 2) { window.fetch = orig; resolve({ calls: calls, results: results, busy: busy }); } };
+      _cashRefreshAll(['टेस्ट HQ51'], done, true);
+      const busy = _cashRefreshBusy();
+      _cashRefreshAll(['टेस्ट HQ51'], done, true); // चलते हुए दोबारा — जैसे बटन दोबारा दबाया
+    }));
+    expect(r.busy).toBe(true);
+    expect(r.calls).toBe(8);         // 16 नहीं — दूसरी बार कोई नई request नहीं गई
+    expect(r.results).toEqual([0, 0]); // दोनों callers को उसी रिफ्रेश का नतीजा मिला
+  });
+
+  test('timeout के बाद देर से पहुंची सूची cache में आए और caller का onLate बुलाया जाए (स्क्रीन पुरानी न दिखती रहे)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      _CASH_REFRESH_TIMEOUT_MS = 50;
+      let failN = -1;
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ52/घरेलू') > -1) {
+          return new Promise((res) => setTimeout(() => res({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([{ acc: 'NEW', status: 'pending' }]) }), 150));
+        }
+        if (typeof url === 'string' && url.indexOf('टेस्ट_HQ52') > -1) {
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      const fallback = setTimeout(() => { window.fetch = orig; resolve({ failN: failN, late: false }); }, 3000);
+      _cashRefreshAll(['टेस्ट HQ52'], function (n) { failN = n; }, true, function () {
+        clearTimeout(fallback);
+        window.fetch = orig;
+        resolve({ failN: failN, late: true, acc: cGet('टेस्ट HQ52', 'घरेलू')[0].acc });
+      });
+    }));
+    expect(r.failN).toBe(1);   // cb के वक़्त "घरेलू" अभी timeout थी
+    expect(r.late).toBe(true); // बाद में पहुंची तो onLate बुलाया गया
+    expect(r.acc).toBe('NEW'); // और उसका ताज़ा data cache में आ गया
   });
 });
 
@@ -1966,6 +3878,49 @@ test.describe('PWA installable — manifest + icons', () => {
     expect(storageContent).toContain('vendor/papaparse.min.js');
   });
 
+  // असली production (v9.127 के deploy के दौरान): "setSyncStatus is not defined" — सर्वर ने
+  // js/ui-core.js के बदले कोई ग़लत जवाब (404/5xx) दिया और service worker उसे ज्यों का त्यों
+  // script बनाकर लौटा देता था, इसलिए उस फ़ाइल का कोई function बनता ही नहीं। नीचे वाला catch
+  // सिर्फ़ network *टूटने* पर चलता है, ग़लत status पर नहीं — यही छेद था।
+  // यहाँ sw.js का असली fetch-handler एक नक़ली scope में चलाकर उसका व्यवहार जांचा जाता है
+  // (सिर्फ़ source में शब्द ढूंढना काफ़ी नहीं — वह असल बर्ताव नहीं बताता)
+  test('sw.js — सर्वर ग़लत जवाब (404/5xx) दे तो cache वाली सही प्रति मिले, error-पन्ना script बनकर न चले', async () => {
+    const swSrc = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+    // नक़ली service-worker दुनिया
+    function run(netRes, cached, mode) {
+      let handler = null, answered = null;
+      const scope = {
+        addEventListener: (t, fn) => { if (t === 'fetch') handler = fn; },
+        skipWaiting: () => Promise.resolve(),
+        clients: { claim: () => Promise.resolve() },
+      };
+      const cachesStub = {
+        open: () => Promise.resolve({ put: () => Promise.resolve(), add: () => Promise.resolve() }),
+        keys: () => Promise.resolve([]),
+        match: (req) => Promise.resolve(cached[typeof req === 'string' ? req : req.url] || undefined),
+      };
+      new Function('self', 'caches', 'fetch', swSrc)(scope, cachesStub,
+        () => (netRes instanceof Error ? Promise.reject(netRes) : Promise.resolve(netRes)));
+      handler({
+        request: { url: 'https://x/js/ui-core.js', method: 'GET', mode: mode || 'no-cors' },
+        respondWith: (p) => { answered = p; },
+      });
+      return answered;
+    }
+    const good = { ok: true, body: 'सही script', clone: () => ({}) };
+    const bad = { ok: false, status: 404, body: 'ग़लत — error पन्ना' };
+    const cachedCopy = { ok: true, body: 'cache वाली सही प्रति' };
+
+    // 1. ठीक जवाब — वही मिले
+    expect((await run(good, {})).body).toBe('सही script');
+    // 2. ग़लत status पर cache वाली सही प्रति मिले (यही असली fix है)
+    expect((await run(bad, { 'https://x/js/ui-core.js': cachedCopy })).body).toBe('cache वाली सही प्रति');
+    // 3. cache में भी कुछ न हो — तब असली जवाब लौटे (चुपचाप undefined नहीं)
+    expect((await run(bad, {})).body).toBe('ग़लत — error पन्ना');
+    // 4. network पूरी तरह टूटे — पहले जैसा cache-fallback चलता रहे
+    expect((await run(new Error('offline'), { 'https://x/js/ui-core.js': cachedCopy })).body).toBe('cache वाली सही प्रति');
+  });
+
   test('sw.js — install atomic रहे: कोई भी CORE (js/*.js) फ़ाइल cache होने में नाकाम रहे तो पूरा install नाकाम माना जाए, सिर्फ़ OPTIONAL (icons/manifest) चुपचाप skip हों (bug: partial cache — कुछ js file cache हो जातीं कुछ नहीं, बाद में offline पड़े device पर "X is not defined" जैसी errors)', () => {
     const swContent = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
     const coreBlock = swContent.slice(swContent.indexOf('var CORE='), swContent.indexOf('var OPTIONAL='));
@@ -2042,6 +3997,25 @@ test.describe('error logging', () => {
     expect(logs.some((l) => l.c === 'js-error' && l.m.indexOf('असली गड़बड़ी') > -1)).toBe(true);
   });
 
+  test('App Check की "reCAPTCHA Timeout" वाली unhandled promise rejection लॉग नहीं होती (SDK के अंदर की, हम पकड़ नहीं सकते; monitor mode में असर भी नहीं) — पर असली promise rejection अब भी लॉग होती है', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => { try { localStorage.removeItem('dc_logs3'); } catch (e) {} });
+    await page.evaluate(() => {
+      window.dispatchEvent(new PromiseRejectionEvent('unhandledrejection', {
+        promise: Promise.resolve(), reason: new Error('reCAPTCHA Timeout (b)'),
+      }));
+    });
+    await page.evaluate(() => {
+      window.dispatchEvent(new PromiseRejectionEvent('unhandledrejection', {
+        promise: Promise.resolve(), reason: new Error('असली promise गड़बड़ी'),
+      }));
+    });
+    await page.waitForTimeout(200);
+    const logs = await page.evaluate(() => getLogs());
+    expect(logs.some((l) => l.c === 'promise' && l.m.indexOf('reCAPTCHA Timeout') > -1)).toBe(false);
+    expect(logs.some((l) => l.c === 'promise' && l.m.indexOf('असली promise गड़बड़ी') > -1)).toBe(true);
+  });
+
   test('clearServerLogs — "सभी डिवाइस" वाले (server) logs को DELETE करता है, ताकि JE पुराने ढेर से छुटकारा पा सके', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
@@ -2103,6 +4077,18 @@ test.describe('error logging', () => {
   });
 });
 
+// Firebase का दैनिक quota US-Pacific आधी रात को रीसेट होता है, इसलिए v9.120 से ऐप उसी खिड़की का
+// दिन इस्तेमाल करता है (_usageQuotaDay), UTC का नहीं। ये टेस्ट पहले UTC दिन मानकर चलते थे और
+// इसीलिए सिर्फ़ घड़ी की मेहरबानी से पास होते थे — रोज़ 00:00 UTC से ~08:00 UTC के बीच (भारत में
+// सुबह 5:30 से दोपहर 1:30) दोनों तारीख़ें अलग होतीं और stub मेल न खाता। असली CI failure यही थी।
+// यहाँ वही दिन जान-बूझकर एक *अलग* रास्ते से निकाला गया है (toLocaleDateString), ताकि जाँच ऐप के
+// अपने function को दोहराकर गोल-गोल न हो जाए
+function quotaDay(offset) {
+  const d = new Date();
+  if (offset) d.setDate(d.getDate() - offset);
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+}
+
 test.describe('डेटा उपयोग (Firebase Blaze plan) — अनुमानित ट्रेंड ट्रैकिंग', () => {
   test('trackUsageBytes जमा होता है और _usageFlush /USAGE/{तारीख़} पर POST करके काउंटर रीसेट कर देता है', async ({ page }) => {
     await openApp(page);
@@ -2122,8 +4108,7 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
       _usageFlush();
       setTimeout(() => { window.fetch = orig; resolve({ posted: posted, remaining: _usageBytes }); }, 200);
     }));
-    const curDay = new Date().toISOString().slice(0, 10);
-    expect(result.posted.url).toContain('/USAGE/' + curDay);
+    expect(result.posted.url).toContain('/USAGE/' + quotaDay(0));
     expect(result.posted.body.b).toBe(800);
     expect(result.remaining).toBe(0);
   });
@@ -2139,11 +4124,10 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
   test('_usageRender — पिछले दिन से 50% से ज़्यादा बढ़ोतरी हो तो चेतावनी दिखे', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
-    await page.evaluate(() => new Promise((resolve) => {
+    await page.evaluate((curDay) => new Promise((resolve) => {
       const orig = window.fetch;
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('/USAGE/') > -1 && (!opts || !opts.method)) {
-          var curDay = new Date().toISOString().slice(0, 10);
           var isCur = url.indexOf('/USAGE/' + curDay) > -1;
           var data = isCur ? { a: { d: 'dev1', b: 3000000, t: Date.now() } } : { a: { d: 'dev1', b: 1000000, t: Date.now() } };
           return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
@@ -2152,7 +4136,7 @@ test.describe('डेटा उपयोग (Firebase Blaze plan) — अनु�
       };
       _usageRender();
       setTimeout(() => { window.fetch = orig; resolve(); }, 300);
-    }));
+    }), quotaDay(0));
     await expect(page.locator('#usage-content')).toContainText('ज़्यादा डेटा इस्तेमाल हुआ');
   });
 
@@ -2253,6 +4237,34 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
     expect(approxBytes).toBeLessThan(60 * 1024); // compressed होने पर बहुत छोटा रहना चाहिए
   });
 
+  test('फ़ोटो हटाने का बटन — फ़ोटो न हो तो छुपा रहे, फ़ोटो हो तो दिखे और DELETE भेजकर avatar वापस initial पर लौटे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => document.getElementById('update-banner')?.remove());
+    await page.click('button[onclick="openProfileModal()"]');
+    // पहली बार कोई फ़ोटो नहीं — बटन छुपा हो
+    expect(await page.locator('#profile-photo-remove-btn').isVisible()).toBe(false);
+
+    // फ़ोटो cache में डालकर फिर से खोलें, ताकि बटन दिखे (असली अपलोड ऊपर वाले test में पहले ही जांचा जा चुका है)।
+    // मॉडल पहले से खुली है, इसलिए trigger बटन को दोबारा क्लिक करने की बजाय सीधे function बुलाएं
+    // (वरना overlay उसी बटन के ऊपर होने से क्लिक इंटरसेप्ट हो जाता है)
+    await page.evaluate(() => { _profilePhotoCache = 'data:image/jpeg;base64,xyz'; openProfileModal(); });
+    expect(await page.locator('#profile-photo-remove-btn').isVisible()).toBe(true);
+
+    let deleteMethod = null;
+    await page.route('**/PROFILE_PHOTOS/**', async (route) => {
+      deleteMethod = route.request().method();
+      await route.fulfill({ status: 200, body: '{}' });
+    });
+    page.on('dialog', (d) => d.accept()); // "फ़ोटो हटाना चाहते हैं?"
+    await page.click('#profile-photo-remove-btn');
+    await page.waitForFunction(() => document.getElementById('profile-photo-remove-btn').style.display === 'none', null, { timeout: 5000 });
+
+    expect(deleteMethod).toBe('DELETE');
+    expect(await page.evaluate(() => _profilePhotoCache)).toBeNull();
+    expect(await page.locator('#profile-photo-remove-btn').isVisible()).toBe(false);
+  });
+
   test('डार्क मोड टॉगल — html[data-theme] बदलता है, localStorage में याद रहता है, दोबारा खोलने पर बना रहता है', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
@@ -2265,7 +4277,7 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
     expect(await page.evaluate(() => localStorage.getItem('dc_theme'))).toBe('dark');
     await expect(page.locator('#theme-switch-btn')).toHaveClass(/\bon\b/);
     // reload — theme flash न हो, तुरंत dark लागू हो; login session भी बना रहे (pull-to-refresh जैसे
-    // असली reload से logout न हो — सिर्फ़ dc_cu session-storage से चुपचाप वापस अंदर आ जाए)
+    // असली reload से logout न हो — सिर्फ़ dc_cu से चुपचाप वापस अंदर आ जाए)
     await page.reload();
     await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('dark');
@@ -2429,10 +4441,201 @@ test.describe('फोन-नंबर मॉडल — दो तरह के �
     await page.evaluate(() => closePhModal());
     await page.evaluate(() => openPhModal('गीता देवी', '9876511111', 'ACC3', 800));
     expect(await page.evaluate(() => document.querySelector('.ph-mt-btn.active').getAttribute('data-type'))).toBe('disconnect');
-    expect(await page.evaluate(() => document.querySelectorAll('.ph-mt-btn').length)).toBe(2);
+    expect(await page.evaluate(() => document.querySelectorAll('.ph-mt-btn').length)).toBe(3);
     // वापस "सामान्य रिमाइंडर" पर बदल सकें
     await page.evaluate(() => _phSelectMsgType('reminder'));
     expect(await page.evaluate(() => localStorage.getItem('dc_ph_msgtype'))).toBe('reminder');
+  });
+
+  test('"अपना संदेश" बटन सिर्फ़ select करता है — किसी के लिए भी (JE/lineman) box नहीं खुलता, सेव किया संदेश तुरंत SMS/WhatsApp में जाए', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'सूचना: तालाब किनारे अवैध अतिक्रमण हटाएं', by: 'Pradeep', at: '1/1/2026, 10:00 am' }; });
+    await page.evaluate(() => openPhModal('मोहन लाल', '9876522222', 'ACC4', 900));
+    await page.evaluate(() => _phSelectMsgType('custom'));
+    const r = await page.evaluate(() => ({
+      boxShown: document.getElementById('ph-custom-wrap').style.display,
+      active: document.querySelector('.ph-mt-btn.active').getAttribute('data-type'),
+    }));
+    expect(r.boxShown).toBe('none'); // lineman के लिए box कभी नहीं खुलता
+    expect(r.active).toBe('custom');
+    const wa = await page.evaluate(() => decodeURIComponent(document.getElementById('ph-wa-btn').href.split('text=')[1]));
+    expect(wa).toBe('सूचना: तालाब किनारे अवैध अतिक्रमण हटाएं'); // कोई नाम/बकाया अपने-आप नहीं जुड़ा
+  });
+
+  test('✏️ edit-बटन — lineman को दिखता ही नहीं, JE को दिखे और दबाने पर box खुले', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => openPhModal('मोहन लाल', '9876522222', 'ACC4', 900));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-edit-btn').style.display)).toBe('none');
+    // lineman सीधे function बुला भी ले तो भी toast से मना हो, box न खुले
+    await page.evaluate(() => _phOpenCustomEdit());
+    expect(await page.evaluate(() => document.getElementById('ph-custom-wrap').style.display)).toBe('none');
+  });
+
+  test('JE ✏️ दबाए तो box खुले (पिछला सेव किया संदेश भरा मिले), सेव करते ही box अपने-आप बंद हो जाए और PH_CUSTOM_MSG अपडेट हो', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'पुराना संदेश', by: 'X', at: 'Y' }; });
+    await page.evaluate(() => openPhModal('गीता', '9876544444', 'ACC6', 0));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-edit-btn').style.display)).toBe('flex');
+    expect(await page.evaluate(() => document.getElementById('ph-custom-wrap').style.display)).toBe('none'); // खुलते ही box बंद हो
+    await page.evaluate(() => _phOpenCustomEdit());
+    expect(await page.evaluate(() => document.getElementById('ph-custom-text').value)).toBe('पुराना संदेश');
+    expect(await page.evaluate(() => document.getElementById('ph-custom-wrap').style.display)).toBe('block');
+
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      let putBody = null;
+      const orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/PH_CUSTOM_MSG.json') > -1 && o && o.method === 'PUT') {
+          putBody = JSON.parse(o.body);
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(putBody) });
+        }
+        return orig(u, o);
+      };
+      document.getElementById('ph-custom-text').value = 'योजना: नई सोलर सब्सिडी योजना लागू — कार्यालय संपर्क करें।';
+      _phSaveCustomMsg();
+      setTimeout(() => { window.fetch = orig; resolve({ putBody: putBody, msg: PH_CUSTOM_MSG, boxShown: document.getElementById('ph-custom-wrap').style.display }); }, 200);
+    }));
+    expect(r.putBody.text).toBe('योजना: नई सोलर सब्सिडी योजना लागू — कार्यालय संपर्क करें।');
+    expect(r.putBody.by).toBe('टेस्ट जेई'); // loginJE का नाम — देखें loginJE() हेल्पर
+    expect(r.msg.text).toBe(r.putBody.text); // local PH_CUSTOM_MSG भी उसी वक़्त अपडेट हुआ
+    expect(r.boxShown).toBe('none'); // सेव होते ही box अपने-आप बंद
+  });
+
+  test('"रद्द करें" — box बिना सेव किए बंद हो जाए, PH_CUSTOM_MSG न बदले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'असली संदेश', by: 'X', at: 'Y' }; });
+    await page.evaluate(() => openPhModal('गीता', '9876544444', 'ACC6', 0));
+    await page.evaluate(() => _phOpenCustomEdit());
+    await page.evaluate(() => { document.getElementById('ph-custom-text').value = 'बिना सेव किया बदलाव'; });
+    await page.evaluate(() => _phCloseCustomEdit());
+    expect(await page.evaluate(() => document.getElementById('ph-custom-wrap').style.display)).toBe('none');
+    expect(await page.evaluate(() => PH_CUSTOM_MSG.text)).toBe('असली संदेश'); // बदला नहीं
+  });
+
+  test('"अपना संदेश" — lineman _phSaveCustomMsg/_phOpenCustomEdit सीधे बुलाए तो भी Firebase पर कुछ न लिखे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      var puts = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf('/PH_CUSTOM_MSG.json') > -1 && o && o.method === 'PUT') puts++; return orig(u, o); };
+      _phSaveCustomMsg();
+      window.fetch = orig;
+      return puts;
+    });
+    expect(r).toBe(0);
+  });
+
+  test('"अपना संदेश" — दूसरे device पर JE का बदलाव आते ही (fetchPhCustomMsgFromFB) खुले box में तुरंत दिखे, बीच टाइपिंग में न छेड़े; box बंद हो तो कुछ न छेड़े', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openPhModal('श्याम', '9876555555', 'ACC7', 0));
+    // box अभी बंद है — इसी बीच PH_CUSTOM_MSG बदल जाए (जैसे दूसरे device से), _phRefreshCustomView
+    // यहां कुछ न छेड़े (box बंद है, textarea को touch करने की ज़रूरत ही नहीं) — पर बाद में box
+    // खुलने पर नया (ताज़ा) मान ज़रूर दिखे
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'बीच में बदला संदेश', by: 'Y', at: 'Z' }; _phRefreshCustomView(); });
+    await page.evaluate(() => _phOpenCustomEdit());
+    expect(await page.evaluate(() => document.getElementById('ph-custom-text').value)).toBe('बीच में बदला संदेश'); // box खुलते ही ताज़ा मिला
+    // _phOpenCustomEdit() खुद textarea को focus कर देता है (JE तुरंत टाइप कर सकें) — यहां सिर्फ़
+    // "box खुला है पर अभी टाइप नहीं हो रहा" जांचना है, इसलिए वही focus हटा दें
+    await page.evaluate(() => document.getElementById('ph-custom-text').blur());
+
+    const r1 = await page.evaluate(() => new Promise((resolve) => {
+      const orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/PH_CUSTOM_MSG.json') > -1 && (!o || !o.method)) {
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ text: 'नया संदेश दूसरे device से', by: 'JE', at: 'अभी' }) });
+        }
+        return orig(u, o);
+      };
+      fetchPhCustomMsgFromFB();
+      setTimeout(() => { window.fetch = orig; resolve(document.getElementById('ph-custom-text').value); }, 150);
+    }));
+    expect(r1).toBe('नया संदेश दूसरे device से'); // box खुला था — live update दिखा
+    // अभी टाइप कर रहे हों — तभी एक और live update आ जाए
+    const r2 = await page.evaluate(() => {
+      PH_CUSTOM_MSG = { text: 'कुछ और', by: 'X', at: 'Y' };
+      const ta = document.getElementById('ph-custom-text');
+      ta.value = 'JE अभी यही टाइप कर रहा है...';
+      ta.focus();
+      _phRefreshCustomView();
+      return ta.value;
+    });
+    expect(r2).toBe('JE अभी यही टाइप कर रहा है...'); // focus में होने से नहीं बदला
+  });
+
+  test('"अपना संदेश" बटन का नाम भी JE बदल सकते हैं — कुछ सेव न हुआ हो तो डिफ़ॉल्ट "अपना संदेश" दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: '', label: '', by: '', at: '' }; });
+    await page.evaluate(() => openPhModal('गीता', '9876544444', 'ACC6', 0));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('अपना संदेश');
+  });
+
+  test('JE label टाइप करके सेव करे तो बटन पर वही नाम दिखे, और अगली बार मॉडल खुलने पर भी वही रहे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'तालाब किनारे अतिक्रमण हटाएं', label: '', by: 'X', at: 'Y' }; });
+    await page.evaluate(() => openPhModal('गीता', '9876544444', 'ACC6', 0));
+    await page.evaluate(() => _phOpenCustomEdit());
+    expect(await page.evaluate(() => document.getElementById('ph-custom-label').value)).toBe(''); // पहले कोई label सेव नहीं थी
+    // टाइप करते ही तुरंत बटन पर भी दिखे (सेव होने से पहले ही, इसी device पर)
+    await page.fill('#ph-custom-label', 'अतिक्रमण सूचना');
+    await page.evaluate(() => document.getElementById('ph-custom-label').dispatchEvent(new Event('input')));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('अतिक्रमण सूचना');
+
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      let putBody = null;
+      const orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/PH_CUSTOM_MSG.json') > -1 && o && o.method === 'PUT') {
+          putBody = JSON.parse(o.body);
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(putBody) });
+        }
+        return orig(u, o);
+      };
+      _phSaveCustomMsg();
+      setTimeout(() => { window.fetch = orig; resolve({ putBody: putBody }); }, 200);
+    }));
+    expect(r.putBody.label).toBe('अतिक्रमण सूचना');
+
+    // मॉडल बंद करके दोबारा खोलें — पुराना cache नहीं, ताज़ा (अभी सेव किया) label ही दिखे
+    await page.evaluate(() => closePhModal());
+    await page.evaluate(() => openPhModal('गीता', '9876544444', 'ACC6', 0));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('अतिक्रमण सूचना');
+  });
+
+  test('lineman को label बदलने का कोई रास्ता नहीं — edit-बटन ही नहीं दिखता, पर JE का सेव किया नाम बटन पर दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'सूचना', label: 'योजना प्रचार', by: 'Pradeep', at: '1/1/2026' }; });
+    await page.evaluate(() => openPhModal('मोहन लाल', '9876522222', 'ACC4', 900));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('योजना प्रचार');
+    expect(await page.evaluate(() => document.getElementById('ph-mt-edit-btn').style.display)).toBe('none');
+  });
+
+  test('दूसरे device से JE का बदला हुआ label live आते ही बटन पर दिखे (मॉडल खुली हो तब भी)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'पुराना', label: 'पुराना नाम', by: 'X', at: 'Y' }; });
+    await page.evaluate(() => openPhModal('मोहन लाल', '9876522222', 'ACC4', 900));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('पुराना नाम');
+    await page.evaluate(() => new Promise((resolve) => {
+      const orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/PH_CUSTOM_MSG.json') > -1 && (!o || !o.method)) {
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve({ text: 'नया', label: 'नया नाम', by: 'JE', at: 'अभी' }) });
+        }
+        return orig(u, o);
+      };
+      fetchPhCustomMsgFromFB();
+      setTimeout(() => { window.fetch = orig; resolve(); }, 150);
+    }));
+    expect(await page.evaluate(() => document.getElementById('ph-mt-custom-btn').textContent)).toBe('नया नाम');
   });
 });
 
@@ -2557,12 +4760,79 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(calledAfterOnline).toBe(false);
   });
 
+  // असली bug: prefetchAll() हर cold-start पर चलता था — लाइनमैन के लिए 8 पूरी लिस्ट, JE के लिए 48।
+  // मोबाइल पर ऐप दिन में कई बार minimize होकर मरता-खुलता है, तो यह दिन में दर्जनों बार दोहराता था,
+  // जबकि वही लिस्टें पहले से device पर सेव थीं
+  test('prefetchAll — दिन में एक बार से ज़्यादा न चले (bug: हर बार ऐप खुलने पर सभी श्रेणियों की पूरी लिस्ट दोबारा download)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'प्रीफ़ेच', hq: HQS[1] };
+      var key = _prefetchKey();
+      localStorage.removeItem(key);
+      var first = _prefetchDue();                                   // कभी हुआ ही नहीं → चलना चाहिए
+      localStorage.setItem(key, String(Date.now()));
+      var rightAfter = _prefetchDue();                              // अभी-अभी हुआ → न चले
+      localStorage.setItem(key, String(Date.now() - 23 * 60 * 60 * 1000));
+      var after23h = _prefetchDue();                                // 23 घंटे → अभी भी न चले
+      localStorage.setItem(key, String(Date.now() - 25 * 60 * 60 * 1000));
+      var after25h = _prefetchDue();                                // एक दिन से ज़्यादा → चले
+      localStorage.setItem(key, String(Date.now() + 5 * 60 * 60 * 1000));
+      var futureClock = _prefetchDue();                             // घड़ी पीछे हो गई → भरोसा न करें, चले
+      return { first: first, rightAfter: rightAfter, after23h: after23h, after25h: after25h, futureClock: futureClock };
+    });
+    expect(r.first).toBe(true);
+    expect(r.rightAfter).toBe(false);
+    expect(r.after23h).toBe(false);
+    expect(r.after25h).toBe(true);
+    expect(r.futureClock).toBe(true);
+  });
+
+  test('prefetchAll — रुका हुआ prefetch एक भी नेटवर्क call न करे, पर force=true उसे फिर भी चलाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'प्रीफ़ेच', hq: HQS[1] };
+      localStorage.setItem(_prefetchKey(), String(Date.now())); // आज हो चुका है
+      var hits = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf(FB) === 0) hits++; return orig(u, o); };
+      prefetchAll();
+      var throttled = hits;
+      prefetchAll(true);
+      var forced = hits;
+      window.fetch = orig;
+      _prefetchRun = false;
+      return { throttled: throttled, forced: forced };
+    });
+    expect(r.throttled).toBe(0);   // एक भी बाइट नहीं
+    expect(r.forced).toBeGreaterThan(0);
+  });
+
+  test('prefetchAll — हर HQ का अपना अलग हिसाब (एक HQ का prefetch दूसरे HQ के लाइनमैन को न रोके)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'क', hq: HQS[1] };
+      var k1 = _prefetchKey();
+      localStorage.setItem(k1, String(Date.now()));
+      var sameHq = _prefetchDue();
+      CU = { role: 'lineman', name: 'ख', hq: HQS[2] };
+      var otherHq = _prefetchDue();
+      CU = { role: 'supervisor', name: 'जेई', hq: HQS[0] };
+      var je = _prefetchDue();
+      return { k1: k1, sameHq: sameHq, otherHq: otherHq, je: je, jeKey: _prefetchKey() };
+    });
+    expect(r.sameHq).toBe(false);
+    expect(r.otherHq).toBe(true);
+    expect(r.je).toBe(true);
+    expect(r.jeKey).not.toBe(r.k1);
+  });
+
   test('EventSource बंद (readyState=2, जैसे ~1 घंटे बाद token expire) होने पर पहली बार में सीधे भारी polling पर न जाए — पहले ताज़ा token से दोबारा जोड़ने की कोशिश हो', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
     await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
     const r = await page.evaluate(() => {
       var es = liveSource;
+      es.close(); // असली (network-blocked) EventSource का अपना देर वाला error न आए — वरना वह भी थोपे गए readyState=2 से "पूरी तरह बंद" रास्ते पर जाकर दूसरी बार reconnect चला देता (test-race, ~1/15 flaky)
       Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
       es.onerror();
       return { attempts: _esReconnectAttempts, pollActive: !!pollTimer };
@@ -2582,6 +4852,360 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       return { attempts: _esReconnectAttempts, pollActive: !!pollTimer };
     });
     expect(r.pollActive).toBe(true);
+  });
+
+  // असली नाप: कमज़ोर नेट वाले एक लाइनमैन ने अकेले पूरे DC का 27% खाया — हर नेट-झटके (readyState 0)
+  // पर browser ~3 सेकंड में खुद दोबारा जोड़ता था, और Firebase हर बार जुड़ते ही पूरी list भेजता है
+  test('नेट-झटके (readyState=0) पर browser का तुरंत reconnect रुके, और बार-बार टूटने पर इंतज़ार दोगुना होता जाए (अधिकतम सीमा तक)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      ES_BACKOFF_BASE_MS = 30; ES_BACKOFF_MAX_MS = 100; ES_STABLE_MS = 60000;
+      let created = 0;
+      window.FetchLiveSource = function () { created++; this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      _esBackoffMs = 0; _esOpenedAt = 0;
+      _openLive(activeHQ, activeCat);
+      const seen = [];
+      let n = 0;
+      (function step() {
+        const es = liveSource;
+        es.readyState = 0; es.onerror();
+        seen.push({ bo: _esBackoffMs, closed: es.readyState === 2, kept: liveSource === es });
+        if (++n >= 4) return resolve({ seen: seen, created: created });
+        const t0 = Date.now();
+        (function wait() {
+          if (liveSource && liveSource !== es) return step();
+          if (Date.now() - t0 > 3000) return resolve({ seen: seen, created: created, timeout: true });
+          setTimeout(wait, 5);
+        })();
+      })();
+    }));
+    expect(r.timeout).toBeUndefined();
+    expect(r.seen.map((s) => s.bo)).toEqual([30, 60, 100, 100]); // दोगुना, फिर अधिकतम पर टिका
+    expect(r.seen.every((s) => s.closed)).toBe(true); // browser का अपना reconnect हर बार रोका गया
+    expect(r.seen.every((s) => s.kept)).toBe(true);   // रुकने के दौरान liveSource खाली नहीं हुआ
+    expect(r.created).toBe(4); // शुरुआती 1 + रुककर 3 बार दोबारा जुड़ा
+  });
+
+  test('connection ES_STABLE_MS तक टिक जाए तो अगले झटके पर इंतज़ार फिर शुरू से (लंबी सज़ा न मिले)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const bo = await page.evaluate(() => {
+      ES_BACKOFF_BASE_MS = 30; ES_BACKOFF_MAX_MS = 100; ES_STABLE_MS = 60000;
+      window.FetchLiveSource = function () { this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      _openLive(activeHQ, activeCat);
+      _esBackoffMs = 100; // पहले कई बार टूट चुका था
+      const es = liveSource;
+      es.onopen();
+      _esOpenedAt = Date.now() - 61000; // 61 सेकंड टिका रहा
+      es.readyState = 0; es.onerror();
+      return _esBackoffMs;
+    });
+    expect(bo).toBe(30);
+  });
+
+  test('रुकने के दौरान tab बदल गया तो पुराने tab के लिए दोबारा न जुड़े', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      ES_BACKOFF_BASE_MS = 30;
+      let created = 0;
+      window.FetchLiveSource = function () { created++; this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      _esBackoffMs = 0; _esOpenedAt = 0;
+      _openLive(activeHQ, activeCat);
+      const es = liveSource;
+      es.readyState = 0; es.onerror();
+      activeCat = activeCat === CATS[1] ? CATS[2] : CATS[1]; // इंतज़ार के बीच उपयोगकर्ता दूसरी श्रेणी पर चला गया
+      setTimeout(() => resolve({ created: created }), 150);
+    }));
+    expect(r.created).toBe(1); // सिर्फ़ शुरुआती — पुराने tab के लिए दोबारा नहीं जुड़ा
+  });
+
+  // जांच (App Check "outdated client" ~15%): EventSource में App Check header जा ही नहीं सकता —
+  // शक है कि सर्वर live-sync मना करता है। एक बार भी खुले बिना सीधे CLOSED = HTTP स्तर पर मनाही
+  test('live-sync एक बार भी जुड़े बिना सीधे CLOSED हो तो "एरर लॉग" में दर्ज हो — पर हर ऐप-खुलने पर सिर्फ़ एक बार', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      const logs = [];
+      window.logErr = function (c, m, x) { logs.push({ c: c, m: String(m), x: String(x || '') }); };
+      window.FetchLiveSource = function () { this.readyState = 0; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      _sseNeverOpenedLogged = false;
+      _openLive(activeHQ, activeCat);
+      let es = liveSource; es.readyState = 2; es.onerror();
+      _openLive(activeHQ, activeCat); // दोबारा वही — इस बार लॉग नहीं होना चाहिए
+      es = liveSource; es.readyState = 2; es.onerror();
+      return logs.filter((l) => l.c === 'sse-never-opened');
+    });
+    expect(r.length).toBe(1);
+    expect(r[0].x).toContain('AppCheck token'); // token था या नहीं — यही असली सुराग है
+  });
+
+  test('fetch stream की मनाही — लॉग में तरीका (fetch), HTTP status और सर्वर का जवाब भी दर्ज हो', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const logs = [];
+      window.logErr = function (c, m, x) { if (c === 'sse-never-opened') logs.push(String(x || '')); };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (opts && opts.headers && opts.headers.Accept === 'text/event-stream') {
+          return Promise.resolve(new Response('{\n  "error" : "Permission denied"\n}', { status: 403 }));
+        }
+        return orig(url, opts);
+      };
+      _sseNeverOpenedLogged = false;
+      _openLive(activeHQ, activeCat);
+      setTimeout(() => { window.fetch = orig; stopListen(); resolve(logs); }, 300);
+    }));
+    expect(r.length).toBe(1);
+    expect(r[0]).toContain('तरीका: fetch');
+    expect(r[0]).toContain('HTTP 403');
+    expect(r[0]).toContain('"error" : "Permission denied"');
+  });
+
+  test('जुड़ने के बाद टूटे (जैसे token expire) या नेट का झटका (readyState 0) हो — तो "कभी नहीं जुड़ा" वाला लॉग न बने', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const n = await page.evaluate(() => {
+      let count = 0;
+      window.logErr = function (c) { if (c === 'sse-never-opened') count++; };
+      window.FetchLiveSource = function () { this.readyState = 1; this.addEventListener = function () {}; this.close = function () { this.readyState = 2; }; };
+      _sseNeverOpenedLogged = false;
+      _openLive(activeHQ, activeCat);
+      let es = liveSource; es.onopen(); es.readyState = 2; es.onerror(); // खुला था, फिर बंद
+      _openLive(activeHQ, activeCat);
+      es = liveSource; es.readyState = 0; es.onerror(); // नेट का झटका, कभी खुला नहीं
+      return count;
+    });
+    expect(n).toBe(0);
+  });
+
+  // कदम 2: EventSource App Check header नहीं भेज सकता था, इसलिए हर device पर live-sync मना होता था
+  // ("sse-never-opened" हर HQ से)। FetchLiveSource वही streaming endpoint fetch से खोलता है — fetch
+  // wrapper token और App Check header जोड़ता है। यहां नकली stream (ReadableStream) से उसका व्यवहार जांचते हैं
+  const fakeStream = (page, spec) => page.evaluate((sp) => new Promise((resolve) => {
+    var enc = new TextEncoder(), ctl = null, seenOpts = null, seenUrl = null;
+    var orig = window.fetch;
+    window._rawFetchForTest = orig;
+    window.fetch = function (url, opts) {
+      if (opts && opts.headers && opts.headers.Accept === 'text/event-stream') {
+        seenOpts = opts; seenUrl = url;
+        if (sp.status && sp.status !== 200) return Promise.resolve(new Response('{"error":"Permission denied"}', { status: sp.status }));
+        var body = new ReadableStream({ start: function (c) { ctl = c; } });
+        return Promise.resolve(new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }));
+      }
+      return orig(url, opts);
+    };
+    var es = new FetchLiveSource(FB + '/' + fbPath('आदेगांव', 'कुल उपभोक्ता') + '.json');
+    var got = [], errs = [], opened = false;
+    es.addEventListener('put', function (e) { got.push(['put', JSON.parse(e.data)]); });
+    es.addEventListener('patch', function (e) { got.push(['patch', JSON.parse(e.data)]); });
+    es.onopen = function () { opened = true; };
+    es.onerror = function () { errs.push(es.readyState); };
+    setTimeout(function () {
+      (sp.chunks || []).forEach(function (ch) { if (ctl) ctl.enqueue(enc.encode(ch)); });
+      if (sp.closeStream && ctl) ctl.close();
+      if (sp.userClose) { es.close(); if (ctl) ctl.enqueue(enc.encode('event: put\ndata: {"path":"/","data":1}\n\n')); }
+      setTimeout(function () {
+        window.fetch = orig;
+        resolve({ opened: opened, got: got, errs: errs, rs: es.readyState, accept: seenOpts && seenOpts.headers.Accept, url: seenUrl });
+      }, 80);
+    }, 30);
+  }), spec);
+
+  test('FetchLiveSource — put/patch event सही पढ़े, एक event दो टुकड़ों में आए तब भी; keep-alive अनदेखा', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await fakeStream(page, { chunks: [
+      'event: put\ndata: {"path":"/","data":{"1":{"acc":"1"}}}\n\nevent: keep-alive\ndata: null\n\nevent: pat',
+      'ch\ndata: {"path":"/","data":{"1":{"acc":"1","status":"paid"}}}\n\n',
+    ] });
+    expect(r.opened).toBe(true);
+    expect(r.accept).toBe('text/event-stream');
+    expect(r.url).not.toContain('auth='); // token fetch wrapper खुद जोड़ता है — URL में दोबारा नहीं
+    expect(r.got).toEqual([
+      ['put', { path: '/', data: { 1: { acc: '1' } } }],
+      ['patch', { path: '/', data: { 1: { acc: '1', status: 'paid' } } }],
+    ]);
+    expect(r.errs).toEqual([]);
+  });
+
+  test('FetchLiveSource — सर्वर की मनाही (403) = एक बार भी खुले बिना CLOSED (readyState 2), EventSource जैसा', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await fakeStream(page, { status: 403 });
+    expect(r.opened).toBe(false);
+    expect(r.errs).toEqual([2]);
+  });
+
+  test('FetchLiveSource — "auth_revoked" (token expire) या "cancel" पर CLOSED, stream का टूटना = नेट का झटका (0)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const a = await fakeStream(page, { chunks: ['event: auth_revoked\ndata: "credential is no longer valid"\n\n'] });
+    expect(a.opened).toBe(true);
+    expect(a.errs).toEqual([2]);
+    const c = await fakeStream(page, { chunks: ['event: cancel\ndata: null\n\n'] });
+    expect(c.errs).toEqual([2]);
+    const d = await fakeStream(page, { closeStream: true });
+    expect(d.errs).toEqual([0]);
+  });
+
+  test('FetchLiveSource — close() के बाद कोई event या error न आए', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await fakeStream(page, { userClose: true });
+    expect(r.got).toEqual([]);
+    expect(r.errs).toEqual([]);
+    expect(r.rs).toBe(2);
+  });
+
+  // v9.167 — असली (v9.166 लॉग): stream login/सही HQ account पक्का होने से पहले खुल जाता → "Permission denied"
+  test('FetchLiveSource — stream तभी खुले जब सही HQ account पक्का हो और उसका ताज़ा token मिल जाए', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var order = [];
+      var hqOk = null;
+      window.firebase = { auth: function () { return { currentUser: { email: 'x', getIdToken: function () { order.push('token'); return Promise.resolve('hq-token'); } } }; } };
+      AUTH_READY = true;
+      var origEnsure = window._ensureCorrectHqAuth;
+      window._ensureCorrectHqAuth = function (cb) { order.push('ensure'); hqOk = cb; }; // sign-in अभी चल रहा है
+      var raw = _rawFetch;
+      _rawFetch = function (url, opts) {
+        if (opts && opts.headers && opts.headers.Accept === 'text/event-stream') { order.push('stream:' + (String(url).indexOf('auth=hq-token') > -1 ? 'hq' : 'other')); return new Promise(function () {}); }
+        return raw(url, opts);
+      };
+      AC_READY = true;
+      var es = new FetchLiveSource(FB + '/' + fbPath('आदेगांव', 'कुल उपभोक्ता') + '.json');
+      setTimeout(() => {
+        var before = order.slice();
+        hqOk(); // अब सही account तय हुआ
+        setTimeout(() => {
+          es.close(); _rawFetch = raw; window._ensureCorrectHqAuth = origEnsure; window.firebase = undefined;
+          resolve({ before: before, after: order });
+        }, 100);
+      }, 100);
+    }));
+    expect(r.before).toEqual(['ensure']); // account पक्का होने तक stream नहीं खुला
+    expect(r.after).toEqual(['ensure', 'token', 'stream:hq']); // फिर ताज़ा token से खुला
+  });
+
+  test('असली fetch wrapper से जाए — login token (?auth=) और App Check header दोनों लगें', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var raw = _rawFetch;
+      ID_TOKEN = 'tok-123'; AC_TOKEN = 'ac-456'; AC_READY = true;
+      _rawFetch = function (url, opts) {
+        if (opts && opts.headers && opts.headers.Accept === 'text/event-stream') {
+          _rawFetch = raw;
+          resolve({ url: String(url), ac: opts.headers['X-Firebase-AppCheck'] });
+          return new Promise(function () {});
+        }
+        return raw(url, opts);
+      };
+      var es = new FetchLiveSource(FB + '/' + fbPath('आदेगांव', 'कुल उपभोक्ता') + '.json');
+      setTimeout(function () { es.close(); }, 500);
+    }));
+    expect(r.url).toContain('auth=tok-123');
+    expect(r.ac).toBe('ac-456');
+  });
+
+  test('_tokenExpiryRecheck — token-expiry reconnect से पहले हल्की ETag जांच हो; कुछ नहीं बदला (304) तो भारी reconnect टलता रहे, EventSource दोबारा न खुले (JE का सवाल: "ऐप खुला छोड़ने पर cost बढ़ती है क्या?")', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.ES_RECONNECT_DELAY_MS = 10; // तेज़ जांच के लिए छोटा किया (टेस्ट-only)
+      window.TOKEN_RECHECK_MS = 40;
+      var sawEtagHeader = false, startListenCalls = 0;
+      var origStartListen = window.startListen;
+      window.startListen = function (h, c) { startListenCalls++; return origStartListen(h, c); };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) {
+          if (opts && opts.headers && opts.headers['X-Firebase-ETag']) sawEtagHeader = true;
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      var es = liveSource;
+      es.close(); // असली (network-blocked) EventSource का अपना देर वाला error न आए — वरना वह भी थोपे गए readyState=2 से "पूरी तरह बंद" रास्ते पर जाकर दूसरी बार reconnect चला देता (test-race, ~1/15 flaky)
+      Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
+      es.onerror(); // token expire जैसा — पहला attempt
+      setTimeout(() => {
+        window.fetch = orig;
+        window.startListen = origStartListen;
+        resolve({ sawEtagHeader: sawEtagHeader, startListenCalls: startListenCalls, esOpenAgain: liveSource === es ? false : !!liveSource });
+      }, 150); // ES_RECONNECT_DELAY_MS(10) + TOKEN_RECHECK_MS(40) से काफ़ी ज़्यादा — दोनों टिक चुके हों
+    }));
+    expect(r.sawEtagHeader).toBe(true);   // हल्की जांच हुई
+    expect(r.startListenCalls).toBe(0);   // कुछ नहीं बदला — भारी reconnect (नया EventSource) नहीं हुआ
+    expect(r.esOpenAgain).toBe(false);    // कोई नया live connection नहीं खुला
+  });
+
+  test('_tokenExpiryRecheck — कुछ बदला निकले (200) तो असली (पूरा) reconnect हो, _openLive बुलाया जाए', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.ES_RECONNECT_DELAY_MS = 10;
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function (h, c) { openLiveCalls++; return origOpenLive(h, c); };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        // सिर्फ़ हल्की ETag जांच नकली — live-stream (FetchLiveSource) की अपनी request असली रास्ते से जाए
+        var isStream = opts && opts.headers && opts.headers.Accept === 'text/event-stream';
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method) && !isStream) {
+          return Promise.resolve({
+            ok: true, status: 200, headers: { get: () => '"new-etag"' },
+            json: () => Promise.resolve([{ acc: '1', status: 'pending', amount: 100 }]),
+          });
+        }
+        return orig(url, opts);
+      };
+      var es = liveSource;
+      es.close(); // असली (network-blocked) EventSource का अपना देर वाला error न आए — वरना वह भी थोपे गए readyState=2 से "पूरी तरह बंद" रास्ते पर जाकर दूसरी बार reconnect चला देता (test-race, ~1/15 flaky)
+      Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
+      es.onerror();
+      setTimeout(() => {
+        window.fetch = orig;
+        window._openLive = origOpenLive;
+        resolve({ openLiveCalls: openLiveCalls });
+      }, 300); // भारी parallel-suite load में 100ms कभी-कभी कम पड़ता था — मार्जिन बढ़ाया
+    }));
+    expect(r.openLiveCalls).toBe(1); // बदला हुआ data मिला — असली reconnect हुआ
+  });
+
+  test('_tokenExpiryRecheck — हल्की जांच ही नाकाम (network error) हो तो पुराने, हमेशा-safe रास्ते (_openLive) पर लौट जाए', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource, null, { timeout: 15000 });
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.ES_RECONNECT_DELAY_MS = 10;
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function (h, c) { openLiveCalls++; return origOpenLive(h, c); };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) {
+          return Promise.reject(new Error('network down'));
+        }
+        return orig(url, opts);
+      };
+      var es = liveSource;
+      es.close(); // असली (network-blocked) EventSource का अपना देर वाला error न आए — वरना वह भी थोपे गए readyState=2 से "पूरी तरह बंद" रास्ते पर जाकर दूसरी बार reconnect चला देता (test-race, ~1/15 flaky)
+      Object.defineProperty(es, 'readyState', { value: 2, configurable: true });
+      es.onerror();
+      setTimeout(() => {
+        window.fetch = orig;
+        window._openLive = origOpenLive;
+        resolve({ openLiveCalls: openLiveCalls });
+      }, 300); // भारी parallel-suite load में 100ms कभी-कभी कम पड़ता था — मार्जिन बढ़ाया
+    }));
+    expect(r.openLiveCalls).toBe(1); // जांच नाकाम — फिर भी असली reconnect की कोशिश हुई, डेटा अटका न रहे
   });
 
   test('pollOnce (आख़िरी सहारे वाला भारी fallback) — ETag भेजे, और HTTP 304 (कुछ नहीं बदला) पर कोई दोबारा render/error न हो', async ({ page }) => {
@@ -2618,7 +5242,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     await loginLineman(page);
     const r = await page.evaluate(() => new Promise((resolve) => {
       cSet(activeHQ, activeCat, [{ acc: '1', status: 'pending', amount: 100 }]);
-      _fbGetEtag[activeHQ + '/' + activeCat] = '"etag-abc"'; // पहले से ETag store है
+      _etagSet(activeHQ, activeCat, '"etag-abc"'); // पहले से ETag store है
       var sawEtag = false, sawIfNoneMatch = false;
       var orig = window.fetch;
       window.fetch = function (url, opts) {
@@ -2705,7 +5329,9 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       var count = 0;
       var orig = window.fetch;
       window.fetch = function (url, opts) {
-        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method)) count++;
+        // live-stream खुद (Accept: text/event-stream) redundant नहीं — वही तो "EventSource" है (देखें FetchLiveSource)
+        var isStream = opts && opts.headers && opts.headers.Accept === 'text/event-stream';
+        if (typeof url === 'string' && url.indexOf(fbPath(activeHQ, activeCat)) > -1 && (!opts || !opts.method) && !isStream) count++;
         return orig(url, opts);
       };
       startListen(activeHQ, activeCat); // सिर्फ़ synchronous हिस्सा जांचना है — EventSource async है
@@ -2713,6 +5339,181 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       return count;
     });
     expect(immediateFetchCount).toBe(0);
+  });
+
+  test('startListen — tab-revisit: हाल ही में (grace window में) ताज़ा देखी list पर वापस आने पर कुछ नहीं बदला (304) तो _openLive तुरंत न बुलाए, ETag header भेजा जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'आदेगांव', cat = 'कुल उपभोक्ता';
+      cSet(hq, cat, [{ acc: '1', status: 'pending', amount: 100 }]);
+      _lastLiveAt[hq + '/' + cat] = Date.now(); // अभी-अभी ताज़ा सिंक हुआ मान लो
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var sawEtagHeader = false;
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) {
+          if (opts && opts.headers && opts.headers['X-Firebase-ETag']) sawEtagHeader = true;
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      setTimeout(() => {
+        window.fetch = orig;
+        window._openLive = origOpenLive;
+        resolve({ sawEtagHeader: sawEtagHeader, openLiveCalls: openLiveCalls });
+      }, 150);
+    }));
+    expect(r.sawEtagHeader).toBe(true);
+    expect(r.openLiveCalls).toBe(0); // 304 पर SSE तुरंत नहीं खुला
+  });
+
+  test('startListen — tab-revisit: 304 के बाद grace window बीतते ही (उपयोगकर्ता अब भी उसी tab पर हो तो) असली live-connection अपने-आप जुड़े', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'आदेगांव', cat = 'कुल उपभोक्ता';
+      activeHQ = hq; activeCat = cat;
+      cSet(hq, cat, [{ acc: '1', status: 'pending', amount: 100 }]);
+      var origGrace = window.TAB_REVISIT_GRACE_MS;
+      window.TAB_REVISIT_GRACE_MS = 60; // तेज़ जांच के लिए छोटा किया (टेस्ट-only)
+      _lastLiveAt[hq + '/' + cat] = Date.now();
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) {
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      setTimeout(() => {
+        var beforeGraceEnds = openLiveCalls; // 60ms अभी नहीं बीते
+        setTimeout(() => {
+          window.fetch = orig;
+          window._openLive = origOpenLive;
+          window.TAB_REVISIT_GRACE_MS = origGrace;
+          resolve({ beforeGraceEnds: beforeGraceEnds, afterGraceEnds: openLiveCalls });
+        }, 250);
+      }, 20);
+    }));
+    expect(r.beforeGraceEnds).toBe(0);
+    expect(r.afterGraceEnds).toBe(1);
+  });
+
+  test('startListen — tab-revisit: deferred reconnect सिर्फ़ तभी चले जब उपयोगकर्ता अब भी उसी tab पर हो — बीच में कहीं और चले गए तो न चले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'आदेगांव', cat = 'कुल उपभोक्ता';
+      activeHQ = hq; activeCat = cat;
+      cSet(hq, cat, [{ acc: '1', status: 'pending', amount: 100 }]);
+      var origGrace = window.TAB_REVISIT_GRACE_MS;
+      window.TAB_REVISIT_GRACE_MS = 60;
+      _lastLiveAt[hq + '/' + cat] = Date.now();
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) {
+          return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+        }
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      setTimeout(() => { activeCat = 'घरेलू'; }, 15); // grace बीतने से पहले ही कहीं और चले गए
+      setTimeout(() => {
+        window.fetch = orig;
+        window._openLive = origOpenLive;
+        window.TAB_REVISIT_GRACE_MS = origGrace;
+        resolve({ openLiveCalls: openLiveCalls });
+      }, 250);
+    }));
+    expect(r.openLiveCalls).toBe(0); // पुरानी tab के लिए दोबारा live न जुड़े
+  });
+
+  test('startListen — tab-revisit: कुछ बदला निकले (200) तो सीधे _openLive बुलाया जाए (वही ताज़ा data ले आएगा)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'आदेगांव', cat = 'कुल उपभोक्ता';
+      cSet(hq, cat, [{ acc: '1', status: 'pending', amount: 100 }]);
+      _lastLiveAt[hq + '/' + cat] = Date.now();
+      var openLiveCalls = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) {
+          return Promise.resolve({
+            ok: true, status: 200, headers: { get: () => '"new-etag"' },
+            json: () => Promise.resolve([{ acc: '1', status: 'paid', amount: 100 }]),
+          });
+        }
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      setTimeout(() => {
+        window.fetch = orig;
+        window._openLive = origOpenLive;
+        resolve({ openLiveCalls: openLiveCalls });
+      }, 300);
+    }));
+    expect(r.openLiveCalls).toBe(1);
+  });
+
+  test('startListen — tab-revisit: पहली बार (_lastLiveAt न हो) — कोई ETag pre-check नहीं, सीधे _openLive (पुराना व्यवहार अपरिवर्तित)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var hq = 'पिंडरई', cat = 'कुल उपभोक्ता'; // इस key का _lastLiveAt कभी नहीं भरा
+      var openLiveCalls = 0, preCheckFetches = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) preCheckFetches++;
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      window.fetch = orig;
+      window._openLive = origOpenLive;
+      return { openLiveCalls: openLiveCalls, preCheckFetches: preCheckFetches };
+    });
+    expect(r.preCheckFetches).toBe(0);
+    expect(r.openLiveCalls).toBe(1);
+  });
+
+  test('startListen — tab-revisit: offline pending बदलाव हों तो gate न लगे, सीधे _openLive (stale cache पर भरोसा न किया जाए)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var hq = 'आदेगांव', cat = 'कुल उपभोक्ता';
+      cSet(hq, cat, [{ acc: '1', status: 'pending', amount: 100 }]);
+      _lastLiveAt[hq + '/' + cat] = Date.now();
+      markPending(hq, cat, 'put');
+      var openLiveCalls = 0, preCheckFetches = 0;
+      var origOpenLive = window._openLive;
+      window._openLive = function () { openLiveCalls++; };
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath(hq, cat)) > -1 && (!opts || !opts.method)) preCheckFetches++;
+        return orig(url, opts);
+      };
+      startListen(hq, cat);
+      window.fetch = orig;
+      window._openLive = origOpenLive;
+      clearPendingKey(cKey(hq, cat));
+      return { openLiveCalls: openLiveCalls, preCheckFetches: preCheckFetches };
+    });
+    expect(r.preCheckFetches).toBe(0);
+    expect(r.openLiveCalls).toBe(1);
   });
 
   test('_cashRefreshAll — 5 मिनट के cooldown के अंदर दोबारा बुलाने पर network fetch न हो (बैकअप/village-report/WhatsApp-scorecard बार-बार खुलने पर बचत)', async ({ page }) => {
@@ -2723,7 +5524,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ9') > -1) {
           fetchCount++;
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };
@@ -2747,7 +5548,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('टेस्ट_HQ10') > -1) {
           fetchCount++;
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([{ acc: '1', status: 'pending' }]) });
         }
         return orig(url, opts);
       };
@@ -2801,7 +5602,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       window.fetch = function (url, opts) {
         if (typeof url === 'string' && url.indexOf('आदेगांव') > -1 && (!opts || !opts.method)) {
           fetchCount++;
-          return Promise.resolve({ ok: true, json: () => Promise.resolve([]) }); // असली fetch जैसा सफल जवाब — तभी cooldown रिकॉर्ड होगा
+          return Promise.resolve({ ok: true, status: 200, headers: { get: () => null }, json: () => Promise.resolve([]) }); // असली fetch जैसा सफल जवाब — तभी cooldown रिकॉर्ड होगा
         }
         return orig(url, opts);
       };
@@ -2837,27 +5638,119 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(opened).toBe(false);
   });
 
-  test('visibilitychange — tab background में जाते ही listen/timer रुकें, वापस दिखने पर फिर जुड़ें (bug: background में पड़ा device घंटों तक चुपचाप bandwidth खर्च करता रहना)', async ({ page }) => {
+  test('visibilitychange — देर तक background में पड़े रहने पर listen/timer रुकें (bug: background में पड़ा device घंटों तक चुपचाप bandwidth खर्च करता रहना)', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
     await page.waitForFunction(() => !!catNamesTimer, null, { timeout: 15000 }); // startListen fbGet callback के बाद async चलता है
     const r = await page.evaluate(() => new Promise((resolve) => {
       _pendingUpdate = false; // नया handler: pending update होने पर reload — यहां यही जांचना नहीं है
+      LISTEN_HIDE_GRACE_MS = 60; // टेस्ट में छोटा करके तुरंत जांच
       var hadTimerBefore = !!catNamesTimer;
       Object.defineProperty(document, 'hidden', { value: true, configurable: true });
       document.dispatchEvent(new Event('visibilitychange'));
-      var timerClearedOnHide = !catNamesTimer;
-      var listenClearedOnHide = !liveSource && !pollTimer;
-      Object.defineProperty(document, 'hidden', { value: false, configurable: true });
-      document.dispatchEvent(new Event('visibilitychange'));
       setTimeout(() => {
-        resolve({ hadTimerBefore: hadTimerBefore, timerClearedOnHide: timerClearedOnHide, listenClearedOnHide: listenClearedOnHide, timerResumedOnShow: !!catNamesTimer });
-      }, 50);
+        var timerClearedOnHide = !catNamesTimer;
+        var listenClearedOnHide = !liveSource && !pollTimer;
+        Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        setTimeout(() => {
+          resolve({ hadTimerBefore: hadTimerBefore, timerClearedOnHide: timerClearedOnHide, listenClearedOnHide: listenClearedOnHide, timerResumedOnShow: !!catNamesTimer });
+        }, 50);
+      }, 200);
     }));
     expect(r.hadTimerBefore).toBe(true);
     expect(r.timerClearedOnHide).toBe(true);
     expect(r.listenClearedOnHide).toBe(true);
     expect(r.timerResumedOnShow).toBe(true);
+  });
+
+  // असली bandwidth bug: startListen() हर बार नया EventSource खोलता है और Firebase जुड़ते ही पहले
+  // "put" event में पूरी list भेज देता है। लाइनमैन दिन भर ऐप से बाहर-अंदर होता रहता है (WhatsApp,
+  // कैमरा, कॉल) — हर बार पूरी "कुल उपभोक्ता" लिस्ट दोबारा उतरती थी
+  test('visibilitychange — थोड़ी देर के लिए ऐप से बाहर जाकर वापस आने पर connection टूटे ही नहीं (वरना हर बार पूरी लिस्ट दोबारा download)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource || !!pollTimer, null, { timeout: 15000 });
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      _pendingUpdate = false;
+      var before = liveSource;
+      var restarted = 0;
+      var origStart = window.startListen;
+      window.startListen = function (h, c) { restarted++; return origStart(h, c); };
+      Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      setTimeout(() => { // grace से बहुत पहले वापस आ गए
+        Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+        document.dispatchEvent(new Event('visibilitychange'));
+        setTimeout(() => {
+          window.startListen = origStart;
+          resolve({ restarted: restarted, sameSource: liveSource === before, stillLive: !!liveSource || !!pollTimer });
+        }, 100);
+      }, 100);
+    }));
+    expect(r.restarted).toBe(0);   // दोबारा जुड़ने की कोशिश ही न हो
+    expect(r.sameSource).toBe(true); // वही पुराना connection चलता रहे
+    expect(r.stillLive).toBe(true);
+  });
+});
+
+test.describe('Firebase download quota — ETag device पर सहेजा जाए (bug: ऐप बंद/minimize होते ही ETag मिट जाता, हर बार हर list पूरी दोबारा download)', () => {
+  test('fbGet — पहली बार का ETag localStorage में सहेजा जाए और अगली बार if-none-match में भेजा जाए', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      localStorage.removeItem(ETAG_KEY);
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'क', amt: 100 }]);
+      _etagSet('आदेगांव', 'कुल उपभोक्ता', 'etag-abc');
+    });
+    const sent = await page.evaluate(() => new Promise((resolve) => {
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(fbPath('आदेगांव', 'कुल उपभोक्ता')) > -1) {
+          window.fetch = orig;
+          resolve((opts && opts.headers && opts.headers['if-none-match']) || null);
+        }
+        return orig(url, opts);
+      };
+      fbGet('आदेगांव', 'कुल उपभोक्ता', function () {});
+      setTimeout(() => resolve('कोई request ही नहीं'), 5000);
+    }));
+    expect(sent).toBe('etag-abc');
+  });
+
+  test('_etagGet — cache खाली हो तो सहेजा ETag इस्तेमाल न हो (वरना 304 पर न नया data मिलेगा न पुराना)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      cSet('जोबा', 'घरेलू', [{ acc: '9', name: 'ख', amt: 5 }]);
+      _etagSet('जोबा', 'घरेलू', 'etag-xyz');
+      var withCache = _etagGet('जोबा', 'घरेलू');
+      cSet('जोबा', 'घरेलू', []); // cache मिट गया (जैसे localStorage quota भरने पर)
+      return { withCache: withCache, withoutCache: _etagGet('जोबा', 'घरेलू') };
+    });
+    expect(r.withCache).toBe('etag-xyz');
+    expect(r.withoutCache).toBeNull();
+  });
+
+  test('prefetchAll — हर list ETag के साथ मांगे (bug: यह ETag इस्तेमाल ही नहीं करता था, रोज़ हर device की सारी श्रेणियां पूरी दोबारा download)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      CU = { role: 'lineman', name: 'प्रीफ़ेच', hq: 'आदेगांव' };
+      localStorage.removeItem(_prefetchKey());
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'क', amt: 100 }]);
+      _etagSet('आदेगांव', 'कुल उपभोक्ता', 'etag-pf');
+      var withEtag = 0, total = 0;
+      var orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf(FB) === 0 && (!opts || !opts.method)) {
+          total++;
+          if (opts && opts.headers && opts.headers['X-Firebase-ETag']) withEtag++;
+        }
+        return orig(url, opts);
+      };
+      prefetchAll(true);
+      setTimeout(() => { window.fetch = orig; _prefetchRun = false; resolve({ withEtag: withEtag, total: total }); }, 2500);
+    }));
+    expect(r.total).toBeGreaterThan(0);
+    expect(r.withEtag).toBe(r.total); // हर एक request ETag के साथ
   });
 });
 
@@ -2869,6 +5762,89 @@ test.describe('लिस्ट अपलोड — सिर्फ़ JE का 
     expect(linemanBtns).not.toContain('अपलोड');
   });
 
+  // JE: "कैटेगरी में नए एडिट टेबल नाम तुरंत नहीं आ रहे हैं जिससे अपन उसमें अपलोड नहीं कर पा रहे"
+  // विकल्प index.html में hardcoded थे और सिर्फ़ slots 4-7 सिंक होते थे
+  test('अपलोड की श्रेणी-सूची बदले हुए नाम तुरंत दिखाए — घरेलू/व्यवसाय/कृषि समेत', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 1: 'घरेलू-नया', 3: 'कृषि-नई', 6: '3 MONTH NON PAYEE' };
+      rebuildCatsForHQ('आदेगांव');
+      activeHQ = 'आदेगांव';
+      openUpModal();
+      var opts = [].slice.call(document.querySelectorAll('#up-cat option')).map((o) => o.value);
+      closeUpModal();
+      return opts;
+    });
+    expect(r).toEqual(['', 'कुल उपभोक्ता', 'घरेलू-नया', 'व्यवसाय', 'कृषि-नई',
+      'गवर्नमेंट', 'इंडस्ट्रियल', '3 MONTH NON PAYEE', 'सूची-3']);
+  });
+
+  // इससे भी ख़तरनाक: modal के अपने HQ-चयन से दूसरा मुख्यालय चुनने पर नाम पिछले HQ के ही रहते —
+  // यानी "मढ़ी" चुनकर आदेगांव के नाम पर अपलोड हो जाता, यानी बिलकुल ग़लत पते पर
+  test('modal में मुख्यालय बदलते ही श्रेणी-नाम भी उसी मुख्यालय के हो जाएँ', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 6: 'आदेगांव-वाली' };
+      CAT_NAMES['मढ़ी'] = { 6: 'मढ़ी-वाली' };
+      activeHQ = 'आदेगांव'; rebuildCatsForHQ(activeHQ);
+      openUpModal();
+      var before = [].slice.call(document.querySelectorAll('#up-cat option')).map((o) => o.value);
+      document.getElementById('up-hq').value = 'मढ़ी';
+      onUpHqChange();
+      var after = [].slice.call(document.querySelectorAll('#up-cat option')).map((o) => o.value);
+      closeUpModal();
+      return { before: before, after: after };
+    });
+    expect(r.before).toContain('आदेगांव-वाली');
+    expect(r.after).toContain('मढ़ी-वाली');
+    expect(r.after).not.toContain('आदेगांव-वाली'); // पिछले HQ का नाम बचा न रह जाए
+  });
+
+  test('मुख्यालय बदलने पर वह चुनाव छूट जाए जो नए मुख्यालय में है ही नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 6: 'सिर्फ-आदेगांव' };
+      CAT_NAMES['बीबी'] = {};
+      activeHQ = 'आदेगांव'; rebuildCatsForHQ(activeHQ);
+      openUpModal();
+      document.getElementById('up-cat').value = 'सिर्फ-आदेगांव';
+      var picked = document.getElementById('up-cat').value;
+      document.getElementById('up-hq').value = 'बीबी';
+      onUpHqChange();
+      var after = document.getElementById('up-cat').value;
+      // पर जो नाम दोनों में एक जैसा है वह बचा रहना चाहिए
+      document.getElementById('up-cat').value = 'कृषि';
+      document.getElementById('up-hq').value = 'जोबा';
+      onUpHqChange();
+      var kept = document.getElementById('up-cat').value;
+      closeUpModal();
+      return { picked: picked, after: after, kept: kept };
+    });
+    expect(r.picked).toBe('सिर्फ-आदेगांव');
+    expect(r.after).toBe('');       // बीबी में वह श्रेणी है ही नहीं — चुनाव साफ़
+    expect(r.kept).toBe('कृषि');     // दोनों में है — बचा रहा
+  });
+
+  test('श्रेणी का नाम HTML जैसा हो तो भी सूची में टेक्स्ट ही रहे (markup न बने)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      CAT_NAMES['आदेगांव'] = { 6: '<img src=x onerror=alert(1)>' };
+      activeHQ = 'आदेगांव'; rebuildCatsForHQ(activeHQ);
+      openUpModal();
+      var sel = document.getElementById('up-cat');
+      var out = { imgs: sel.querySelectorAll('img').length,
+        txt: [].slice.call(sel.options).map((o) => o.textContent).join('|') };
+      closeUpModal();
+      return out;
+    });
+    expect(r.imgs).toBe(0);
+    expect(r.txt).toContain('<img src=x onerror=alert(1)>');
+  });
+
   test('openUpModal — lineman सीधे function बुलाए तो भी न खुले (defense-in-depth)', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
@@ -2877,6 +5853,440 @@ test.describe('लिस्ट अपलोड — सिर्फ़ JE का 
       return document.getElementById('up-overlay').classList.contains('open');
     });
     expect(opened).toBe(false);
+  });
+});
+
+// पहले "पुरानी वसूली सुरक्षित रखें" में कोई तारीख़-जांच नहीं थी — पिछले लेजर का हर "वसूल" नए लेजर
+// में भी चिपक जाता, इसलिए जिसने नया बिल जमा नहीं किया वो भी "वसूल" दिखता, लाइनमैन उस तक जाता ही
+// नहीं और वसूली चुपचाप छूट जाती
+test.describe('नया लेजर अपलोड — सिर्फ़ चुनी तारीख़ से दर्ज वसूली ही आगे जाए', () => {
+  const seed = async (page) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => {
+      // तारीख़ें आज के सापेक्ष — "पिछला लेजर" = 20 दिन पहले, "चालू खिड़की" = आज
+      var dmy = (d) => d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear();
+      var today = new Date();
+      var old = new Date(today.getTime() - 20 * 86400000);
+      var cut = new Date(today.getTime() - 5 * 86400000); // कट-ऑफ़ इन दोनों के बीच
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'सिर्फ़ पिछला लेजर', amount: 3400, status: 'paid', paydate: dmy(old), ts: Date.now() },
+        { acc: '2', name: 'पिछला + चालू (दोबारा वसूल किया)', amount: 3400, status: 'paid', paydate: dmy(today), ts: Date.now() },
+        { acc: '3', name: 'सिर्फ़ चालू', amount: 3400, status: 'paid', paydate: dmy(today), ts: Date.now() },
+        { acc: '4', name: 'कभी नहीं', amount: 3400, status: 'pending', ts: Date.now() },
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      document.getElementById('up-keepfrom').value = cut.getFullYear() + '-' + ('0' + (cut.getMonth() + 1)).slice(-2) + '-' + ('0' + cut.getDate()).slice(-2);
+      setUpMode('replace');
+      // नया (सितंबर) लेजर — सब pending
+      parsedRows = ['1', '2', '3', '4'].map(function (a) {
+        return { acc: a, name: 'उपभोक्ता ' + a, amount: 1200, status: 'pending', remarksArr: [] };
+      });
+    });
+  };
+
+  test('कट-ऑफ़ से पुरानी (पिछले माह की) वसूली हट जाए, इसी माह वाली बनी रहे', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      confirmUpload();
+      var d = cGet('आदेगांव', 'कुल उपभोक्ता');
+      var by = {}; d.forEach(function (x) { by[x.acc] = x.status; });
+      return by;
+    });
+    expect(r['1']).toBe('pending'); // सिर्फ़ 25 अगस्त — कट-ऑफ़ से पुरानी, हट गई
+    expect(r['2']).toBe('paid');    // दोबारा वसूल करने से paydate चालू माह की — बनी रही
+    expect(r['3']).toBe('paid');    // 5 सितंबर — बनी रही
+    expect(r['4']).toBe('pending'); // कभी जमा ही नहीं किया
+  });
+
+  test('_upKeepPreview — अपलोड से पहले ही दिखे कि कितनी वसूली रहेगी और कितनी हटेगी', async ({ page }) => {
+    await seed(page);
+    const note = await page.evaluate(() => { _upKeepPreview(); return document.getElementById('up-keepnote').textContent; });
+    expect(note).toContain('2 उपभोक्ता की वसूली बनी रहेगी'); // acc 2 और 3
+    expect(note).toContain('1 पुरानी');                      // acc 1
+  });
+
+  test('checkbox हटा दें तो कोई वसूली आगे न जाए (पुराना व्यवहार बरकरार)', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      document.getElementById('up-keeppaid').checked = false;
+      confirmUpload();
+      return cGet('आदेगांव', 'कुल उपभोक्ता').filter(function (x) { return x.status === 'paid'; }).length;
+    });
+    expect(r).toBe(0);
+  });
+});
+
+test.describe('लेजर अपलोड के बाद reconcileHQ चले — किसी भी category में वसूल acc सभी categories में वसूल हो (bug: जोबा में "किशन" category 176 वसूल दिखाती थी, बाद में अलग से अपलोड हुई "कुल उपभोक्ता" सिर्फ़ 29 — दोनों categories का लेजर अलग-अलग समय अपलोड होने से status नहीं मिल पाया, क्योंकि सामान्य अपलोड के बाद reconcileHQ कभी नहीं चलता था — सिर्फ़ कैश-लिस्ट अपलोड में चलता था)', () => {
+  test('replace mode — नई category upload होने पर, किसी और (पहले से मौजूद) category में वसूल acc नई category में भी वसूल आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      // "घरेलू" में यह उपभोक्ता पहले से वसूल है (जैसे "किशन" में था)
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: '1/1/2026', amount: 100 },
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      // नया "कुल उपभोक्ता" लेजर — सब pending (जैसा असली नए लेजर में होता है)
+      parsedRows = [{ acc: '1', name: 'राम', amount: 100, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      var d = cGet('आदेगांव', 'कुल उपभोक्ता');
+      return { status: d.find(function (x) { return x.acc === '1'; }).status };
+    });
+    expect(r.status).toBe('paid'); // reconcileHQ ने "घरेलू" से मिलाकर नई "कुल उपभोक्ता" में भी वसूल कर दिया
+  });
+
+  test('merge mode — नई category upload होने पर भी reconcileHQ चले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: '1/1/2026', amount: 100 },
+      ]);
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '1', name: 'राम', status: 'pending', amount: 100 }, // अभी तक "बाकी" — merge में यह list खाली न होने से "merge" पथ चलेगा
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'घरेलू';
+      setUpMode('merge');
+      parsedRows = [{ acc: '2', name: 'श्याम', amount: 200, status: 'pending', remarksArr: [] }]; // नया, अलग acc
+      confirmUpload();
+      var d = cGet('आदेगांव', 'घरेलू');
+      return { status: d.find(function (x) { return x.acc === '1'; }).status };
+    });
+    expect(r.status).toBe('paid'); // reconcileHQ ने "कुल उपभोक्ता" से मिलाकर "घरेलू" का पुराना acc भी वसूल कर दिया
+  });
+});
+
+// असली production bug (JE की रिपोर्ट, मढ़ी): एक ही Consumer No के दो अलग card एक साथ दिखे। जड़: Merge
+// mode में पहले से duplicate-acc जांच थी (मौजूदा list से मिलाते वक़्त), पर Replace mode में नहीं —
+// फ़ाइल में ही वही Consumer No दो बार हो (जैसे मीटर बदलने पर) तो दोनों सीधे सेव हो जाते थे। migrated
+// (per-record) श्रेणी में यह सिर्फ़ दिखावटी confusion नहीं — दोनों की Firebase-key वही acc होती, तो एक
+// को "वसूल" मार्क करने पर patch उसी key पर टकराता और दूसरे की वसूली चुपचाप overwrite हो सकती थी
+test.describe('Replace mode अपलोड — फ़ाइल में ही duplicate Consumer No हो तो पहला रखें, बाकी skip करें', () => {
+  test('same acc वाले 2 rows में से सिर्फ़ पहला बचे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      parsedRows = [
+        { acc: '1134004076', name: 'GAREEBA CHAMAR पहला', amount: 609, status: 'pending', remarksArr: [] },
+        { acc: '2', name: 'दूसरा उपभोक्ता', amount: 200, status: 'pending', remarksArr: [] },
+        { acc: '1134004076', name: 'GAREEBA CHAMAR दूसरा (duplicate)', amount: 609, status: 'pending', remarksArr: [] },
+      ];
+      confirmUpload();
+      var d = cGet('आदेगांव', 'कुल उपभोक्ता');
+      return { count: d.length, names: d.map(function (x) { return x.name; }), toastText: document.getElementById('toast').textContent };
+    });
+    expect(r.count).toBe(2); // duplicate वाला तीसरा row skip हुआ
+    expect(r.names).toContain('GAREEBA CHAMAR पहला'); // पहला occurrence बचा
+    expect(r.names).not.toContain('GAREEBA CHAMAR दूसरा (duplicate)');
+    expect(r.toastText).toContain('1 duplicate Consumer No skip');
+  });
+
+  test('acc-रहित रिकॉर्ड यहां नहीं छुए जाएं — वो चरण-3 की अलग समस्या है', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      parsedRows = [
+        { acc: '', name: 'Consumer No खाली 1', amount: 100, status: 'pending', remarksArr: [] },
+        { acc: '', name: 'Consumer No खाली 2', amount: 100, status: 'pending', remarksArr: [] },
+      ];
+      confirmUpload();
+      return cGet('आदेगांव', 'कुल उपभोक्ता').length;
+    });
+    expect(r).toBe(2); // दोनों acc-रहित records बने रहे, ग़लती से duplicate मानकर हटे नहीं
+  });
+});
+
+// (ख) पुरानी कॉपी वाला फ़ोन सेव करे तो सर्वर पर पड़ा किसी और का रिमार्क न दबे — per-record PATCH पूरा
+// record भेजता है, इसलिए भेजने से पहले उस record का सर्वर वाला remarksArr पढ़कर मिलाया जाता है
+test.describe('सेव से पहले सर्वर के रिमार्क मिलाओ — पुरानी कॉपी वाला फ़ोन किसी का रिमार्क न मिटाए', () => {
+  const setup = (page, opts) => page.evaluate((o) => new Promise((resolve) => {
+    Object.defineProperty(navigator, 'onLine', { get: () => o.online !== false, configurable: true });
+    var hq = 'टेस्ट HQ31', cat = 'कुल उपभोक्ता';
+    MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+    var serverRmk = [{ text: 'कल शाम आएंगे', by: 'राजू', at: '23/9/2026, 6:00 pm' }];
+    var gets = [], patches = [];
+    var orig = window.fetch;
+    window.fetch = function (url, init) {
+      var u = String(url);
+      if (u.indexOf(fbPath(hq, cat)) > -1) {
+        if (init && init.method === 'PATCH') {
+          patches.push(JSON.parse(init.body));
+          return Promise.resolve(new Response('{}', { status: o.patchStatus || 200 }));
+        }
+        if (u.indexOf('/remarksArr.json') > -1) {
+          gets.push(u);
+          return Promise.resolve(new Response(JSON.stringify(serverRmk), { status: 200 }));
+        }
+      }
+      return orig(url, init);
+    };
+    var n = o.count || 1;
+    var prev = [], arr = [];
+    for (var i = 0; i < n; i++) {
+      prev.push({ acc: String(100 + i), name: 'उपभोक्ता', status: 'pending', o: i, remarksArr: [] });
+      arr.push({ acc: String(100 + i), name: 'उपभोक्ता', status: 'paid', paydate: '24/9/2026', o: i, remarksArr: o.myRmk ? [{ text: 'मेरा', by: 'JE', at: '24/9/2026' }] : [] });
+    }
+    cSet(hq, cat, arr);
+    fbSet(hq, cat, arr, prev, function (ok) {
+      var after = function () {
+        window.fetch = orig;
+        resolve({ ok: ok, gets: gets.length, patches: patches, cache: cGet(hq, cat)[0].remarksArr.map(function (r) { return r.text; }) });
+      };
+      if (o.thenFlush) {
+        o.patchStatus = 200;
+        serverRmk.push({ text: 'offline के बीच डाला', by: 'मोहन', at: '24/9/2026, 9:00 am' });
+        flushPending();
+        setTimeout(after, 300);
+      } else after();
+    });
+  }), opts);
+
+  test('"वसूल" मार्क करने वाले फ़ोन पर रिमार्क नहीं था — सर्वर वाला रिमार्क PATCH में जाए, फ़ोन पर भी दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await setup(page, {});
+    expect(r.ok).toBe(true);
+    expect(r.gets).toBe(1);
+    expect(r.patches[0]['100'].status).toBe('paid');
+    expect(r.patches[0]['100'].remarksArr.map((x) => x.text)).toEqual(['कल शाम आएंगे']);
+    expect(r.cache).toEqual(['कल शाम आएंगे']);
+  });
+
+  test('अपना नया रिमार्क भी — सर्वर वाला पहले, अपना बाद में, कोई दोहराव नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await setup(page, { myRmk: true });
+    const texts = r.patches[0]['100'].remarksArr.map((x) => x.text);
+    expect(texts).toEqual(['कल शाम आएंगे', 'मेरा']);
+    expect(r.patches[0]['100'].remarks).toBe('मेरा');
+  });
+
+  test('थोक बदलाव (10 से ज़्यादा records, जैसे अपलोड) — हर record की अलग पढ़ाई न हो', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await setup(page, { count: 11 });
+    expect(r.gets).toBe(0);
+    expect(Object.keys(r.patches[0]).length).toBe(11);
+  });
+
+  test('offline में अटका patch — नेट आने पर भेजने से पहले इस बीच सर्वर पर आया रिमार्क भी मिले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await setup(page, { patchStatus: 503, thenFlush: true });
+    expect(r.ok).toBe(false);
+    expect(r.patches.length).toBe(2);
+    expect(r.patches[1]['100'].remarksArr.map((x) => x.text)).toEqual(['कल शाम आएंगे', 'offline के बीच डाला']);
+  });
+});
+
+// असली शिकायत (JE, बीबी): कल डाले रिमार्क आज गायब। Replace/"हटाएं → अपलोड" में पहले सिर्फ़ "वसूल"
+// उपभोक्ताओं के रिमार्क नई सूची में जाते थे — बाकी (अवसूल) उपभोक्ताओं के सब मिट जाते थे
+test.describe('अपलोड में पुराने रिमार्क सुरक्षित — वसूल हो या बाकी, हर उपभोक्ता के', () => {
+  const rmk = (t, by, at, cat) => ({ text: t, by: by || 'राजू', at: at || '23/9/2026, 5:00 pm', cat: cat });
+
+  test('Replace — बाकी (अवसूल) उपभोक्ता का पुराना रिमार्क नई सूची में आए, फ़ाइल वाला भी बचे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate((R) => {
+      cSet('बीबी', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'pending', amount: 100, remarksArr: [R.a] },
+        { acc: '2', name: 'श्याम', status: 'paid', paydate: new Date().toLocaleDateString('hi-IN'), amount: 100, remarksArr: [R.b] },
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'बीबी';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      parsedRows = [
+        { acc: '1', name: 'राम', amount: 300, status: 'pending', remarksArr: [R.f] },
+        { acc: '2', name: 'श्याम', amount: 300, status: 'pending', remarksArr: [] },
+        { acc: '3', name: 'नया', amount: 300, status: 'pending', remarksArr: [] },
+      ];
+      confirmUpload();
+      var d = cGet('बीबी', 'कुल उपभोक्ता');
+      var by = {}; d.forEach(function (x) { by[x.acc] = (x.remarksArr || []).map(function (y) { return y.text; }); });
+      return { by: by, last1: d.find(function (x) { return x.acc === '1'; }).remarks, toast: document.getElementById('toast').textContent };
+    }, { a: rmk('कल आएंगे'), b: rmk('जमा कर दिया'), f: rmk('फ़ाइल वाला', 'JE', '24/9/2026') });
+    expect(r.by['1']).toEqual(['कल आएंगे', 'फ़ाइल वाला']); // पुराना पहले, फ़ाइल का आखिर में
+    expect(r.last1).toBe('फ़ाइल वाला');
+    expect(r.by['2']).toEqual(['जमा कर दिया']); // वसूल वाले का पहले की तरह
+    expect(r.by['3']).toEqual([]);
+    expect(r.toast).toContain('2 के रिमार्क सुरक्षित');
+  });
+
+  test('"हटाएं" के बाद अपलोड — backup से बाकी उपभोक्ता के रिमार्क वापस आएं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate((R) => {
+      window.fetch = function () { return Promise.resolve(new Response('null', { status: 200 })); };
+      cSet('बीबी', 'घरेलू', [{ acc: '7', name: 'राम', status: 'pending', amount: 100, remarksArr: [R.a] }]);
+      fbDel('बीबी', 'घरेलू');
+      var afterDel = cGet('बीबी', 'घरेलू').length;
+      openUpModal();
+      document.getElementById('up-hq').value = 'बीबी';
+      document.getElementById('up-cat').value = 'घरेलू';
+      setUpMode('replace');
+      parsedRows = [{ acc: '7', name: 'राम', amount: 300, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      return { afterDel: afterDel, texts: cGet('बीबी', 'घरेलू')[0].remarksArr.map(function (y) { return y.text; }) };
+    }, { a: rmk('मीटर बदलवाना है') });
+    expect(r.afterDel).toBe(0);
+    expect(r.texts).toEqual(['मीटर बदलवाना है']);
+  });
+
+  test('नई सूची — उपभोक्ता दूसरी category में पहले से हो तो उसके रिमार्क 📁 टैग के साथ आएं, दोहराव नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate((R) => {
+      cSet('बीबी', 'कुल उपभोक्ता', [{ acc: '9', name: 'राम', status: 'pending', amount: 100, remarksArr: [R.a, R.p] }]);
+      cSet('बीबी', 'व्यवसाय', [{ acc: '9', name: 'राम', status: 'pending', amount: 100, remarksArr: [R.p] }]);
+      cSet('बीबी', 'सूची-2', []);
+      openUpModal();
+      document.getElementById('up-hq').value = 'बीबी';
+      document.getElementById('up-cat').value = 'सूची-2';
+      setUpMode('merge'); // खाली category — replace वाला रास्ता चलेगा
+      parsedRows = [{ acc: '9', name: 'राम', amount: 300, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      return cGet('बीबी', 'सूची-2')[0].remarksArr;
+    }, { a: rmk('कुल वाला'), p: rmk('दोनों में फैला', 'राजू', '23/9/2026, 6:00 pm', 'व्यवसाय') });
+    expect(r.map((y) => y.text)).toEqual(['कुल वाला', 'दोनों में फैला']); // propagate हुआ रिमार्क एक ही बार
+    expect(r[0].cat).toBe('कुल उपभोक्ता'); // मूल category टैग जुड़ा
+    expect(r[1].cat).toBe('व्यवसाय');
+  });
+
+  test('Merge — सिर्फ़ नए जुड़े उपभोक्ताओं में दूसरी category के रिमार्क आएं, पुराने records अछूते', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate((R) => {
+      cSet('बीबी', 'कुल उपभोक्ता', [{ acc: '5', name: 'नया', status: 'pending', amount: 100, remarksArr: [R.a] }]);
+      cSet('बीबी', 'घरेलू', [{ acc: '4', name: 'पुराना', status: 'pending', amount: 100, remarksArr: [] }]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'बीबी';
+      document.getElementById('up-cat').value = 'घरेलू';
+      setUpMode('merge');
+      parsedRows = [{ acc: '5', name: 'नया', amount: 300, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      var d = cGet('बीबी', 'घरेलू');
+      return { n4: d.find((x) => x.acc === '4').remarksArr.length, t5: d.find((x) => x.acc === '5').remarksArr.map((y) => y.text), toast: document.getElementById('toast').textContent };
+    }, { a: rmk('कुल में लिखा') });
+    expect(r.n4).toBe(0);
+    expect(r.t5).toEqual(['कुल में लिखा']);
+    expect(r.toast).toContain('1 के रिमार्क साथ आए');
+  });
+});
+
+test.describe('पुराने (v9.139 फिक्स से पहले के) अपलोड से बचे मिसमैच अपने-आप ठीक हों — reconcileHQ अब login और HQ/category tab बदलने पर भी चले, सिर्फ़ नए अपलोड पर नहीं (bug: जोबा में fix के बाद भी "कुल उपभोक्ता" में पुराना मिसमैच वैसा ही दिखता रहा — असली वजह: फिक्स सिर्फ़ भविष्य के अपलोड पर चलता है, पहले से मौजूद मिसमैच वाले device local cache को कभी नहीं छूता था)', () => {
+  test('login पर सक्रिय (डिफ़ॉल्ट) HQ का पुराना मिसमैच reconcile हो जाए (auth पहले से तय मानकर)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      window.AUTH_READY = true; // असली device पर auth तय होने के बाद वाली स्थिति — reconcileHQ तुरंत चले
+      // supervisor login डिफ़ॉल्ट रूप से HQS[0] यानी "आदेगांव" पर खुलता है — वहीं पुराना मिसमैच बना देते हैं
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', status: 'pending', amount: 100 }]);
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', status: 'paid', paydate: '1/1/2026', amount: 100 }]);
+    });
+    await loginJE(page);
+    const status = await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता').find((x) => x.acc === '1').status);
+    expect(status).toBe('paid');
+  });
+
+  test('HQ tab बदलने पर उस HQ का पुराना मिसमैच reconcile हो जाए (auth पहले से तय मानकर)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page); // डिफ़ॉल्ट "आदेगांव" पर लॉगिन
+    await page.evaluate(() => {
+      window.AUTH_READY = true;
+      cSet('जोबा', 'कुल उपभोक्ता', [{ acc: '1', name: 'श्याम', status: 'pending', amount: 200 }]);
+      cSet('जोबा', 'घरेलू', [{ acc: '1', name: 'श्याम', status: 'paid', paydate: '1/1/2026', amount: 200 }]);
+    });
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll('#hq-tabs .hq-tab')).find((t) => t.textContent === 'जोबा').click();
+    });
+    const status = await page.evaluate(() => cGet('जोबा', 'कुल उपभोक्ता').find((x) => x.acc === '1').status);
+    expect(status).toBe('paid');
+  });
+
+  test('category tab बदलने पर भी सक्रिय HQ का पुराना मिसमैच reconcile हो जाए (auth पहले से तय मानकर)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page); // डिफ़ॉल्ट "आदेगांव" पर लॉगिन
+    await page.evaluate(() => {
+      window.AUTH_READY = true;
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', status: 'pending', amount: 100 }]);
+      cSet('आदेगांव', 'व्यवसाय', [{ acc: '1', name: 'राम', status: 'paid', paydate: '1/1/2026', amount: 100 }]);
+    });
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll('#cat-tabs .cat-tab')).find((t) => t.textContent.indexOf('व्यवसाय') !== -1).click();
+    });
+    const status = await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता').find((x) => x.acc === '1').status);
+    expect(status).toBe('paid');
+  });
+});
+
+test.describe('reconcileHQ अब auth तय होने तक रुके — silent restore पर Firebase account अभी अनिश्चित हो तो तुरंत fbSet न भेजें (bug v9.140: lineman डिवाइस पर सुबह ऐप खोलते ही "save-fail HTTP 401" — reconcileHQ हर login पर auth तय होने का इंतज़ार किए बिना तुरंत लिख देता था)', () => {
+  test('AUTH_READY अभी false हो तो reconcileHQ तुरंत न चले, auth तय होते ही (waiter चलते ही) चले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      window.AUTH_READY = false; // silent restore पर auth अभी resolve नहीं हुआ, जैसा असली bug में था
+      _authWaiters.splice(0); // login के वक़्त की अपनी (असली) reconcileHQ waiter हटाकर सिर्फ़ इस टेस्ट का काउंट देखें
+      var calls = 0;
+      var origReconcile = window.reconcileHQ;
+      window.reconcileHQ = function (hq) { calls++; return origReconcile(hq); };
+      _afterAuthReady(function () { reconcileHQ('आदेगांव'); });
+      var before = calls;
+      window.AUTH_READY = true;
+      _authWaiters.splice(0).forEach(function (f) { f(); }); // असली firebase.auth().onIdTokenChanged जैसा
+      var after = calls;
+      window.reconcileHQ = origReconcile;
+      return { before: before, after: after };
+    });
+    expect(r.before).toBe(0); // auth तय होने से पहले न चले — 401 से बचाव
+    expect(r.after).toBe(1); // auth तय होते ही चल जाए
+  });
+
+  test('_finishLogin (silent) — reconcileHQ तभी चले जब _ensureCorrectHqAuth का अपना sign-in वाक़ई पूरा हो जाए, सिर्फ़ शुरू होने पर नहीं (bug v9.141 पर भी दोहराया: sign-in अभी async चल ही रहा होता, reconcileHQ AUTH_READY देखकर उसी वक़्त अलग से चल जाता — फिर भी 401)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.AUTH_READY = true; // Firebase का initial auth-restore तो हो चुका है...
+      var resolveSignIn;
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null }, // ...पर अभी भी anonymous — silent restore पर बिल्कुल यही होता है
+          signInWithEmailAndPassword: function () {
+            return new Promise((res) => { resolveSignIn = res; }); // जान-बूझकर अभी resolve नहीं करते
+          },
+        };
+      };
+      var calls = 0;
+      var origReconcile = window.reconcileHQ;
+      window.reconcileHQ = function (hq) { calls++; return origReconcile(hq); };
+      CU = { role: 'lineman', name: 'देरी वाला', hq: 'आदेगांव', pin: '4321' };
+      _finishLogin(CU.name, true); // silent = सेव किया session बहाल हुआ
+      setTimeout(() => {
+        var before = calls; // sign-in अभी pending है
+        resolveSignIn({}); // अब असली sign-in पूरा हुआ मान लो
+        setTimeout(() => {
+          window.reconcileHQ = origReconcile;
+          resolve({ before: before, after: calls });
+        }, 50);
+      }, 50);
+    }));
+    expect(r.before).toBe(0); // sign-in अभी पूरा नहीं हुआ था — reconcileHQ ने इंतज़ार किया, 401 से बचाव
+    expect(r.after).toBe(1);  // sign-in पूरा होते ही चल गया
   });
 });
 
@@ -2979,6 +6389,21 @@ test.describe('आज की वसूली — मुख्यालय-वा
     expect(r.amt).toBe(100);
   });
 
+  test('_todayScRow — negative बकाया (advance) वाले "वसूल" record का योगदान amt में 0 माना जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var today = _todayDateStr();
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: 'A1', name: 'एक', status: 'paid', paydate: today, amount: '100' },
+        { acc: 'A2', name: 'दो', status: 'paid', paydate: today, amount: '-600' }, // advance/credit balance
+      ]);
+      return _todayScRow('आदेगांव');
+    });
+    expect(r.count).toBe(2); // दोनों "वसूल"/निपटे हुए गिने गए
+    expect(r.amt).toBe(100); // सिर्फ़ +100 — -600 का योगदान 0 माना गया
+  });
+
   test('_todayScRender — सभी HQ मिलाकर सही योग (total) दिखाए', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
@@ -2991,6 +6416,91 @@ test.describe('आज की वसूली — मुख्यालय-वा
       return { html: document.getElementById('todaysc-content').innerHTML, hqCount: HQS.length };
     });
     expect(r.html).toContain(String(r.hqCount)); // योग count सभी HQ जितना
+  });
+});
+
+test.describe('मुख्यालय व टैरिफ रिपोर्ट — मुख्यालय-वार, टैरिफ-श्रेणी-वार सूची (JE only, बिना नेटवर्क कॉल के)', () => {
+  test('openVoiceScorecard — खोलते ही network fetch न हो, सिर्फ़ cache से बने (JE का सवाल: "network cost बढ़ाए बिना ऐसा बटन बन सकता है क्या")', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const fetchCount = await page.evaluate(() => new Promise((resolve) => {
+      var count = 0;
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('.json') > -1 && (!opts || !opts.method)) count++;
+        return orig(url, opts);
+      };
+      openVoiceScorecard();
+      setTimeout(() => { window.fetch = orig; resolve(count); }, 300);
+    }));
+    expect(fetchCount).toBe(0);
+  });
+
+  test('voicesc-menu-item — lineman को न दिखे, openVoiceScorecard सीधे बुलाने पर भी न खुले (defense-in-depth)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      openVoiceScorecard();
+      return {
+        menuHidden: getComputedStyle(document.getElementById('voicesc-menu-item')).display,
+        opened: document.getElementById('voicesc-overlay').classList.contains('open'),
+      };
+    });
+    expect(r.menuHidden).toBe('none');
+    expect(r.opened).toBe(false);
+  });
+
+  test('_voiceHQBreakdown — "कुल उपभोक्ता" (master) को टैरिफ-वार गिने, दूसरी categories से सिर्फ़ वसूल-मिलान करे (bug जैसा _waScRow में — एक ही acc दो जगह न गिने)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const rows = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', tariff: 'LV1', status: 'pending', amount: 100 },
+        { acc: '2', name: 'श्याम', tariff: 'LV1', status: 'pending', amount: 200 },
+        { acc: '3', name: 'गीता', tariff: 'LV3', status: 'pending', amount: 300 },
+      ]);
+      // acc '1' घरेलू (LV1 की असली category tab) में paid मार्क है — master में अब भी pending दिखता
+      // है, पर _waScRow जैसा dedup इसे "master में मौजूद" पहचानकर वसूल में गिन ले
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', tariff: 'LV1', status: 'paid', amount: 100 }]);
+      return _voiceHQBreakdown('आदेगांव');
+    });
+    const lv1 = rows.find((r) => r.tariff === 'LV1');
+    const lv3 = rows.find((r) => r.tariff === 'LV3');
+    expect(lv1.tot).toBe(2);
+    expect(lv1.paid).toBe(1); // सिर्फ़ acc '1', दोबारा नहीं गिना
+    expect(lv1.paidAmt).toBe(100);
+    expect(lv1.due).toBe(300); // दोनों pending होने पर master का due (paid mark करने से पहले जोड़ा गया)
+    expect(lv3.tot).toBe(1);
+    expect(lv3.paid).toBe(0);
+    expect(rows[0].tariff).toBe('LV1'); // tot घटते क्रम में — LV1 (2) पहले, LV3 (1) बाद में
+  });
+
+  test('_voiceHQBreakdown — negative बकाया (advance) वाले "वसूल" record का योगदान paidAmt में 0 माना जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const rows = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', tariff: 'LV1', status: 'paid', amount: 150 },
+        { acc: '2', name: 'श्याम', tariff: 'LV1', status: 'paid', amount: -700 }, // advance/credit balance
+      ]);
+      return _voiceHQBreakdown('आदेगांव');
+    });
+    const lv1 = rows.find((r) => r.tariff === 'LV1');
+    expect(lv1.paid).toBe(2); // दोनों "वसूल"/निपटे हुए गिने गए
+    expect(lv1.paidAmt).toBe(150); // सिर्फ़ +150 — -700 का योगदान 0 माना गया
+  });
+
+  test('_voiceScRender — जिस HQ का "कुल उपभोक्ता" cache में नहीं, उसकी कोई पंक्ति न बने', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const html = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', tariff: 'LV1', status: 'pending', amount: 100 }]);
+      _voiceScRender();
+      return document.getElementById('voicesc-content').innerHTML;
+    });
+    expect(html).toContain('आदेगांव');
+    expect(html).toContain('LV1');
+    expect(html).not.toContain('पिंडरई'); // उस HQ का data cache में नहीं डाला
   });
 });
 
@@ -3012,6 +6522,223 @@ test.describe('श्रेणी/HQ नाम में "/" — नेस्ट
     await page.evaluate(() => openEditCat(4, 'cat4'));
     await expect(page.locator('#toast')).toContainText('. # $ [ ] /');
     expect(await page.evaluate(() => CATS[4])).toBe(before);
+  });
+
+  // JE का अनुरोध: घरेलू/व्यवसाय/कृषि भी बदले जा सकें। "कुल उपभोक्ता" जान-बूझकर बाहर है —
+  // वह मास्टर सूची है जिस पर गाँव-वार गिनती, स्कोरकार्ड और acc-dedup सब टिके हैं
+  test('कुल उपभोक्ता को छोड़कर हर श्रेणी बदली जा सके — पेंसिल भी उसी हिसाब से दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var flags = [0, 1, 2, 3, 4, 5, 6, 7].map(isCatEditable);
+      buildCatTabs();
+      var pencils = document.querySelectorAll('#cat-tabs button[title="नाम बदलें"]').length;
+      return { flags: flags, pencils: pencils, tabs: document.querySelectorAll('#cat-tabs .cat-tab').length };
+    });
+    expect(r.flags).toEqual([false, true, true, true, true, true, true, true]);
+    expect(r.tabs).toBe(8);
+    expect(r.pencils).toBe(7); // 8 में से 7 — "कुल उपभोक्ता" पर पेंसिल नहीं
+  });
+
+  test('कुल उपभोक्ता का नाम सीधे function बुलाकर भी न बदले (defense-in-depth)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var asked = 0;
+      var oP = window.prompt; window.prompt = function () { asked++; return 'कुछ और'; };
+      try { openEditCat(0, 'cat0'); } finally { window.prompt = oP; }
+      return { asked: asked, name: CATS[0] };
+    });
+    expect(r.asked).toBe(0);          // पूछा तक नहीं
+    expect(r.name).toBe('कुल उपभोक्ता');
+  });
+
+  // असली ख़तरा: fbPath श्रेणी के *नाम* से बनता है, इसलिए नाम बदलना = डेटा का पता बदलना।
+  // पहले rename सिर्फ़ cache+CAT_NAMES में होता था और सर्वर पर डेटा पुराने पते पर रह जाता —
+  // फिर पहली ही पढ़ाई में खाली सूची cache पर लिख जाती, यानी सबकी स्क्रीन से डेटा ग़ायब
+  test('नाम बदलने पर डेटा नए पते पर जाए, MIGRATED flag साथ चले, और पुराना *उसके बाद* हटे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'बीबी', oldC = 'कृषि', newC = 'कृषि-नई';
+      MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(oldC)] = true;
+      var calls = [];
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        var m = (o && o.method) || 'GET';
+        var s = String(u);
+        calls.push(m + ' ' + s.replace(FB, ''));
+        if (m === 'GET' && s.indexOf(fbPath(hq, oldC)) > -1) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ '7': { acc: '7', name: 'क' } }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      renameCatData(hq, oldC, newC, function (res) {
+        window.fetch = orig;
+        var iPut = calls.findIndex((c) => c.indexOf('PUT') === 0 && c.indexOf(fbPath(hq, newC)) > -1);
+        var iDel = calls.findIndex((c) => c.indexOf('DELETE') === 0 && c.indexOf(fbPath(hq, oldC)) > -1);
+        resolve({ res: res, iPut: iPut, iDel: iDel,
+          migNew: !!(MIGRATED[hqKey(hq)] || {})[catKey(newC)],
+          migOld: !!(MIGRATED[hqKey(hq)] || {})[catKey(oldC)],
+          flagPut: calls.some((c) => c.indexOf('PUT /MIGRATED/') === 0 && c.indexOf(catKey(newC)) > -1) });
+      });
+    }));
+    expect(r.res.ok).toBe(true);
+    expect(r.res.moved).toBe(1);
+    expect(r.iPut).toBeGreaterThanOrEqual(0);
+    expect(r.iDel).toBeGreaterThan(r.iPut); // पहले लिखो, *तब* पुराना हटाओ — बीच में नेट टूटे तो डेटा दोनों जगह रहे, कहीं नहीं ऐसा न हो
+    expect(r.flagPut).toBe(true);
+    expect(r.migNew).toBe(true);
+    expect(r.migOld).toBe(false);
+  });
+
+  test('डेटा नए पते पर न पहुँच पाए तो नाम बदले ही नहीं (आधा-अधूरा rename न हो)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'बीबी', oldC = 'व्यवसाय', newC = 'व्यवसाय-नया';
+      var deleted = false;
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        var m = (o && o.method) || 'GET';
+        if (m === 'DELETE') deleted = true;
+        if (m === 'GET' && String(u).indexOf(fbPath(hq, oldC)) > -1) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({ '9': { acc: '9' } }) });
+        }
+        if (m === 'PUT') return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve(null) });
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      renameCatData(hq, oldC, newC, function (res) {
+        window.fetch = orig;
+        resolve({ ok: res.ok, deleted: deleted });
+      });
+    }));
+    expect(r.ok).toBe(false);
+    expect(r.deleted).toBe(false); // लिखाई नाकाम रही तो पुराना डेटा हाथ भी न लगे
+  });
+
+  // JE: "जो लिस्ट का नाम रीनेम कर रहा है वह अन्य 6 मुख्यालय में नहीं हो रहा" — नाम हर HQ का अपना
+  // है (/CAT_NAMES/{HQ}/{index}), इसलिए अब पूछकर सभी छह में लगाया जा सकता है
+  test('सभी मुख्यालयों में नाम लगे — हर HQ का अपना पुराना नाम अलग हो तो भी', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      // दो HQ में इस slot का नाम पहले से अलग-अलग है
+      CAT_NAMES['पिंडरई'] = { 6: 'पुराना-पिंडरई' };
+      CAT_NAMES['जोबा'] = { 6: 'सूची-2' };
+      rebuildCatsForHQ(activeHQ);
+      var moves = [], puts = [];
+      var oF = window.fetch, oP = window.prompt, oC = window.confirm, oCnt = window.catRecordCount, oMv = window.renameCatData;
+      window.prompt = () => 'एक-जैसा-नाम';
+      window.confirm = () => true;                      // "सभी 6 में" + पक्का, दोनों हाँ
+      window.catRecordCount = (hq, cat, cb) => cb(5);
+      window.renameCatData = (hq, oldCat, newCat, cb) => { moves.push(hq + '|' + oldCat); cb({ ok: true, moved: 5 }); };
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/CAT_NAMES/') > -1 && o && o.method === 'PUT') {
+          puts.push(String(u).replace(FB, ''));
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+        }
+        return oF(u, o);
+      };
+      openEditCat(6, 'cat6');
+      setTimeout(() => {
+        window.fetch = oF; window.prompt = oP; window.confirm = oC;
+        window.catRecordCount = oCnt; window.renameCatData = oMv;
+        resolve({ moves: moves, puts: puts.length,
+          names: HQS.map((h) => getCatName(h, 6)) });
+      }, 600);
+    }));
+    expect(r.moves.length).toBe(6);                                  // छहों का डेटा हिला
+    expect(r.moves).toContain('पिंडरई|पुराना-पिंडरई');                  // हर HQ का अपना पुराना नाम
+    expect(r.moves).toContain('जोबा|सूची-2');
+    expect(r.puts).toBe(6);                                          // हर HQ का अपना CAT_NAMES PUT
+    expect(r.names).toEqual(Array(6).fill('एक-जैसा-नाम'));            // छहों में एक ही नाम
+  });
+
+  test('"सिर्फ़ इस मुख्यालय में" चुनें तो बाक़ी पाँच को हाथ न लगे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var moves = [];
+      var oP = window.prompt, oC = window.confirm, oCnt = window.catRecordCount, oMv = window.renameCatData, oF = window.fetch;
+      var asked = 0;
+      window.prompt = () => 'सिर्फ-यहाँ';
+      window.confirm = () => (++asked === 1 ? false : true); // पहला सवाल (सभी 6?) = नहीं
+      window.catRecordCount = (hq, cat, cb) => cb(2);
+      window.renameCatData = (hq, oldCat, newCat, cb) => { moves.push(hq); cb({ ok: true, moved: 2 }); };
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/CAT_NAMES/') > -1 && o && o.method === 'PUT') return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+        return oF(u, o);
+      };
+      openEditCat(7, 'cat7');
+      setTimeout(() => {
+        window.prompt = oP; window.confirm = oC; window.catRecordCount = oCnt; window.renameCatData = oMv; window.fetch = oF;
+        resolve({ moves: moves, others: HQS.filter((h) => h !== activeHQ).map((h) => getCatName(h, 7)) });
+      }, 600);
+    }));
+    expect(r.moves).toEqual(['आदेगांव']);
+    expect(r.others).toEqual(Array(5).fill('सूची-3')); // बाक़ी पाँच जस के तस
+  });
+
+  test('किसी एक HQ में डेटा न पहुँचे तो सिर्फ़ उसी का नाम पुराना रहे (बाक़ी बदल जाएँ)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var oP = window.prompt, oC = window.confirm, oCnt = window.catRecordCount, oMv = window.renameCatData, oF = window.fetch;
+      window.prompt = () => 'नया-सबमें';
+      window.confirm = () => true;
+      window.catRecordCount = (hq, cat, cb) => cb(3);
+      window.renameCatData = (hq, oldCat, newCat, cb) => cb(hq === 'मढ़ी' ? { ok: false, why: 'net' } : { ok: true, moved: 3 });
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/CAT_NAMES/') > -1 && o && o.method === 'PUT') return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+        return oF(u, o);
+      };
+      openEditCat(6, 'cat6');
+      setTimeout(() => {
+        window.prompt = oP; window.confirm = oC; window.catRecordCount = oCnt; window.renameCatData = oMv; window.fetch = oF;
+        resolve({ madhi: getCatName('मढ़ी', 6), others: HQS.filter((h) => h !== 'मढ़ी').map((h) => getCatName(h, 6)) });
+      }, 700);
+    }));
+    expect(r.madhi).toBe('सूची-2');                          // नाकाम HQ का नाम नहीं बदला — डेटा दिखता रहेगा
+    expect(r.others).toEqual(Array(5).fill('नया-सबमें'));
+  });
+
+  test('किसी HQ में उसी नाम की दूसरी श्रेणी हो तो रुक जाए (दो सूचियाँ मिलने से बचाव)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      CAT_NAMES['बीबी'] = { 5: 'टकराव-नाम' };
+      var moved = 0;
+      var oP = window.prompt, oC = window.confirm, oMv = window.renameCatData;
+      window.prompt = () => 'टकराव-नाम';
+      window.confirm = () => true;                       // सभी 6 में
+      window.renameCatData = (hq, o2, n2, cb) => { moved++; cb({ ok: true, moved: 1 }); };
+      openEditCat(6, 'cat6');
+      setTimeout(() => {
+        window.prompt = oP; window.confirm = oC; window.renameCatData = oMv;
+        resolve({ moved: moved, txt: document.getElementById('toast').textContent });
+      }, 400);
+    }));
+    expect(r.moved).toBe(0);
+    expect(r.txt).toContain('पहले से है');
+  });
+
+  test('ऑफ़लाइन नाम बदलने की कोशिश रुक जाए — डेटा हिलाया ही नहीं जा सकता', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      var asked = 0;
+      var oP = window.prompt, oOn = Object.getOwnPropertyDescriptor(Navigator.prototype, 'onLine');
+      window.prompt = function () { asked++; return 'नया नाम'; };
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+      var before = CATS[1];
+      try { openEditCat(1, 'cat1'); } finally {
+        window.prompt = oP;
+        if (oOn) Object.defineProperty(Navigator.prototype, 'onLine', oOn);
+        delete navigator.onLine;
+      }
+      return { asked: asked, same: CATS[1] === before };
+    });
+    expect(r.asked).toBe(0);   // पूछने से पहले ही रोक दिया
+    expect(r.same).toBe(true);
   });
 });
 
@@ -3078,13 +6805,13 @@ test.describe('पुरानी categories मिटाएं — घरेल
   });
 });
 
-test.describe('database.rules.json — HQ_PIN सिर्फ़ JE लिख सके (bug: "$other" के तहत कोई भी authenticated — anonymous समेत — PIN बदल सकता था, लाइनमैन lock-out या account-takeover का खतरा)', () => {
-  test('HQ_PIN का अपना explicit rule हो — CAT_NAMES/HOME_SCORECARD जैसा JE-only write, बाक़ी सब पढ़ सकें', () => {
+test.describe('database.rules.json — HQ_PIN अब सिर्फ़ JE ही पढ़/लिख सके (v9.146 सुरक्षा-फिक्स: पहले "auth != null" था, यानी कोई भी login-किया — anonymous भी, ऐप अपने-आप हर visitor को anonymous sign-in करा देता है — बिना कुछ किए सीधे /HQ_PIN.json पढ़कर सभी HQ के PIN पा सकता था, और PIN से बना Firebase password इस्तेमाल करके सीधे उस HQ के असली account में घुस सकता था — असली account-takeover रास्ता)', () => {
+  test('HQ_PIN का read भी CAT_NAMES/MIGRATED जैसे JE-only ही हो — किसी और को (anonymous समेत) कच्चा PIN न दिखे', () => {
     const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
     const hqPinRule = rules.rules.HQ_PIN;
     expect(hqPinRule, 'HQ_PIN का अपना top-level rule होना चाहिए — $other के भरोसे नहीं').toBeTruthy();
     expect(hqPinRule['.write']).toBe("auth.token.email === 'pradeepks2015@gmail.com'");
-    expect(hqPinRule['.read']).toBe('auth != null'); // login के वक़्त PIN जांचने के लिए सबको पढ़ना ज़रूरी है
+    expect(hqPinRule['.read']).toBe("auth.token.email === 'pradeepks2015@gmail.com'"); // अब login के वक़्त client PIN जांचता ही नहीं — असली जांच सीधे Firebase signIn करता है (देखें doLogin)
   });
 });
 
@@ -3098,6 +6825,16 @@ test.describe('database.rules.json — MIGRATED सिर्फ़ JE लिख 
   });
 });
 
+test.describe('database.rules.json — PH_CUSTOM_MSG (फोन-मॉडल "अपना संदेश") सिर्फ़ JE लिख सके, बाक़ी सब पढ़ सकें', () => {
+  test('PH_CUSTOM_MSG का अपना explicit rule हो — CAT_NAMES जैसा ही JE-only write, सबके लिए read', () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
+    const rule = rules.rules.PH_CUSTOM_MSG;
+    expect(rule, 'PH_CUSTOM_MSG का अपना top-level rule होना चाहिए — $other के भरोसे नहीं').toBeTruthy();
+    expect(rule['.write']).toBe("auth.token.email === 'pradeepks2015@gmail.com'");
+    expect(rule['.read']).toBe('auth != null'); // हर लाइनमैन का device फ़ोन-मॉडल में यही संदेश पढ़ता है
+  });
+});
+
 test.describe('database.rules.json — DEVICE_VERSIONS को पूरी तरह anonymous (कभी login न किया हो) visitor लिख न सके, सिर्फ JE पढ़ सके', () => {
   test('DEVICE_VERSIONS का अपना explicit rule हो — हर लॉगिन-किया device (JE + लाइनमैन दोनों) लिख सके, पर सिर्फ JE पढ़े', () => {
     const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
@@ -3107,6 +6844,130 @@ test.describe('database.rules.json — DEVICE_VERSIONS को पूरी त�
     const devWrite = dvRule.$dev && dvRule.$dev['.write'];
     expect(devWrite, '$dev.write होना चाहिए — startDevicePing हर लॉगिन-किया device (लाइनमैन समेत) से चलता है').toBeTruthy();
     expect(devWrite).toContain("sign_in_provider !== 'anonymous'"); // सिर्फ असल लॉगिन-किया identity लिख सके, कोरा anonymous visitor नहीं
+  });
+});
+
+test.describe('database.rules.json — DEVICE_VERSIONS/$dev पर अब field-validation भी हो (v9.146: पहले कोई .validate नहीं था — कोई भी लॉगिन-किया device किसी भी दूसरे device के version-रिकॉर्ड में मनमाने आकार/आकृति का data भर सकता था)', () => {
+  test('$dev पर तय fields (v/hq/role/name/t) और हर एक पर type+लंबाई की सीमा हो, अतिरिक्त field रुके', () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
+    const dev = rules.rules.DEVICE_VERSIONS.$dev;
+    expect(dev['.validate']).toBe("newData.hasChildren(['v','hq','role','name','t'])");
+    expect(dev.v['.validate']).toContain('isString()');
+    expect(dev.hq['.validate']).toContain('isString()');
+    expect(dev.role['.validate']).toContain('isString()');
+    expect(dev.name['.validate']).toContain('isString()');
+    expect(dev.t['.validate']).toContain('isNumber()');
+    expect(dev.$f['.validate']).toBe(false); // pingDeviceVersion() के {v,hq,role,name,t} के अलावा कोई और field न बचे
+  });
+});
+
+test.describe('database.rules.json — $other catch-all बहुत ढीला था (bug: LOGS/USAGE/PROFILE_PHOTOS कहीं explicit नहीं थे, "$other": auth != null के तहत कोई भी anonymous device मनमाना नया top-level path बनाकर junk data भर सकता था — storage/bandwidth abuse का खतरा)', () => {
+  test('LOGS/USAGE/PROFILE_PHOTOS का अपना explicit rule हो, और $other पूरी तरह बंद (false) हो', () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8'));
+    ['LOGS', 'USAGE', 'PROFILE_PHOTOS'].forEach((key) => {
+      const rule = rules.rules[key];
+      expect(rule, key + ' का अपना top-level rule होना चाहिए — $other के भरोसे नहीं').toBeTruthy();
+    });
+    expect(rules.rules.$other['.read']).toBe(false);
+    expect(rules.rules.$other['.write']).toBe(false);
+  });
+});
+
+// पहले तीनों rules सिर्फ़ ".read"/".write": "auth != null" थीं — यानी हर device (anonymous समेत)
+// इन तीनों पूरे पेड़ों का मालिक था: LOGS/USAGE की कोई भी दिन-फ़ाइल मिटा सकता था (JE का पूरा
+// diagnostic इतिहास एक DELETE में ग़ायब), किसी और की profile-फ़ोटो उसकी key पर लिखकर बदल सकता
+// था (JE_... समेत), और चूंकि कोई size-cap नहीं था, एक ही record में मनमाने MB भरकर free plan की
+// 1 GB जगह/360 MB रोज़ाना quota चूस सकता था — यानी सबके लिए ऐप बंद। अब: बनाना सबके लिए खुला
+// (नई log/usage entry), पर बदलना/मिटाना सिर्फ़ JE के लिए, और हर field पर लंबाई की सीमा।
+test.describe('database.rules.json — LOGS/USAGE अब append-only हों (bug: कोई भी anonymous device पूरे LOGS/USAGE मिटा सकता था और असीमित बड़ा record लिखकर free-plan की जगह भर सकता था)', () => {
+  const readRules = () => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+  const JE = "auth.token.email === 'pradeepks2015@gmail.com'";
+
+  ['LOGS', 'USAGE'].forEach((key) => {
+    test(key + ' — पेड़ के ऊपर सिर्फ़ JE (मिटाना/बदलना), नई entry हर device बना सके पर मौजूदा को छू न सके', () => {
+      const rule = readRules()[key];
+      // पूरा दिन मिटाना (cleanupOldServerLogs / clearServerLogs / _usageCleanupOld) — तीनों
+      // सिर्फ़ JE-only modal से चलते हैं, इसलिए ऊपर का .write JE तक सीमित करना सुरक्षित है
+      expect(rule['.write']).toBe(JE);
+      expect(rule['.read']).toBe(JE); // पढ़ने वाले सारे रास्ते (log/usage viewer) पहले से JE-only हैं
+      const idRule = rule.$day && rule.$day.$id;
+      expect(idRule, key + '/$day/$id का rule होना चाहिए — POST यहीं गिरता है').toBeTruthy();
+      // "auth != null" ही रहे (non-anonymous नहीं) — logErr login से पहले भी चलता है, तब device
+      // firebase.js के signInAnonymously वाले session पर होता है; वरना असली शुरुआती errors छूट जातीं
+      expect(idRule['.write']).toContain('auth != null');
+      expect(idRule['.write']).toContain('!data.exists()');  // मौजूदा entry पर दोबारा न लिख सके
+      expect(idRule['.write']).toContain('newData.exists()'); // और अकेली entry मिटा भी न सके
+    });
+  });
+
+  test('LOGS की हर entry के हर field पर लंबाई की सीमा हो (logErr खुद m को 300 और x को 200 पर काटता है — rule उससे ढीली न हो जाए)', () => {
+    const f = readRules().LOGS.$day.$id.$f;
+    expect(f, 'LOGS/$day/$id/$f पर .validate होना चाहिए').toBeTruthy();
+    expect(f['.validate']).toContain('newData.isString()');
+    const cap = /length <= (\d+)/.exec(f['.validate']);
+    expect(cap, 'field की लंबाई पर स्पष्ट सीमा होनी चाहिए').toBeTruthy();
+    expect(Number(cap[1])).toBeGreaterThanOrEqual(300); // logErr का सबसे बड़ा field (m) कट कर 300 का होता है
+    expect(Number(cap[1])).toBeLessThanOrEqual(1000);
+  });
+
+  test('USAGE की entry में सिर्फ़ d/n/b/t चलें (b संख्या हो, ऋणात्मक नहीं) — बाक़ी कोई field न घुस सके', () => {
+    const idRule = readRules().USAGE.$day.$id;
+    expect(idRule['.validate']).toContain("newData.hasChildren(['b'])");
+    expect(idRule.b['.validate']).toContain('isNumber');
+    expect(idRule.b['.validate']).toContain('>= 0'); // ऋणात्मक bytes डालकर JE का कोटा-मीटर झूठा न कर सके
+    expect(idRule.t['.validate']).toContain('isNumber');
+    expect(idRule.d['.validate']).toContain('length <=');
+    expect(idRule.n['.validate']).toContain('length <=');
+    expect(idRule.$f['.validate']).toBe(false); // अनजान field = सीधे मना
+  });
+});
+
+test.describe('database.rules.json — PROFILE_PHOTOS पर मालिकाना और size-cap (bug: कोई भी device किसी की भी फ़ोटो-key पर लिख सकता था — JE_... समेत — और base64 में कितने भी MB भर सकता था)', () => {
+  const readRules = () => JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+
+  test('हर HQ का account सिर्फ़ अपने ही HQ के prefix वाली key लिख सके (लाइनमैन-खाते HQ-वार साझा हैं, इसलिए इससे बारीक पहचान संभव ही नहीं) — पढ़ना हर logged-in (non-anonymous) device के लिए खुला रहे', () => {
+    const rules = readRules();
+    const pp = rules.PROFILE_PHOTOS;
+    // हर device login के बाद अपनी फ़ोटो पढ़ता है (profile.js: loadProfilePhoto केवल CU सेट होने पर चलता
+    // है) — इसलिए anonymous session को बाहर रखना safe है; पहले bare "auth != null" से कोई भी बिना login
+    // किए सारे लाइनमैन के नाम/फ़ोटो/role देख सकता था
+    expect(pp['.read']).toBe("auth != null && auth.token.firebase.sign_in_provider !== 'anonymous'");
+    expect(pp['.write'], 'पूरे PROFILE_PHOTOS पर खुला .write नहीं रहना चाहिए').toBeUndefined();
+    const w = pp.$key && pp.$key['.write'];
+    expect(w, 'PROFILE_PHOTOS/$key पर .write होना चाहिए').toBeTruthy();
+    expect(w).toContain("auth.token.email === 'pradeepks2015@gmail.com'"); // JE सब ठीक कर सके
+    // हर HQ के लिए एक जोड़ी: उसी HQ का uid + उसी HQ के नाम वाला key-prefix
+    const HQS = ['आदेगांव', 'पिंडरई', 'जोबा', 'पाटन', 'बीबी', 'मढ़ी'];
+    HQS.forEach((hq) => {
+      const uid = /auth\.uid === '([^']+)'/.exec(rules[hq]['.read'])[1];
+      expect(w, hq + ' के uid + prefix की जोड़ी होनी चाहिए')
+        .toContain("(auth.uid === '" + uid + "' && $key.beginsWith('" + hq + "_'))");
+    });
+    // profile.js का _profileKey() JE के लिए "JE_" prefix बनाता है — किसी HQ-prefix से मेल नहीं
+    // खाता, इसलिए कोई लाइनमैन-खाता JE की फ़ोटो नहीं बदल सकता
+    expect(w).not.toContain("$key.beginsWith('JE_')");
+  });
+
+  test('फ़ोटो का आकार rule से बंधा हो — profile.js 160×160 JPEG (कुछ KB) भेजता है, सीमा उससे कहीं ऊपर पर फिर भी सीमित', () => {
+    const k = readRules().PROFILE_PHOTOS.$key;
+    expect(k['.validate']).toContain("newData.hasChildren(['photo'])");
+    const cap = /length <= (\d+)/.exec(k.photo['.validate']);
+    expect(cap, 'photo पर स्पष्ट लंबाई-सीमा होनी चाहिए').toBeTruthy();
+    expect(Number(cap[1])).toBeLessThanOrEqual(200000); // ~200 KB base64 से ज़्यादा कभी नहीं
+    expect(Number(cap[1])).toBeGreaterThanOrEqual(20000); // असली फ़ोटो (~10 KB base64) आराम से आ जाए
+    expect(k.ts['.validate']).toContain('isNumber');
+    expect(k.$f['.validate']).toBe(false);
+  });
+
+  test('profile.js जो fields भेजता है वही rule में allowed हों (कोई field छूट जाए तो पूरा PUT rule से रुक जाएगा)', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'profile.js'), 'utf8');
+    const body = /JSON\.stringify\(\{([^}]*)\}\)/.exec(src.slice(src.indexOf('PROFILE_PHOTOS/"+key')));
+    expect(body, 'profile.js में PUT का body मिलना चाहिए').toBeTruthy();
+    const fields = body[1].split(',').map((s) => s.split(':')[0].trim());
+    const k = readRules().PROFILE_PHOTOS.$key;
+    fields.forEach((f) => {
+      expect(k[f], 'rule में "' + f + '" के लिए .validate होना चाहिए, वरना $f: false इसे रोक देगा').toBeTruthy();
+    });
   });
 });
 
@@ -3125,6 +6986,162 @@ test.describe('Firebase Rules — auto-deploy पाइपलाइन (bug: JE 
     expect(script).toMatch(/JSON\.parse\(rulesContent\)/); // deploy से पहले local validation
     expect(script).toContain('.settings/rules.json'); // Firebase RTDB का असली rules-management endpoint
     expect(script).toContain("method: \"PUT\"");
+  });
+});
+
+test.describe('GitHub Actions workflows — firebase-admin/xlsx version pinned हो (v9.146: पहले "npm install firebase-admin" बिना version के — हर run पर अपने-आप नया (कभी breaking) major version आ जाता, deploy-rules/backup चुपचाप टूट सकते थे)', () => {
+  test('deploy-rules.yml और backup.yml दोनों में firebase-admin@<version> — बिना version वाला install न हो', () => {
+    const deployWf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy-rules.yml'), 'utf8');
+    const backupWf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'backup.yml'), 'utf8');
+    expect(deployWf).toMatch(/firebase-admin@\d+\.\d+\.\d+/);
+    expect(deployWf).not.toMatch(/install --no-save firebase-admin\s*$/m); // बिना version वाला install न रह जाए
+    expect(backupWf).toMatch(/firebase-admin@\d+\.\d+\.\d+/);
+    expect(backupWf).toMatch(/xlsx@\d+\.\d+\.\d+/);
+  });
+});
+
+test.describe('downloadPDF/downloadExcel — ऊपर चुना filter (सभी/बाकी/वसूल) मानें (bug: "कुल उपभोक्ता" tab पर "बाकी" filter चुने होने पर भी PDF/Excel में पूरी unfiltered list उतरती थी — स्क्रीन पर जो दिख रहा था उससे download मेल नहीं खाता था)', () => {
+  test('downloadPDF — "बाकी" filter चुना हो तो सिर्फ़ pending records PDF में जाएं, "वसूल" वाले छूट जाएं', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', amount: 100 },
+        { acc: '2', name: 'श्याम', status: 'pending', amount: 200 },
+      ]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'pending';
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadPDF();
+    }));
+    expect(html).toContain('श्याम');
+    expect(html).not.toContain('राम');
+    expect(html).toContain('सूची: <b>बाकी</b>'); // हेडर में साफ़ दिखे कि यह पूरी सूची नहीं, फ़िल्टर की हुई है
+  });
+
+  test('downloadPDF — "वसूल" filter चुना हो तो सिर्फ़ paid records आएं', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', amount: 100 },
+        { acc: '2', name: 'श्याम', status: 'pending', amount: 200 },
+      ]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'paid';
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadPDF();
+    }));
+    expect(html).toContain('राम');
+    expect(html).not.toContain('श्याम');
+  });
+
+  test('downloadPDF — negative बकाया (advance) वाले "वसूल" record का योगदान वसूल-राशि सारांश में 0 माना जाए', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', amount: 300 },
+        { acc: '2', name: 'श्याम', status: 'paid', amount: -900 }, // advance/credit balance
+      ]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'all';
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadPDF();
+    }));
+    // ऊपर का सारांश-कार्ड: सिर्फ़ +300 — -900 का योगदान 0 माना गया, कभी negative न दिखे
+    expect(html).toContain("<b style='color:green'>₹300</b>वसूल राशि");
+    // पर श्याम की अपनी row में असली (-900) बकाया वैसा ही दिखे — सिर्फ़ सारांश-जोड़ में क्लैंप होता है,
+    // व्यक्तिगत record का असली आंकड़ा छुपाया नहीं जाता
+    expect(html).toContain('₹-900');
+  });
+
+  test('downloadPDF — "सभी" filter में पुराना व्यवहार वैसा ही रहे (सब records आएं, हेडर में filter-लेबल न जुड़े)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', amount: 100 },
+        { acc: '2', name: 'श्याम', status: 'pending', amount: 200 },
+      ]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'all';
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadPDF();
+    }));
+    expect(html).toContain('राम');
+    expect(html).toContain('श्याम');
+    expect(html).not.toContain('सूची: <b>');
+  });
+
+  test('downloadExcel — फ़िल्टर की हुई rows ही sheet में जाएं, filter नाम फ़ाइल/sheet-नाम में जुड़े', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', amount: 100 },
+        { acc: '2', name: 'श्याम', status: 'pending', amount: 200 },
+      ]);
+    });
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'pending';
+      var sheet = null;
+      window.XLSX = {
+        utils: {
+          book_new: function () { return { SheetNames: [], Sheets: {} }; },
+          aoa_to_sheet: function (a) { sheet = a; return { rows: a }; },
+          book_append_sheet: function (wb, ws, nm) { wb.SheetNames.push(nm); wb.Sheets[nm] = ws; },
+        },
+        writeFile: function (wb, fname) { resolve({ sheetName: wb.SheetNames[0], fname: fname, rows: sheet }); },
+      };
+      downloadExcel();
+    }));
+    expect(r.rows.length).toBe(2); // header + 1 filtered record
+    expect(r.rows[1][3]).toBe('2'); // श्याम का acc — राम (paid) नहीं आया
+    expect(r.sheetName).toContain('बाकी');
+    expect(r.fname).toContain('बाकी');
+  });
+});
+
+test.describe('downloadPDF — कॉलम एलाइनमेंट (bug: table-layout auto होने से content के हिसाब से हर कॉलम की चौड़ाई पेज-दर-पेज बदलती थी, नाम/मोबाइल जैसे कॉलम header से मेल नहीं खाते दिखते थे)', () => {
+  test('table-layout:fixed हो, हर <th> पर width% तय हो, रिमार्क को सबसे ज़्यादा चौड़ाई मिले, और नाम/मोबाइल जैसे कॉलम center-aligned हों', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', phone: '9999999999', father: 'श्याम', status: 'pending', amount: 100 }]);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता'; activeFilter = 'all';
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadPDF();
+    }));
+    expect(html).toContain('table-layout:fixed');
+    expect(html).toMatch(/<th style='width:13%'>नाम<\/th>/);
+    expect(html).toMatch(/<th style='width:10%'>Mobile<\/th>/);
+    // रिमार्क की चौड़ाई बाक़ी किसी भी data-कॉलम से ज़्यादा हो
+    const widths = [...html.matchAll(/<th style='width:(\d+)%'>/g)].map((m) => Number(m[1]));
+    const rmkWidth = /<th style='width:(\d+)%'>रिमार्क<\/th>/.exec(html);
+    expect(rmkWidth).toBeTruthy();
+    expect(Number(rmkWidth[1])).toBe(Math.max(...widths));
+    // data row में नाम/मोबाइल सेल center-aligned हों (header से मेल खाकर दिखें)
+    expect(html).toContain("text-align:center;font-weight:600;'>राम<");
+    expect(html).toContain("text-align:center;color:#333;'>9999999999<");
+    // दो-लाइन वाले सेल पड़ोसी row में न घुसें, इसलिए हर td top-aligned हो
+    expect(html).toContain('vertical-align:top');
   });
 });
 
@@ -3155,7 +7172,7 @@ test.describe('XSS सुरक्षा — PDF/print export और दिन�
   test('downloadScPDF (reports.js) — दिनांक-वार PDF में consumer name/Consumer No escape होकर जाएं', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {
-      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '<script>alert(3)</script>', name: '<img src=x onerror=alert(4)>', status: 'paid', amount: 100, paydate: '1/1/2026' }]);
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '<script>alert(3)</script>', name: '<img src=x onerror=alert(4)>', status: 'paid', amount: 100, paydate: _todayDateStr() }]);
     });
     await loginJE(page);
     const html = await page.evaluate(() => new Promise((resolve) => {
@@ -3166,19 +7183,21 @@ test.describe('XSS सुरक्षा — PDF/print export और दिन�
     }));
     expect(html).not.toContain('<script>alert(3)</script>');
     expect(html).not.toContain('<img src=x onerror=alert(4)>');
+    expect(html).toContain('&lt;script&gt;alert(3)&lt;/script&gt;'); // चालू चक्र में गिना गया और escape होकर दिखा (vacuous pass न हो)
   });
 
   test('renderScDateTable (स्क्रीन पर दिनांक-वार तालिका) — consumer name/Consumer No escape होकर दिखें', async ({ page }) => {
     await openApp(page);
     const html = await page.evaluate(() => {
       scActiveHQ = 'आदेगांव';
-      var rec = { acc: '<script>alert(5)</script>', name: '<img src=x onerror=alert(6)>', status: 'paid', amount: 100, paydate: '1/1/2026' };
+      var rec = { acc: '<script>alert(5)</script>', name: '<img src=x onerror=alert(6)>', status: 'paid', amount: 100, paydate: _todayDateStr() };
       cSet('आदेगांव', 'कुल उपभोक्ता', [rec]); // renderScDateTable इसी master-list से acc मिलान करके फ़िल्टर करता है
       renderScDateTable([rec]);
       return document.getElementById('sc-body').innerHTML;
     });
     expect(html).not.toContain('<script>alert(5)</script>');
     expect(html).not.toContain('<img src=x onerror=alert(6)>');
+    expect(html).toContain('&lt;script&gt;alert(5)&lt;/script&gt;'); // चालू चक्र में गिना गया और escape होकर दिखा (vacuous pass न हो)
   });
 
   test('renderListWith — con-card के onclick="...(\'...\')" में escHtml काफ़ी नहीं (सिंगल-कोट को browser वापस decode कर देता है), escJsAttr चाहिए', async ({ page }) => {
@@ -3196,7 +7215,507 @@ test.describe('XSS सुरक्षा — PDF/print export और दिन�
     expect(html).not.toContain("openPhModal('O'Brien'");
     expect(html).toContain("openAccModal('x\\');alert(7);//')");
     expect(html).toContain("openPhModal('O\\'Brien','9\\'999999999'");
-    // प्लेन टेक्स्ट (display) कॉपी अब भी सामान्य escHtml से ही आए (सिंगल-कोट HTML-content में खतरा नहीं, escape ज़रूरी नहीं)
+    // प्लेन टेक्स्ट (display) कॉपी में escHtml अब ' को &#39; कर देता है — पर browser उसे parse करके
+    // वापस साधारण ' के तौर पर दिखाता है (round-trip में कुछ नहीं टूटता, इंसान को कोई फ़र्क़ नहीं दिखता)
     expect(html).toContain('<div class="cc-name">O\'Brien</div>');
+  });
+
+  test('renderSummaryWith — श्रेणी का नाम (JE बदल सकते हैं) innerHTML में escape होकर जाए (bug: eslint-plugin-no-unsanitized ऑडिट में मिला — नाम validation सिर्फ़ Firebase-असुरक्षित चिह्न रोकती है, HTML-special चिह्न नहीं)', async ({ page }) => {
+    await openApp(page);
+    const html = await page.evaluate(() => {
+      activeCat = "<img src=x onerror=alert(9)>";
+      renderSummaryWith([]);
+      return document.getElementById('summary').innerHTML;
+    });
+    expect(html).not.toContain('<img src=x onerror=alert(9)>');
+    expect(html).toContain('&lt;img src=x onerror=alert(9)&gt;');
+  });
+
+  test('escHtml अब सिंगल-कोट (\') को भी escape करता है — openPinModal जैसे single-quoted attribute (value=\'...\') में breakout से बचाव (bug: HQ_PIN फ़ील्ड पर digit-only validation नहीं, JE कुछ भी टाइप कर सकता है)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    // .innerHTML पढ़ने पर browser हमेशा double-quote में serialize कर देता है (चाहे source में
+    // single-quote हो), तो असली सुरक्षा साबित करने के लिए parsed DOM attribute ही सही जांच है —
+    // अगर breakout हुआ होता तो एक अलग असली onmouseover attribute बन जाता
+    const result = await page.evaluate(() => {
+      HQ_PINS[hqKey('आदेगांव')] = "1' onmouseover='alert(8)";
+      openPinModal();
+      var el = document.getElementById('pin-आदेगांव');
+      return { value: el.value, hasOnmouseover: el.getAttribute('onmouseover') !== null };
+    });
+    expect(result.hasOnmouseover).toBe(false);
+    expect(result.value).toBe("1' onmouseover='alert(8)");
+  });
+});
+
+// JE का सवाल: "यदि मुझे आज का टोटल नेटवर्क कॉस्ट यहीं पर रोकना है तो कोई एक ऐसी मास्टर स्विच
+// बन सकती है क्या" — Firebase का no-cost download quota रोज़ 360 MB का है; किसी दिन वह भरता दिखे
+// तो JE एक ही स्विच से सभी devices पर आगे का download रोक सकें
+// असली production: ऐप का मीटर 15.3 MB दिखा रहा था जबकि Firebase Console पर उसी वक़्त 105 MB था
+// (~7 गुना) — क्योंकि trackUsageBytes सिर्फ़ fbGet की दो जगह लगा था, यानी मीटर सिर्फ़ "लिस्ट खोलना"
+// गिनता था और सबसे भारी खर्च (SSE, prefetch, चरण-3 की पूरी-DB जाँच) बिल्कुल नहीं
+test.describe('डेटा उपयोग का मीटर — हर डाउनलोड गिना जाए, और दिन Firebase की खिड़की से मिले', () => {
+  test('trackUsageOf हर रूप का आकार जोड़े, और खाली जवाब से कुछ न जुड़े', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      _usageBytes = 0;
+      trackUsageOf({ a: 1 });            // JSON = {"a":1} → 7
+      var afterObj = _usageBytes;
+      trackUsageOf('abcde');             // string → 5
+      var afterStr = _usageBytes;
+      trackUsageOf(null); trackUsageOf(undefined);
+      return { afterObj: afterObj, afterStr: afterStr, afterNull: _usageBytes };
+    });
+    expect(r.afterObj).toBe(7);
+    expect(r.afterStr).toBe(12);
+    expect(r.afterNull).toBe(12); // खाली जवाब ने कुछ नहीं जोड़ा
+  });
+
+  // असली नाप (10 सितंबर, 07:15): JE के तीन device मिलकर पूरे DC का 36% — क्योंकि JE को सभी
+  // 6 मुख्यालय दिखते हैं और स्कोरकार्ड का हर HQ-tab उस HQ की आठों श्रेणियाँ पढ़ता है, वह भी
+  // बिना ETag। fbGet/prefetchAll में ETag पहले से था, बस यही रास्ता छूटा हुआ था
+  test('स्कोरकार्ड/कैश का refresh ETag भेजे, और 304 पर cache न छेड़े (डेटा पुराना भी न पड़े)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'आदेगांव', cat = 'कृषि';
+      cSet(hq, cat, [{ acc: '1', name: 'पुराना', amount: 5, status: 'pending' }]);
+      _etagSet(hq, cat, 'W/"tag-1"');
+      _lastRefreshAt = {};
+      var sent = null, mode = '304';
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath(hq, cat)) > -1) {
+          sent = (o && o.headers) ? o.headers['if-none-match'] : null;
+          if (mode === '304') return Promise.resolve({ status: 304, ok: false, headers: { get: () => null } });
+          return Promise.resolve({ status: 200, ok: true, headers: { get: () => 'W/"tag-2"' },
+            json: () => Promise.resolve([{ acc: '1', name: 'नया', amount: 9, status: 'paid' }]) });
+        }
+        return orig(u, o);
+      };
+      _cashRefreshAll([hq], function () {
+        var after304 = { sent: sent, name: (cGet(hq, cat)[0] || {}).name };
+        // अब सर्वर पर सचमुच बदलाव — पूरी नई सूची आनी ही चाहिए
+        mode = '200'; _lastRefreshAt = {};
+        _cashRefreshAll([hq], function () {
+          window.fetch = orig;
+          resolve({ after304: after304,
+            after200: { name: (cGet(hq, cat)[0] || {}).name, status: (cGet(hq, cat)[0] || {}).status },
+            newTag: _etagAll()[hq + '/' + cat] });
+        }, true);
+      }, true);
+    }));
+    expect(r.after304.sent).toBe('W/"tag-1"'); // निशान भेजा गया
+    expect(r.after304.name).toBe('पुराना');     // 304 — cache जस की तस, बेवजह नहीं छेड़ी
+    expect(r.after200.name).toBe('नया');        // बदला हो तो ताज़ा डेटा आता ही है
+    expect(r.after200.status).toBe('paid');
+    expect(r.newTag).toBe('W/"tag-2"');         // और नया निशान सहेजा गया
+  });
+
+  test('सूची सचमुच खाली हो जाए तो cache भी खाली हो (304 और "खाली जवाब" अलग-अलग पहचाने जाएँ)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var hq = 'बीबी', cat = 'कृषि';
+      cSet(hq, cat, [{ acc: '1', name: 'क', amount: 5, status: 'pending' }]);
+      _lastRefreshAt = {};
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath(hq, cat)) > -1) {
+          // सब records हटा दिए गए — Firebase 200 के साथ null भेजता है (304 नहीं)
+          return Promise.resolve({ status: 200, ok: true, headers: { get: () => null }, json: () => Promise.resolve(null) });
+        }
+        return orig(u, o);
+      };
+      _cashRefreshAll([hq], function () {
+        window.fetch = orig;
+        resolve({ len: cGet(hq, cat).length });
+      }, true);
+    }));
+    expect(r.len).toBe(0); // हटाई हुई सूची स्क्रीन पर बनी न रहे
+  });
+
+  // चरण 3 पर ETag जान-बूझकर नहीं — 304 का मतलब होता cache से जांचना, पर cache normList() से
+  // गुज़री सादी array है: उससे न "सर्वर पर array था या object" पक्का होता, न duplicate acc
+  // (object दोबारा बनाने पर वे आपस में मिलकर ग़ायब हो जाते)। यानी चरण 3 ठीक वही गड़बड़ी छिपा
+  // देता जिसे पकड़ने के लिए वह बना है
+  test('चरण 3 की जांच हमेशा सर्वर का कच्चा सच पढ़े — वहाँ ETag न लगे', async () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'migration.js'), 'utf8');
+    const dry = src.slice(src.indexOf('function _migRunDryRun'), src.indexOf('function _migRender'));
+    expect(dry).not.toContain('_etagHeaders');
+    expect(dry).not.toContain('if-none-match');
+    expect(dry).toContain('trackUsageOf(d)'); // भारी है, पर मीटर में गिना जाता है — छिपा नहीं
+  });
+
+  test('सभी भारी डाउनलोड रास्तों पर गिनती लगी हो (SSE/prefetch/चरण-3 छूटे नहीं)', async () => {
+    const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    expect(read('js/database.js')).toContain('trackUsageOf(d); // SSE');       // live sync — सबसे भारी
+    expect(read('js/database.js')).toContain('trackUsageOf(patchData)');       // SSE patch
+    expect(read('js/storage.js').match(/trackUsageOf\(d\)/g).length).toBe(2);  // prefetch + flushPending
+    expect(read('js/migration.js').match(/trackUsageOf\(/g).length).toBe(3);   // चरण-3 जाँच + _migrateOne + MIGRATED
+    expect(read('js/home-scorecard.js')).toContain('trackUsageOf(d)');
+  });
+
+  // असली नाप: 12:29 IST पर ऐप 57.0 MB दिखा रहा था और Firebase Console 199.6 MB (एक ही
+  // quota-खिड़की का)। बचे हुए रास्ते यहाँ पकड़े गए — कोई भी दोबारा छूटे तो CI बता देगा
+  test('कोई भी पढ़ाई बिना गिनती के न बचे — हर fetch-GET पर trackUsageOf हो', async () => {
+    const root = path.join(__dirname, '..');
+    const need = {
+      'js/home-scorecard.js': ['trackUsageOf(d); // होम बोर्ड'], // होम बोर्ड की पढ़ाई (कैश-refresh वाली अब ETag के साथ है, नीचे अलग टेस्ट में जांची जाती है)
+      'js/profile.js': ['trackUsageOf(d); // फ़ोटो'],             // base64 फ़ोटो, दसियों KB
+      'js/config.js': ['trackUsageOf(d)'],                        // CAT_NAMES
+      'js/auth.js': ['trackUsageOf(d)'],                          // HQ_PIN
+    };
+    Object.keys(need).forEach((f) => {
+      const src = fs.readFileSync(path.join(root, f), 'utf8');
+      need[f].forEach((snip) => expect(src, f + ' में गिनती छूट गई').toContain(snip));
+    });
+    // LOGS की दोनों पढ़ाइयाँ + DEVICE_VERSIONS + LOGS-shallow
+    const lg = fs.readFileSync(path.join(root, 'js/logger.js'), 'utf8');
+    expect(lg.match(/trackUsageOf\(/g).length).toBeGreaterThanOrEqual(4);
+  });
+
+  // JS की .length UTF-16 इकाइयाँ गिनती है; देवनागरी का हर अक्षर UTF-8 में 3 बाइट लेता है।
+  // हमारे records नाम/पता/रिमार्क सब हिंदी में रखते हैं, इसलिए पुरानी गिनती असली आकार का
+  // ~60% ही दिखाती थी — मीटर के कम पड़ने की सबसे बड़ी अकेली वजह
+  test('गिनती असली UTF-8 बाइट की हो, JS अक्षरों की नहीं (हिंदी 3 गुना भारी है)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var out = {};
+      _usageBytes = 0; trackUsageOf('abc');            out.ascii = _usageBytes;
+      _usageBytes = 0; trackUsageOf('अआइ');            out.hindi = _usageBytes;
+      _usageBytes = 0; trackUsageOf({ n: 'आनंद' });     out.obj = _usageBytes;
+      out.objLen = JSON.stringify({ n: 'आनंद' }).length;
+      out.fn = _utf8Len('अ');
+      return out;
+    });
+    expect(r.ascii).toBe(3);       // ASCII — पहले जैसा
+    expect(r.hindi).toBe(9);       // 3 अक्षर × 3 बाइट, पहले 3 गिने जाते थे
+    expect(r.fn).toBe(3);
+    expect(r.obj).toBeGreaterThan(r.objLen); // object में भी असली आकार, .length से ज़्यादा
+  });
+
+  test('दिन Firebase की खिड़की (US-Pacific) से गिना जाए, UTC से नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var la = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+      return { day: _usageQuotaDay(0), la: la, utc: new Date().toISOString().slice(0, 10),
+        prevIsEarlier: _usageQuotaDay(1) < _usageQuotaDay(0) };
+    });
+    expect(r.day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(r.day).toBe(r.la);              // Pacific दिन, न कि device का या UTC का
+    expect(r.prevIsEarlier).toBe(true);    // "कल" सचमुच पहले का दिन है
+  });
+
+  test('device-वार टूट-फूट दिखे — सबसे ज़्यादा खाने वाला ऊपर, और नाम टेक्स्ट ही रहे (markup न बने)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      CU = { role: 'supervisor', name: 'जेई', hq: 'आदेगांव' };
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/USAGE/') > -1 && (!o || !o.method || o.method === 'GET')) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({
+            k1: { d: 'devA', n: 'lineman|बीबी|<img src=x onerror=alert(1)>', b: 1024 * 1024 },
+            k2: { d: 'devB', n: 'lineman|मढ़ी|सुनील', b: 5 * 1024 * 1024 },
+            k3: { d: 'devB', n: 'lineman|मढ़ी|सुनील', b: 1024 * 1024 }
+          }) });
+        }
+        return orig(u, o);
+      };
+      _usageRender();
+      setTimeout(() => {
+        window.fetch = orig;
+        var el = document.getElementById('usage-content');
+        var rows = [].slice.call(el.querySelectorAll('td.wasc-hq')).map((td) => td.textContent);
+        resolve({ rows: rows, imgs: el.querySelectorAll('img').length, txt: el.textContent });
+      }, 500);
+    }));
+    expect(r.imgs).toBe(0);                                  // नाम में HTML था, पर markup नहीं बना
+    expect(r.txt).toContain('<img src=x onerror=alert(1)>');  // सादे टेक्स्ट के तौर पर दिखा
+    const dev = r.rows.filter((t) => t.indexOf('(') > -1 || t.indexOf('अनजान') > -1);
+    expect(dev[dev.length - 2]).toContain('सुनील');           // 6 MB वाला 1 MB वाले से ऊपर
+    expect(r.txt).toContain('6.0 MB');                        // devB के दोनों टुकड़े जुड़े
+  });
+});
+
+test.describe('🛑 डेटा बचाओ मोड — Firebase download रोकने का मास्टर स्विच (JE only)', () => {
+  test('चालू होने पर live sync न जुड़े और prefetch न चले (सबसे बड़े दो खर्च)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'क', hq: 'आदेगांव' };
+      localStorage.removeItem(_prefetchKey());
+      _applyPause({ on: true });
+      var live = !!liveSource || !!pollTimer;          // _applyPause ने बंद कर दिया होना चाहिए
+      startListen('आदेगांव', 'कुल उपभोक्ता');
+      var afterStart = !!liveSource || !!pollTimer;    // दोबारा जोड़ने की कोशिश भी न चले
+      var hits = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf(FB) === 0) hits++; return orig(u, o); };
+      prefetchAll(true);                               // force हो तब भी नहीं
+      window.fetch = orig;
+      _prefetchRun = false;
+      _applyPause({ on: false });
+      return { live: live, afterStart: afterStart, prefetchHits: hits };
+    });
+    expect(r.live).toBe(false);
+    expect(r.afterStart).toBe(false);
+    expect(r.prefetchHits).toBe(0);
+  });
+
+  test('चालू होने पर खुली लिस्ट cache से दिखे, पर उसका background refresh न हो', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'क', amount: 10, status: 'pending' }]);
+      _applyPause({ on: true });
+      var hits = 0, shown = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf(fbPath('आदेगांव', 'कुल उपभोक्ता')) > -1) hits++; return orig(u, o); };
+      fbGet('आदेगांव', 'कुल उपभोक्ता', function (d) { shown = d.length; });
+      setTimeout(() => { window.fetch = orig; _applyPause({ on: false }); resolve({ hits: hits, shown: shown }); }, 500);
+    }));
+    expect(r.shown).toBe(1);  // काम रुका नहीं — cache से पूरी लिस्ट मिली
+    expect(r.hits).toBe(0);   // पर एक भी बाइट network से नहीं
+  });
+
+  test('स्विच हटते ही live sync अपने आप वापस जुड़े', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => !!liveSource || !!pollTimer, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      _applyPause({ on: true });
+      var whilePaused = !!liveSource || !!pollTimer;
+      _applyPause({ on: false });
+      return { whilePaused: whilePaused, afterResume: !!liveSource || !!pollTimer };
+    });
+    expect(r.whilePaused).toBe(false);
+    expect(r.afterResume).toBe(true);
+  });
+
+  test('पट्टी सिर्फ़ चालू हालत में दिखे — लाइनमैन को पता रहे कि ऐप ख़राब नहीं है', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      _applyPause({ on: false });
+      var off = document.getElementById('pause-bar').style.display;
+      _applyPause({ on: true });
+      var el = document.getElementById('pause-bar');
+      var on = { disp: el.style.display, txt: el.textContent };
+      _applyPause({ on: false });
+      return { off: off, on: on };
+    });
+    expect(r.off).toBe('none');
+    expect(r.on.disp).not.toBe('none');
+    expect(r.on.txt).toContain('वसूली दर्ज हो रही है'); // डर न लगे — काम चालू है
+  });
+
+  test('स्विच device पर याद रहे — ऐप दोबारा खुलते ही (server के जवाब से पहले भी) रुका रहे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      _applyPause({ on: true, by: 'जेई', at: Date.now() });
+      var stored = localStorage.getItem(PAUSE_KEY);
+      DATA_PAUSED = false; PAUSE_INFO = null;   // जैसे ऐप नए सिरे से खुली हो
+      loadPauseLocal();
+      var after = isDataPaused();
+      _applyPause({ on: false });
+      return { stored: !!stored, after: after };
+    });
+    expect(r.stored).toBe(true);
+    expect(r.after).toBe(true);
+  });
+
+  test('स्विच सिर्फ़ JE बदल सके — lineman सीधे function बुलाए तो भी कुछ न लिखे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      var puts = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf('/PAUSE.json') > -1 && o && o.method === 'PUT') puts++; return orig(u, o); };
+      _pauseToggle();
+      openPauseModal();
+      var opened = document.getElementById('pause-overlay').classList.contains('open');
+      window.fetch = orig;
+      return { puts: puts, opened: opened };
+    });
+    expect(r.puts).toBe(0);
+    expect(r.opened).toBe(false);
+  });
+
+  // सबसे संभावित गड़बड़ी यही है कि JE शाम को स्विच दबाकर भूल जाएँ और पूरी टीम कई दिन पुराने डेटा
+  // पर चलती रहे। Firebase का quota वैसे भी रोज़ रीसेट होता है, तो कल इसे चालू रखने का मतलब ही नहीं
+  test('स्विच आज रात अपने आप हट जाए — कल का दबाया हुआ आज लागू न हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var todayStart = new Date(serverNow()); todayStart.setHours(0, 0, 0, 0);
+      _applyPause({ on: true, by: 'जेई', at: serverNow() });
+      var today = isDataPaused();
+      _applyPause({ on: true, by: 'जेई', at: todayStart.getTime() - 3600000 }); // कल शाम
+      var yesterday = isDataPaused();
+      // कब दबाया पता ही न हो (पुराना रूप) — तब भरोसा करके चालू ही मानें
+      _applyPause({ on: true, by: 'जेई' });
+      var noTime = isDataPaused();
+      _applyPause({ on: false });
+      return { today: today, yesterday: yesterday, noTime: noTime };
+    });
+    expect(r.today).toBe(true);
+    expect(r.yesterday).toBe(false); // भूल जाने पर भी कल अपने आप हट गया
+    expect(r.noTime).toBe(true);
+  });
+
+  test('device पर सहेजे स्विच पर भी वही "आज तक" वाली शर्त लगे (कल का रुका हुआ ऐप खुलते ही फिर लागू न हो)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var todayStart = new Date(serverNow()); todayStart.setHours(0, 0, 0, 0);
+      localStorage.setItem(PAUSE_KEY, JSON.stringify({ on: true, i: { on: true, by: 'जेई', at: todayStart.getTime() - 7200000 } }));
+      DATA_PAUSED = false;
+      loadPauseLocal();
+      var stale = isDataPaused();
+      localStorage.setItem(PAUSE_KEY, JSON.stringify({ on: true, i: { on: true, by: 'जेई', at: serverNow() } }));
+      DATA_PAUSED = false;
+      loadPauseLocal();
+      var fresh = isDataPaused();
+      _applyPause({ on: false });
+      return { stale: stale, fresh: fresh };
+    });
+    expect(r.stale).toBe(false);
+    expect(r.fresh).toBe(true);
+  });
+
+  test('database.rules.json — PAUSE सिर्फ़ JE लिख सके, बाक़ी सब पढ़ सकें', async () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+    expect(rules.PAUSE).toBeTruthy();
+    expect(rules.PAUSE['.read']).toBe('auth != null');
+    expect(rules.PAUSE['.write']).toContain('pradeepks2015@gmail.com');
+  });
+});
+
+// असली production: मढ़ी/कुल उपभोक्ता एक ही दिन में दो बार array में पलटी (10:40 और 12:57), जबकि
+// सभी devices v9.117 पर थे — यानी संदेश की अपनी वजह ("बहुत पुराना version") ग़लत थी। जड़ यह कि
+// "array लिखूं या per-record" का फ़ैसला पूरी तरह MIGRATED flag पर टिका था, और उस flag की दो अलग
+// हालतें (सचमुच migrated नहीं / flag लोड ही नहीं हुआ) कोड में एक जैसी (false) दिखती थीं
+test.describe('माइग्रेशन पलटने से पक्का बचाव — flag नहीं, सर्वर पर दिखे असली रूप पर भरोसा', () => {
+  test('flag लोड न हुआ हो पर सर्वर पर list per-record हो — तो पूरी array कभी न लिखी जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      MIGRATED = {};                                  // जैसे इस device पर flag लोड ही न हुआ हो
+      localStorage.removeItem(SHAPE_KEY);
+      _noteShape('मढ़ी', 'कुल उपभोक्ता', { '111': { acc: '111' } }); // सर्वर पर object देखी थी
+      var sent = null;
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath('मढ़ी', 'कुल उपभोक्ता')) > -1 && o && o.method === 'PUT') {
+          sent = JSON.parse(o.body);
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+        }
+        return orig(u, o);
+      };
+      _fbPut('मढ़ी', 'कुल उपभोक्ता', [{ acc: '111', name: 'क' }, { acc: '222', name: 'ख' }], function () {
+        window.fetch = orig;
+        resolve({ isArr: Array.isArray(sent), keys: sent ? Object.keys(sent) : null });
+      });
+    }));
+    expect(r.isArr).toBe(false);            // बिना fix के यह array जाता — माइग्रेशन पलट जाती
+    expect(r.keys).toEqual(['111', '222']); // per-record रूप में, acc की key से
+  });
+
+  test('जो list सचमुच migrate नहीं हुई (सर्वर पर array ही है) उस पर पुराना व्यवहार वैसा ही रहे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      MIGRATED = {};
+      localStorage.removeItem(SHAPE_KEY);
+      _noteShape('जोबा', 'सूची-3', [{ acc: '9' }]); // सर्वर पर array ही देखी थी
+      var sent = null;
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath('जोबा', 'सूची-3')) > -1 && o && o.method === 'PUT') {
+          sent = JSON.parse(o.body);
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+        }
+        return orig(u, o);
+      };
+      _fbPut('जोबा', 'सूची-3', [{ acc: '9', name: 'ग' }], function () {
+        window.fetch = orig;
+        resolve({ isArr: Array.isArray(sent) });
+      });
+    }));
+    expect(r.isArr).toBe(true); // यहाँ array लिखना ही सही है — बचाव बेवजह आड़े न आए
+  });
+
+  test('_noteShape — हर पढ़ाई पर रूप याद रहे, और खाली/अजीब जवाब पुरानी याद न मिटाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      localStorage.removeItem(SHAPE_KEY);
+      var out = {};
+      out.none = lastShape('पाटन', 'घरेलू');
+      _noteShape('पाटन', 'घरेलू', [{ acc: '1' }]);      out.arr = lastShape('पाटन', 'घरेलू');
+      _noteShape('पाटन', 'घरेलू', { '1': { acc: '1' } }); out.obj = lastShape('पाटन', 'घरेलू');
+      _noteShape('पाटन', 'घरेलू', null);                 out.afterNull = lastShape('पाटन', 'घरेलू');
+      _noteShape('पाटन', 'घरेलू', 'कचरा');               out.afterJunk = lastShape('पाटन', 'घरेलू');
+      return out;
+    });
+    expect(r.none).toBeNull();
+    expect(r.arr).toBe('arr');
+    expect(r.obj).toBe('obj');
+    expect(r.afterNull).toBe('obj'); // खाली जवाब से कुछ साबित नहीं होता — पुरानी याद बनी रहे
+    expect(r.afterJunk).toBe('obj');
+  });
+
+  test('list पढ़ते ही उसका रूप अपने आप दर्ज हो जाए (fbGet) — इसके लिए कोई अलग call न लगे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      localStorage.removeItem(SHAPE_KEY);
+      cSet('बीबी', 'कृषि', []); // cache खाली — पहली बार वाला रास्ता
+      var calls = 0;
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath('बीबी', 'कृषि')) > -1) {
+          calls++;
+          return Promise.resolve({ ok: true, headers: { get: () => null },
+            json: () => Promise.resolve({ '77': { acc: '77', name: 'घ' } }) });
+        }
+        return orig(u, o);
+      };
+      fbGet('बीबी', 'कृषि', function () {});
+      setTimeout(() => { window.fetch = orig; resolve({ shape: lastShape('बीबी', 'कृषि'), calls: calls }); }, 400);
+    }));
+    expect(r.shape).toBe('obj');
+    expect(r.calls).toBe(1); // वही एक पढ़ाई, कोई अतिरिक्त नहीं
+  });
+
+  // असली production (8 सितंबर, बीबी/3 month nonpayee, 306 records) — पलटाने वाला device v9.118
+  // यानी बचाव वाले version पर ही था। जड़: dc_shape3 हर device पर खाली से शुरू होता है, और
+  // flushPending() ऐप खुलते ही (main.js) चल जाता है — उस वक़्त इस device ने वह list एक बार भी
+  // पढ़ी नहीं होती, तो lastShape() कुछ नहीं जानता और guard array लिखने दे देता। यह रास्ता सर्वर
+  // का असली रूप ठीक अपने हाथ में लिए बैठा था (fetch का जवाब), बस उसे दर्ज नहीं करता था
+  test('offline बदलाव sync होते समय भी सर्वर का रूप दर्ज हो — flag खाली हो तो भी array वापस न लिखे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      localStorage.removeItem(SHAPE_KEY);
+      MIGRATED = {};                       // जैसे flag अभी लोड ही न हुआ हो (ऐप अभी-अभी खुली)
+      var hq = 'बीबी', cat = 'कृषि';
+      cSet(hq, cat, [{ acc: '5', name: 'क', amount: 10, status: 'paid' }]);
+      markPending(hq, cat, 'put');         // offline में किया गया एक बदलाव क़तार में (पुराना array रास्ता)
+      var putBody = null;
+      var orig = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf(fbPath(hq, cat)) > -1) {
+          if (o && o.method === 'PUT') { putBody = JSON.parse(o.body); return Promise.resolve({ ok: true, json: () => Promise.resolve(null) }); }
+          // सर्वर पर list per-record (object) रूप में है
+          return Promise.resolve({ ok: true, headers: { get: () => null },
+            json: () => Promise.resolve({ '5': { acc: '5', name: 'क', amount: 10, status: 'pending' } }) });
+        }
+        return orig(u, o);
+      };
+      flushPending();
+      setTimeout(() => {
+        window.fetch = orig;
+        clearPendingKey(cKey(hq, cat));
+        resolve({ shape: lastShape(hq, cat), wroteArray: Array.isArray(putBody), body: putBody });
+      }, 700);
+    }));
+    expect(r.shape).toBe('obj');       // पढ़ते ही रूप दर्ज हुआ
+    expect(r.wroteArray).toBe(false);  // और इसीलिए array वापस नहीं लिखी गई — माइग्रेशन बचा
+    expect(r.body['5']).toBeTruthy();  // per-record रूप में ही सेव हुआ, बदलाव भी बचा
   });
 });

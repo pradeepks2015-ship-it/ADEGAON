@@ -29,6 +29,7 @@
 :root[data-theme="dark"] .warn-box{background:rgba(194,106,26,.14);border-color:rgba(194,106,26,.3);}
 :root[data-theme="dark"] .limit-warn-box{background:rgba(214,69,90,.14);border-color:rgba(214,69,90,.3);}
 :root[data-theme="dark"] .prev-rmk-hdr span{background:rgba(194,106,26,.28);}
+:root[data-theme="dark"] .prev-rmk-cat{background:rgba(194,106,26,.28);}
 :root[data-theme="dark"] .log-ctx{background:rgba(214,69,90,.18);}
 :root[data-theme="dark"] .role-card.selected{background:rgba(59,130,201,.16);}
 :root[data-theme="dark"] .sc-date-table th{background:rgba(59,130,201,.20);}
@@ -83,13 +84,18 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .pw-wrap{position:relative;margin-bottom:14px;}
 .pw-wrap .f-input{margin-bottom:0;padding-right:40px;}
 .pw-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:16px;border:none;background:none;}
-.sync-bar{background:var(--grad-brand);padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:var(--shadow-glow);position:relative;z-index:101;}
-.sb-org{font-family:"Baloo 2",cursive;font-weight:800;font-size:13px;color:#fff;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;}
+/* छोटी स्क्रीन (360px जैसी) पर "ऑफलाइन — data device पर save है" जैसा लंबा संदेश आते ही
+   संस्था का नाम कट जाता था ("आदेगांव बिजली वि…") — क्योंकि .sb-sync सिकुड़ता ही नहीं
+   (flex-shrink:0) और सारी कमी नाम पर पड़ती थी। अब जगह कम पड़े तो दोनों एक ही पंक्ति में
+   ठुँसने की बजाय स्थिति नीचे की पंक्ति में चली जाती है — न नाम कटता है, न संदेश */
+.sync-bar{background:var(--grad-brand);padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;row-gap:3px;flex-wrap:wrap;box-shadow:var(--shadow-glow);position:relative;z-index:101;}
+.sb-org{font-family:"Baloo 2",cursive;font-weight:800;font-size:13px;color:#fff;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;flex-shrink:0;max-width:100%;}
 .sb-sync{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;flex-shrink:0;}
-.sdot{width:8px;height:8px;border-radius:50%;background:#5eead4;box-shadow:0 0 0 3px rgba(94,234,212,.28);animation:pulse 2s infinite;}
-.sdot.off{background:#ff9d9d;box-shadow:0 0 0 3px rgba(255,157,157,.28);animation:none;}
+/* जुड़ाव की बत्ती — हरी = ऑनलाइन, लाल = ऑफलाइन। यही अकेले काफ़ी है, इसलिए साथ का लंबा
+   वाक्य हटा दिया (वह छोटी स्क्रीन पर संस्था का नाम काट देता था) */
+.sdot{width:10px;height:10px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 3px rgba(74,222,128,.30);animation:pulse 2s infinite;flex-shrink:0;}
+.sdot.off{background:#f2545b;box-shadow:0 0 0 3px rgba(242,84,91,.32);animation:none;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
-@keyframes sp{to{transform:rotate(360deg);}}
 @media (max-width:480px){
   .hdr1{flex-wrap:wrap;gap:6px;}
   .hdr-left{flex-shrink:0;}
@@ -234,7 +240,21 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .main-scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior-y:contain;}
 .loading-overlay{position:fixed;inset:0;z-index:900;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;}
 .loading-overlay.hidden{display:none;}
-.spinner{width:46px;height:46px;border:3px solid var(--border);border-top-color:var(--gold);border-right-color:var(--gold);border-radius:50%;animation:sp .7s cubic-bezier(.5,0,.5,1) infinite;}
+/* लोडिंग चिह्न — बिजली की लहर, बीच में लाल कड़क। तीनों हिस्से अलग-अलग चलते हैं:
+   घेरा घूमता है, लहर बहती है (जैसे data आ रहा हो), और कड़क धड़कती है */
+.ldr{overflow:visible;filter:drop-shadow(0 0 12px rgba(60,140,255,.45));}
+/* घेरा लगभग पूरा, एक छोटे से अंतराल के साथ — वही अंतराल घूमता हुआ दिखता है */
+.ldr-ring{fill:none;stroke:#2f7ff0;stroke-width:6;stroke-linecap:round;stroke-dasharray:205 46;
+  transform-origin:60px 60px;animation:ldrSpin 1.6s linear infinite;}
+/* लहर टुकड़ों में न कटे — वह बाएं से दाएं खिंचती है, ठहरती है, फिर उसी तरफ़ से मिटती है
+   (जैसे बिजली का संकेत गुज़र रहा हो) */
+.ldr-wave{fill:none;stroke:#1e88f0;stroke-width:7;stroke-linecap:round;stroke-linejoin:round;
+  stroke-dasharray:224;stroke-dashoffset:224;animation:ldrDraw 1.9s ease-in-out infinite;}
+.ldr-bolt{fill:#ff3b2f;transform-origin:60px 60px;animation:ldrBolt .9s ease-in-out infinite;}
+@keyframes ldrSpin{to{transform:rotate(360deg);}}
+/* 224 = लहर की असली लंबाई (getTotalLength से नापी) — इससे खिंचाव ठीक सिरे पर पूरा होता है */
+@keyframes ldrDraw{0%{stroke-dashoffset:224;}45%,58%{stroke-dashoffset:0;}100%{stroke-dashoffset:-224;}}
+@keyframes ldrBolt{0%,100%{opacity:.85;transform:scale(1);}50%{opacity:1;transform:scale(1.14);}}
 .loading-text{font-size:13px;color:var(--muted);}
 .moverlay{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .25s;}
 .moverlay.open{opacity:1;pointer-events:all;}
@@ -315,6 +335,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .prev-rmk-item:last-child{border-bottom:none;}
 .prev-rmk-text{color:var(--text);margin-bottom:2px;}
 .prev-rmk-meta{font-size:9px;color:var(--muted);}
+.prev-rmk-cat{background:rgba(255,140,66,.15);color:var(--orange);border-radius:8px;padding:0 6px;font-size:9px;white-space:nowrap;}
 /* PHONE ACTION POPUP */
 .ph-overlay{position:fixed;inset:0;z-index:800;background:rgba(0,0,0,.75);backdrop-filter:blur(5px);display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .22s;}
 .ph-overlay.open{opacity:1;pointer-events:all;}
@@ -323,10 +344,24 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .ph-handle{width:34px;height:4px;border-radius:2px;background:var(--border);margin:8px auto 14px;}
 .ph-name{font-family:"Baloo 2",cursive;font-size:16px;font-weight:800;color:var(--gold2);margin-bottom:3px;}
 .ph-num{font-size:13px;color:var(--muted);margin-bottom:14px;letter-spacing:.5px;}
-.ph-msgtype{display:flex;gap:8px;margin-bottom:16px;}
-.ph-mt-btn{flex:1;padding:9px 6px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-family:"Noto Sans Devanagari",sans-serif;font-size:11.5px;font-weight:700;cursor:pointer;transition:transform .12s,background .15s,border-color .15s,color .15s;text-align:center;line-height:1.3;}
+/* तीनों संदेश-बटन हमेशा बराबर चौड़े/ऊंचे — grid के 3 बराबर कॉलम; ✏️ अपनी जगह नहीं लेता
+   (पहले flex में ✏️ की 34px चौड़ाई तीसरे बटन से कटती थी, इसलिए वह पतला-लंबा दिखता था) */
+.ph-msgtype{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:16px;}
+.ph-mt-btn{min-width:0;padding:9px 6px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-family:"Noto Sans Devanagari",sans-serif;font-size:11.5px;font-weight:700;cursor:pointer;transition:transform .12s,background .15s,border-color .15s,color .15s;text-align:center;line-height:1.3;}
 .ph-mt-btn:active{transform:scale(.97);}
 .ph-mt-btn.active{background:linear-gradient(135deg,#0fa578,#0a8c68 55%,var(--green));border-color:transparent;color:#fff;}
+.ph-mt-custom-slot{position:relative;display:flex;min-width:0;}
+.ph-mt-custom-slot .ph-mt-btn{flex:1;min-width:0;}
+/* ✏️ (सिर्फ़ JE) — बटन के ऊपरी-दाएं कोने पर छोटा गोल बैज */
+.ph-mt-edit-btn{position:absolute;top:-13px;right:-9px;z-index:1;width:26px;height:26px;padding:0;border-radius:50%;border:1px solid var(--border);background:var(--card);box-shadow:0 2px 6px rgba(0,0,0,.18);font-size:12px;line-height:1;cursor:pointer;}
+.ph-mt-edit-btn:active{transform:scale(.95);}
+.ph-custom-wrap{margin:-6px 0 16px;}
+.ph-custom-wrap .fta{height:90px;}
+.ph-custom-meta{font-size:10px;color:var(--muted);margin:5px 2px 8px;}
+.ph-custom-actions{display:flex;gap:8px;}
+.ph-custom-save{flex:2;padding:9px;border-radius:10px;border:none;background:var(--green);color:#fff;font-family:"Noto Sans Devanagari",sans-serif;font-weight:700;font-size:12.5px;cursor:pointer;}
+.ph-custom-save:active{transform:scale(.98);}
+.ph-custom-cancel{flex:1;padding:9px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--muted);font-family:"Noto Sans Devanagari",sans-serif;font-weight:700;font-size:12.5px;cursor:pointer;}
 .ph-btns{display:flex;flex-direction:column;gap:10px;}
 .ph-btn{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:16px;border:1px solid var(--border);background:var(--card);cursor:pointer;text-decoration:none;transition:transform .12s,background .15s;}
 .ph-btn:active{transform:scale(.98);opacity:.85;}
@@ -378,6 +413,10 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .sc-date-table tr:last-child td{border-bottom:none;}
 .sc-date-table tr:hover td{background:rgba(255,255,255,.02);}
 .sc-total-row td{background:rgba(38,128,201,.07);font-weight:700;color:var(--gold2);}
+/* पूरी पंक्ति दबाने लायक — उस दिन के सारे उपभोक्ता/Consumer No अलग स्क्रीन पर खुलते हैं */
+.sc-day-row{cursor:pointer;-webkit-tap-highlight-color:rgba(38,128,201,.25);}
+.sc-day-row:active td{background:rgba(38,128,201,.14);}
+.sc-tap-hint{font-size:10px;color:var(--muted);margin-bottom:7px;padding:5px 8px;border-radius:8px;background:rgba(38,128,201,.07);border:1px solid rgba(38,128,201,.18);}
 .sc-tabs{display:flex;gap:5px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none;}
 .sc-tabs::-webkit-scrollbar{display:none;}
 .sc-tab{flex-shrink:0;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:"Noto Sans Devanagari",sans-serif;transition:all .15s;}
@@ -416,3 +455,55 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 @keyframes updateBannerIn{from{transform:translateY(50px);opacity:0;}to{transform:translateY(0);opacity:1;}}
 @keyframes updateBannerPulse{0%,100%{box-shadow:0 6px 24px rgba(196,31,61,.5);}50%{box-shadow:0 6px 34px rgba(196,31,61,.85);}}
 @keyframes updateBannerBtnPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.06);}}
+
+/* ── वसूली दर्ज होने पर छोटा जश्न ─────────────────────────────────────────────
+   पूरी तरह device के अंदर — कोई image, font, library या network call नहीं (JE की शर्त:
+   कॉस्ट न बढ़े)। सिर्फ़ CSS animation + कुछ खाली <div>, जो 1.7 सेकंड बाद हटा दिए जाते हैं।
+   pointer-events:none इसलिए ज़रूरी है कि लाइनमैन बिना रुके अगला "✓ वसूल" दबा सके —
+   जश्न काम रोके नहीं, सिर्फ़ ऊपर से गुज़र जाए। ऊपर वाली @media (prefers-reduced-motion)
+   नियम इसे अपने आप लगभग तुरंत ख़त्म कर देता है, जिन्हें animation से दिक़्क़त होती है */
+.celeb{position:fixed;inset:0;z-index:998;pointer-events:none;overflow:hidden;}
+.celeb-card{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);text-align:center;
+  background:var(--card);border:1px solid rgba(0,200,150,.45);border-radius:18px;padding:14px 22px;
+  box-shadow:0 18px 44px rgba(0,0,0,.34);animation:celebPop 3.6s cubic-bezier(.2,1.3,.5,1) forwards;}
+.celeb-emoji{font-size:34px;line-height:1;display:flex;align-items:center;justify-content:center;gap:8px;}
+.celeb-name{font-size:15px;font-weight:800;color:var(--green);margin-top:5px;}
+.celeb-sub{font-size:11px;font-weight:700;color:var(--muted);margin-top:3px;}
+/* जश्न 1.7s का था — JE ने बताया कि उतने में "समझ ही नहीं आ पाता"। अब 3.6s, और चढ़ने-उतरने के
+   हिस्से उतने ही तेज़ रखे गए हैं (सिर्फ़ बीच का ठहराव लंबा हुआ), ताकि सुस्त न लगे */
+@keyframes celebPop{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.6);}
+  7%{opacity:1;transform:translate(-50%,-50%) scale(1.06);}
+  11%{transform:translate(-50%,-50%) scale(1);}
+  89%{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  100%{opacity:0;transform:translate(-50%,-64%) scale(.96);}
+}
+.celeb-bit{position:absolute;top:-14px;width:8px;height:12px;border-radius:2px;opacity:0;
+  animation:celebFall 2.9s ease-in forwards;}
+@keyframes celebFall{
+  0%{opacity:0;transform:translateY(0) rotate(0deg);}
+  8%{opacity:1;}
+  100%{opacity:0;transform:translateY(105vh) rotate(540deg);}
+}
+/* मैस्कॉट + ताली — 👏 इमोजी फ़ोन के अपने font से आता है (शून्य डाउनलोड), और "ताली बजाना"
+   सिर्फ़ CSS से बनाया गया है: दोनों हाथ बीच की तरफ़ आते-जाते हैं। कोई animated GIF/video नहीं */
+.celeb-mrow{display:flex;align-items:center;justify-content:center;gap:2px;margin-bottom:2px;}
+.celeb-mascot{width:76px;height:76px;border-radius:50%;background:#fff;
+  box-shadow:0 3px 12px rgba(0,0,0,.18);animation:celebBob .42s ease-in-out 8 alternate;}
+/* ताली पहले 22px की थी और सिर्फ़ 9px चलती थी — JE को "ताली बजती" दिखी ही नहीं। अब हाथ बड़े हैं,
+   दूर तक आते-जाते हैं, और पूरे 3.6s तक बजते रहते हैं (18 फेरे × .19s ≈ 3.4s) */
+.celeb-clap{font-size:30px;display:inline-block;}
+.celeb-clap.l{animation:clapL .19s ease-in-out 18 alternate;}
+.celeb-clap.r{animation:clapR .19s ease-in-out 18 alternate;}
+/* अंगूठा — उठता-गिरता रहे ताकि नज़र में आए */
+.celeb-thumb{display:inline-block;animation:celebThumb .5s ease-in-out 7 alternate;}
+@keyframes celebBob{from{transform:translateY(0) rotate(-4deg);}to{transform:translateY(-6px) rotate(4deg);}}
+@keyframes clapL{from{transform:translateX(0) rotate(-22deg);}to{transform:translateX(15px) rotate(8deg);}}
+@keyframes clapR{from{transform:translateX(0) rotate(22deg) scaleX(-1);}to{transform:translateX(-15px) rotate(-8deg) scaleX(-1);}}
+@keyframes celebThumb{from{transform:translateY(2px) rotate(-12deg) scale(.94);}to{transform:translateY(-7px) rotate(10deg) scale(1.12);}}
+
+/* 🛑 डेटा बचाओ मोड की पट्टी — सिर्फ़ तभी दिखती है जब JE ने स्विच दबाया हो */
+#pause-bar{background:linear-gradient(135deg,#c62828,#8e1c1c);color:#fff;font-size:11px;font-weight:700;
+  padding:7px 14px;text-align:center;line-height:1.5;position:relative;z-index:101;}
+/* शून्य-रेखा (neutral) — असली तरंग-आरेख की तरह; बहुत हल्की, ताकि लहर ही मुख्य रहे */
+.ldr-axis{stroke:currentColor;stroke-width:1.5;stroke-dasharray:3 4;opacity:.22;color:#2f7ff0;}

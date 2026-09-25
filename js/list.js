@@ -2,8 +2,10 @@ function renderSummaryWith(data){
   var tot=0,paid=0,pend=0,pendAmt=0;
   data.forEach(function(c){tot++;if(c.status==="paid")paid++;else{pend++;pendAmt+=Number(c.amount)||0;}});
   var fmt=function(a){return a>=100000?"₹"+(a/100000).toFixed(1)+"L":a>=1000?"₹"+(a/1000).toFixed(1)+"K":"₹"+a;};
+  // audit-verified: activeCat escHtml() से गुज़रता है, बाक़ी सब संख्या
+  // eslint-disable-next-line no-unsanitized/property
   document.getElementById("summary").innerHTML=
-    "<div class='sbox'><div class='snum'>"+tot+"</div><div class='slbl'>"+activeCat+"</div></div>"+
+    "<div class='sbox'><div class='snum'>"+tot+"</div><div class='slbl'>"+escHtml(activeCat)+"</div></div>"+
     "<div class='sbox'><div class='snum'>"+paid+"</div><div class='slbl'>✓ वसूल</div></div>"+
     "<div class='sbox'><div class='snum'>"+pend+"</div><div class='slbl'>✗ बाकी</div></div>"+
     "<div class='sbox'><div class='snum'>"+fmt(pendAmt)+"</div><div class='slbl'>बाकी राशि</div></div>";
@@ -50,6 +52,9 @@ function renderListWith(data){
     else emptyMsg="सूची खाली है";
     var emptyIco=activeFilter==="paid"?"✅":activeFilter==="pending"?"⏳":(q?"🔍":"📋");
     var emptySub=(!q&&activeFilter==="all")?"📤 अपलोड बटन से लिस्ट डालें":"🔍 खोज या फ़िल्टर बदलें";
+    // audit-verified: emptyMsg/emptyIco/emptySub सब hardcoded literals में से चुने जाते हैं (कभी भी
+    // सीधे q/किसी field का value नहीं होते) — plugin ternary को समझ नहीं पाता
+    // eslint-disable-next-line no-unsanitized/property
     c.innerHTML="<div class='empty'><div class='empty-ico'>"+emptyIco+"</div>"+
       "<div class='empty-t'>"+emptyMsg+"</div>"+
       "<div class='empty-s'>"+emptySub+"</div></div>";
@@ -58,6 +63,10 @@ function renderListWith(data){
   }
   var toRender=filtered.slice(0,_renderLimit);
   var hasMore=filtered.length>_renderLimit;
+  // audit-verified: नीचे हर con-card में सभी consumer fields (name/father/acc/phone/addr/tariff/
+  // load/unit/rmk/paydate आदि) escHtml()/escJsAttr() से गुज़रते हैं — plugin .map().join() के अंदर
+  // की calls नहीं देख पाता
+  // eslint-disable-next-line no-unsanitized/property
   c.innerHTML=toRender.map(function(x){
     var oi=data.indexOf(x),isPaid=x.status==="paid";
     var remarksArr=x.remarksArr||[];
@@ -106,19 +115,23 @@ function renderListWith(data){
   requestAnimationFrame(_updateBnavVisibility); // अगले paint frame तक टालें — DOM लिखने के तुरंत बाद scrollHeight पढ़ने से जबरन (महंगा) layout reflow होता है, बड़ी list पर धीमापन
 }
 
+// सिंगल-कोट (') को भी &#39; कर देते हैं — भले ही ज़्यादातर जगह double-quoted attribute
+// (onclick=\"...\") या plain text content है जहां ' वैसे भी खतरनाक नहीं, पर कहीं single-quoted
+// attribute (value='...') में इस्तेमाल हो (जैसे ui-core.js: openPinModal) तो वहां raw ' attribute
+// को समय से पहले बंद कर सकता था — असली bug यही था (HQ_PIN फ़ील्ड पर कोई digit-only validation नहीं,
+// JE कुछ भी टाइप कर सकता है)। &#39; हर जगह ' जैसा ही दिखता है, कहीं कुछ नहीं टूटता।
 function escHtml(s){
   if(!s) return "";
-  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
 
 // जब कोई value onclick="...('VALUE')" जैसे single-quoted JS string के अंदर, किसी HTML attribute में
-// डालनी हो — escHtml() अकेले काफ़ी नहीं है, वो सिर्फ़ & < > " को संभालता है, सिंगल-कोट (') को नहीं।
-// अगर acc/नाम/फ़ोन में कभी ' आ जाए (जैसे कोई नाम "O'Brien" जैसा, या जान-बूझकर बनाया गया data),
-// तो वो onclick की JS string को समय से पहले बंद करके बाक़ी बचा हिस्सा असली JS code की तरह चला सकता
-// था — असली bug यही था (सिर्फ़ HTML-content के लिए escHtml काफ़ी है, पर JS-string context अलग जोखिम
-// है)। पहले JS-string के लिए escape (\ और ' दोनों, साथ ही newline), फिर सामान्य HTML-attribute
-// escape (escHtml) — यही सही क्रम है, क्योंकि browser पहले HTML entity decode करता है, फिर उस
-// decode हुए टेक्स्ट को JS की तरह चलाता है।
+// डालनी हो — escHtml() अकेले काफ़ी नहीं है। भले ही अब वो ' को &#39; कर देता है (जो HTML-parse होकर
+// वापस ' बन जाता है), पर JS engine को वो ' बिना backslash के मिलता है — तो onclick की JS string
+// तब भी समय से पहले बंद हो सकती है। अगर acc/नाम/फ़ोन में कभी ' आ जाए (जैसे कोई नाम "O'Brien" जैसा,
+// या जान-बूझकर बनाया गया data), तो असली bug यही था। पहले JS-string के लिए escape (\ और ' दोनों,
+// साथ ही newline), फिर सामान्य HTML-attribute escape (escHtml) — यही सही क्रम है, क्योंकि browser
+// पहले HTML entity decode करता है, फिर उस decode हुए टेक्स्ट को JS की तरह चलाता है।
 function escJsAttr(s){
   if(!s) return "";
   return escHtml(String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/\n/g,"\\n").replace(/\r/g,"\\r"));
@@ -190,7 +203,7 @@ function propagateStatus(acc,srcCat,status,paydate,dtStr,ts){
   if(!acc) return;
   recOp(activeHQ,acc,status,paydate,CU&&CU.name||"",dtStr,ts);
   for(var i=0;i<CATS_DEFAULT.length;i++){
-    var cat=(i>=4)?getCatName(activeHQ,i):CATS_DEFAULT[i];
+    var cat=isCatEditable(i)?getCatName(activeHQ,i):CATS_DEFAULT[i];
     if(cat===srcCat) continue;
     var d=cGet(activeHQ,cat);
     if(!d||!d.length) continue;
@@ -211,7 +224,7 @@ function propagateStatus(acc,srcCat,status,paydate,dtStr,ts){
 // ── पुराने mismatch ठीक करें: किसी भी tab में paid → हर tab में paid ──
 function reconcileHQ(hq){
   var cats=[];
-  for(var i=0;i<CATS_DEFAULT.length;i++) cats.push((i>=4)?getCatName(hq,i):CATS_DEFAULT[i]);
+  for(var i=0;i<CATS_DEFAULT.length;i++) cats.push(isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i]);
   var paidMap={};
   cats.forEach(function(cat){
     cGet(hq,cat).forEach(function(x){
@@ -268,6 +281,13 @@ function markPaid(idx,acc){
   cSet(activeHQ,activeCat,d);
   renderSummaryWith(d); renderListWith(d);
   toast("✅ वसूली दर्ज! (हर tab में अपडेट)","ok");
+  // जश्न सिर्फ़ सजावट है — इसमें कुछ गड़बड़ हो तो वसूली न रुके। एक ही उपभोक्ता पर दिन में एक ही
+  // बार, ताकि बार-बार टॉगल करने का लालच न रहे; और हद से ज़्यादा दोहराने पर JE को लॉग में दिखे
+  try{
+    var _n=_paidMarkCountToday(d[idx].acc);
+    if(_n<=1) _celebPaid(d[idx]); // 0 = acc ही नहीं (गिनती नहीं हो सकती) — तब भी जश्न दिखे
+    else _warnIfTooManyMarks(_n,d[idx]);
+  }catch(e){}
   fbSet(activeHQ,activeCat,d,prevSnap,null);
   propagateStatus(d[idx].acc,activeCat,"paid",dateStr,dtStr,d[idx].ts);
 }
@@ -291,6 +311,22 @@ function markUnpaid(idx,acc){
   propagateStatus(d[idx].acc,activeCat,"pending","",dtStr,d[idx].ts);
 }
 
+// ── भुगतान तारीख़ (नया लेजर अपलोड करते समय छँटाई के लिए) ─────────────────────
+// आदेगांव DC में मीटर रीडिंग 7 तारीख़ तक होती है और नया बिल-लेजर 10 तारीख़ को बनता है — यानी
+// 1 से 10 के बीच ऐप में पुराना लेजर ही रहता है। इस बीच दर्ज हुई वसूली नए लेजर में भी बनी रहनी
+// चाहिए, पर पिछले माह की वसूली नहीं (वरना जिसने नया बिल जमा नहीं किया वो भी "वसूल" दिखता रहेगा
+// और लाइनमैन उस तक जाएगा ही नहीं) — यही छँटाई upload.js का _upKeepCutoff() करता है
+function _payVal(s){
+  var v=String(s==null?"":s).trim();
+  if(!v) return 0;
+  return payDateVal(normPayDate(v));
+}
+// उपभोक्ता की भुगतान तारीख़, तुलना-योग्य अंक (yyyymmdd) में — सिर्फ़ "वसूल" वालों की
+function latestPayVal(x){
+  if(!x||x.status!=="paid") return 0;
+  return _payVal(x.paydate);
+}
+
 function clearList(){
   if(!confirm(activeHQ+" › "+activeCat+" की लिस्ट हटाएं?"))return;
   cSet(activeHQ,activeCat,[]);
@@ -309,7 +345,7 @@ function clearOldCategoriesData(){
   var jobs=[];
   HQS.forEach(function(hq){
     for(var i=0;i<CATS_DEFAULT.length;i++){
-      var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+      var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
       if(CLEAR_OLD_CATS.indexOf(cat)>-1) jobs.push({hq:hq,cat:cat});
     }
   });
@@ -361,11 +397,16 @@ function openRmkModal(idx,acc){
   if(arr.length){
     cnt.textContent=arr.length;
     var html=arr.slice().reverse().map(function(r){
+      // r.cat तभी दिखाएं जब यह किसी और category से propagate होकर आया हो — यहीं (activeCat) में
+      // सीधे डाला गया हो तो टैग बेकार/redundant है
+      var catTag=(r.cat&&r.cat!==activeCat)?" <span class='prev-rmk-cat'>📁 "+escHtml(r.cat)+"</span>":"";
       return "<div class='prev-rmk-item'>"+
-        "<div class='prev-rmk-text'>💬 "+escHtml(r.text)+"</div>"+
+        "<div class='prev-rmk-text'>💬 "+escHtml(r.text)+catTag+"</div>"+
         "<div class='prev-rmk-meta'>— "+escHtml(r.by)+(r.at?" • "+r.at:"")+"</div>"+
       "</div>";
     }).join("");
+    // audit-verified: html ऊपर .map().join() से बना — हर remark में r.text/r.by escHtml() से गुज़रा
+    // eslint-disable-next-line no-unsanitized/property
     lst.innerHTML=html;
     sec.style.display="block";
   } else {
@@ -407,9 +448,12 @@ function saveRmk(){
     }
   }
   var newText=document.getElementById("rmk-text").value.trim();
+  var newEntry=null;
   if(newText){
     if(!d[idx].remarksArr) d[idx].remarksArr=[];
-    d[idx].remarksArr.push({text:newText,by:CU.name,at:dtStr});
+    // cat टैग — यही वजह से बाद में दूसरी category में यह रिमार्क दिखे तो पता चले असल में कहां डाला गया था
+    newEntry={text:newText,by:CU.name,at:dtStr,cat:activeCat};
+    d[idx].remarksArr.push(newEntry);
     // Keep backward-compat field as latest remark text
     d[idx].remarks=newText;
   }
@@ -423,5 +467,35 @@ function saveRmk(){
   toast("✅ रिमार्क सेव! (कुल "+total+")","ok");
   fbSet(activeHQ,activeCat,d,prevSnap,null);
   propagateStatus(d[idx].acc,activeCat,rmkStatus,d[idx].paydate||"",dtStr,d[idx].ts);
+  // JE की शिकायत: किसी category में डाला कमेंट "कुल उपभोक्ता" में नहीं दिखता था — हर category उसी
+  // acc की अपनी अलग कॉपी रखती है, status तो propagateStatus पहले से मिला देता है, पर असली रिमार्क
+  // text कभी नहीं। अब नया रिमार्क बाकी सभी categories की उसी acc वाली कॉपी में भी जुड़ता है
+  if(newEntry) propagateRemark(d[idx].acc,activeCat,newEntry);
+}
+// ── हर category में एक ही Consumer No पर पड़ा रिमार्क अब सब जगह (कुल उपभोक्ता समेत) दिखे ──
+// एक ही उपभोक्ता (acc) कई categories में अपनी-अपनी अलग कॉपी के तौर पर रहता है (जैसे "कुल उपभोक्ता"
+// और JE की बनाई कोई खास सूची, दोनों में एक ही आदमी)। रिमार्क सिर्फ़ जहां डाला गया वहीं की कॉपी में
+// रह जाता था। अब हर नया रिमार्क entry अपनी मूल category ({cat:srcCat}) टैग रखता है और उसी acc की
+// बाकी सभी categories में भी push हो जाता है — कहीं से भी डाला कमेंट अब हर जगह दिखेगा, और कई अलग
+// categories से आए हों तो openRmkModal का 📁 टैग बताएगा हर एक असल में कहां से आया (देखें वहां)
+function propagateRemark(acc,srcCat,entry){
+  if(!acc||!entry) return;
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var cat=isCatEditable(i)?getCatName(activeHQ,i):CATS_DEFAULT[i];
+    if(cat===srcCat) continue;
+    var d=cGet(activeHQ,cat);
+    if(!d||!d.length) continue;
+    var prevSnap=JSON.parse(JSON.stringify(d));
+    var changed=false;
+    d.forEach(function(x){
+      if(x&&x.acc&&String(x.acc).trim()===String(acc).trim()){
+        if(!x.remarksArr) x.remarksArr=[];
+        x.remarksArr.push(entry);
+        x.remarks=entry.text; // backward-compat field — saveRmk जैसा ही
+        changed=true;
+      }
+    });
+    if(changed){ cSet(activeHQ,cat,d); fbSet(activeHQ,cat,d,prevSnap,null); }
+  }
 }
 

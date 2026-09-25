@@ -85,13 +85,15 @@ function _vgBuildHQTabs(){
 function _vgPaidMap(hq){
   var seen={},map={};
   for(var i=0;i<CATS_DEFAULT.length;i++){
-    var cat=(i>=4)?getCatName(hq,i):CATS_DEFAULT[i];
+    var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
     var d=cGet(hq,cat)||[];
     d.forEach(function(x){
       if(!x||x.status!=="paid"||!x.acc)return;
       var key=String(x.acc);
       if(seen[key])return; seen[key]=1;
-      map[key]=Number(x.amount)||0;
+      // negative बकाया (advance/credit) वाले उपभोक्ता का योगदान वसूल-राशि के जोड़ में 0 माना जाता है —
+      // देखें reports.js: buildScOverview का fmt() वाला comment, वही वजह
+      map[key]=Math.max(0,Number(x.amount)||0);
     });
   }
   return map;
@@ -114,7 +116,7 @@ function _vgComputeRows(hq){
     byV[k].seen[key]=1;
     byV[k].tot++;
     var isPaid=x.acc&&paidMap.hasOwnProperty(String(x.acc))?true:(x.status==="paid");
-    if(isPaid){ byV[k].paid++; byV[k].paidAmt+=(x.acc&&paidMap.hasOwnProperty(String(x.acc)))?paidMap[String(x.acc)]:(Number(x.amount)||0); }
+    if(isPaid){ byV[k].paid++; byV[k].paidAmt+=(x.acc&&paidMap.hasOwnProperty(String(x.acc)))?paidMap[String(x.acc)]:Math.max(0,Number(x.amount)||0); }
     else byV[k].bakaya+=Number(x.amount)||0;
   });
   var rows=Object.keys(byV).map(function(k){
@@ -125,6 +127,87 @@ function _vgComputeRows(hq){
   });
   rows.sort(function(a,b){return a.village.localeCompare(b.village,"hi");});
   return rows;
+}
+
+// ── "किसी व्यक्ति द्वारा कौन से गांव गोद लिए गए हैं" ─────────────────────────────────────────
+// JE का अनुरोध: हर HQ की कुछ categories का नाम किसी व्यक्ति के नाम पर बदल दिया जाता है (जैसे
+// "किशन", "अशोक") और उस tab में सिर्फ़ उसी व्यक्ति के ज़िम्मे वाले गांवों की बकाया सूची रहती है।
+// सिर्फ़ गांव के नाम काफ़ी नहीं — हर गांव का पूरा हिसाब चाहिए (जैसा मुख्य ग्राम-वार तालिका देती
+// है): कुल उपभोक्ता, कुल बकाया राशि, कुल वसूल राशि, प्रतिशत — यहां वही _vgComputeRows() जैसा
+// हिसाब, बस उस category की अपनी सूची पर (मास्टर "कुल उपभोक्ता" पर नहीं)। डेटा में यह अलग से दर्ज
+// नहीं है कि कोई custom नाम असल में "व्यक्ति" है या सिर्फ़ कोई और status-सूची (जैसे "3 month
+// nonpayee") — इसलिए हर उस category को दिखाया जाता है जिसका नाम default से बदला गया हो; असली
+// व्यक्ति-नाम वाली JE खुद पहचान लेंगे। गांव वही _vgNormKey() से मिलते-जुलते नाम मर्ज करके, वसूल-
+// स्थिति भी वही _vgPaidMap() से (किसी भी category में वसूल = हर जगह वसूल, list.js: reconcileHQ
+// वाला नियम) — कोई अलग network call नहीं, सिर्फ़ पहले से cache में मौजूद data पर
+function _vgComputeAdoptionVillages(hq,catName){
+  var d=cGet(hq,catName)||[];
+  var paidMap=_vgPaidMap(hq);
+  var byV={};
+  d.forEach(function(x){
+    if(!x) return;
+    var raw=(x.addr||"").trim()||"(गांव दर्ज नहीं)";
+    var k=_vgNormKey(hq,raw);
+    if(!byV[k]) byV[k]={tot:0,paid:0,bakaya:0,paidAmt:0,names:{}};
+    byV[k].names[raw]=(byV[k].names[raw]||0)+1;
+    byV[k].tot++;
+    var isPaid=x.acc&&paidMap.hasOwnProperty(String(x.acc))?true:(x.status==="paid");
+    if(isPaid){ byV[k].paid++; byV[k].paidAmt+=(x.acc&&paidMap.hasOwnProperty(String(x.acc)))?paidMap[String(x.acc)]:Math.max(0,Number(x.amount)||0); }
+    else byV[k].bakaya+=Number(x.amount)||0;
+  });
+  var rows=Object.keys(byV).map(function(k){
+    var v=byV[k];
+    var best=k,bc=-1;
+    Object.keys(v.names).forEach(function(n){ if(v.names[n]>bc){bc=v.names[n];best=n;} });
+    return {village:best,tot:v.tot,paid:v.paid,bakaya:v.bakaya,paidAmt:v.paidAmt,pct:v.tot?(v.paid/v.tot*100):0};
+  });
+  rows.sort(function(a,b){return a.village.localeCompare(b.village,"hi");});
+  return rows;
+}
+function _vgComputeAdoptions(hq){
+  var rows=[];
+  for(var i=1;i<CATS_DEFAULT.length;i++){
+    if(!(CAT_NAMES[hq]&&CAT_NAMES[hq][i]!=null)) continue; // default नाम — छोड़ें
+    var catName=CAT_NAMES[hq][i];
+    var villages=_vgComputeAdoptionVillages(hq,catName);
+    if(!villages.length) continue;
+    rows.push({cat:catName,villages:villages});
+  }
+  rows.sort(function(a,b){return a.cat.localeCompare(b.cat,"hi");});
+  return rows;
+}
+function _vgRenderAdoptions(){
+  var el=document.getElementById("vg-adopt-list");
+  if(!el) return;
+  var cats=_vgComputeAdoptions(vgActiveHQ);
+  if(!cats.length){
+    el.innerHTML="<div class='log-empty'>इस HQ में कोई नाम-बदली हुई सूची नहीं (✏️ से किसी category का नाम बदलें)</div>";
+    return;
+  }
+  var fmt=function(n){return Number(n||0).toLocaleString("hi-IN");};
+  var html=cats.map(function(c){
+    var gTot=0,gPaid=0,gBak=0,gPaidAmt=0;
+    c.villages.forEach(function(v){gTot+=v.tot;gPaid+=v.paid;gBak+=v.bakaya;gPaidAmt+=v.paidAmt;});
+    var gPct=gTot?(gPaid/gTot*100):0;
+    var rows=c.villages.map(function(v,i){
+      return "<tr><td>"+(i+1)+"</td><td class='wasc-hq'>"+escHtml(v.village)+"</td>"+
+        "<td>"+v.tot+"<br><span class='wasc-sub'>&#8377;"+fmt(v.bakaya)+"</span></td>"+
+        "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+v.paid+"</span><br><span class='wasc-sub'>&#8377;"+fmt(v.paidAmt)+"</span></td>"+
+        "<td>"+v.pct.toFixed(1)+"%</td></tr>";
+    }).join("");
+    return "<div class='wasc-hdr' style='margin-top:14px;'><div class='wasc-hdr-t' style='font-size:13px;'>&#128100; "+escHtml(c.cat)+"</div></div>"+
+      "<table class='wasc-table'><thead><tr><th>क्र.</th><th>गांव</th>"+
+      "<th>कुल कनेक्शन<br><span class='wasc-sub'>बकाया राशि</span></th>"+
+      "<th class='wasc-col-paid'>वसूल<br><span class='wasc-sub'>वसूल राशि</span></th>"+
+      "<th>Paid %</th></tr></thead><tbody>"+rows+
+      "</tbody><tfoot><tr><td colspan='2'>योग ("+c.villages.length+" गांव)</td>"+
+      "<td>"+gTot+"<br><span class='wasc-sub'>&#8377;"+fmt(gBak)+"</span></td>"+
+      "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+gPaid+"</span><br><span class='wasc-sub'>&#8377;"+fmt(gPaidAmt)+"</span></td>"+
+      "<td>"+gPct.toFixed(1)+"%</td></tr></tfoot></table>";
+  }).join("");
+  // audit-verified: c.cat और v.village दोनों escHtml() से गुज़रे (ऊपर देखें), बाक़ी संख्या
+  // eslint-disable-next-line no-unsanitized/property
+  el.innerHTML=html;
 }
 
 function _vgFiltered(){
@@ -155,6 +238,8 @@ function _vgRenderTable(el,filtered){
     "<td>"+gTot+"<br><span class='wasc-sub'>&#8377;"+fmt(gBak)+"</span></td>"+
     "<td class='wasc-col-paid'><span class='wasc-paid-num'>"+gPaid+"</span><br><span class='wasc-sub'>&#8377;"+fmt(gPaidAmt)+"</span></td>"+
     "<td>"+gPct.toFixed(1)+"%</td></tr></tfoot></table>";
+  // audit-verified: vgActiveHQ/r.village escHtml() से गुज़रते हैं (ऊपर देखें), बाक़ी संख्या
+  // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=html;
 }
 
@@ -171,6 +256,7 @@ function _vgRenderList(){
 function _vgRenderCached(){
   vgRows=_vgComputeRows(vgActiveHQ);
   _vgRenderList();
+  _vgRenderAdoptions();
 }
 
 function _vgLoadAndRender(){
@@ -180,6 +266,7 @@ function _vgLoadAndRender(){
   _cashRefreshAll(hqs,function(){
     vgRows=_vgComputeRows(vgActiveHQ);
     _vgRenderList();
+    _vgRenderAdoptions();
   },true); // force=true — यह अब सिर्फ़ explicit "रिफ्रेश करें" बटन से बुलाया जाता है
 }
 
