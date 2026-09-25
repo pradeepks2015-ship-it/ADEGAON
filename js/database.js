@@ -296,8 +296,29 @@ function fbSet(hq,cat,arr,prevArr,cb){
   if(arr.length>200){
     toast("⏳ "+arr.length+" records सेव हो रहे हैं...","inf");
   }
-  if(isMigrated(hq,cat)) _fbPutPerRecord(hq,cat,prevArr||[],arr,cb);
-  else _fbPut(hq,cat,arr,cb);
+  // v9.167: flag न भी हो, पर सर्वर पर list per-record दिखी हो (या अभी जांच में दिखे) तो भी सिर्फ़ बदले
+  // records का PATCH — पूरी list लिखने से उसी पल किसी और लाइनमैन का बदलाव दब सकता था
+  if(isMigrated(hq,cat)||lastShape(hq,cat)==="obj"){ _fbPutPerRecord(hq,cat,prevArr||[],arr,cb); return; }
+  if(!lastShape(hq,cat)&&!Object.keys(MIGRATED||{}).length){
+    // flags लोड नहीं + रूप अज्ञात — _fbPut की जांच चलाओ; per-record निकले तो PATCH, वरना वही array
+    fetch(FB+"/"+fbPath(hq,cat)+".json?shallow=true&t="+Date.now())
+      .then(_fbJson)
+      .then(function(d){
+        var sh=_shapeFromShallow(d);
+        _noteShape(hq,cat,sh==="obj"?{}:[]);
+        if(sh==="obj") _fbPutPerRecord(hq,cat,prevArr||[],arr,cb);
+        else _fbPutNow(hq,cat,arr,cb);
+      })
+      .catch(function(e){
+        if(navigator.onLine) logErr("save-shape-probe-fail",e,hq+"/"+cat);
+        markPending(hq,cat,"put",null,e);
+        setSyncStatus(false);
+        _saveFailToast(e);
+        if(cb) cb(false);
+      });
+    return;
+  }
+  _fbPut(hq,cat,arr,cb);
 }
 
 // पूरी array PUT करने वाला इकलौता (legacy) रास्ता — इसीलिए यहीं गारंटी दी गई है कि यह किसी
@@ -315,7 +336,43 @@ function _asPerRecord(hq,cat,arr){
   return obj;
 }
 var _arrayPutLogged={};
+// ── flags लोड हुए बिना array लिखने से पहले सर्वर पर list का असली रूप जांचो (v9.167) ──
+// असली production (v9.166 लॉग, बीबी/कुल उपभोक्ता, Movind): "array-put-noflags" — इस device पर MIGRATED
+// flags लोड ही नहीं हुए (ऐप खुलते वक़्त login पूरा होने से पहले /MIGRATED पढ़ा गया → Permission denied)
+// और list का रूप भी पहले कभी नहीं देखा था। ऐसे में पूरी array लिखना migrated list को पलट देता — यही
+// मढ़ी/1134019486 के duplicate card की जड़ थी। अब पहले ?shallow=true से सिर्फ़ keys (हल्का) मंगाकर
+// रूप पक्का करते हैं: key Consumer No जैसी (गैर-क्रमांक) = per-record; सब 0,1,2… = array। जांच ही नाकाम
+// हो तो array नहीं लिखते — बदलाव device पर pending रहता है, flushPending बाद में पूरा रूप देखकर भेजेगा
+function _shapeFromShallow(d){
+  if(!d||typeof d!=="object") return null;
+  var ks=Object.keys(d);
+  if(!ks.length) return null;
+  // Consumer No भी अंकों वाले ही हैं (जैसे 1134019486) — इसलिए "सिर्फ़ अंक" से फ़र्क़ नहीं पता चलता।
+  // array के क्रमांक 0…(records-1) होते हैं, जो getMaxRecords (3500) से कभी ऊपर नहीं जाते;
+  // Consumer No उससे कहीं बड़े (10 अंक)
+  return ks.every(function(k){ return /^\d+$/.test(k)&&Number(k)<=10000; })?"arr":"obj";
+}
 function _fbPut(hq,cat,arr,cb){
+  if(!isMigrated(hq,cat)&&!lastShape(hq,cat)&&!Object.keys(MIGRATED||{}).length){
+    fetch(FB+"/"+fbPath(hq,cat)+".json?shallow=true&t="+Date.now())
+      .then(_fbJson)
+      .then(function(d){
+        var sh=_shapeFromShallow(d);
+        _noteShape(hq,cat,sh==="obj"?{}:[]); // खाली/नहीं = array लिखना सुरक्षित
+        _fbPutNow(hq,cat,arr,cb);
+      })
+      .catch(function(e){
+        if(navigator.onLine) logErr("save-shape-probe-fail",e,hq+"/"+cat);
+        markPending(hq,cat,"put",null,e);
+        setSyncStatus(false);
+        _saveFailToast(e);
+        if(cb) cb(false);
+      });
+    return;
+  }
+  _fbPutNow(hq,cat,arr,cb);
+}
+function _fbPutNow(hq,cat,arr,cb){
   var body,wrote;
   if(isMigrated(hq,cat)){
     wrote=_asPerRecord(hq,cat,arr);
@@ -606,6 +663,7 @@ function _sseLogNeverOpened(hq,cat,es){
   var extra=" • तरीका: "+how;
   if(es&&es.httpStatus) extra+=" • HTTP "+es.httpStatus;
   if(es&&es.errText) extra+=" • जवाब: "+es.errText;
+  extra+=" • खाता: "+_liveAcctKind();
   logErr("sse-never-opened",
     "live-sync एक बार भी नहीं जुड़ा — सर्वर ने connection मना किया (App Check या account की दिक़्क़त)",
     hq+"/"+cat+" • AppCheck token: "+(AC_TOKEN?"था":"नहीं था")+" • login token: "+(ID_TOKEN?"था":"नहीं था")+extra);
@@ -625,6 +683,40 @@ function _sseLogNeverOpened(hq,cat,es){
 // सारा पुराना व्यवहार (backoff, token-expiry की सस्ती ETag जांच, patch event, polling fallback) वैसा ही:
 //   • HTTP मनाही (जवाब ok नहीं) या सर्वर का "cancel"/"auth_revoked" event → readyState 2 (CLOSED)
 //   • जुड़ने के बाद stream टूटना / नेट की गड़बड़ी → readyState 0 (नेट का झटका — रुककर दोबारा)
+// ── v9.167: live-sync सही login पक्का होने के बाद ही ─────────────────────────────────────────
+// v9.166 के बाद App Check पास होने लगा (अब "Missing appcheck token" नहीं), पर सर्वर "Permission
+// denied" देने लगा — दो तरह से: "login token: नहीं था" (ऐप खुलते ही stream login token बनने से पहले
+// खुल गया) और "login token: था" (token था, पर उस वक़्त device का Firebase account अभी गुमनाम/
+// anonymous था — _ensureCorrectHqAuth उसी पल पीछे से सही HQ account में sign-in कर रहा था; Security
+// Rules HQ का data सिर्फ़ उसी HQ के account को पढ़ने देती हैं)। यानी stream उस दौड़ में हार जाता था।
+// अब stream खोलने से पहले: Firebase का auth तय हो (_afterAuthReady) → लाइनमैन का सही HQ account
+// पक्का हो (_ensureCorrectHqAuth) → उसी account का ताज़ा token लिया जाए। Firebase ही न हो (offline
+// पहली बार / tests) तो तुरंत
+function _liveAuthReady(fn){
+  var fbOk=false;
+  try{ fbOk=typeof firebase!=="undefined"&&!!firebase&&typeof firebase.auth==="function"; }catch(e){}
+  if(!fbOk) return fn();
+  _afterAuthReady(function(){
+    var go=function(){
+      var u=null;
+      try{ u=firebase.auth().currentUser; }catch(e){}
+      if(!u) return fn();
+      u.getIdToken().then(function(t){ ID_TOKEN=t; fn(); },function(){ fn(); });
+    };
+    if(typeof _ensureCorrectHqAuth==="function") _ensureCorrectHqAuth(go); else go();
+  });
+}
+// लॉग के लिए — device किस Firebase account पर है (email नहीं, सिर्फ़ किस्म)
+function _liveAcctKind(){
+  try{
+    var u=firebase.auth().currentUser;
+    if(!u) return "कोई नहीं";
+    if(u.isAnonymous||!u.email) return "anonymous";
+    if(u.email===JE_EMAIL) return "JE";
+    if(CU&&HQ_AUTH_EMAIL[CU.hq]===u.email) return "सही HQ";
+    return "दूसरा HQ";
+  }catch(e){ return "अज्ञात"; }
+}
 function _fetchStreamSupported(){
   return typeof fetch==="function"&&typeof AbortController==="function"&&typeof TextDecoder==="function"&&
     typeof ReadableStream!=="undefined"&&typeof Response!=="undefined"&&("body" in Response.prototype);
@@ -637,6 +729,12 @@ function FetchLiveSource(url){
   self._l={};
   self._closed=false;
   self._ctrl=new AbortController();
+  // stream तभी खोलें जब सही account (लाइनमैन = उसी HQ का account) और उसका ताज़ा login token पक्का
+  // हो — देखें _liveAuthReady। तब तक readyState 0 (जुड़ रहा है) रहता है
+  _liveAuthReady(function(){ if(!self._closed) self._start(url); });
+}
+FetchLiveSource.prototype._start=function(url){
+  var self=this;
   fetch(url,{headers:{"Accept":"text/event-stream"},cache:"no-store",signal:self._ctrl.signal})
     .then(function(r){
       if(self._closed) return;
@@ -665,7 +763,7 @@ function FetchLiveSource(url){
       return pump();
     })
     .catch(function(){ if(!self._closed) self._fail(0); });
-}
+};
 FetchLiveSource.prototype.addEventListener=function(type,fn){ (this._l[type]||(this._l[type]=[])).push(fn); };
 FetchLiveSource.prototype.close=function(){
   this._closed=true;
