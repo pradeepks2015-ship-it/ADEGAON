@@ -3390,6 +3390,117 @@ test.describe('Firebase auth token — 401 पर force-refresh', () => {
     expect(r.calls).toBe(2);
     expect(r.status).toBe(403);
   });
+
+  // असली production bug (v9.165 का sse-never-opened लॉग, सर्वर का जवाब "Missing appcheck token"):
+  // पहला App Check getToken() नाकाम रहा तो AC_TOKEN null रह जाता, और 401 पर पुराना retry सिर्फ़
+  // login token ताज़ा करता — App Check का नहीं, इसलिए retry भी उसी कमी के साथ फिर 401 खाता
+  test('_fbFetchWithAuth — 401 पर AC_TOKEN missing हो तो login token के साथ App Check token भी ताज़ा हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      AC_TOKEN = null;
+      let calls = 0;
+      _rawFetch = function () {
+        calls++;
+        if (calls === 1) return Promise.resolve({ status: 401, ok: false });
+        return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({ ok: true }) });
+      };
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: { getIdToken: function () { ID_TOKEN = 'fresh-token'; return Promise.resolve('fresh-token'); } } };
+      };
+      window.firebase.appCheck = function () {
+        return { getToken: function () { AC_TOKEN = 'fresh-ac-token'; return Promise.resolve({ token: 'fresh-ac-token' }); } };
+      };
+      _fbFetchWithAuth(FB + '/test.json', { method: 'GET' }).then((res) => {
+        resolve({ calls: calls, status: res.status, idToken: ID_TOKEN, acToken: AC_TOKEN });
+      });
+    }));
+    expect(r.calls).toBe(2);
+    expect(r.status).toBe(200);
+    expect(r.idToken).toBe('fresh-token');
+    expect(r.acToken).toBe('fresh-ac-token');
+  });
+
+  test('_fbFetchWithAuth — 401 पर AC_TOKEN पहले से मौजूद हो तो सिर्फ़ login token ताज़ा हो (पुराना व्यवहार बरकरार)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      AC_TOKEN = 'already-there';
+      let calls = 0;
+      _rawFetch = function () {
+        calls++;
+        if (calls === 1) return Promise.resolve({ status: 401, ok: false });
+        return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({ ok: true }) });
+      };
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: { getIdToken: function () { ID_TOKEN = 'fresh-token'; return Promise.resolve('fresh-token'); } } };
+      };
+      _fbFetchWithAuth(FB + '/test.json', { method: 'GET' }).then((res) => {
+        resolve({ calls: calls, status: res.status, acToken: AC_TOKEN });
+      });
+    }));
+    expect(r.calls).toBe(2);
+    expect(r.acToken).toBe('already-there'); // छेड़ा नहीं गया
+  });
+
+  // असली bug: पहला App Check getToken() नाकाम रहे तो पहले अगला मौका 30 मिनट बाद मिलता — तब तक हर
+  // request बिना App Check header के जाती
+  test('_acRefresh (App Check) — पहली कोशिश नाकाम रहे तो 30 मिनट नहीं, जल्दी (AC_RETRY_MS में) दोबारा कोशिश हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      AC_TOKEN = null; AC_READY = false;
+      if (_acRetryT) { clearTimeout(_acRetryT); _acRetryT = null; }
+      AC_RETRY_MS = 20;
+      var attempts = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = function () {
+        return {
+          getToken: function () {
+            attempts++;
+            if (attempts === 1) return Promise.reject(new Error('अभी तैयार नहीं'));
+            return Promise.resolve({ token: 'ac-second-try' });
+          },
+        };
+      };
+      _acRefresh();
+      setTimeout(() => resolve({ attempts: attempts, token: AC_TOKEN }), 200);
+    }));
+    expect(r.attempts).toBe(2); // पहली नाकाम, दूसरी जल्दी ही सफल
+    expect(r.token).toBe('ac-second-try');
+  });
+
+  test('_acRefresh — token मिल जाए तो दोबारा जल्दी कोशिश वाला timer न लगे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      AC_TOKEN = null; AC_READY = false;
+      if (_acRetryT) { clearTimeout(_acRetryT); _acRetryT = null; }
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = function () {
+        return { getToken: function () { return Promise.resolve({ token: 'ok-first-try' }); } };
+      };
+      _acRefresh();
+      setTimeout(() => resolve({ token: AC_TOKEN, retryScheduled: !!_acRetryT }), 50);
+    }));
+    expect(r.token).toBe('ok-first-try');
+    expect(r.retryScheduled).toBe(false);
+  });
+
+  // असली bug: login token 4 सेकंड में भी न बने तो पहले यहां से बिल्कुल raw fetch चला जाता — App
+  // Check token उसी बीच तैयार हो चुका हो तब भी उसका header नहीं लगता था
+  test('window.fetch — 4 सेकंड में login token न बने तो भी, जो App Check token तैयार हो चुका हो वह लगे', async ({ page }) => {
+    await openApp(page);
+    test.setTimeout(15000);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      ID_TOKEN = null; AC_TOKEN = 'ac-ready'; AC_READY = true;
+      var seenHeader = null;
+      _rawFetch = function (url, opts) {
+        seenHeader = opts && opts.headers && opts.headers['X-Firebase-AppCheck'];
+        return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({ ok: true }) });
+      };
+      fetch(FB + '/test.json').then(() => resolve({ header: seenHeader })); // असली 4-sec wait पूरा होने का इंतज़ार
+    }));
+    expect(r.header).toBe('ac-ready');
+  });
 });
 
 test.describe('लॉगिन और डेटा-लोड — कमज़ोर नेटवर्क पर हमेशा के लिए न अटकें', () => {
