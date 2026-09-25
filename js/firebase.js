@@ -30,18 +30,32 @@ function _afterAuthReady(fn){
   setTimeout(run,5000);
 }
 var _acWaiters = []; // वैसे ही App Check token के लिए — पहले सिर्फ ID_TOKEN का इंतज़ार होता था, इसलिए ज़्यादातर requests बिना App Check header के निकल जाती थीं (Verified% कम दिखता था)
+var AC_RETRY_MS=15000; // App Check token न मिले तो अगली कोशिश कितनी जल्दी (30 मिनट के सामान्य refresh से अलग)
+var _acRetryT=null;
+// App Check token लाना/ताज़ा करना — फ़ंक्शन को यहां (top-level) रखा है, try ब्लॉक के अंदर नहीं,
+// ताकि tests सीधे बुला सकें (देखें tests/smoke.spec.js)
+function _acRefresh(){
+  try{
+    firebase.appCheck().getToken(false)
+      .then(function(t){AC_TOKEN=(t&&t.token)||null;})
+      .catch(function(){AC_TOKEN=null;})
+      .then(function(){
+        if(!AC_READY){AC_READY=true; _acWaiters.splice(0).forEach(function(f){try{f();}catch(e){}});}
+        // असली production bug (v9.165 के sse-never-opened लॉग से पकड़ा गया, सर्वर का जवाब
+        // "Missing appcheck token"): पहला getToken() कभी-कभी नाकाम रह जाता (reCAPTCHA अभी लोड नहीं
+        // हुआ, धीमा नेट) — AC_READY फिर भी true हो जाता है (ताकि पहली request अनिश्चित काल न
+        // रुके), पर AC_TOKEN null ही रह जाता। पहले अगला मौका पूरे 30 मिनट बाद (अगला interval)
+        // मिलता — तब तक हर request बिना App Check header के जाती, और Enforced database उसे मना
+        // करती। अब token न मिले तो जल्दी (15 सेकंड में) दोबारा कोशिश करो
+        if(_acRetryT){clearTimeout(_acRetryT);_acRetryT=null;}
+        if(!AC_TOKEN) _acRetryT=setTimeout(_acRefresh,AC_RETRY_MS);
+      });
+  }catch(e){if(!AC_READY)AC_READY=true;}
+}
 try{
   firebase.initializeApp(firebaseConfig);
   try{
     firebase.appCheck().activate("6LdPa10tAAAAAHH1aA7E31NHC1c2k9k0WFEQ7UZX", true); // true = token अपने आप refresh
-    var _acRefresh=function(){
-      firebase.appCheck().getToken(false)
-        .then(function(t){AC_TOKEN=(t&&t.token)||null;})
-        .catch(function(){})
-        .then(function(){
-          if(!AC_READY){AC_READY=true; _acWaiters.splice(0).forEach(function(f){try{f();}catch(e){}});}
-        });
-    };
     _acRefresh();
     setInterval(_acRefresh, 30*60*1000);
   }catch(eAC){AC_READY=true;}
@@ -96,10 +110,17 @@ function _fbFetchWithAuth(url,opts){
     if(r.status===401){
       var u=firebase.auth().currentUser;
       if(!u) return r;
-      return u.getIdToken(true).then(function(t){
-        ID_TOKEN=t;
-        return _fbFetchOnce(url,opts);
-      }).catch(function(){return r;});
+      // 401 सिर्फ़ login token expire से नहीं आता — "Missing appcheck token" पर भी सर्वर 401 देता है
+      // (असली production लॉग, v9.165: "AppCheck token: था" फिर भी सर्वर मना — race थी, fetch जाते
+      // वक़्त AC_TOKEN अभी null था)। इसलिए AC_TOKEN missing हो तो उसे भी ताज़ा करके login token के
+      // साथ एक बार दोबारा कोशिश करो
+      var acJob=AC_TOKEN?Promise.resolve():_acForceRefresh();
+      return acJob.then(function(){
+        return u.getIdToken(true).then(function(t){
+          ID_TOKEN=t;
+          return _fbFetchOnce(url,opts);
+        }).catch(function(){return r;});
+      });
     }
     if(r.status===403){
       return _acForceRefresh().then(function(){
@@ -117,7 +138,12 @@ window.fetch = function(url, opts){
       var done=false;
       var tm=setTimeout(function(){
         if(done)return; done=true;
-        resolve(ID_TOKEN?_fbFetchWithAuth(url,opts):_rawFetch(url,opts));
+        if(ID_TOKEN){ resolve(_fbFetchWithAuth(url,opts)); return; }
+        // login token 4 सेकंड में भी नहीं बना (असली bug, v9.165 लॉग "login token: नहीं था") — पहले
+        // यहां से बिल्कुल raw (बिना App Check header के भी) fetch चला जाता था, भले ही उसी बीच
+        // App Check token बन चुका हो। सिर्फ़ ID_TOKEN की देर की वजह से App Check header मत छोड़ो —
+        // "Missing appcheck token" यहीं से भी आ रहा था
+        resolve(_rawFetch(url,_fbOpts(opts)));
       },4000);
       function check(){
         if(done||!ID_TOKEN||!AC_READY)return;

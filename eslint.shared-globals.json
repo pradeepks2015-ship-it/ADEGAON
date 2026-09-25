@@ -1,5 +1,6 @@
 [
   "AC_READY",
+  "AC_RETRY_MS",
   "AC_TOKEN",
   "APP_VER",
   "AUTH_READY",
@@ -75,6 +76,8 @@
   "_FILTER_LABEL",
   "_ac",
   "_acForceRefresh",
+  "_acRefresh",
+  "_acRetryT",
   "_acWaiters",
   "_afterAuthReady",
   "_appStarted",
