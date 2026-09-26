@@ -90,7 +90,7 @@ function renderListWith(data){
     }
     var payDateInfo=x.paydate?"<span class='cc-paydate'>💰 वसूल: "+escHtml(x.paydate)+"</span>":"";
     return "<div class='con-card "+(isPaid?"paid":"pending")+"'>"+
-      "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+(x.father?" / "+escHtml(x.father):"")+"</div><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
+      "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+(x.father?" / "+escHtml(x.father):"")+"</div><button class='cc-share' title='शेयर' aria-label='शेयर' onclick=\"shareCard("+oi+",'"+escJsAttr(x.acc||"")+"',this)\">"+CC_SHARE_ICON+"</button><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
       "<div class='cc-amt'>₹"+Number(x.amount).toLocaleString("hi-IN")+" <span>बकाया</span></div>"+
       "<div class='cc-chips'>"+
         (x.acc?"<span class='chip chip-acc' onclick=\"openAccModal('"+escJsAttr(x.acc)+"')\">📄 "+escHtml(x.acc)+"</span>":"")+
@@ -104,7 +104,6 @@ function renderListWith(data){
       "</div>"+
       "<div class='cc-bot'><span class='sbadge "+(isPaid?"sb-paid":"sb-pending")+"'>"+(isPaid?"✅ वसूल":"⏳ बाकी")+"</span>"+
       "<div class='act-btns'>"+
-        "<button class='abtn abtn-share' title='शेयर' aria-label='शेयर' onclick=\"shareCard("+oi+",'"+escJsAttr(x.acc||"")+"',this)\">📤</button>"+
         "<button class='abtn abtn-rmk' onclick=\"openRmkModal("+oi+",'"+escJsAttr(x.acc||"")+"')\">✏️ रिमार्क</button>"+
         (!isPaid?"<button class='abtn abtn-pay' onclick=\"markPaid("+oi+",'"+escJsAttr(x.acc||"")+"')\">✓ वसूल</button>":
                  "<button class='abtn' style='background:rgba(255,77,109,.12);color:var(--red);border:1px solid rgba(255,77,109,.2);' onclick=\"markUnpaid("+oi+",'"+escJsAttr(x.acc||"")+"')\">↩ वापस बाकी</button>")+
@@ -115,6 +114,10 @@ function renderListWith(data){
   (hasMore?"<div style='text-align:center;padding:14px 0 60px;'><button onclick='_renderLimit+=100;renderListWith(cGet(activeHQ,activeCat));' style='border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:10px;padding:10px 22px;font-family:\"Noto Sans Devanagari\",sans-serif;font-size:12px;cursor:pointer;'>⬇ और दिखाएं ("+toRender.length+"/"+filtered.length+")</button></div>":"");
   requestAnimationFrame(_updateBnavVisibility); // अगले paint frame तक टालें — DOM लिखने के तुरंत बाद scrollHeight पढ़ने से जबरन (महंगा) layout reflow होता है, बड़ी list पर धीमापन
 }
+
+// शेयर का मुड़ा हुआ तीर (JE का फ़ैसला: अलग बटन नहीं, बस तीर) — SVG इसलिए कि हर फ़ोन/font पर
+// एक जैसा दिखे; currentColor से theme के रंग अपने-आप लगते हैं
+var CC_SHARE_ICON="<svg viewBox='0 0 24 24' width='20' height='20' fill='none' stroke='currentColor' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'><path d='M4 20v-6a5 5 0 0 1 5-5h9'/><polyline points='13,4 19,9 13,14'/></svg>";
 
 // सिंगल-कोट (') को भी &#39; कर देते हैं — भले ही ज़्यादातर जगह double-quoted attribute
 // (onclick=\"...\") या plain text content है जहां ' वैसे भी खतरनाक नहीं, पर कहीं single-quoted

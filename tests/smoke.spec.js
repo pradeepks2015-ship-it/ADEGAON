@@ -7736,9 +7736,9 @@ test.describe('📤 उपभोक्ता card शेयर', () => {
   };
 
   for (const [who, login] of [['लाइनमैन', loginLineman], ['JE', loginJE]]) {
-    test(`हर card पर 📤 शेयर बटन दिखे (${who})`, async ({ page }) => {
+    test(`हर card पर शेयर का तीर दिखे (${who})`, async ({ page }) => {
       await seedCard(page, login);
-      await expect(page.locator('.con-card .abtn-share').first()).toBeVisible();
+      await expect(page.locator('.con-card .cc-share').first()).toBeVisible();
     });
   }
 
@@ -7760,7 +7760,7 @@ test.describe('📤 उपभोक्ता card शेयर', () => {
         resolve({ n: d.files.length, type: d.files[0].type, name: d.files[0].name, size: d.files[0].size, hasText: d.text.indexOf('1134019486') > -1, fbCalls: fbCalls });
         return Promise.resolve();
       } });
-      document.querySelector('.con-card .abtn-share').click();
+      document.querySelector('.con-card .cc-share').click();
       setTimeout(() => resolve({ timeout: true }), 5000);
     }));
     expect(r.timeout).toBeUndefined();
@@ -7791,7 +7791,7 @@ test.describe('📤 उपभोक्ता card शेयर', () => {
       Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true });
       var opened = null;
       window.open = function (u) { opened = u; return null; };
-      document.querySelector('.con-card .abtn-share').click();
+      document.querySelector('.con-card .cc-share').click();
       return opened;
     });
     expect(url.indexOf('https://wa.me/?text=')).toBe(0);
@@ -7807,7 +7807,7 @@ test.describe('📤 उपभोक्ता card शेयर', () => {
       window.open = function (u) { o = u; return null; };
       Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
       Object.defineProperty(navigator, 'share', { configurable: true, value: () => { var e = new Error('x'); e.name = 'AbortError'; setTimeout(() => resolve(o), 200); return Promise.reject(e); } });
-      document.querySelector('.con-card .abtn-share').click();
+      document.querySelector('.con-card .cc-share').click();
     }));
     expect(opened).toBeNull();
   });
