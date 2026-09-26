@@ -7742,22 +7742,28 @@ test.describe('📤 उपभोक्ता card शेयर', () => {
     });
   }
 
-  test('_shareText — नाम, Consumer No, बकाया, मोबाइल, पता, टैरिफ और सारे रिमार्क हों', async ({ page }) => {
+  // JE का फ़ैसला: तीर से सिर्फ़ फ़ोटो। टेक्स्ट सिर्फ़ उन फ़ोन के लिए जहां फ़ोटो शेयर नहीं होती — और
+  // छोटा, क्योंकि हिंदी SMS में 70 अक्षर प्रति संदेश (पूरा ब्योरा 6-7 SMS ले लेता)
+  test('_shareText — छोटा हो: नाम, Consumer No, बकाया+स्थिति; रिमार्क/मोबाइल/पता नहीं', async ({ page }) => {
     await seedCard(page, loginLineman);
     const t = await page.evaluate(() => _shareText(cGet(activeHQ, activeCat)[0]));
-    for (const s of ['आदेगांव बिजली वितरण केंद्र', 'ASADU LAL / SAUUA GOND', '1134019486', '₹10,098', '⏳ बाकी', '8224893808', 'JAMUA', 'LV1.2', 'रिमार्क (2)', 'लाइन काटी थी', 'सी फॉर्म में दिया गया']) {
+    for (const s of ['आदेगांव', 'ASADU LAL / SAUUA GOND', '1134019486', '₹10,098', '⏳ बाकी']) {
       expect(t).toContain(s);
     }
+    for (const s of ['8224893808', 'JAMUA', 'लाइन काटी थी', 'सी फॉर्म में दिया गया']) {
+      expect(t).not.toContain(s);
+    }
+    expect(t.length).toBeLessThan(140); // ~2 हिंदी SMS के अंदर
   });
 
-  test('फ़ोटो-शेयर वाले फ़ोन पर — ऐप वाले card की PNG फ़ोटो + टेक्स्ट navigator.share से जाए, Firebase को कोई request नहीं', async ({ page }) => {
+  test('फ़ोटो-शेयर वाले फ़ोन पर — सिर्फ़ card की PNG फ़ोटो जाए (नीचे टेक्स्ट नहीं), Firebase को कोई request नहीं', async ({ page }) => {
     await seedCard(page, loginLineman);
     const r = await page.evaluate(() => new Promise((resolve) => {
       var fbCalls = 0, orig = window.fetch;
       window.fetch = function (u, o) { if (String(u).indexOf(FB) === 0) fbCalls++; return orig(u, o); };
       Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
       Object.defineProperty(navigator, 'share', { configurable: true, value: (d) => {
-        resolve({ n: d.files.length, type: d.files[0].type, name: d.files[0].name, size: d.files[0].size, hasText: d.text.indexOf('1134019486') > -1, fbCalls: fbCalls });
+        resolve({ n: d.files.length, type: d.files[0].type, name: d.files[0].name, size: d.files[0].size, hasText: !!d.text, fbCalls: fbCalls });
         return Promise.resolve();
       } });
       document.querySelector('.con-card .cc-share').click();
@@ -7768,7 +7774,7 @@ test.describe('📤 उपभोक्ता card शेयर', () => {
     expect(r.type).toBe('image/png');
     expect(r.name).toBe('card-1134019486.png');
     expect(r.size).toBeGreaterThan(1000);
-    expect(r.hasText).toBe(true);
+    expect(r.hasText).toBe(false); // सिर्फ़ फ़ोटो — WhatsApp में नीचे टेक्स्ट न आए
     expect(r.fbCalls).toBe(0);
   });
 
@@ -7797,7 +7803,7 @@ test.describe('📤 उपभोक्ता card शेयर', () => {
     expect(url.indexOf('https://wa.me/?text=')).toBe(0);
     const text = decodeURIComponent(url.slice('https://wa.me/?text='.length));
     expect(text).toContain('ASADU LAL');
-    expect(text).toContain('8224893808');
+    expect(text).toContain('1134019486');
   });
 
   test('लाइनमैन ने शेयर-मेनू खुद रद्द किया (AbortError) — WhatsApp अलग से न खुले', async ({ page }) => {
