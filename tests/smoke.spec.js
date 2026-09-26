@@ -7719,3 +7719,96 @@ test.describe('माइग्रेशन पलटने से पक्क�
     expect(r.body['5']).toBeTruthy();  // per-record रूप में ही सेव हुआ, बदलाव भी बचा
   });
 });
+
+// JE का अनुरोध: उपभोक्ता card सीधे WhatsApp पर शेयर हो — ऐप में जैसा दिखता है वही (फ़ोटो) + टेक्स्ट,
+// मोबाइल नंबर और सारे रिमार्क समेत; बटन सबको दिखे; Firebase का कोई खर्च नहीं
+test.describe('📤 उपभोक्ता card शेयर', () => {
+  const seedCard = async (page, login) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet(HQS[0], 'कुल उपभोक्ता', [
+        { acc: '1134019486', name: 'ASADU LAL', father: 'SAUUA GOND', phone: '8224893808', amount: 10098, status: 'pending', addr: 'JAMUA', tariff: 'LV1.2', load: '0.75', unit: 'KW',
+          remarksArr: [{ text: 'लाइन काटी थी', by: 'Vishnu', at: '24/9/2026' }, { text: 'सी फॉर्म में दिया गया', by: 'Vishnu', at: '24/9/2026' }] },
+      ]);
+    });
+    await login(page);
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+  };
+
+  for (const [who, login] of [['लाइनमैन', loginLineman], ['JE', loginJE]]) {
+    test(`हर card पर 📤 शेयर बटन दिखे (${who})`, async ({ page }) => {
+      await seedCard(page, login);
+      await expect(page.locator('.con-card .abtn-share').first()).toBeVisible();
+    });
+  }
+
+  test('_shareText — नाम, Consumer No, बकाया, मोबाइल, पता, टैरिफ और सारे रिमार्क हों', async ({ page }) => {
+    await seedCard(page, loginLineman);
+    const t = await page.evaluate(() => _shareText(cGet(activeHQ, activeCat)[0]));
+    for (const s of ['आदेगांव बिजली वितरण केंद्र', 'ASADU LAL / SAUUA GOND', '1134019486', '₹10,098', '⏳ बाकी', '8224893808', 'JAMUA', 'LV1.2', 'रिमार्क (2)', 'लाइन काटी थी', 'सी फॉर्म में दिया गया']) {
+      expect(t).toContain(s);
+    }
+  });
+
+  test('फ़ोटो-शेयर वाले फ़ोन पर — ऐप वाले card की PNG फ़ोटो + टेक्स्ट navigator.share से जाए, Firebase को कोई request नहीं', async ({ page }) => {
+    await seedCard(page, loginLineman);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var fbCalls = 0, orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf(FB) === 0) fbCalls++; return orig(u, o); };
+      Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+      Object.defineProperty(navigator, 'share', { configurable: true, value: (d) => {
+        resolve({ n: d.files.length, type: d.files[0].type, name: d.files[0].name, size: d.files[0].size, hasText: d.text.indexOf('1134019486') > -1, fbCalls: fbCalls });
+        return Promise.resolve();
+      } });
+      document.querySelector('.con-card .abtn-share').click();
+      setTimeout(() => resolve({ timeout: true }), 5000);
+    }));
+    expect(r.timeout).toBeUndefined();
+    expect(r.n).toBe(1);
+    expect(r.type).toBe('image/png');
+    expect(r.name).toBe('card-1134019486.png');
+    expect(r.size).toBeGreaterThan(1000);
+    expect(r.hasText).toBe(true);
+    expect(r.fbCalls).toBe(0);
+  });
+
+  test('_shareCardImage — ऐप वाले card से 2x तस्वीर बने, नीचे के बटन तस्वीर में न हों', async ({ page }) => {
+    await seedCard(page, loginLineman);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      var el = document.querySelector('.con-card');
+      var w = Math.ceil(el.getBoundingClientRect().width), h = Math.ceil(el.getBoundingClientRect().height);
+      _shareCardImage(el, (c) => resolve(c ? { w: c.width, h: c.height, cardW: w, cardH: h, stillHasBtns: !!el.querySelector('.act-btns') } : null));
+    }));
+    expect(r).not.toBeNull();
+    expect(r.w).toBe(r.cardW * 2);
+    expect(r.h).toBeLessThan(r.cardH * 2); // बटन वाली पंक्ति हटने से तस्वीर card से छोटी
+    expect(r.stillHasBtns).toBe(true);      // असली card पर बटन जस-के-तस (सिर्फ़ कॉपी से हटे)
+  });
+
+  test('फ़ोटो-शेयर न होने वाले फ़ोन पर — सीधे WhatsApp (wa.me) पूरे टेक्स्ट के साथ खुले', async ({ page }) => {
+    await seedCard(page, loginLineman);
+    const url = await page.evaluate(() => {
+      Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true });
+      var opened = null;
+      window.open = function (u) { opened = u; return null; };
+      document.querySelector('.con-card .abtn-share').click();
+      return opened;
+    });
+    expect(url.indexOf('https://wa.me/?text=')).toBe(0);
+    const text = decodeURIComponent(url.slice('https://wa.me/?text='.length));
+    expect(text).toContain('ASADU LAL');
+    expect(text).toContain('8224893808');
+  });
+
+  test('लाइनमैन ने शेयर-मेनू खुद रद्द किया (AbortError) — WhatsApp अलग से न खुले', async ({ page }) => {
+    await seedCard(page, loginLineman);
+    const opened = await page.evaluate(() => new Promise((resolve) => {
+      var o = null;
+      window.open = function (u) { o = u; return null; };
+      Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+      Object.defineProperty(navigator, 'share', { configurable: true, value: () => { var e = new Error('x'); e.name = 'AbortError'; setTimeout(() => resolve(o), 200); return Promise.reject(e); } });
+      document.querySelector('.con-card .abtn-share').click();
+    }));
+    expect(opened).toBeNull();
+  });
+});

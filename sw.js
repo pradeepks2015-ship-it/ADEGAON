@@ -26,6 +26,7 @@ var CORE=[
   "./js/auth.js",
   "./js/cat-admin.js",
   "./js/list.js",
+  "./js/share.js",
   "./js/celebration.js",
   "./js/upload.js",
   "./js/reports.js",

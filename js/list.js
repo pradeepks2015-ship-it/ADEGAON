@@ -104,6 +104,7 @@ function renderListWith(data){
       "</div>"+
       "<div class='cc-bot'><span class='sbadge "+(isPaid?"sb-paid":"sb-pending")+"'>"+(isPaid?"✅ वसूल":"⏳ बाकी")+"</span>"+
       "<div class='act-btns'>"+
+        "<button class='abtn abtn-share' title='शेयर' aria-label='शेयर' onclick=\"shareCard("+oi+",'"+escJsAttr(x.acc||"")+"',this)\">📤</button>"+
         "<button class='abtn abtn-rmk' onclick=\"openRmkModal("+oi+",'"+escJsAttr(x.acc||"")+"')\">✏️ रिमार्क</button>"+
         (!isPaid?"<button class='abtn abtn-pay' onclick=\"markPaid("+oi+",'"+escJsAttr(x.acc||"")+"')\">✓ वसूल</button>":
                  "<button class='abtn' style='background:rgba(255,77,109,.12);color:var(--red);border:1px solid rgba(255,77,109,.2);' onclick=\"markUnpaid("+oi+",'"+escJsAttr(x.acc||"")+"')\">↩ वापस बाकी</button>")+
