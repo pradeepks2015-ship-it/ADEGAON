@@ -1,6 +1,8 @@
 // ── उपभोक्ता card WhatsApp (या कहीं भी) पर शेयर — फ़ोटो + टेक्स्ट ────────────────────────────────
-// JE का अनुरोध: card सीधे लाइनमैन/JE को भेजा जा सके। JE का फ़ैसला: पूरा card जाए — फ़ोटो + टेक्स्ट,
-// मोबाइल नंबर और सारे रिमार्क समेत (यह स्टाफ़ के आपसी इस्तेमाल के लिए है), बटन सबको दिखे।
+// JE का अनुरोध: card सीधे लाइनमैन/JE को भेजा जा सके। JE का फ़ैसला: सिर्फ़ card की फ़ोटो जाए (नीचे
+// टेक्स्ट नहीं) — तस्वीर में मोबाइल नंबर और सारे रिमार्क समेत पूरा card रहता है। टेक्स्ट सिर्फ़ उन
+// फ़ोन के लिए बचा है जहां फ़ोटो शेयर होती ही नहीं, और वह जान-बूझकर छोटा है (हिंदी SMS में 70 अक्षर
+// प्रति संदेश — पूरा ब्योरा 6-7 SMS ले लेता)।
 // Firebase का कोई खर्च नहीं: card का सारा data पहले से device पर (cGet) है, कुछ भी fetch नहीं होता।
 // तस्वीर यहीं canvas पर बनती है — कोई बाहरी library नहीं (ऐप भारी न हो, offline भी चले)।
 // फ़ोन फ़ाइल-शेयर (Web Share API level 2) सपोर्ट करे तो फ़ोटो + टेक्स्ट, वरना सिर्फ़ टेक्स्ट wa.me से
@@ -13,32 +15,10 @@ function _shareStatusLine(x){
 // WhatsApp का टेक्स्ट — *...* WhatsApp में bold दिखता है
 function _shareText(x){
   var L=[];
-  L.push("⚡ *आदेगांव बिजली वितरण केंद्र*");
-  L.push("🏢 "+(activeHQ||"")+(activeCat?" • "+activeCat:""));
-  L.push("👤 *"+(x.name||"")+(x.father?" / "+x.father:"")+"*");
-  if(x.acc) L.push("📄 Consumer No: "+x.acc);
-  L.push("💰 बकाया: ₹"+(Number(x.amount)||0).toLocaleString("hi-IN")+" • "+_shareStatusLine(x));
-  if(x.phone) L.push("📞 मोबाइल: "+x.phone);
-  if(x.addr) L.push("📍 पता: "+x.addr);
-  var tech=[];
-  if(x.tariff) tech.push("टैरिफ "+x.tariff);
-  if(x.load) tech.push("लोड "+x.load);
-  if(x.unit) tech.push(x.unit);
-  if(tech.length) L.push("⚙️ "+tech.join(" • "));
-  if(x.lastPaidAmt&&String(x.lastPaidAmt).trim()!==""){
-    var n=Number(x.lastPaidAmt);
-    L.push("📅 पिछला भुगतान: ₹"+(isNaN(n)?x.lastPaidAmt:n.toLocaleString("hi-IN"))+(x.lastPayDate?" ("+x.lastPayDate+")":""));
-  } else if(x.lastPayDate&&String(x.lastPayDate).trim()){
-    L.push("📅 पिछला भुगतान तिथि: "+x.lastPayDate);
-  }
-  var rs=(x.remarksArr||[]).filter(function(r){ return r&&r.text; });
-  if(rs.length){
-    L.push("");
-    L.push("💬 *रिमार्क ("+rs.length+"):*");
-    rs.forEach(function(r){ L.push("• "+r.text+" — "+(r.by||"")+(r.at?" ("+r.at+")":"")); });
-  }
-  L.push("");
-  L.push("_वसूली ट्रैकर • "+(CU&&CU.name?CU.name:"")+"_");
+  L.push("⚡ "+(activeHQ||"")+(activeCat?" • "+activeCat:""));
+  L.push((x.name||"")+(x.father?" / "+x.father:""));
+  if(x.acc) L.push("Consumer No: "+x.acc);
+  L.push("बकाया: ₹"+(Number(x.amount)||0).toLocaleString("hi-IN")+" • "+_shareStatusLine(x));
   return L.join("\n");
 }
 
@@ -215,7 +195,7 @@ function shareCard(idx,acc,btn){
     cv.toBlob(function(blob){
       if(!blob){ _shareTextOnly(text); return; }
       var file=new File([blob],"card-"+(x.acc||"upbhokta")+".png",{type:"image/png"});
-      navigator.share({files:[file],text:text}).catch(function(e){
+      navigator.share({files:[file]}).catch(function(e){ // JE का फ़ैसला: सिर्फ़ card की फ़ोटो, नीचे टेक्स्ट नहीं
         if(e&&e.name==="AbortError") return; // लाइनमैन ने खुद रद्द किया — कुछ न करें
         _shareTextOnly(text);
       });
