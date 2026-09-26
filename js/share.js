@@ -135,6 +135,24 @@ function _shareCssText(){
   }
   return out.join("\n");
 }
+// JE की शिकायत: शेयर की तस्वीर में नाम/राशि/Consumer No के अक्षर तिरछे बनते हैं। वजह: ऐप का
+// "Baloo 2" (और chip-acc का monospace) Google के सर्वर से आता है, पर तस्वीर के अंदर वह पहुंचता
+// नहीं — फ़ोन CSS में लिखा विकल्प `cursive` (हस्तलेख जैसा) लगा देता है, इसलिए तिरछा दिखता है।
+// JE का फ़ैसला (विकल्प क): तस्वीर में सादा font — हिंदी वैसी ही दिखेगी (Noto Sans Devanagari
+// लगभग हर फ़ोन में है), अंग्रेज़ी/अंक सजावटी की जगह सादे पर साफ़। कोई font डाउनलोड नहीं।
+// साथ ही अक्षरों का आकार ~10% घटाया — सादा font "Baloo 2" से ज़्यादा भरा-भरा (बड़ी x-height)
+// दिखता है, इसलिए वही px आकार तस्वीर में बड़ा लगता था (JE: "फ़ॉन्ट का साइज बहुत बड़ा सा दिख रहा है")
+var SHARE_FONT_FIX=[
+  "",
+  ".con-card,.con-card *{font-family:'Noto Sans Devanagari',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif !important;font-style:normal !important;}",
+  ".con-card .chip-acc{font-family:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif !important;font-size:11.5px !important;letter-spacing:.4px !important;}",
+  ".con-card .cc-name{font-size:12.2px !important;}",
+  ".con-card .cc-amt{font-size:17px !important;}",
+  ".con-card .chip{font-size:8.2px !important;}",
+  ".con-card .sbadge,.con-card .cc-info,.con-card .cc-paydate,.con-card .cc-upload-info,.con-card .cc-rmk-item{font-size:9.2px !important;}",
+  ".con-card .cc-rmk-by,.con-card .cc-updby,.con-card .cc-rank{font-size:8.2px !important;}",
+  ""
+].join("\n");
 function _shareCardImage(el,cb){
   try{
     var W=Math.ceil(el.getBoundingClientRect().width), S=2;
@@ -158,7 +176,7 @@ function _shareCardImage(el,cb){
     wrap.appendChild(clone);
     var theme=document.documentElement.getAttribute("data-theme");
     var svg='<svg xmlns="http://www.w3.org/2000/svg"'+(theme?' data-theme="'+theme+'"':'')+' width="'+(W*S)+'" height="'+(H*S)+'" viewBox="0 0 '+W+' '+H+'">'+
-      '<style><![CDATA['+_shareCssText().replace(/\]\]>/g,"")+']]></style>'+
+      '<style><![CDATA['+_shareCssText().replace(/\]\]>/g,"")+SHARE_FONT_FIX+']]></style>'+
       '<foreignObject x="0" y="0" width="'+W+'" height="'+H+'">'+new XMLSerializer().serializeToString(wrap)+'</foreignObject></svg>';
     var img=new Image();
     img.onload=function(){
