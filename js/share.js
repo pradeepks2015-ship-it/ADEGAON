@@ -159,7 +159,7 @@ function _shareCardImage(el,cb){
   try{
     var W=Math.ceil(el.getBoundingClientRect().width), S=2;
     var clone=el.cloneNode(true);
-    var btns=clone.querySelectorAll(".act-btns");
+    var btns=clone.querySelectorAll(".act-btns,.cc-share"); // तस्वीर में न बटन, न शेयर का तीर
     for(var i=0;i<btns.length;i++) btns[i].parentNode.removeChild(btns[i]);
     clone.style.margin="0"; clone.style.animation="none"; clone.style.transform="none";
     // बटन हटने के बाद असली ऊंचाई नापने के लिए — उसी list के अंदर, स्क्रीन से बाहर
