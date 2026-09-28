@@ -8066,3 +8066,106 @@ test.describe('नया लेजर अपलोड — पिछले ले
     expect(r.status).toBe('pending');
   });
 });
+
+// JE का अनुरोध (28/9): "कैश लिस्ट अपलोड करते समय मैं केवल IVRS नंबर अपलोड करता हूं — इसमें यह
+// विकल्प भी दे देना कि IVRS नंबर के साथ पेमेंट डेट का column भी अपलोड किया जा सके"।
+// पहले हर वसूली पर "आज" की तारीख़ चढ़ती थी, चाहे पैसा 2-3 दिन पहले जमा हुआ हो — इससे स्कोरकार्ड
+// की तारीख़-वार तालिका झूठ बोलती, और महीने के आख़िर की वसूली अगले माह चढ़ाने पर वह नए लेजर की
+// कट-ऑफ़ से "इस माह की" मानकर बच जाती (जिसने नया बिल नहीं भरा वो भी वसूल दिखता)।
+test.describe('कैश लिस्ट — दूसरे column से भुगतान तारीख़ (वैकल्पिक)', () => {
+  test('_cashCellToDate — CSV text, Excel Date object, Excel serial number तीनों रूप पहचाने', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => ({
+      dmy: _cashCellToDate('20/9/2026'),
+      iso: _cashCellToDate('2026-09-20'),
+      dash: _cashCellToDate('20-09-2026'),
+      dateObj: _cashCellToDate(new Date(2026, 8, 20)),
+      serial: _cashCellToDate(46285), // Excel serial = 20 सितंबर 2026 (1899-12-30 से दिनों की गिनती)
+      blank: _cashCellToDate(''),
+      nul: _cashCellToDate(null),
+      junk: _cashCellToDate('कुछ भी'), // पहचान न आए तो "" — कचरा paydate में न जाए
+    }));
+    expect(r.dmy).toBe('20/9/2026');
+    expect(r.iso).toBe('20/9/2026');
+    expect(r.dash).toBe('20/9/2026');
+    expect(r.dateObj).toBe('20/9/2026');
+    expect(r.serial).toBe('20/9/2026');
+    expect(r.blank).toBe('');
+    expect(r.nul).toBe('');
+    expect(r.junk).toBe('');
+  });
+
+  test('cashCollect — जोड़ी [IVRS, तारीख़] से CASH_DATES बने, और सादी single-column लिस्ट पहले की तरह चले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      openCashModal();
+      cashCollect([['4412345678', '20/9/2026'], ['4487654321', ''], ['IVRS', 'तारीख़']]); // header पंक्ति छँट जाए
+      const pair = { ivrs: CASH_IVRS.slice(), dates: Object.assign({}, CASH_DATES) };
+      openCashModal();
+      cashCollect(['1111111111', '2222222222']); // पुरानी single-column फाइल
+      return { pair, plain: { ivrs: CASH_IVRS.slice(), dates: Object.assign({}, CASH_DATES) } };
+    });
+    expect(r.pair.ivrs).toEqual(['4412345678', '4487654321']);
+    expect(r.pair.dates).toEqual({ '4412345678': '20/9/2026' }); // सिर्फ़ जिसकी तारीख़ मिली
+    expect(r.plain.ivrs).toEqual(['1111111111', '2222222222']);
+    expect(r.plain.dates).toEqual({}); // तारीख़ का column ही नहीं — पुराना व्यवहार
+  });
+
+  test('_applyCashMatched — जिसकी तारीख़ फाइल में हो उसकी वही चढ़े, बाक़ी पर आज की', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      activeHQ = 'आदेगांव';
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '4412345678', name: 'रामप्रसाद', status: 'pending', amount: 500 },
+        { acc: '4487654321', name: 'सुखराम', status: 'pending', amount: 700 },
+      ]);
+      CASH_IVRS = ['4412345678', '4487654321'];
+      CASH_DATES = { '4412345678': '20/9/2026' }; // सिर्फ़ रामप्रसाद की तारीख़ फाइल में थी
+      _applyCashMatched(['आदेगांव']);
+      const pick = (a) => cGet('आदेगांव', 'कुल उपभोक्ता').find((x) => x.acc === a);
+      const n = new Date();
+      return {
+        ram: pick('4412345678'),
+        sukh: pick('4487654321'),
+        today: n.toLocaleDateString('hi-IN'),
+      };
+    });
+    expect(r.ram.status).toBe('paid');
+    expect(r.ram.paydate).toBe('20/9/2026');  // फाइल वाली तारीख़
+    expect(r.sukh.status).toBe('paid');
+    expect(r.sukh.paydate).toBe(r.today);     // तारीख़ नहीं दी थी — पुराना व्यवहार
+  });
+
+  test('CASH_DATES बिल्कुल न हो तो भी पुराना व्यवहार चले (आज की तारीख़)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      activeHQ = 'आदेगांव';
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1134022288', name: 'टेस्ट', status: 'pending', amount: 500 }]);
+      CASH_IVRS = ['1134022288'];
+      CASH_DATES = null; // जैसे पुराने रास्ते से आया हो
+      _applyCashMatched(['आदेगांव']);
+      return {
+        rec: cGet('आदेगांव', 'कुल उपभोक्ता')[0],
+        today: new Date().toLocaleDateString('hi-IN'),
+      };
+    });
+    expect(r.rec.status).toBe('paid');
+    expect(r.rec.paydate).toBe(r.today);
+  });
+
+  test('फाइल की तारीख़ भविष्य की हो तो आज पर समेट दी जाए (normPayDate वाला नियम)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const f = new Date(); f.setFullYear(f.getFullYear() + 1);
+      const future = f.getDate() + '/' + (f.getMonth() + 1) + '/' + f.getFullYear();
+      const n = new Date();
+      return { got: _cashCellToDate(future), today: n.getDate() + '/' + (n.getMonth() + 1) + '/' + n.getFullYear() };
+    });
+    expect(r.got).toBe(r.today);
+  });
+});

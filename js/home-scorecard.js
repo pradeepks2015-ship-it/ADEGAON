@@ -228,9 +228,41 @@ function simAtc(){
   o.textContent=(100-(b*c)/100).toFixed(2)+"%";
 }
 var CASH_IVRS=null;
+// JE का अनुरोध (28/9): कैश लिस्ट में अब तक सिर्फ़ IVRS नंबर का एक ही column पढ़ा जाता था और हर
+// वसूली पर "आज" की तारीख़ चढ़ जाती थी — चाहे पैसा 2-3 दिन पहले जमा हुआ हो। इससे दो नुक़सान थे:
+// (1) स्कोरकार्ड की तारीख़-वार तालिका और "आज की वसूली" झूठ बोलती (पिछले दिन खाली, आज फूला हुआ),
+// (2) महीने के आख़िर की वसूली अगले माह चढ़ाने पर वह नए लेजर की कट-ऑफ़ से "इस माह की" मानकर बच
+// जाती, यानी जिसने नया बिल नहीं भरा वो भी वसूल दिखता (देखें list.js: sweepStalePaid वाला comment)।
+// अब दूसरा column (भुगतान तारीख़) भी पढ़ा जाता है — वैकल्पिक है, पुरानी single-column फाइल
+// पहले की तरह चलती रहेगी और उसमें आज की तारीख़ ही चढ़ेगी।
+var CASH_DATES=null; // { "4412345678": "20/9/2026", ... } — सिर्फ़ उन्हीं की जिनकी तारीख़ फाइल में मिली
+// फाइल के एक cell को "d/m/yyyy" में बदलें — तीनों रूप संभालने पड़ते हैं:
+// CSV से text ("20/9/2026", "2026-09-20"), Excel से असली Date object, या Excel का serial number
+// (raw:true पर तारीख़ें अंक बनकर आती हैं — 1899-12-30 से दिनों की गिनती)। पहचान न आए तो "" लौटे,
+// तब पुराना व्यवहार (आज की तारीख़) लगेगा। भविष्य की तारीख़ normPayDate ख़ुद आज पर समेट देता है
+function _cashCellToDate(v){
+  if(v==null||v==="") return "";
+  var d=null;
+  if(v instanceof Date) d=v;
+  else if(typeof v==="number"&&isFinite(v)&&v>0&&v<80000){
+    // Excel serial — UTC से बनाएं, वरना समय-क्षेत्र के कारण तारीख़ एक दिन खिसक सकती है
+    var ms=Date.UTC(1899,11,30)+Math.round(v)*86400000, u=new Date(ms);
+    d=new Date(u.getUTCFullYear(),u.getUTCMonth(),u.getUTCDate());
+  }
+  if(d){
+    if(isNaN(d.getTime())) return "";
+    return normPayDate(d.getDate()+"/"+(d.getMonth()+1)+"/"+d.getFullYear());
+  }
+  var s=String(v).trim();
+  if(!s) return "";
+  var out=normPayDate(s);
+  // normPayDate पहचान न पाए तो जैसा दिया था वैसा ही लौटाता है — ऐसा कचरा आगे न ले जाएं
+  return payDateVal(out)?out:"";
+}
 function openCashModal(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE upload कर सकते हैं","err");return;}
   CASH_IVRS=null;
+  CASH_DATES=null;
   document.getElementById("cash-file").value="";
   document.getElementById("cash-ico").textContent="💵";
   document.getElementById("cash-status").textContent="Excel (.xlsx/.xls) या CSV";
@@ -254,8 +286,12 @@ function cashFile(f){
   if(name.slice(-4)===".csv"||name.slice(-4)===".txt"){
     var rd=new FileReader();
     rd.onload=function(e){
-      var cells=String(e.target.result||"").split(/\r?\n/).map(function(l){return l.split(/[,;\t]/)[0];});
-      cashCollect(cells);
+      // पहले सिर्फ़ [0] लिया जाता था; अब दूसरा column (भुगतान तारीख़) भी साथ जाता है
+      var rows=String(e.target.result||"").split(/\r?\n/).map(function(l){
+        var f=l.split(/[,;\t]/);
+        return [f[0], f.length>1?f[1]:""];
+      });
+      cashCollect(rows);
     };
     rd.onerror=function(){st.textContent="फाइल पढ़ नहीं पाया — दोबारा try करें";};
     rd.readAsText(f);
@@ -269,21 +305,33 @@ function cashFile(f){
       try{
         var wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
         var ws=wb.Sheets[wb.SheetNames[0]];
-        var rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:""});
-        cashCollect(rows.map(function(r){return r&&r.length?r[0]:"";}));
-      }catch(err){document.getElementById("cash-ico").textContent="⚠";st.textContent="फाइल पढ़ नहीं पाया — single column Excel चुनें";}
+        // cellDates:true से तारीख़ वाले cell असली Date बनकर आते हैं; न बन पाएं तो serial number
+        // रह जाते हैं — _cashCellToDate दोनों संभाल लेता है
+        var rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:"",cellDates:true});
+        cashCollect(rows.map(function(r){return r&&r.length?[r[0],r.length>1?r[1]:""]:["",""];}));
+      }catch(err){document.getElementById("cash-ico").textContent="⚠";st.textContent="फाइल पढ़ नहीं पाया — पहले column में IVRS नंबर होने चाहिए";}
     };
     rd.onerror=function(){st.textContent="फाइल पढ़ नहीं पाया — दोबारा try करें";};
     rd.readAsArrayBuffer(f);
   });
 }
-function cashCollect(cells){
-  var seen={},list=[];
-  cells.forEach(function(v){
-    var d=String(v==null?"":v).replace(/\D/g,"");
-    if(d.length>=4&&!seen[d]){seen[d]=1;list.push(d);}
+// rows दो रूपों में आ सकती है: सादा cell ("4412345678") या जोड़ी (["4412345678","20/9/2026"]) —
+// दूसरा column वैकल्पिक है, इसलिए पुरानी single-column फाइल पहले की तरह चलती रहती है
+function cashCollect(rows){
+  var seen={},list=[],dates={},withDate=0;
+  rows.forEach(function(row){
+    var accCell=row,dtCell="";
+    if(row&&typeof row==="object"&&typeof row.length==="number"&&!(row instanceof Date)){
+      accCell=row[0]; dtCell=row.length>1?row[1]:"";
+    }
+    var d=String(accCell==null?"":accCell).replace(/\D/g,"");
+    if(d.length<4||seen[d])return;
+    seen[d]=1;list.push(d);
+    var pd=_cashCellToDate(dtCell);
+    if(pd){dates[d]=pd;withDate++;}
   });
   CASH_IVRS=list;
+  CASH_DATES=dates;
   var st=document.getElementById("cash-status");
   if(!list.length){
     document.getElementById("cash-ico").textContent="⚠";
@@ -292,11 +340,16 @@ function cashCollect(cells){
     return;
   }
   document.getElementById("cash-ico").textContent="✅";
-  st.textContent=list.length+" IVRS मिले";
-  // audit-verified: list खुद ही cashCollect() में \D हटाकर सिर्फ़ digits रखा गया है, फिर भी escHtml
-  // लगा है — plugin .slice().join() के अंदर की escHtml() call नहीं देख पाता
+  st.textContent=list.length+" IVRS मिले"+(withDate?" • "+withDate+" की तारीख़ भी":"");
+  // audit-verified: list खुद ही cashCollect() में \D हटाकर सिर्फ़ digits रखा गया है, और withDate/
+  // list.length संख्याएं हैं — फिर भी escHtml लगा है; plugin .slice().join() के अंदर की escHtml()
+  // call नहीं देख पाता
   // eslint-disable-next-line no-unsanitized/property
-  document.getElementById("cash-result").innerHTML="फाइल से <b style='color:var(--text);'>"+list.length+"</b> IVRS नंबर मिले (जैसे: "+escHtml(list.slice(0,3).join(", "))+(list.length>3?" ...":"")+")। नीचे बटन दबाते ही सभी tabs में वसूल mark होंगे।";
+  document.getElementById("cash-result").innerHTML="फाइल से <b style='color:var(--text);'>"+list.length+"</b> IVRS नंबर मिले (जैसे: "+escHtml(list.slice(0,3).join(", "))+(list.length>3?" ...":"")+")।<br>"+
+    (withDate
+      ? "&#128197; <b style='color:var(--green);'>"+withDate+"</b> की भुगतान तारीख़ दूसरे column से ली जाएगी"+(withDate<list.length?", बाक़ी "+(list.length-withDate)+" पर आज की तारीख़ चढ़ेगी":"")+"।<br>"
+      : "&#128197; दूसरा column (भुगतान तारीख़) नहीं मिला — सभी पर आज की तारीख़ चढ़ेगी।<br>")+
+    "नीचे बटन दबाते ही सभी tabs में वसूल mark होंगे।";
   document.getElementById("cash-apply").style.display="";
 }
 // apply से पहले सभी लिस्ट server से ताज़ा लाओ — cache अधूरा/पुराना हो तो भी कोई IVRS न छूटे
@@ -449,9 +502,13 @@ function _applyCashMatched(hqs){
         if(!ivrs[acc])return;
         matched[acc]=1;
         if(x.status==="paid"){already++;return;}
-        x.status="paid";x.paydate=dateStr;
+        // फाइल में इसकी अपनी भुगतान तारीख़ हो तो वही, वरना पुराना व्यवहार (आज की)।
+        // updatedAt/ts "कब दर्ज हुआ" हैं — वे हमेशा अभी के ही रहते हैं (ts से ही आपस में टकराव
+        // सुलझता है, उसे पीछे ले जाना ख़तरनाक होगा)
+        var pd=(CASH_DATES&&CASH_DATES[acc])||dateStr;
+        x.status="paid";x.paydate=pd;
         x.updatedBy=CU.name+" (कैश लिस्ट)";x.updatedAt=dtStr;x.ts=ts;
-        recOp(hq,acc,"paid",dateStr,CU.name+" (कैश लिस्ट)",dtStr,ts);
+        recOp(hq,acc,"paid",pd,CU.name+" (कैश लिस्ट)",dtStr,ts);
         newly++;changed=true;
       });
       if(changed){fbSet(hq,cat,d,prevSnap,null);tabsChanged++;}
