@@ -8275,3 +8275,100 @@ test.describe('checkbox हटाकर अपलोड — पूरे HQ स�
     expect(r.asked).toBe(0);
   });
 });
+
+// JE का फ़ैसला (28/9): बिंदु 1 "बैकअप जोड़कर" लागू हो। checkbox हटाकर अपलोड करने पर पूरे मुख्यालय
+// की वसूली एक साथ मिटती है और पहले ऐप के अंदर वापसी का कोई रास्ता नहीं था (सिर्फ़ GitHub वाला
+// रोज़ का बैकअप, यानी घंटों का काम)। अब मिटने से ठीक पहले 7-दिनी backup रखा जाता है — वही जो
+// "हटाएं" बटन के लिए पहले से बनता था (vt_paidbk_), इसलिए दोबारा अपलोड करते ही वसूली लौट आती है।
+test.describe('मिटने से पहले वसूली का backup (sweepStalePaid → vt_paidbk_)', () => {
+  test('sweepStalePaid — मिटाई गई वसूली localStorage में backup हो जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: '20/8/2026', amount: 100, updatedBy: 'रमेश' },
+        { acc: '2', name: 'श्याम', status: 'pending', amount: 200 },
+      ]);
+      sweepStalePaid('आदेगांव', 99999999); // सब कुछ मिटाओ
+      const raw = localStorage.getItem('vt_paidbk_' + cKey('आदेगांव', 'घरेलू'));
+      return { raw: raw ? JSON.parse(raw) : null, status: cGet('आदेगांव', 'घरेलू')[0].status };
+    });
+    expect(r.status).toBe('pending');
+    expect(Object.keys(r.raw.m)).toEqual(['1']);      // सिर्फ़ मिटने वाला record, "बाकी" वाला नहीं
+    expect(r.raw.m['1'].paydate).toBe('20/8/2026');
+    expect(r.raw.m['1'].by).toBe('रमेश');
+    expect(r.raw.t).toBeGreaterThan(0);               // 7 दिन की उम्र इसी से नापी जाती है
+  });
+
+  test('कुछ न मिटे तो backup भी न लिखा जाए (पुराना backup बचा रहे)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const key = 'vt_paidbk_' + cKey('आदेगांव', 'घरेलू');
+      localStorage.setItem(key, JSON.stringify({ t: Date.now(), m: { '9': { paydate: '1/9/2026' } } }));
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', status: 'pending', amount: 100 }]);
+      sweepStalePaid('आदेगांव', 99999999);
+      return Object.keys(JSON.parse(localStorage.getItem(key)).m);
+    });
+    expect(r).toEqual(['9']); // पहले वाला backup ज्यों का त्यों
+  });
+
+  test('पूरा चक्र — checkbox हटाकर मिटाओ, फिर दोबारा अपलोड करने पर वसूली लौट आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const n = new Date();
+      const todayDmy = n.getDate() + '/' + (n.getMonth() + 1) + '/' + n.getFullYear();
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: todayDmy, amount: 100, updatedBy: 'रमेश' },
+      ]);
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', status: 'paid', paydate: todayDmy, amount: 100 }]);
+
+      // (1) ग़लती — checkbox हटाकर अपलोड, चेतावनी पर "हां"
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      document.getElementById('up-keeppaid').checked = false;
+      window.confirm = () => true;
+      parsedRows = [{ acc: '1', name: 'राम', amount: 100, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      const afterWipe = cGet('आदेगांव', 'कुल उपभोक्ता')[0].status;
+
+      // (2) सुधार — वही लेजर दोबारा, इस बार checkbox लगाकर
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      document.getElementById('up-keeppaid').checked = true;
+      parsedRows = [{ acc: '1', name: 'राम', amount: 100, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      const rec = cGet('आदेगांव', 'कुल उपभोक्ता')[0];
+      return {
+        afterWipe,
+        restored: rec.status,
+        paydate: rec.paydate,
+        ghar: cGet('आदेगांव', 'घरेलू')[0].status, // reconcileHQ इसे भी वापस फैलाए
+      };
+    });
+    expect(r.afterWipe).toBe('pending'); // मिट गई थी
+    expect(r.restored).toBe('paid');     // backup से लौट आई
+    expect(r.ghar).toBe('paid');         // और बाक़ी बटनों में भी फैल गई
+  });
+
+  test('backup बनाते समय localStorage भर जाए तो अपलोड न रुके (सिर्फ़ लॉग हो)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const orig = localStorage.setItem.bind(localStorage);
+      localStorage.setItem = (k) => { if (String(k).indexOf('vt_paidbk_') === 0) throw new Error('QuotaExceededError'); return orig.apply(null, arguments); };
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', status: 'paid', paydate: '20/8/2026', amount: 100 }]);
+      let threw = false;
+      try { sweepStalePaid('आदेगांव', 99999999); } catch (e) { threw = true; }
+      localStorage.setItem = orig;
+      return { threw, status: cGet('आदेगांव', 'घरेलू')[0].status };
+    });
+    expect(r.threw).toBe(false);      // सफ़ाई फिर भी चली
+    expect(r.status).toBe('pending'); // और अपना काम कर गई
+  });
+});

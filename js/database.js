@@ -576,15 +576,32 @@ function _applyPatchToArray(arr,patch){
   return out;
 }
 
+// किसी record से backup-entry बनाएं — "वसूल" की वो सारी जानकारी जो लौटाने के लिए चाहिए
+function paidBkEntry(e){
+  return {paydate:e.paydate||"",by:e.updatedBy||"",at:e.updatedAt||"",ts:e.ts||0,remarksArr:e.remarksArr||[]};
+}
+// मिटाई जा रही वसूली का 7-दिनी backup (localStorage में) — पहले सिर्फ़ fbDel ("हटाएं") यह रखता
+// था; अब sweepStalePaid भी रखता है (देखें list.js), क्योंकि checkbox हटाकर अपलोड करने पर पूरे
+// मुख्यालय की वसूली एक साथ मिटती है और ऐप के अंदर वापसी का कोई रास्ता नहीं बचता था।
+// लौटती कैसे है: उसी category में दोबारा लेजर अपलोड करते ही upload.js का vt_paidbk_ वाला
+// restore इसे उठा लेता है, और फिर reconcileHQ उसे बाक़ी सभी बटनों में फैला देता है।
+// quota बचाने के लिए सिर्फ़ वही records रखें जो सच में मिट रहे हैं — पूरी paid सूची नहीं
+// (6 HQ × 8 categories का पूरा data localStorage की सीमा पार कर सकता है)। quota भर जाए तो
+// throw होता है, इसलिए पूरा काम try में — backup न बन पाए तो भी अपलोड रुकना नहीं चाहिए
+function savePaidBackup(hq,cat,map){
+  try{
+    if(!map||!Object.keys(map).length) return 0;
+    localStorage.setItem("vt_paidbk_"+cKey(hq,cat),JSON.stringify({t:Date.now(),m:map}));
+    return Object.keys(map).length;
+  }catch(e){ logErr("paid-backup-fail",e,hq+"/"+cat); return 0; }
+}
 function fbDel(hq,cat,cb){
   // हटाने से पहले paid records का backup — ताकि "हटाएं → अपलोड" में वसूली न उड़े
-  try{
-    var old=cGet(hq,cat)||[],bk={};
-    old.forEach(function(e){
-      if(e&&e.acc&&e.status==="paid")bk[String(e.acc).trim()]={paydate:e.paydate||"",by:e.updatedBy||"",at:e.updatedAt||"",ts:e.ts||0,remarksArr:e.remarksArr||[]};
-    });
-    if(Object.keys(bk).length)localStorage.setItem("vt_paidbk_"+cKey(hq,cat),JSON.stringify({t:Date.now(),m:bk}));
-  }catch(e){}
+  var old=cGet(hq,cat)||[],bk={};
+  old.forEach(function(e){
+    if(e&&e.acc&&e.status==="paid")bk[String(e.acc).trim()]=paidBkEntry(e);
+  });
+  savePaidBackup(hq,cat,bk);
   // बाकी (अवसूल) उपभोक्ताओं के रिमार्क का भी backup — ऊपर वाला सिर्फ़ "वसूल" का रखता था, इसलिए
   // "हटाएं → अपलोड" के बाद बाकी उपभोक्ताओं पर लिखे रिमार्क हमेशा के लिए मिट जाते थे (JE की शिकायत,
   // बीबी)। अपलोड इसे _upCollectOldRemarks() में वापस लेता है (देखें js/upload.js)

@@ -262,17 +262,22 @@ function sweepStalePaid(hq,cut){
     if(!d||!d.length) continue;
     var prevSnap=JSON.parse(JSON.stringify(d));
     var changed=false;
+    // जो वसूली यहां मिट रही है उसका backup — checkbox हटाकर अपलोड करने पर पूरे मुख्यालय की
+    // वसूली एक साथ मिटती है और पहले ऐप के अंदर वापसी का कोई रास्ता नहीं था। सिर्फ़ मिटने वाले
+    // records रखे जाते हैं (पूरी paid सूची नहीं) — देखें database.js: savePaidBackup
+    var bk={};
     d.forEach(function(x){
       if(!x||x.status!=="paid") return;
       if(latestPayVal(x)>=cut) return; // इसी लेजर की वसूली — बनी रहे
       // भुगतान तारीख़ ही न हो तो latestPayVal 0 देता है और यह भी हटेगी — वही नियम अपलोड
       // ख़ुद भी लगाता है (upload.js का paidByAcc), इसलिए दोनों जगह एक जैसा व्यवहार
+      if(x.acc) bk[String(x.acc).trim()]=paidBkEntry(x);
       x.status="pending";
       x.paydate="";
       x.ts=serverNow();
       changed=true; cleared++;
     });
-    if(changed){ cSet(hq,cat,d); fbSet(hq,cat,d,prevSnap,null); }
+    if(changed){ savePaidBackup(hq,cat,bk); cSet(hq,cat,d); fbSet(hq,cat,d,prevSnap,null); }
   }
   return cleared;
 }
