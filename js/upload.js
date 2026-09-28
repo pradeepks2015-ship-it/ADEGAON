@@ -113,6 +113,21 @@ function _upKeepPreview(){
   note.textContent="🛡 "+keep+" उपभोक्ता की वसूली बनी रहेगी"+(drop?"  •  🧹 "+drop+" पुरानी (पिछले लेजर की) हट जाएगी":"");
 }
 
+// इस मुख्यालय के सभी बटनों में कितने अलग-अलग उपभोक्ता "वसूल" हैं — checkbox हटाकर अपलोड करने
+// पर चेतावनी में यही संख्या दिखती है। एक ही acc कई categories में होता है, इसलिए unique गिनती
+function _upCountPaid(hq){
+  var seen={};
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
+    (cGet(hq,cat)||[]).forEach(function(x){
+      if(x&&x.status==="paid"&&x.acc) seen[String(x.acc).trim()]=1;
+    });
+  }
+  return Object.keys(seen).length;
+}
+// sweepStalePaid() को "सब कुछ हटाओ" कहने का तरीक़ा — कोई असली भुगतान तारीख़ इससे बड़ी नहीं हो
+// सकती (payDateVal yyyymmdd देता है), इसलिए हर "वसूल" पुरानी मानी जाती है
+var SWEEP_ALL_CUT=99999999;
 // चुनी हुई तारीख़ को payDateVal जैसे तुलना-योग्य अंक (yyyymmdd) में बदलें
 function _upKeepCutoff(){
   var kf=document.getElementById("up-keepfrom");
@@ -432,10 +447,32 @@ function confirmUpload(){
 
     // Replace mode या पहली बार — पुरानी वसूली सुरक्षित रखें (checkbox on हो तो)
     var kept=0,dropped=0;
+    // इस category की जो वसूली नई सूची में नहीं जा रही (कट-ऑफ़ से पुरानी, या checkbox हटा दिया
+    // गया) उसका backup — नीचे _doSave से ठीक पहले लिखा जाता है। sweepStalePaid दूसरी categories
+    // का backup ख़ुद रखता है, पर इस category की पुरानी वसूली तो उससे पहले ही हट चुकी होती है
+    // (नई सूची सेव हो जाती है), इसलिए उसे यहीं पकड़ना पड़ता है — वरना ग़लती से checkbox हटाने पर
+    // ठीक उसी सूची की वसूली लौटाने का कोई रास्ता नहीं बचता जिसमें अपलोड हुआ
+    var _lostPaid={};
     var keepEl=document.getElementById("up-keeppaid");
     // कट-ऑफ़ तारीख़ अब if-block के बाहर निकाली है — नीचे sweepStalePaid() को भी यही चाहिए,
     // और वह checkbox की स्थिति से बंधा नहीं (पुरानी वसूली दूसरे बटनों से हटाना दोनों हाल में सही है)
     var _cut=_upKeepCutoff();
+    // JE ने checkbox हटा दिया = "कोई पुरानी वसूली मत रखो"। पहले यह अधूरा चलता था: इस category की
+    // वसूली तो नहीं जाती थी, पर अपलोड के बाद reconcileHQ() दूसरे बटनों से वही वसूल वापस खींच लाता
+    // ("किसी एक में वसूल = सब में वसूल")। यानी ऐप वह करता ही नहीं था जो JE ने कहा — और चुपचाप।
+    // अब checkbox हटाने का मतलब पूरे मुख्यालय से पुरानी वसूली हटाना है, इसलिए पहले साफ़ चेतावनी
+    // देकर पूछते हैं — "हां" पर ही आगे बढ़ते हैं, वरना अपलोड शुरू ही नहीं होता (कुछ नहीं बदलता)
+    if(keepEl&&!keepEl.checked){
+      var _willLose=_upCountPaid(hq);
+      if(_willLose&&!confirm("⚠️ "+hq+" के सभी बटनों से "+_willLose+" उपभोक्ताओं की वसूली मिट जाएगी।\n\nसिर्फ़ इस सूची की वसूली रखनी हो तो ऊपर \"पुरानी वसूली सुरक्षित रखें\" पर सही का निशान लगाएं।\n\n(ग़लती हो जाए तो 7 दिन के अंदर वही लेजर checkbox लगाकर दोबारा अपलोड करने पर वसूली लौट आएगी।)\n\nक्या वाकई आगे बढ़ें?")){
+        toast("अपलोड रोक दिया — कुछ नहीं बदला","inf");
+        return;
+      }
+      // checkbox हटा है — इस category की सारी पुरानी वसूली जा रही है, सबका backup रखो
+      (cGet(hq,cat)||[]).forEach(function(e){
+        if(e&&e.acc&&e.status==="paid") _lostPaid[String(e.acc).trim()]=paidBkEntry(e);
+      });
+    }
     if(!keepEl||keepEl.checked){
       // सिर्फ़ चुनी तारीख़ (डिफ़ॉल्ट: चालू माह की 1) से दर्ज वसूली ही नए लेजर में जाए।
       // पहले यहां कोई तारीख़-जांच नहीं थी — पिछले लेजर का हर "वसूल" नए लेजर में भी चिपक जाता था,
@@ -446,7 +483,7 @@ function confirmUpload(){
       var paidByAcc={};
       exOld.forEach(function(e){
         if(e&&e.acc&&e.status==="paid"){
-          if(_cut&&latestPayVal(e)<_cut){ dropped++; return; } // पिछले लेजर की — आगे न ले जाएं
+          if(_cut&&latestPayVal(e)<_cut){ dropped++; _lostPaid[String(e.acc).trim()]=paidBkEntry(e); return; } // पिछले लेजर की — आगे न ले जाएं
           paidByAcc[String(e.acc).trim()]={paydate:e.paydate||"",by:e.updatedBy||"",at:e.updatedAt||"",ts:e.ts||0,remarksArr:e.remarksArr||[]};
         }
       });
@@ -479,10 +516,14 @@ function confirmUpload(){
     // रिमार्क "वसूली सुरक्षित रखें" checkbox से बंधे नहीं — वसूल हो या बाकी, हर उपभोक्ता के पुराने
     // रिमार्क नई सूची में जाएं (पहले सिर्फ़ ऊपर वाले paid-restore में जाते थे)
     var rmkKept=_upApplyOldRemarks(arr,_upCollectOldRemarks(hq,cat));
+    // backup अब लिखें — पहले नहीं, क्योंकि ऊपर वाला restore ख़ुद पुराना vt_paidbk_ पढ़ता है
+    // (पहले लिख देते तो वही backup मिट जाता जिससे वसूली लौटनी थी)
+    savePaidBackup(hq,cat,_lostPaid);
     _doSave(hq,cat,arr);
     // reconcileHQ से पहले: बाक़ी categories में पड़ी पिछले लेजर की वसूली हटाएं, वरना वही
-    // "किसी एक में वसूल = सब में वसूल" नियम से नए लेजर में लौट आती (देखें list.js: sweepStalePaid)
-    var _swept=sweepStalePaid(hq,_cut);
+    // "किसी एक में वसूल = सब में वसूल" नियम से नए लेजर में लौट आती (देखें list.js: sweepStalePaid)।
+    // checkbox हटाया गया हो तो कट-ऑफ़ नहीं, सारी वसूली हटती है — JE ऊपर पुष्टि दे चुके हैं
+    var _swept=sweepStalePaid(hq,(keepEl&&!keepEl.checked)?SWEEP_ALL_CUT:_cut);
     // असली bug (JE की रिपोर्ट): एक category में लेजर अपलोड होने से उसकी "वसूल" स्थिति बहाल होती है
     // (ऊपर वाला backup-restore), पर वह सिर्फ़ उसी category तक सीमित थी — किसी और category के अपने
     // लेजर में (जैसे "कुल उपभोक्ता") वही उपभोक्ता अब भी पुराना (बाकी) दिखता रहता, भले ही असल में

@@ -5912,6 +5912,9 @@ test.describe('नया लेजर अपलोड — सिर्फ़ च
     await seed(page);
     const r = await page.evaluate(() => {
       document.getElementById('up-keeppaid').checked = false;
+      // checkbox हटाने पर अब पुष्टि पूछी जाती है (पूरे HQ की वसूली मिटती है) — यहां "हां" मानकर
+      // वही पुराना व्यवहार जांचते हैं: कोई वसूली आगे न जाए
+      window.confirm = () => true;
       confirmUpload();
       return cGet('आदेगांव', 'कुल उपभोक्ता').filter(function (x) { return x.status === 'paid'; }).length;
     });
@@ -8064,5 +8067,308 @@ test.describe('नया लेजर अपलोड — पिछले ले
     });
     expect(r.cleared).toBe(1);
     expect(r.status).toBe('pending');
+  });
+});
+
+// JE का अनुरोध (28/9): "कैश लिस्ट अपलोड करते समय मैं केवल IVRS नंबर अपलोड करता हूं — इसमें यह
+// विकल्प भी दे देना कि IVRS नंबर के साथ पेमेंट डेट का column भी अपलोड किया जा सके"।
+// पहले हर वसूली पर "आज" की तारीख़ चढ़ती थी, चाहे पैसा 2-3 दिन पहले जमा हुआ हो — इससे स्कोरकार्ड
+// की तारीख़-वार तालिका झूठ बोलती, और महीने के आख़िर की वसूली अगले माह चढ़ाने पर वह नए लेजर की
+// कट-ऑफ़ से "इस माह की" मानकर बच जाती (जिसने नया बिल नहीं भरा वो भी वसूल दिखता)।
+test.describe('कैश लिस्ट — दूसरे column से भुगतान तारीख़ (वैकल्पिक)', () => {
+  test('_cashCellToDate — CSV text, Excel Date object, Excel serial number तीनों रूप पहचाने', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => ({
+      dmy: _cashCellToDate('20/9/2026'),
+      iso: _cashCellToDate('2026-09-20'),
+      dash: _cashCellToDate('20-09-2026'),
+      dateObj: _cashCellToDate(new Date(2026, 8, 20)),
+      serial: _cashCellToDate(46285), // Excel serial = 20 सितंबर 2026 (1899-12-30 से दिनों की गिनती)
+      blank: _cashCellToDate(''),
+      nul: _cashCellToDate(null),
+      junk: _cashCellToDate('कुछ भी'), // पहचान न आए तो "" — कचरा paydate में न जाए
+    }));
+    expect(r.dmy).toBe('20/9/2026');
+    expect(r.iso).toBe('20/9/2026');
+    expect(r.dash).toBe('20/9/2026');
+    expect(r.dateObj).toBe('20/9/2026');
+    expect(r.serial).toBe('20/9/2026');
+    expect(r.blank).toBe('');
+    expect(r.nul).toBe('');
+    expect(r.junk).toBe('');
+  });
+
+  test('cashCollect — जोड़ी [IVRS, तारीख़] से CASH_DATES बने, और सादी single-column लिस्ट पहले की तरह चले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      openCashModal();
+      cashCollect([['4412345678', '20/9/2026'], ['4487654321', ''], ['IVRS', 'तारीख़']]); // header पंक्ति छँट जाए
+      const pair = { ivrs: CASH_IVRS.slice(), dates: Object.assign({}, CASH_DATES) };
+      openCashModal();
+      cashCollect(['1111111111', '2222222222']); // पुरानी single-column फाइल
+      return { pair, plain: { ivrs: CASH_IVRS.slice(), dates: Object.assign({}, CASH_DATES) } };
+    });
+    expect(r.pair.ivrs).toEqual(['4412345678', '4487654321']);
+    expect(r.pair.dates).toEqual({ '4412345678': '20/9/2026' }); // सिर्फ़ जिसकी तारीख़ मिली
+    expect(r.plain.ivrs).toEqual(['1111111111', '2222222222']);
+    expect(r.plain.dates).toEqual({}); // तारीख़ का column ही नहीं — पुराना व्यवहार
+  });
+
+  test('_applyCashMatched — जिसकी तारीख़ फाइल में हो उसकी वही चढ़े, बाक़ी पर आज की', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      activeHQ = 'आदेगांव';
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '4412345678', name: 'रामप्रसाद', status: 'pending', amount: 500 },
+        { acc: '4487654321', name: 'सुखराम', status: 'pending', amount: 700 },
+      ]);
+      CASH_IVRS = ['4412345678', '4487654321'];
+      CASH_DATES = { '4412345678': '20/9/2026' }; // सिर्फ़ रामप्रसाद की तारीख़ फाइल में थी
+      _applyCashMatched(['आदेगांव']);
+      const pick = (a) => cGet('आदेगांव', 'कुल उपभोक्ता').find((x) => x.acc === a);
+      const n = new Date();
+      return {
+        ram: pick('4412345678'),
+        sukh: pick('4487654321'),
+        today: n.toLocaleDateString('hi-IN'),
+      };
+    });
+    expect(r.ram.status).toBe('paid');
+    expect(r.ram.paydate).toBe('20/9/2026');  // फाइल वाली तारीख़
+    expect(r.sukh.status).toBe('paid');
+    expect(r.sukh.paydate).toBe(r.today);     // तारीख़ नहीं दी थी — पुराना व्यवहार
+  });
+
+  test('CASH_DATES बिल्कुल न हो तो भी पुराना व्यवहार चले (आज की तारीख़)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      activeHQ = 'आदेगांव';
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1134022288', name: 'टेस्ट', status: 'pending', amount: 500 }]);
+      CASH_IVRS = ['1134022288'];
+      CASH_DATES = null; // जैसे पुराने रास्ते से आया हो
+      _applyCashMatched(['आदेगांव']);
+      return {
+        rec: cGet('आदेगांव', 'कुल उपभोक्ता')[0],
+        today: new Date().toLocaleDateString('hi-IN'),
+      };
+    });
+    expect(r.rec.status).toBe('paid');
+    expect(r.rec.paydate).toBe(r.today);
+  });
+
+  test('फाइल की तारीख़ भविष्य की हो तो आज पर समेट दी जाए (normPayDate वाला नियम)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const f = new Date(); f.setFullYear(f.getFullYear() + 1);
+      const future = f.getDate() + '/' + (f.getMonth() + 1) + '/' + f.getFullYear();
+      const n = new Date();
+      return { got: _cashCellToDate(future), today: n.getDate() + '/' + (n.getMonth() + 1) + '/' + n.getFullYear() };
+    });
+    expect(r.got).toBe(r.today);
+  });
+});
+
+// JE का अनुरोध (28/9) — बिंदु 1: "पुरानी वसूली सुरक्षित रखें" का ✅ हटाने का मतलब है "कोई पुरानी
+// वसूली मत रखो"। पर यह अधूरा चलता था: इस category की वसूली तो नहीं जाती थी, पर अपलोड के बाद
+// reconcileHQ() दूसरे बटनों से वही वसूल वापस खींच लाता ("किसी एक में वसूल = सब में वसूल")।
+// यानी ऐप वह करता ही नहीं था जो JE ने कहा — और चुपचाप। अब checkbox हटाने पर पूरे मुख्यालय से
+// वसूली हटती है, पर पहले साफ़ चेतावनी देकर पूछा जाता है।
+test.describe('checkbox हटाकर अपलोड — पूरे HQ से वसूली हटे, पर पहले पुष्टि पूछी जाए', () => {
+  async function seed(page) {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: '20/9/2026', amount: 100 },
+      ]);
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: '20/9/2026', amount: 100 },
+        { acc: '2', name: 'श्याम', status: 'paid', paydate: '20/9/2026', amount: 200 },
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      document.getElementById('up-keeppaid').checked = false;
+      parsedRows = [{ acc: '1', name: 'राम', amount: 100, status: 'pending', remarksArr: [] }];
+    });
+  }
+
+  test('"नहीं" कहने पर अपलोड रुक जाए — एक भी record न बदले', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      window.confirm = () => false; // JE ने चेतावनी पढ़कर मना कर दिया
+      confirmUpload();
+      return {
+        kulLen: cGet('आदेगांव', 'कुल उपभोक्ता').length,
+        kul: cGet('आदेगांव', 'कुल उपभोक्ता')[0].status,
+        ghar: cGet('आदेगांव', 'घरेलू').map((x) => x.status),
+      };
+    });
+    expect(r.kulLen).toBe(1);
+    expect(r.kul).toBe('paid');          // नई लिस्ट सेव ही नहीं हुई
+    expect(r.ghar).toEqual(['paid', 'paid']); // दूसरे बटन भी अछूते
+  });
+
+  test('"हां" कहने पर पूरे HQ से वसूली हटे — दूसरे बटनों से भी, और reconcileHQ वापस न ला सके', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      window.confirm = () => true;
+      confirmUpload();
+      reconcileHQ('आदेगांव'); // अगले login जैसा — पुरानी वसूल कहीं बची हो तो यहीं लौट आती
+      return {
+        kul: cGet('आदेगांव', 'कुल उपभोक्ता')[0].status,
+        ghar: cGet('आदेगांव', 'घरेलू').map((x) => x.status),
+      };
+    });
+    expect(r.kul).toBe('pending');
+    expect(r.ghar).toEqual(['pending', 'pending']); // दूसरा बटन भी साफ़ — पिछला दरवाज़ा बंद
+  });
+
+  test('चेतावनी में पूरे HQ की unique गिनती हो (एक ही acc कई बटनों में हो तो एक ही बार)', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      let asked = '';
+      window.confirm = (m) => { asked = m; return false; };
+      confirmUpload();
+      return { asked, count: _upCountPaid('आदेगांव') };
+    });
+    expect(r.count).toBe(2);            // acc 1 (दोनों बटनों में) + acc 2 = 2, तीन नहीं
+    expect(r.asked).toContain('2 उपभोक्ताओं की वसूली मिट जाएगी');
+    expect(r.asked).toContain('आदेगांव');
+  });
+
+  test('कोई वसूली हो ही न तो कुछ न पूछा जाए — बेवजह चेतावनी न आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', status: 'pending', amount: 100 }]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      document.getElementById('up-keeppaid').checked = false;
+      parsedRows = [{ acc: '1', name: 'राम', amount: 100, status: 'pending', remarksArr: [] }];
+      let asked = 0;
+      window.confirm = () => { asked++; return true; };
+      confirmUpload();
+      return { asked, len: cGet('आदेगांव', 'कुल उपभोक्ता').length };
+    });
+    expect(r.asked).toBe(0);  // कुछ मिटना ही नहीं था
+    expect(r.len).toBe(1);    // अपलोड फिर भी हुआ
+  });
+
+  test('checkbox लगा रहे तो कुछ न पूछा जाए (रोज़ का सामान्य रास्ता अछूता)', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      document.getElementById('up-keeppaid').checked = true;
+      let asked = 0;
+      window.confirm = () => { asked++; return true; };
+      confirmUpload();
+      return { asked };
+    });
+    expect(r.asked).toBe(0);
+  });
+});
+
+// JE का फ़ैसला (28/9): बिंदु 1 "बैकअप जोड़कर" लागू हो। checkbox हटाकर अपलोड करने पर पूरे मुख्यालय
+// की वसूली एक साथ मिटती है और पहले ऐप के अंदर वापसी का कोई रास्ता नहीं था (सिर्फ़ GitHub वाला
+// रोज़ का बैकअप, यानी घंटों का काम)। अब मिटने से ठीक पहले 7-दिनी backup रखा जाता है — वही जो
+// "हटाएं" बटन के लिए पहले से बनता था (vt_paidbk_), इसलिए दोबारा अपलोड करते ही वसूली लौट आती है।
+test.describe('मिटने से पहले वसूली का backup (sweepStalePaid → vt_paidbk_)', () => {
+  test('sweepStalePaid — मिटाई गई वसूली localStorage में backup हो जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: '20/8/2026', amount: 100, updatedBy: 'रमेश' },
+        { acc: '2', name: 'श्याम', status: 'pending', amount: 200 },
+      ]);
+      sweepStalePaid('आदेगांव', 99999999); // सब कुछ मिटाओ
+      const raw = localStorage.getItem('vt_paidbk_' + cKey('आदेगांव', 'घरेलू'));
+      return { raw: raw ? JSON.parse(raw) : null, status: cGet('आदेगांव', 'घरेलू')[0].status };
+    });
+    expect(r.status).toBe('pending');
+    expect(Object.keys(r.raw.m)).toEqual(['1']);      // सिर्फ़ मिटने वाला record, "बाकी" वाला नहीं
+    expect(r.raw.m['1'].paydate).toBe('20/8/2026');
+    expect(r.raw.m['1'].by).toBe('रमेश');
+    expect(r.raw.t).toBeGreaterThan(0);               // 7 दिन की उम्र इसी से नापी जाती है
+  });
+
+  test('कुछ न मिटे तो backup भी न लिखा जाए (पुराना backup बचा रहे)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const key = 'vt_paidbk_' + cKey('आदेगांव', 'घरेलू');
+      localStorage.setItem(key, JSON.stringify({ t: Date.now(), m: { '9': { paydate: '1/9/2026' } } }));
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', status: 'pending', amount: 100 }]);
+      sweepStalePaid('आदेगांव', 99999999);
+      return Object.keys(JSON.parse(localStorage.getItem(key)).m);
+    });
+    expect(r).toEqual(['9']); // पहले वाला backup ज्यों का त्यों
+  });
+
+  test('पूरा चक्र — checkbox हटाकर मिटाओ, फिर दोबारा अपलोड करने पर वसूली लौट आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const n = new Date();
+      const todayDmy = n.getDate() + '/' + (n.getMonth() + 1) + '/' + n.getFullYear();
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: todayDmy, amount: 100, updatedBy: 'रमेश' },
+      ]);
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', status: 'paid', paydate: todayDmy, amount: 100 }]);
+
+      // (1) ग़लती — checkbox हटाकर अपलोड, चेतावनी पर "हां"
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      document.getElementById('up-keeppaid').checked = false;
+      window.confirm = () => true;
+      parsedRows = [{ acc: '1', name: 'राम', amount: 100, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      const afterWipe = cGet('आदेगांव', 'कुल उपभोक्ता')[0].status;
+
+      // (2) सुधार — वही लेजर दोबारा, इस बार checkbox लगाकर
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      document.getElementById('up-keeppaid').checked = true;
+      parsedRows = [{ acc: '1', name: 'राम', amount: 100, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      const rec = cGet('आदेगांव', 'कुल उपभोक्ता')[0];
+      return {
+        afterWipe,
+        restored: rec.status,
+        paydate: rec.paydate,
+        ghar: cGet('आदेगांव', 'घरेलू')[0].status, // reconcileHQ इसे भी वापस फैलाए
+      };
+    });
+    expect(r.afterWipe).toBe('pending'); // मिट गई थी
+    expect(r.restored).toBe('paid');     // backup से लौट आई
+    expect(r.ghar).toBe('paid');         // और बाक़ी बटनों में भी फैल गई
+  });
+
+  test('backup बनाते समय localStorage भर जाए तो अपलोड न रुके (सिर्फ़ लॉग हो)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const orig = localStorage.setItem.bind(localStorage);
+      localStorage.setItem = (k) => { if (String(k).indexOf('vt_paidbk_') === 0) throw new Error('QuotaExceededError'); return orig.apply(null, arguments); };
+      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', status: 'paid', paydate: '20/8/2026', amount: 100 }]);
+      let threw = false;
+      try { sweepStalePaid('आदेगांव', 99999999); } catch (e) { threw = true; }
+      localStorage.setItem = orig;
+      return { threw, status: cGet('आदेगांव', 'घरेलू')[0].status };
+    });
+    expect(r.threw).toBe(false);      // सफ़ाई फिर भी चली
+    expect(r.status).toBe('pending'); // और अपना काम कर गई
   });
 });
