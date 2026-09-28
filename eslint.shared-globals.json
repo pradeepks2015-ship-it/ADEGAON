@@ -509,6 +509,7 @@
   "startPausePoll",
   "stopDevicePing",
   "stopListen",
+  "sweepStalePaid",
   "toast",
   "toggleBoard",
   "toggleCelebSound",

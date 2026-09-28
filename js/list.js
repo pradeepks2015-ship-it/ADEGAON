@@ -241,6 +241,42 @@ function propagateStatus(acc,srcCat,status,paydate,dtStr,ts){
   }
 }
 
+// ── नया लेजर आने पर पिछले लेजर की बची-खुची वसूली सभी बटनों से हटाएं ──────────────────────
+// असली समस्या (JE का सवाल, 28/9): नया लेजर आम तौर पर सिर्फ़ "कुल उपभोक्ता" में अपलोड होता है और
+// बाक़ी बटनों में पिछले माह का डेटा पड़ा रह जाता है। अपलोड की तारीख़-कट-ऑफ़ (up-keepfrom) सिर्फ़ उसी
+// एक category पर लगती थी — तो "कुल उपभोक्ता" तो ठीक साफ़ हो जाती, पर उसके तुरंत बाद चलने वाला
+// reconcileHQ() पुराने बटन में पड़ी पिछले माह की "वसूल" देखकर नियम "किसी एक में वसूल = सब में वसूल"
+// लगा देता और वही पुरानी वसूली नए लेजर में लौट आती। नतीजा: जिसने नया बिल जमा नहीं किया वो भी
+// "वसूल" दिखता, लाइनमैन उस तक जाता ही नहीं और वसूली चुपचाप छूट जाती — ठीक वही bug जिसे कट-ऑफ़
+// से ठीक किया गया था, बस पिछले दरवाज़े से लौटता हुआ।
+// अब reconcileHQ से *पहले* हर category से कट-ऑफ़ से पुरानी वसूली हटा दी जाती है, इसलिए लौटने का
+// रास्ता ही नहीं बचता — और अगली बार login/tab बदलने पर चलने वाला reconcileHQ (जिसे कट-ऑफ़ पता
+// नहीं होती) भी उसे वापस नहीं ला सकता, क्योंकि कहीं बची ही नहीं।
+// cut=0 (तारीख़ न चुनी हो) पर कुछ नहीं होता — पुराना व्यवहार जस का तस।
+function sweepStalePaid(hq,cut){
+  if(!cut) return 0;
+  var cleared=0;
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
+    var d=cGet(hq,cat);
+    if(!d||!d.length) continue;
+    var prevSnap=JSON.parse(JSON.stringify(d));
+    var changed=false;
+    d.forEach(function(x){
+      if(!x||x.status!=="paid") return;
+      if(latestPayVal(x)>=cut) return; // इसी लेजर की वसूली — बनी रहे
+      // भुगतान तारीख़ ही न हो तो latestPayVal 0 देता है और यह भी हटेगी — वही नियम अपलोड
+      // ख़ुद भी लगाता है (upload.js का paidByAcc), इसलिए दोनों जगह एक जैसा व्यवहार
+      x.status="pending";
+      x.paydate="";
+      x.ts=serverNow();
+      changed=true; cleared++;
+    });
+    if(changed){ cSet(hq,cat,d); fbSet(hq,cat,d,prevSnap,null); }
+  }
+  return cleared;
+}
+
 // ── पुराने mismatch ठीक करें: किसी भी tab में paid → हर tab में paid ──
 function reconcileHQ(hq){
   var cats=[];

@@ -5924,9 +5924,15 @@ test.describe('लेजर अपलोड के बाद reconcileHQ चल�
     await openApp(page);
     await loginJE(page);
     const r = await page.evaluate(() => {
-      // "घरेलू" में यह उपभोक्ता पहले से वसूल है (जैसे "किशन" में था)
+      // "घरेलू" में यह उपभोक्ता पहले से वसूल है (जैसे "किशन" में था)।
+      // तारीख़ आज की — यह टेस्ट categories के बीच मिलान (reconcileHQ) जांचता है, वसूली का
+      // पुराना/नया होना नहीं। पहले यहां तय तारीख़ '1/1/2026' थी; sweepStalePaid आने के बाद वह
+      // "पिछले लेजर की" मानी जाने लगी और टेस्ट असल में वही (दूसरा) नियम जांचने लगता। पुरानी
+      // तारीख़ वाला मामला अपने अलग describe ब्लॉक में जांचा जाता है (sweepStalePaid, फ़ाइल के अंत में)
+      const n = new Date();
+      const todayDmy = n.getDate() + '/' + (n.getMonth() + 1) + '/' + n.getFullYear();
       cSet('आदेगांव', 'घरेलू', [
-        { acc: '1', name: 'राम', status: 'paid', paydate: '1/1/2026', amount: 100 },
+        { acc: '1', name: 'राम', status: 'paid', paydate: todayDmy, amount: 100 },
       ]);
       openUpModal();
       document.getElementById('up-hq').value = 'आदेगांव';
@@ -7949,5 +7955,114 @@ test.describe('offline मानी गई request में भी तैया
     }));
     expect(r.url).not.toContain('auth=');   // "auth=null" जैसा कचरा न जाए
     expect(r.ac).toBe('ac-2');
+  });
+});
+
+// असली सवाल (JE, 28/9): "किसी मुख्यालय में कुल उपभोक्ता में नया लेजर अपलोड करूं और दूसरे बटनों में
+// पुराना डाटा रहे — फिर एक को वसूल मार्क करूं तो दूसरा भी वसूल हो जाएगा क्या?" जड़ यह निकली कि
+// अपलोड की तारीख़-कट-ऑफ़ सिर्फ़ उसी category पर लगती थी, और उसके तुरंत बाद चलने वाला reconcileHQ()
+// दूसरे बटन में पड़ी पिछले माह की वसूली देखकर उसे नए लेजर में वापस ले आता था (नियम: किसी एक में
+// वसूल = सब में वसूल)। नतीजा: जिसने नया बिल जमा नहीं किया वो भी "वसूल" दिखता और लाइनमैन उस तक
+// जाता ही नहीं। अब sweepStalePaid() reconcileHQ से पहले हर बटन से पुरानी वसूली हटा देता है।
+test.describe('नया लेजर अपलोड — पिछले लेजर की वसूली दूसरे बटनों से भी हटे (sweepStalePaid)', () => {
+  // कट-ऑफ़ डिफ़ॉल्ट चालू माह की 1 तारीख़ है, इसलिए टेस्ट की तारीख़ें आज के हिसाब से बनें —
+  // तय (hard-coded) तारीख़ रखने पर टेस्ट अगले महीने अपने-आप टूट जाता
+  const dmy = (d) => d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear();
+  const lastMonth = () => { const d = new Date(); d.setDate(1); d.setDate(0); return dmy(d); }; // पिछले माह का आख़िरी दिन
+  const today = () => dmy(new Date());
+
+  test('सुखराम वाला मामला — दूसरे बटन में पड़ी पिछले माह की वसूली नए लेजर में वापस न आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(([oldPay]) => {
+      // "घरेलू" में पुराना (पिछले माह का) लेजर पड़ा है — सुखराम वहां वसूल है
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '4487654321', name: 'सुखराम', status: 'paid', paydate: oldPay, amount: 8400 },
+      ]);
+      openUpModal(); // कट-ऑफ़ अपने-आप चालू माह की 1 तारीख़ पर सेट होती है
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      // नया लेजर — सुखराम का नया बिल ₹1,150, अभी बाकी
+      parsedRows = [{ acc: '4487654321', name: 'सुखराम', amount: 1150, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      const pick = (cat) => (cGet('आदेगांव', cat).find((x) => x.acc === '4487654321') || {});
+      return { master: pick('कुल उपभोक्ता'), old: pick('घरेलू') };
+    }, [lastMonth()]);
+    // नए लेजर में सुखराम "बाकी" ही रहे — लाइनमैन उस तक पहुंचे
+    expect(r.master.status).toBe('pending');
+    expect(r.master.amount).toBe(1150); // नई राशि, पुरानी ₹8,400 नहीं
+    // और पुराने बटन से भी वह बासी वसूल हट जाए, वरना अगली बार फिर लौट आती
+    expect(r.old.status).toBe('pending');
+    expect(r.old.paydate).toBe('');
+  });
+
+  test('अपलोड के बाद reconcileHQ दोबारा चले (जैसे अगले login पर) तो भी पुरानी वसूली वापस न आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(([oldPay]) => {
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '4487654321', name: 'सुखराम', status: 'paid', paydate: oldPay, amount: 8400 },
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      parsedRows = [{ acc: '4487654321', name: 'सुखराम', amount: 1150, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      reconcileHQ('आदेगांव'); // login / HQ-tab बदलने पर यही चलता है (कट-ऑफ़ इसे पता नहीं होती)
+      return { status: (cGet('आदेगांव', 'कुल उपभोक्ता').find((x) => x.acc === '4487654321') || {}).status };
+    }, [lastMonth()]);
+    expect(r.status).toBe('pending'); // कहीं बची ही नहीं, इसलिए लौट भी नहीं सकती
+  });
+
+  test('इसी माह (1-10 की खिड़की में) दर्ज वसूली बनी रहे — reconcileHQ उसे नए लेजर में ले ही जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(([nowPay]) => {
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '4412345678', name: 'रामप्रसाद', status: 'paid', paydate: nowPay, amount: 11450 },
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      parsedRows = [{ acc: '4412345678', name: 'रामप्रसाद', amount: 12600, status: 'pending', remarksArr: [] }];
+      confirmUpload();
+      const pick = (cat) => (cGet('आदेगांव', cat).find((x) => x.acc === '4412345678') || {});
+      return { master: pick('कुल उपभोक्ता'), old: pick('घरेलू') };
+    }, [today()]);
+    expect(r.master.status).toBe('paid'); // इस माह की वसूली है — बनी रहे
+    expect(r.old.status).toBe('paid');    // पुराने बटन से भी न हटे
+  });
+
+  test('कट-ऑफ़ तारीख़ न हो (cut=0) तो sweepStalePaid कुछ न छुए — पुराना व्यवहार जस का तस', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(([oldPay]) => {
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: oldPay, amount: 100 },
+      ]);
+      const cleared = sweepStalePaid('आदेगांव', 0);
+      return { cleared, status: cGet('आदेगांव', 'घरेलू')[0].status };
+    }, [lastMonth()]);
+    expect(r.cleared).toBe(0);
+    expect(r.status).toBe('paid');
+  });
+
+  test('भुगतान तारीख़ ही दर्ज न हो तो वह वसूल भी पुरानी मानी जाए (अपलोड जैसा ही नियम)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: '', amount: 100 },
+      ]);
+      const n = new Date();
+      const cut = n.getFullYear() * 10000 + (n.getMonth() + 1) * 100 + 1; // चालू माह की 1 तारीख़
+      const cleared = sweepStalePaid('आदेगांव', cut);
+      return { cleared, status: cGet('आदेगांव', 'घरेलू')[0].status };
+    });
+    expect(r.cleared).toBe(1);
+    expect(r.status).toBe('pending');
   });
 });
