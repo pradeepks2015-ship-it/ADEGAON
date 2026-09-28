@@ -23,7 +23,13 @@
 - `js/home-scorecard.js` — होम पेज डिस्प्ले बोर्ड + कैश लिस्ट (bulk cash-payment upload)
 - `js/reports.js` — फोन एक्शन मॉडल (SMS/WhatsApp templates), स्कोरकार्ड, PDF/Excel, service-worker registration
 - `js/migration.js` — पुराने array-format से नए per-record object-format में माइग्रेशन
-- `js/profile.js`, `js/upload.js`
+- `js/storage.js` — local cache (cGet/cSet/cKey), offline queue (getPending, flushPending, pendingCount), mergeArrays
+- `js/auth.js` — login/logout, Lineman PIN, `_ensureCorrectHqAuth` (हर HQ का अपना Firebase account)
+- `js/upload.js` — लेजर अपलोड (Replace/Merge), "पुरानी वसूली सुरक्षित रखें" + तारीख़-कट-ऑफ़, रिमार्क बचाना
+- `js/share.js` — उपभोक्ता card को WhatsApp पर फ़ोटो बनाकर शेयर (SVG foreignObject से असली card की तस्वीर)
+- `js/scorecards.js` — स्कोरकार्ड + तारीख़-वार तालिका, `normPayDate`/`payDateVal` (तारीख़ के सारे रूप यहीं संभलते हैं)
+- `js/logger.js` — `logErr()` — असली production bugs इसी लॉग से पकड़े जाते हैं (JE मेनू → error log)
+- `js/main.js`, `js/profile.js`, `js/cat-admin.js`, `js/celebration.js`
 - `js/usage.js` — Firebase डेटा-उपयोग का अनुमानित ट्रेंड (Blaze plan पर बिना बताए बिल न बढ़े, JE-only viewer)
 - `index.html`, `css/style.css`
 - `sw.js` — service worker + CACHE_NAME
@@ -42,7 +48,13 @@
    PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npx playwright test
    ```
    (local dev server: `python3 -m http.server 8080 --directory <repo-path>`)
-   साथ ही `npm run lint` भी साफ़ (0 errors) होना चाहिए।
+   साथ ही CI वाली तीनों जांचें भी साफ़ होनी चाहिए — यही तीनों `.github/workflows/tests.yml` में भी चलती हैं:
+   ```
+   npm run lint           # 0 errors
+   npm run check-xss      # onclick में escHtml() का सही इस्तेमाल
+   npm run check-globals  # एक ही global नाम दो फ़ाइलों में declare न हो
+   ```
+   नया top-level global (जो दूसरी js/*.js फाइल में इस्तेमाल हो) जोड़ें तो पहले `node scripts/gen-eslint-globals.js` चलाएं, वरना lint फेल होगी।
 3. Commit → `git fetch origin main` करके rebase करें (पिछले squash-merge से conflict बचाने के लिए) → push → PR बनाएं → PR की "smoke" **और** "lint" दोनों CI checks पास होने का इंतज़ार करें → तभी merge करें (squash) → PR activity से unsubscribe करें।
 4. बड़े visual/UI बदलाव हों तो पहले screenshot लेकर दिखाएं, अनुमति के बाद ही merge करें।
 5. कभी भी बिना पूछे risky/destructive git ऑपरेशन (force push to main, reset --hard, आदि) न करें।
