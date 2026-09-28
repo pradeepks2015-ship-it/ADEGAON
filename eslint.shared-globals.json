@@ -255,6 +255,7 @@
   "_sseLogNeverOpened",
   "_sseNeverOpenedLogged",
   "_swSetupAutoUpdate",
+  "_syncFilterBtns",
   "_syncRemovePhotoBtn",
   "_syncSoundSwitch",
   "_syncThemeSwitch",

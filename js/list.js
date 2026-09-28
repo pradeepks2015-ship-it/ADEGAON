@@ -11,11 +11,21 @@ function renderSummaryWith(data){
     "<div class='sbox'><div class='snum'>"+fmt(pendAmt)+"</div><div class='slbl'>बाकी राशि</div></div>";
 }
 
+// बटन की दिखावट हमेशा असली activeFilter जैसी — JE की रिपोर्ट (मढ़ी, screenshot): "बाकी" बटन
+// हाइलाइट था पर सूची में वसूल कार्ड भी दिख रहे थे। असली वजह: कई रास्ते activeFilter="all" कर देते
+// हैं (जैसे _finishLogin — यानी "बाकी" चुने रहते हुए logout+दोबारा login, जो _ensureCorrectHqAuth
+// खुद भी करा देता है), पर filter बटनों की class पुरानी ("बाकी") ही रह जाती थी — सूची असल में "सभी"
+// होती और वसूल कार्ड बीच में दिखते। अब हर render पर दोनों मिलाकर रखे जाते हैं, इसलिए वे कभी अलग
+// नहीं हो सकते (चाहे कोई भी नया रास्ता activeFilter बदले)
+function _syncFilterBtns(){
+  document.querySelectorAll(".filter-btn").forEach(function(b){
+    b.className="filter-btn"+(b.dataset.f===activeFilter?" active-"+activeFilter:"");
+  });
+}
 function setFilter(btn){
   activeFilter=btn.dataset.f;
   _renderLimit=100;
-  document.querySelectorAll(".filter-btn").forEach(function(b){b.className="filter-btn";});
-  btn.className="filter-btn active-"+activeFilter;
+  _syncFilterBtns();
   // पहले cache से तुरंत दिखाएं
   var cached=cGet(activeHQ,activeCat);
   if(cached.length) renderListWith(cached);
@@ -30,6 +40,7 @@ function debounceSearch(){
 function renderList(){var d=cGet(activeHQ,activeCat);renderListWith(d);}
 var _renderLimit=100;
 function renderListWith(data){
+  _syncFilterBtns(); // बटन और असली फ़िल्टर कभी अलग न दिखें (देखें ऊपर)
   var q=(document.getElementById("search-inp").value||"").toLowerCase().trim();
   var c=document.getElementById("con-list");
   var filtered=data.filter(function(x){
@@ -42,7 +53,12 @@ function renderListWith(data){
       (x.addr||"").toLowerCase().includes(q)||
       (x.tariff||"").toLowerCase().includes(q)||
       (x.father||"").toLowerCase().includes(q);
-    return matchQ&&(activeFilter==="all"||x.status===activeFilter);
+    // JE का नियम: वसूल + बाकी = कुल उपभोक्ता = सभी। ऊपर की गिनती (renderSummaryWith) "बाकी" में
+    // हर उस record को गिनती है जो paid नहीं — इसलिए सूची भी वैसी ही छंटे। पहले सूची ठीक "pending"
+    // लिखा होने पर ही दिखाती थी, तो जिस पुराने record में status खाली/कुछ और होता वह गिनती में तो
+    // "बाकी" में आता पर सूची में कहीं नहीं दिखता — दोनों सूचियां जोड़ने पर कुल से कम बैठतीं
+    var st=(activeFilter==="paid")?(x.status==="paid"):(x.status!=="paid");
+    return matchQ&&(activeFilter==="all"||st);
   });
   if(!filtered.length){
     var emptyMsg;
