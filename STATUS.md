@@ -10,12 +10,17 @@
 
 ## 1. अभी चालू काम
 
-| PR | क्या | स्थिति |
-|---|---|---|
-| #205 | v9.175, v9.176, v9.177 | lint ✅ · smoke ⏳ · merge बाक़ी |
+**कुछ भी अधूरा नहीं।** आख़िरी PR #205 (v9.175–9.177) merge होकर लाइव है।
 
-merge होते ही dev branch को main से sync करना है
-(`git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main && git push --force-with-lease`)।
+| PR | क्या | कब |
+|---|---|---|
+| #203 | v9.173 | 28 सित ✅ |
+| #204 | v9.174 | 28 सित ✅ |
+| #205 | v9.175, 9.176, 9.177 | 28 सित ✅ |
+
+dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
+`git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
+कर लें (पिछले squash-merge से conflict बचाने के लिए)।
 
 ---
 
