@@ -5912,6 +5912,9 @@ test.describe('नया लेजर अपलोड — सिर्फ़ च
     await seed(page);
     const r = await page.evaluate(() => {
       document.getElementById('up-keeppaid').checked = false;
+      // checkbox हटाने पर अब पुष्टि पूछी जाती है (पूरे HQ की वसूली मिटती है) — यहां "हां" मानकर
+      // वही पुराना व्यवहार जांचते हैं: कोई वसूली आगे न जाए
+      window.confirm = () => true;
       confirmUpload();
       return cGet('आदेगांव', 'कुल उपभोक्ता').filter(function (x) { return x.status === 'paid'; }).length;
     });
@@ -8167,5 +8170,108 @@ test.describe('कैश लिस्ट — दूसरे column से भ�
       return { got: _cashCellToDate(future), today: n.getDate() + '/' + (n.getMonth() + 1) + '/' + n.getFullYear() };
     });
     expect(r.got).toBe(r.today);
+  });
+});
+
+// JE का अनुरोध (28/9) — बिंदु 1: "पुरानी वसूली सुरक्षित रखें" का ✅ हटाने का मतलब है "कोई पुरानी
+// वसूली मत रखो"। पर यह अधूरा चलता था: इस category की वसूली तो नहीं जाती थी, पर अपलोड के बाद
+// reconcileHQ() दूसरे बटनों से वही वसूल वापस खींच लाता ("किसी एक में वसूल = सब में वसूल")।
+// यानी ऐप वह करता ही नहीं था जो JE ने कहा — और चुपचाप। अब checkbox हटाने पर पूरे मुख्यालय से
+// वसूली हटती है, पर पहले साफ़ चेतावनी देकर पूछा जाता है।
+test.describe('checkbox हटाकर अपलोड — पूरे HQ से वसूली हटे, पर पहले पुष्टि पूछी जाए', () => {
+  async function seed(page) {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: '20/9/2026', amount: 100 },
+      ]);
+      cSet('आदेगांव', 'घरेलू', [
+        { acc: '1', name: 'राम', status: 'paid', paydate: '20/9/2026', amount: 100 },
+        { acc: '2', name: 'श्याम', status: 'paid', paydate: '20/9/2026', amount: 200 },
+      ]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      document.getElementById('up-keeppaid').checked = false;
+      parsedRows = [{ acc: '1', name: 'राम', amount: 100, status: 'pending', remarksArr: [] }];
+    });
+  }
+
+  test('"नहीं" कहने पर अपलोड रुक जाए — एक भी record न बदले', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      window.confirm = () => false; // JE ने चेतावनी पढ़कर मना कर दिया
+      confirmUpload();
+      return {
+        kulLen: cGet('आदेगांव', 'कुल उपभोक्ता').length,
+        kul: cGet('आदेगांव', 'कुल उपभोक्ता')[0].status,
+        ghar: cGet('आदेगांव', 'घरेलू').map((x) => x.status),
+      };
+    });
+    expect(r.kulLen).toBe(1);
+    expect(r.kul).toBe('paid');          // नई लिस्ट सेव ही नहीं हुई
+    expect(r.ghar).toEqual(['paid', 'paid']); // दूसरे बटन भी अछूते
+  });
+
+  test('"हां" कहने पर पूरे HQ से वसूली हटे — दूसरे बटनों से भी, और reconcileHQ वापस न ला सके', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      window.confirm = () => true;
+      confirmUpload();
+      reconcileHQ('आदेगांव'); // अगले login जैसा — पुरानी वसूल कहीं बची हो तो यहीं लौट आती
+      return {
+        kul: cGet('आदेगांव', 'कुल उपभोक्ता')[0].status,
+        ghar: cGet('आदेगांव', 'घरेलू').map((x) => x.status),
+      };
+    });
+    expect(r.kul).toBe('pending');
+    expect(r.ghar).toEqual(['pending', 'pending']); // दूसरा बटन भी साफ़ — पिछला दरवाज़ा बंद
+  });
+
+  test('चेतावनी में पूरे HQ की unique गिनती हो (एक ही acc कई बटनों में हो तो एक ही बार)', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      let asked = '';
+      window.confirm = (m) => { asked = m; return false; };
+      confirmUpload();
+      return { asked, count: _upCountPaid('आदेगांव') };
+    });
+    expect(r.count).toBe(2);            // acc 1 (दोनों बटनों में) + acc 2 = 2, तीन नहीं
+    expect(r.asked).toContain('2 उपभोक्ताओं की वसूली मिट जाएगी');
+    expect(r.asked).toContain('आदेगांव');
+  });
+
+  test('कोई वसूली हो ही न तो कुछ न पूछा जाए — बेवजह चेतावनी न आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', status: 'pending', amount: 100 }]);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('replace');
+      document.getElementById('up-keeppaid').checked = false;
+      parsedRows = [{ acc: '1', name: 'राम', amount: 100, status: 'pending', remarksArr: [] }];
+      let asked = 0;
+      window.confirm = () => { asked++; return true; };
+      confirmUpload();
+      return { asked, len: cGet('आदेगांव', 'कुल उपभोक्ता').length };
+    });
+    expect(r.asked).toBe(0);  // कुछ मिटना ही नहीं था
+    expect(r.len).toBe(1);    // अपलोड फिर भी हुआ
+  });
+
+  test('checkbox लगा रहे तो कुछ न पूछा जाए (रोज़ का सामान्य रास्ता अछूता)', async ({ page }) => {
+    await seed(page);
+    const r = await page.evaluate(() => {
+      document.getElementById('up-keeppaid').checked = true;
+      let asked = 0;
+      window.confirm = () => { asked++; return true; };
+      confirmUpload();
+      return { asked };
+    });
+    expect(r.asked).toBe(0);
   });
 });
