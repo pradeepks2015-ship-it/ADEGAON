@@ -433,13 +433,15 @@ function confirmUpload(){
     // Replace mode या पहली बार — पुरानी वसूली सुरक्षित रखें (checkbox on हो तो)
     var kept=0,dropped=0;
     var keepEl=document.getElementById("up-keeppaid");
+    // कट-ऑफ़ तारीख़ अब if-block के बाहर निकाली है — नीचे sweepStalePaid() को भी यही चाहिए,
+    // और वह checkbox की स्थिति से बंधा नहीं (पुरानी वसूली दूसरे बटनों से हटाना दोनों हाल में सही है)
+    var _cut=_upKeepCutoff();
     if(!keepEl||keepEl.checked){
       // सिर्फ़ चुनी तारीख़ (डिफ़ॉल्ट: चालू माह की 1) से दर्ज वसूली ही नए लेजर में जाए।
       // पहले यहां कोई तारीख़-जांच नहीं थी — पिछले लेजर का हर "वसूल" नए लेजर में भी चिपक जाता था,
       // इसलिए जिसने नया बिल जमा नहीं किया वो भी "वसूल" दिखता, लाइनमैन उस तक जाता ही नहीं और
       // वसूली चुपचाप छूट जाती — असली bug यही था। अब पिछले माह वाले हट जाते हैं, पर 1-10 तारीख़ की
       // खिड़की में (जब पुराना लेजर ही ऐप में होता है) दर्ज हुई वसूली बनी रहती है
-      var _cut=_upKeepCutoff();
       var exOld=cGet(hq,cat)||[];
       var paidByAcc={};
       exOld.forEach(function(e){
@@ -478,13 +480,16 @@ function confirmUpload(){
     // रिमार्क नई सूची में जाएं (पहले सिर्फ़ ऊपर वाले paid-restore में जाते थे)
     var rmkKept=_upApplyOldRemarks(arr,_upCollectOldRemarks(hq,cat));
     _doSave(hq,cat,arr);
+    // reconcileHQ से पहले: बाक़ी categories में पड़ी पिछले लेजर की वसूली हटाएं, वरना वही
+    // "किसी एक में वसूल = सब में वसूल" नियम से नए लेजर में लौट आती (देखें list.js: sweepStalePaid)
+    var _swept=sweepStalePaid(hq,_cut);
     // असली bug (JE की रिपोर्ट): एक category में लेजर अपलोड होने से उसकी "वसूल" स्थिति बहाल होती है
     // (ऊपर वाला backup-restore), पर वह सिर्फ़ उसी category तक सीमित थी — किसी और category के अपने
     // लेजर में (जैसे "कुल उपभोक्ता") वही उपभोक्ता अब भी पुराना (बाकी) दिखता रहता, भले ही असल में
     // वसूल हो चुका हो। कैश-लिस्ट अपलोड में reconcileHQ() पहले से यही ठीक करता था — अब सामान्य
     // लेजर अपलोड के बाद भी यही चले, ताकि "किसी भी category में वसूल = हर category में वसूल" हमेशा सच रहे
     var _rec2=reconcileHQ(hq);
-    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+(rmkKept?" 💬 "+rmkKept+" के रिमार्क सुरक्षित":"")+(dupSkip?" | "+dupSkip+" duplicate Consumer No skip":"")+(_rec2?" 🔁 "+_rec2+" अन्य categories में मिलाया":"")+" 🔥","ok");
+    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+(_swept?" 🧹 "+_swept+" पुरानी अन्य बटनों से हटाई":"")+(rmkKept?" 💬 "+rmkKept+" के रिमार्क सुरक्षित":"")+(dupSkip?" | "+dupSkip+" duplicate Consumer No skip":"")+(_rec2?" 🔁 "+_rec2+" अन्य categories में मिलाया":"")+" 🔥","ok");
 
   }catch(err){
     logErr("upload-confirm",err,activeHQ+"/"+(document.getElementById("up-cat")?document.getElementById("up-cat").value:""));
