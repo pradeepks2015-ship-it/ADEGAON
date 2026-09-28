@@ -7916,3 +7916,38 @@ test.describe('वसूल + बाकी = कुल (सूची और ग�
     expect(r.list.paid).toBe(1);
   });
 });
+
+// App Check verified% 95 तक ले जाने का आख़िरी हिस्सा: कमज़ोर नेट पर फ़ोन ख़ुद को offline मान लेता है
+// (navigator.onLine=false) जबकि request असल में सर्वर तक पहुंच जाती है — पहले वह बिना App Check
+// header के जाती और "unverified" में गिनती थी
+test.describe('offline मानी गई request में भी तैयार token लगें', () => {
+  test('navigator.onLine=false — App Check header और ?auth= दोनों लगें', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'onLine', { get: () => false, configurable: true });
+      ID_TOKEN = 'tok-1'; AC_TOKEN = 'ac-1'; AC_READY = true;
+      _rawFetch = function (url, opts) {
+        resolve({ url: String(url), ac: opts && opts.headers && opts.headers['X-Firebase-AppCheck'] });
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+      };
+      fetch(FB + '/x.json');
+    }));
+    expect(r.url).toContain('auth=tok-1');
+    expect(r.ac).toBe('ac-1');
+  });
+
+  test('login token अभी न बना हो तो भी App Check header लगे, पर ?auth= न जुड़े', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'onLine', { get: () => false, configurable: true });
+      ID_TOKEN = null; AC_TOKEN = 'ac-2'; AC_READY = true;
+      _rawFetch = function (url, opts) {
+        resolve({ url: String(url), ac: opts && opts.headers && opts.headers['X-Firebase-AppCheck'] });
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+      };
+      fetch(FB + '/y.json');
+    }));
+    expect(r.url).not.toContain('auth=');   // "auth=null" जैसा कचरा न जाए
+    expect(r.ac).toBe('ac-2');
+  });
+});

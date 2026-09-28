@@ -133,7 +133,11 @@ function _fbFetchWithAuth(url,opts){
 window.fetch = function(url, opts){
   if(typeof url==="string" && url.indexOf(FB)===0){
     if(ID_TOKEN && AC_READY) return _fbFetchWithAuth(url,opts);
-    if(!navigator.onLine) return _rawFetch(url, opts); // offline — तुरंत fail होकर offline-queue संभाले
+    // offline — तुरंत fail होकर offline-queue संभाले। पर v9.172 के लॉग (save-fail "Failed to fetch")
+    // से पता चला कि कमज़ोर नेट पर फ़ोन ख़ुद को offline मान लेता है जबकि नेट थोड़ा-बहुत चल रहा होता है —
+    // ऐसी request सर्वर तक पहुंच जाती और App Check header न होने से "unverified" में गिनती थी। इसलिए
+    // यहां भी जो token तैयार हों वो लगा दो (कोई नई call नहीं, सिर्फ़ header/?auth= जुड़ता है)
+    if(!navigator.onLine) return _rawFetch(ID_TOKEN?_withToken(url):url,_fbOpts(opts));
     return new Promise(function(resolve){
       var done=false;
       var tm=setTimeout(function(){
