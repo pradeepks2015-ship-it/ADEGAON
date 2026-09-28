@@ -7818,3 +7818,101 @@ test.describe('📤 उपभोक्ता card शेयर', () => {
     expect(opened).toBeNull();
   });
 });
+
+// JE की रिपोर्ट (मढ़ी, screenshot): "बाकी" बटन हाइलाइट था, पर सूची में बीच-बीच में वसूल कार्ड भी।
+// जड़: कई रास्ते activeFilter="all" कर देते हैं (जैसे _finishLogin — "बाकी" चुने रहते हुए
+// logout+दोबारा login, जो _ensureCorrectHqAuth खुद भी करा देता है), पर filter बटनों की class पुरानी
+// रह जाती थी — सूची असल में "सभी" होती। अब हर render पर दोनों मिलाए जाते हैं
+test.describe('फ़िल्टर बटन और असली सूची कभी अलग न हों', () => {
+  const seed3 = (page) => page.evaluate(() => {
+    cSet(HQS[0], 'कुल उपभोक्ता', [
+      { acc: '1', name: 'क', amount: 100, status: 'paid', paydate: '1/1/2026' },
+      { acc: '2', name: 'ख', amount: 200, status: 'pending' },
+      { acc: '3', name: 'ग', amount: 300, status: 'paid', paydate: '1/1/2026' },
+    ]);
+  });
+  const state = (page) => page.evaluate(() => ({
+    filter: activeFilter,
+    hi: [].slice.call(document.querySelectorAll('.filter-btn')).filter((b) => b.className !== 'filter-btn').map((b) => b.dataset.f),
+    cards: document.querySelectorAll('.con-card').length,
+    paidShown: document.querySelectorAll('.con-card.paid').length,
+  }));
+
+  test('logout के बाद दोबारा login — "बाकी" बटन हाइलाइट रहकर वसूल कार्ड न दिखें', async ({ page }) => {
+    await openApp(page);
+    await seed3(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+    await page.click("[data-f='pending']");
+    await page.waitForTimeout(300);
+    const before = await state(page);
+    expect(before).toMatchObject({ filter: 'pending', hi: ['pending'], cards: 1, paidShown: 0 });
+    await page.evaluate(() => doLogout(false)); // जैसा _ensureCorrectHqAuth खुद कराता है
+    await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
+    await loginLineman(page);
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+    await page.waitForTimeout(300);
+    const after = await state(page);
+    expect(after.filter).toBe('all');
+    expect(after.hi).toEqual(['all']);          // बटन भी "सभी" पर — पहले "बाकी" पर अटका रह जाता था
+    expect(after.paidShown).toBe(after.cards - 1); // "सभी" यानी वसूल भी दिखें, और बटन भी यही कहे
+  });
+
+  test('_syncFilterBtns — activeFilter जिस भी रास्ते से बदले, अगला render बटन मिला दे', async ({ page }) => {
+    await openApp(page);
+    await seed3(page);
+    await loginLineman(page);
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      var out = [];
+      ['pending', 'paid', 'all'].forEach(function (f) {
+        activeFilter = f;                       // बटन छुए बिना (जैसे कोई और रास्ता बदलता है)
+        renderListWith(cGet(activeHQ, activeCat));
+        out.push({ f: f, hi: [].slice.call(document.querySelectorAll('.filter-btn')).filter((b) => b.className !== 'filter-btn').map((b) => b.dataset.f), cards: document.querySelectorAll('.con-card').length });
+      });
+      return out;
+    });
+    expect(r).toEqual([
+      { f: 'pending', hi: ['pending'], cards: 1 },
+      { f: 'paid', hi: ['paid'], cards: 2 },
+      { f: 'all', hi: ['all'], cards: 3 },
+    ]);
+  });
+});
+
+// JE का नियम: "वसूल + बाकी = कुल उपभोक्ता = सभी"। status खाली/अजीब वाले पुराने record भी "बाकी"
+// में गिने जाते हैं (renderSummaryWith), इसलिए सूची भी उन्हें "बाकी" में दिखाए — वरना दोनों सूचियां
+// जोड़ने पर कुल से कम बैठती थीं
+test.describe('वसूल + बाकी = कुल (सूची और गिनती दोनों में)', () => {
+  test('status खाली/अजीब वाले record भी "बाकी" सूची में आएं, और तीनों गिनती मिलें', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      cSet(HQS[0], 'कुल उपभोक्ता', [
+        { acc: '1', name: 'क', amount: 100, status: 'paid', paydate: '1/1/2026' },
+        { acc: '2', name: 'ख', amount: 200, status: 'pending' },
+        { acc: '3', name: 'ग', amount: 300 },                 // status है ही नहीं (पुराना record)
+        { acc: '4', name: 'घ', amount: 400, status: '' },      // खाली
+        { acc: '5', name: 'ङ', amount: 500, status: 'PAID' },  // अजीब — paid नहीं माना जाएगा
+      ]);
+    });
+    await loginLineman(page);
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length > 0, null, { timeout: 15000 });
+    const r = await page.evaluate(() => {
+      var d = cGet(activeHQ, activeCat), out = {};
+      ['all', 'paid', 'pending'].forEach(function (f) {
+        activeFilter = f;
+        renderListWith(d);
+        out[f] = document.querySelectorAll('.con-card').length;
+      });
+      renderSummaryWith(d);
+      var nums = [].slice.call(document.querySelectorAll('#summary .snum')).map((e) => e.textContent);
+      return { list: out, sumTot: +nums[0], sumPaid: +nums[1], sumPend: +nums[2] };
+    });
+    expect(r.list.paid + r.list.pending).toBe(r.list.all);   // सूचियां: वसूल + बाकी = सभी
+    expect(r.sumPaid + r.sumPend).toBe(r.sumTot);            // गिनती: वसूल + बाकी = कुल
+    expect(r.list.paid).toBe(r.sumPaid);                     // सूची और गिनती आपस में भी मिलें
+    expect(r.list.pending).toBe(r.sumPend);
+    expect(r.list.all).toBe(5);
+    expect(r.list.paid).toBe(1);
+  });
+});
