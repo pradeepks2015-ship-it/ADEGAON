@@ -1,31 +1,34 @@
-name: HQ PIN बदलें
+name: HQ PIN लागू करें
 
 # लाइनमैन का login Firebase Auth के उस मुख्यालय वाले खाते से होता है और उसका password सीधे PIN
 # से बनता है ("vasuli-"+PIN)। Firebase Console से यह password बदला नहीं जा सकता — वहां सिर्फ़
 # "Reset password" (email भेजता है, पर hq-*@adegaondc.internal असली domain ही नहीं है),
-# "Disable account" और "Delete account" हैं। Delete का रास्ता तो ख़तरनाक है: नया खाता बनाने पर
-# UID बदल जाता है, जबकि database.rules.json में हर मुख्यालय का UID हार्डकोडेड है।
-# इसलिए यह workflow — Admin SDK से password बदलता है, UID वही रहता है।
+# "Disable account" और "Delete account" हैं। Delete का रास्ता ख़तरनाक है: नया खाता = नया UID,
+# जबकि database.rules.json में हर मुख्यालय का UID हार्डकोडेड है।
 #
-# चलाने का तरीक़ा: GitHub → Actions → "HQ PIN बदलें" → Run workflow → मुख्यालय चुनें + नया PIN
+# यह workflow PIN input के तौर पर नहीं मांगता — जान-बूझकर। पहली कोशिश (run #1) में PIN input था
+# और GitHub ने उसे step के env ब्लॉक में साफ़-साफ़ लॉग में छाप दिया। इसलिए अब PIN वहीं से आता है
+# जहां JE पहले से भरते हैं: ऐप का "🔒 Lineman PIN" पन्ना (database का /HQ_PIN)। इससे "रिकॉर्ड"
+# और "असली PIN" कभी अलग भी नहीं हो सकते।
+#
+# तरीक़ा:
+#   1. ऐप में JE मेनू → 🔒 Lineman PIN → नया PIN भरकर सेव करें
+#   2. GitHub → Actions → "HQ PIN लागू करें" → Run workflow → मुख्यालय चुनें (या "सभी")
 on:
   workflow_dispatch:
     inputs:
       hq:
-        description: 'मुख्यालय'
+        description: 'किस मुख्यालय का PIN लागू करें (ऐप में जो भरा है वही लागू होगा)'
         required: true
         type: choice
         options:
+          - सभी
           - आदेगांव
           - पिंडरई
           - जोबा
           - पाटन
           - बीबी
           - मढ़ी
-      new_pin:
-        description: 'नया PIN — सिर्फ़ अंक, कम से कम 6 (यहां vasuli- मत लिखें, वह अपने-आप जुड़ता है)'
-        required: true
-        type: string
 
 jobs:
   set-pin:
@@ -40,9 +43,8 @@ jobs:
         # deploy-rules.yml जैसा ही pin किया हुआ version — firebase-admin@14.4.0 को Node >=22
         # चाहिए, इसलिए ऊपर node-version भी 22 है
         run: npm install --no-save firebase-admin@14.4.0
-      - name: Set HQ PIN
+      - name: Apply HQ PIN
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           HQ: ${{ inputs.hq }}
-          NEW_PIN: ${{ inputs.new_pin }}
         run: node scripts/set-hq-pin.js

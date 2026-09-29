@@ -8561,32 +8561,42 @@ function runSetPin(env) {
   }
 }
 
-test.describe('HQ PIN बदलने वाली script — ग़लत इनपुट Firebase तक पहुंचे ही नहीं', () => {
-  test('6 से छोटा PIN रुके', () => {
-    const r = runSetPin({ HQ: 'आदेगांव', NEW_PIN: '1234' });
+
+test.describe('HQ PIN लागू करने वाली script', () => {
+  test('अनजाना मुख्यालय रुके, और सही विकल्प गिना दे', () => {
+    const r = runSetPin({ HQ: 'मंडला' });
     expect(r.code).toBe(1);
-    expect(r.out).toContain('कम से कम 6 अंक');
+    expect(r.out).toContain('जाना-पहचाना मुख्यालय नहीं');
+    expect(r.out).toContain('मढ़ी');
+    expect(r.out).toContain('सभी');
     expect(r.out).not.toContain('firebase-admin'); // जांच SDK से पहले ही हो गई
   });
 
-  test('अंकों के अलावा कुछ हो तो रुके', () => {
-    const r = runSetPin({ HQ: 'आदेगांव', NEW_PIN: 'abc123' });
+  test('मुख्यालय चुना ही न हो तो रुके', () => {
+    const r = runSetPin({ HQ: '' });
     expect(r.code).toBe(1);
-    expect(r.out).toContain('सिर्फ़ अंक');
+    expect(r.out).toContain('मुख्यालय नहीं चुना');
   });
 
-  test('अनजाना मुख्यालय रुके, और सही नाम गिना दे', () => {
-    const r = runSetPin({ HQ: 'मंडला', NEW_PIN: '123456' });
-    expect(r.code).toBe(1);
-    expect(r.out).toContain('जाना-पहचाना मुख्यालय नहीं');
-    expect(r.out).toContain('मढ़ी'); // सही विकल्प भी बताए
+  // टिप्पणियों में इन्हीं ग़लतियों की व्याख्या लिखी है, इसलिए मिलान सिर्फ़ असली कोड पर करें
+  const codeOnly = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|#)/.test(l)).join('\n');
+
+  test('script PIN को input के तौर पर लेती ही नहीं — इसलिए लॉग में लीक हो ही नहीं सकता', () => {
+    const scr = codeOnly(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'set-hq-pin.js'), 'utf8'));
+    const yml = codeOnly(fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'set-hq-pin.yml'), 'utf8'));
+    // run #1 में PIN workflow input था और GitHub ने उसे step के env ब्लॉक में छाप दिया था
+    expect(scr).not.toContain('NEW_PIN');
+    expect(yml).not.toMatch(/new_pin/i);
+    // PIN अब वहीं से आता है जहां JE भरते हैं
+    expect(scr).toContain('HQ_PIN');
   });
 
-  test('PIN कभी लॉग में न छपे — सिर्फ़ उसकी लंबाई दिखे', () => {
-    const r = runSetPin({ HQ: 'आदेगांव', NEW_PIN: '472913' }); // SDK न होने से आगे रुकेगा
-    expect(r.out).not.toContain('472913');
-    expect(r.out).not.toContain('vasuli-');
-    expect(r.out).toContain('6 अंक का');
+  test('firebase-admin@14 का सही (modular) रास्ता इस्तेमाल हो — admin.auth() नहीं', () => {
+    const scr = codeOnly(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'set-hq-pin.js'), 'utf8'));
+    // run #1 यहीं गिरा था: "admin.auth is not a function" — v14 में top-level पर auth है ही नहीं
+    expect(scr).not.toMatch(/admin\s*\.\s*auth\s*\(/);
+    expect(scr).toContain('firebase-admin/auth');
+    expect(scr).toContain('getAuth');
   });
 
   test('script के HQ ईमेल js/config.js वालों से बिल्कुल मिलें', () => {
@@ -8595,23 +8605,39 @@ test.describe('HQ PIN बदलने वाली script — ग़लत इ�
     const pick = (src) => (src.match(/hq-[a-z]+@adegaondc\.internal/g) || []).sort();
     const a = pick(cfg), b = pick(scr);
     expect(b.length).toBe(6);
-    expect(b).toEqual(a); // दोनों जगह एक साथ बदलने पड़ते हैं, वरना गलत खाते का PIN बदल जाएगा
+    expect(b).toEqual(a); // दोनों जगह एक साथ बदलने पड़ते हैं, वरना ग़लत खाते का PIN बदल जाएगा
   });
 
-  test('script का password-सूत्र js/auth.js वाले से मिले', () => {
+  test('password-सूत्र और hqKey js/ वालों से मिलें', () => {
     const auth = fs.readFileSync(path.join(__dirname, '..', 'js', 'auth.js'), 'utf8');
+    const cfg = fs.readFileSync(path.join(__dirname, '..', 'js', 'config.js'), 'utf8');
     const scr = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'set-hq-pin.js'), 'utf8');
-    // दोनों में "vasuli-"+pin होना ज़रूरी — अलग हुआ तो PIN बदलते ही हर लाइनमैन का login टूटेगा
+    // सूत्र अलग हुआ तो PIN लागू होते ही हर लाइनमैन का login टूटेगा
     expect(auth).toMatch(/return\s*"vasuli-"\s*\+\s*pin/);
     expect(scr).toMatch(/return\s*"vasuli-"\s*\+\s*pin/);
+    // hqKey अलग हुआ तो script /HQ_PIN में ग़लत जगह देखेगी और "PIN भरा ही नहीं" कहकर छोड़ देगी।
+    // दोनों regex एक ही अर्थ के हैं पर लिखावट अलग हो सकती है (js/ में \\[ \\] \\/ escape हैं,
+    // script में eslint की पसंद के मुताबिक बिना escape) — इसलिए तुलना से पहले escape हटा दें
+    const grabRe = (src) => (src.match(/hqKey\(hq\)\s*\{\s*return[^;]*?replace\((\/[^\n]+?\/g)/) || [])[1];
+    const normRe = (re) => String(re).replace(/\\([[\]/])/g, '$1');
+    const cfgRe = grabRe(cfg), scrRe = grabRe(scr);
+    expect(cfgRe).toBeTruthy();
+    expect(scrRe).toBeTruthy();
+    expect(normRe(scrRe)).toBe(normRe(cfgRe));
   });
 
-  test('script की न्यूनतम लंबाई ऐप वाले MIN_PIN_LEN से मिले', () => {
+  test('MIN_PIN_LEN ऐप और script में एक जैसा हो', () => {
     const auth = fs.readFileSync(path.join(__dirname, '..', 'js', 'auth.js'), 'utf8');
     const scr = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'set-hq-pin.js'), 'utf8');
     const a = (auth.match(/MIN_PIN_LEN\s*=\s*(\d+)/) || [])[1];
     const b = (scr.match(/MIN_PIN_LEN\s*=\s*(\d+)/) || [])[1];
     expect(a).toBe('6');
     expect(b).toBe(a);
+  });
+
+  test('workflow "सभी" का विकल्प दे और PIN ऐप से लेने की बात बताए', () => {
+    const yml = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'set-hq-pin.yml'), 'utf8');
+    expect(yml).toContain('- सभी');
+    expect(yml).toContain('ऐप में जो भरा है');
   });
 });
