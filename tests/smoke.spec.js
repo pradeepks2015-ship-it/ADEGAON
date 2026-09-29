@@ -8543,3 +8543,75 @@ test.describe('Lineman PIN — कम से कम 6 अंक (password सी
     expect(html).toContain('6 अंक');
   });
 });
+
+// JE ने 29/9 को Firebase Console में देखा: किसी खाते के ⋮ मेनू में सिर्फ़ "Reset password",
+// "Disable account", "Delete account" हैं — कोई "Edit user" नहीं। और "Reset password" सिर्फ़
+// email भेजता है, जबकि हमारे खाते hq-*@adegaondc.internal पर हैं (असली domain नहीं), इसलिए वह
+// email कहीं पहुंचती ही नहीं। यानी Console से लाइनमैन का PIN बदला ही नहीं जा सकता।
+// Delete का रास्ता और ख़तरनाक: नया खाता = नया UID, जबकि database.rules.json में हर मुख्यालय का
+// UID हार्डकोडेड है। इसलिए scripts/set-hq-pin.js — Admin SDK से password बदलता है, UID वही रहता है।
+const { execFileSync } = require('child_process');
+function runSetPin(env) {
+  try {
+    const out = execFileSync('node', [path.join(__dirname, '..', 'scripts', 'set-hq-pin.js')],
+      { env: Object.assign({}, process.env, env), encoding: 'utf8', stdio: 'pipe' });
+    return { code: 0, out };
+  } catch (e) {
+    return { code: e.status, out: (e.stdout || '') + (e.stderr || '') };
+  }
+}
+
+test.describe('HQ PIN बदलने वाली script — ग़लत इनपुट Firebase तक पहुंचे ही नहीं', () => {
+  test('6 से छोटा PIN रुके', () => {
+    const r = runSetPin({ HQ: 'आदेगांव', NEW_PIN: '1234' });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain('कम से कम 6 अंक');
+    expect(r.out).not.toContain('firebase-admin'); // जांच SDK से पहले ही हो गई
+  });
+
+  test('अंकों के अलावा कुछ हो तो रुके', () => {
+    const r = runSetPin({ HQ: 'आदेगांव', NEW_PIN: 'abc123' });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain('सिर्फ़ अंक');
+  });
+
+  test('अनजाना मुख्यालय रुके, और सही नाम गिना दे', () => {
+    const r = runSetPin({ HQ: 'मंडला', NEW_PIN: '123456' });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain('जाना-पहचाना मुख्यालय नहीं');
+    expect(r.out).toContain('मढ़ी'); // सही विकल्प भी बताए
+  });
+
+  test('PIN कभी लॉग में न छपे — सिर्फ़ उसकी लंबाई दिखे', () => {
+    const r = runSetPin({ HQ: 'आदेगांव', NEW_PIN: '472913' }); // SDK न होने से आगे रुकेगा
+    expect(r.out).not.toContain('472913');
+    expect(r.out).not.toContain('vasuli-');
+    expect(r.out).toContain('6 अंक का');
+  });
+
+  test('script के HQ ईमेल js/config.js वालों से बिल्कुल मिलें', () => {
+    const cfg = fs.readFileSync(path.join(__dirname, '..', 'js', 'config.js'), 'utf8');
+    const scr = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'set-hq-pin.js'), 'utf8');
+    const pick = (src) => (src.match(/hq-[a-z]+@adegaondc\.internal/g) || []).sort();
+    const a = pick(cfg), b = pick(scr);
+    expect(b.length).toBe(6);
+    expect(b).toEqual(a); // दोनों जगह एक साथ बदलने पड़ते हैं, वरना गलत खाते का PIN बदल जाएगा
+  });
+
+  test('script का password-सूत्र js/auth.js वाले से मिले', () => {
+    const auth = fs.readFileSync(path.join(__dirname, '..', 'js', 'auth.js'), 'utf8');
+    const scr = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'set-hq-pin.js'), 'utf8');
+    // दोनों में "vasuli-"+pin होना ज़रूरी — अलग हुआ तो PIN बदलते ही हर लाइनमैन का login टूटेगा
+    expect(auth).toMatch(/return\s*"vasuli-"\s*\+\s*pin/);
+    expect(scr).toMatch(/return\s*"vasuli-"\s*\+\s*pin/);
+  });
+
+  test('script की न्यूनतम लंबाई ऐप वाले MIN_PIN_LEN से मिले', () => {
+    const auth = fs.readFileSync(path.join(__dirname, '..', 'js', 'auth.js'), 'utf8');
+    const scr = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'set-hq-pin.js'), 'utf8');
+    const a = (auth.match(/MIN_PIN_LEN\s*=\s*(\d+)/) || [])[1];
+    const b = (scr.match(/MIN_PIN_LEN\s*=\s*(\d+)/) || [])[1];
+    expect(a).toBe('6');
+    expect(b).toBe(a);
+  });
+});
