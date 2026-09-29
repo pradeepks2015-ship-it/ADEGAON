@@ -193,37 +193,41 @@ function handleFile(f){
   document.getElementById("uz-t").textContent=f.name;
   var n=f.name.toLowerCase();
   var isXl=n.endsWith(".xlsx")||n.endsWith(".xls");
-  if(isXl&&typeof XLSX==="undefined"){
-    ensureLibs();
-    toast("📴 Excel पढ़ने के लिए इन्टरनेट चाहिए — नेट आने पर दोबारा try करें","err");
+  // पहले यहां "typeof XLSX==='undefined' तो हार मान लो" था — वह सिर्फ़ इसलिए चल जाता था कि
+  // index.html दोनों lib पहले ही (पेज रोककर) उतार चुका होता था। अब lib ज़रूरत पड़ने पर उतरती है,
+  // इसलिए उसके उतरने का इंतज़ार करना पड़ता है (देखें storage.js: ensureXLSX/ensurePapa)।
+  // सच में नेट न हो या lib न उतर पाए, तभी वही पुराना संदेश दिखता है
+  function _libFail(what){
+    toast("📴 "+what+" पढ़ने के लिए इन्टरनेट चाहिए — नेट आने पर दोबारा try करें","err");
     document.getElementById("uz-ico").textContent="📂";
-    return;
-  }
-  if(!isXl&&typeof Papa==="undefined"){
-    ensureLibs();
-    toast("📴 CSV पढ़ने के लिए इन्टरनेट चाहिए — नेट आने पर दोबारा try करें","err");
-    document.getElementById("uz-ico").textContent="📂";
-    return;
   }
   if(isXl){
-    var rd=new FileReader();
-    rd.onload=function(e){
-      if(myToken!==_handleFileToken)return; // इस बीच कोई नई फ़ाइल चुन ली गई — यह पुराना (stale) परिणाम है
-      try{
-        var wb=XLSX.read(e.target.result,{type:"array"});
-        processRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:"",raw:false}));
-      }catch(ex){logErr("excel-parse",ex,f.name);toast("Excel त्रुटि: "+ex.message,"err");}
-    };
-    rd.readAsArrayBuffer(f);
+    ensureXLSX(function(ok){
+      if(myToken!==_handleFileToken)return; // इस बीच कोई नई फ़ाइल चुन ली गई
+      if(!ok){_libFail("Excel");return;}
+      var rd=new FileReader();
+      rd.onload=function(e){
+        if(myToken!==_handleFileToken)return; // यह पुराना (stale) परिणाम है
+        try{
+          var wb=XLSX.read(e.target.result,{type:"array"});
+          processRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:"",raw:false}));
+        }catch(ex){logErr("excel-parse",ex,f.name);toast("Excel त्रुटि: "+ex.message,"err");}
+      };
+      rd.readAsArrayBuffer(f);
+    });
   } else {
-    var rd2=new FileReader();
-    rd2.onload=function(e){
+    ensurePapa(function(ok){
       if(myToken!==_handleFileToken)return;
-      var result=Papa.parse(e.target.result,{header:true,skipEmptyLines:true});
-      if(result.data&&result.data.length) processRows(result.data);
-      else toast("CSV में data नहीं मिला","err");
-    };
-    rd2.readAsText(f,"UTF-8");
+      if(!ok){_libFail("CSV");return;}
+      var rd2=new FileReader();
+      rd2.onload=function(e){
+        if(myToken!==_handleFileToken)return;
+        var result=Papa.parse(e.target.result,{header:true,skipEmptyLines:true});
+        if(result.data&&result.data.length) processRows(result.data);
+        else toast("CSV में data नहीं मिला","err");
+      };
+      rd2.readAsText(f,"UTF-8");
+    });
   }
 }
 
@@ -579,19 +583,24 @@ var _FILTER_LABEL={all:"सभी",pending:"बाकी",paid:"वसूल"};
 function downloadExcel(){
   var data=_filteredForDownload();
   if(!data.length){toast("कोई data नहीं","err");return;}
-  if(typeof XLSX==="undefined"){ensureLibs();toast("📴 Excel download के लिए इन्टरनेट चाहिए","err");return;}
-  var rows=[["क्र.","नाम","पिता/पति","Consumer No","बकाया","Tariff","Load","Unit","Mobile","पता","स्थिति","भुगतान तिथि","पिछला भुगतान","पिछला तिथि","रिमार्क (सभी)","अपडेट by"]];
-  data.forEach(function(x,i){
-    var allRmk=(x.remarksArr||[]).map(function(r){return r.text+" ("+r.by+")";}).join(" | ");
-    rows.push([i+1,x.name||"",x.father||"",x.acc||"",Number(x.amount)||0,x.tariff||"",x.load||"",x.unit||"",x.phone||"",x.addr||"",x.status==="paid"?"वसूल":"बाकी",x.paydate||"",x.lastPaidAmt||"",x.lastPayDate||"",allRmk,x.updatedBy||""]);
+  // पहले lib मौजूद न हो तो सीधे मना कर दिया जाता था (और ensureLibs सिर्फ़ अगली बार के लिए उतारता)।
+  // अब उसी क्लिक पर उतारकर काम पूरा होता है — बाक़ी हर Excel-डाउनलोड (गांव-वार, बैकअप, स्कोरकार्ड)
+  // पहले से यही ensureXLSX(cb) वाला रास्ता इस्तेमाल करते हैं, अब यह भी उन्हीं जैसा हो गया
+  ensureXLSX(function(ok){
+    if(!ok){toast("📴 Excel download के लिए इन्टरनेट चाहिए","err");return;}
+    var rows=[["क्र.","नाम","पिता/पति","Consumer No","बकाया","Tariff","Load","Unit","Mobile","पता","स्थिति","भुगतान तिथि","पिछला भुगतान","पिछला तिथि","रिमार्क (सभी)","अपडेट by"]];
+    data.forEach(function(x,i){
+      var allRmk=(x.remarksArr||[]).map(function(r){return r.text+" ("+r.by+")";}).join(" | ");
+      rows.push([i+1,x.name||"",x.father||"",x.acc||"",Number(x.amount)||0,x.tariff||"",x.load||"",x.unit||"",x.phone||"",x.addr||"",x.status==="paid"?"वसूल":"बाकी",x.paydate||"",x.lastPaidAmt||"",x.lastPayDate||"",allRmk,x.updatedBy||""]);
+    });
+    var ws=XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"]=[{wch:4},{wch:20},{wch:18},{wch:14},{wch:10},{wch:8},{wch:8},{wch:6},{wch:13},{wch:18},{wch:8},{wch:13},{wch:12},{wch:13},{wch:35},{wch:14}];
+    var wb=XLSX.utils.book_new();
+    var tag=activeHQ+"_"+activeCat+(activeFilter!=="all"?"_"+_FILTER_LABEL[activeFilter]:"");
+    XLSX.utils.book_append_sheet(wb,ws,tag.slice(0,31)); // sheet-नाम 31 अक्षर से ज़्यादा नहीं हो सकता
+    XLSX.writeFile(wb,tag+"_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx");
+    toast("📊 Excel download!","ok");
   });
-  var ws=XLSX.utils.aoa_to_sheet(rows);
-  ws["!cols"]=[{wch:4},{wch:20},{wch:18},{wch:14},{wch:10},{wch:8},{wch:8},{wch:6},{wch:13},{wch:18},{wch:8},{wch:13},{wch:12},{wch:13},{wch:35},{wch:14}];
-  var wb=XLSX.utils.book_new();
-  var tag=activeHQ+"_"+activeCat+(activeFilter!=="all"?"_"+_FILTER_LABEL[activeFilter]:"");
-  XLSX.utils.book_append_sheet(wb,ws,tag.slice(0,31)); // sheet-नाम 31 अक्षर से ज़्यादा नहीं हो सकता
-  XLSX.writeFile(wb,tag+"_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx");
-  toast("📊 Excel download!","ok");
 }
 
 function downloadPDF(){

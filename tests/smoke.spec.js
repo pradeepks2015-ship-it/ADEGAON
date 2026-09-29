@@ -8372,3 +8372,171 @@ test.describe('मिटने से पहले वसूली का backup
     expect(r.status).toBe('pending'); // और अपना काम कर गई
   });
 });
+
+// JE का स्वतंत्र-आकलन वाला अनुरोध (29 सित) — तीन सुधार: (1) 930KB की xlsx अब पेज रोककर नहीं
+// उतरती, (2) SheetJS 0.18.5 → 0.20.3 (दो ज्ञात खामियां बंद), (3) PIN कम से कम 6 अंक।
+test.describe('vendor libs अब ज़रूरत पड़ने पर ही उतरें (index.html में eager <script> नहीं)', () => {
+  test('index.html में vendor/xlsx और papaparse के <script src> tag न हों', async () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    expect(html).not.toMatch(/<script[^>]+src=["']vendor\/xlsx\.full\.min\.js/);
+    expect(html).not.toMatch(/<script[^>]+src=["']vendor\/papaparse\.min\.js/);
+  });
+
+  test('ऐप खुलते ही XLSX/Papa लोड न हों — लाइनमैन 930KB न उतारे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => ({ xlsx: typeof window.XLSX, papa: typeof window.Papa }));
+    expect(r.xlsx).toBe('undefined');
+    expect(r.papa).toBe('undefined');
+  });
+
+  test('ensureXLSX — एक ही script दो बार न जुड़े, और दोनों callers को नतीजा मिले', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      // असली फ़ाइल न उतारें (930KB) — बस गिनें कि कितने <script> जुड़े
+      const added = [];
+      const origAppend = document.head.appendChild.bind(document.head);
+      document.head.appendChild = function (el) {
+        if (el.tagName === 'SCRIPT' && /vendor\//.test(el.src || '')) {
+          added.push(el.src);
+          setTimeout(() => el.onload && el.onload(), 10); // उतरने का नाटक
+          return el;
+        }
+        return origAppend(el);
+      };
+      const got = [];
+      ensureXLSX((ok) => got.push(ok));
+      ensureXLSX((ok) => got.push(ok)); // पहली अभी उतर ही रही है
+      setTimeout(() => {
+        document.head.appendChild = origAppend;
+        resolve({ scripts: added.length, got });
+      }, 60);
+    }));
+    expect(r.scripts).toBe(1);        // script सिर्फ़ एक बार जुड़ी
+    expect(r.got).toEqual([true, true]); // पर दोनों caller को जवाब मिला
+  });
+
+  test('lib न उतर पाए (offline) तो अगली बार दोबारा कोशिश हो — हमेशा के लिए अटके नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      let n = 0;
+      const origAppend = document.head.appendChild.bind(document.head);
+      document.head.appendChild = function (el) {
+        if (el.tagName === 'SCRIPT' && /vendor\//.test(el.src || '')) {
+          n++;
+          setTimeout(() => el.onerror && el.onerror(), 10); // नाकाम
+          return el;
+        }
+        return origAppend(el);
+      };
+      const got = [];
+      ensurePapa((ok) => {
+        got.push(ok);
+        ensurePapa((ok2) => {               // दोबारा माँगें
+          got.push(ok2);
+          document.head.appendChild = origAppend;
+          resolve({ tries: n, got });
+        });
+      });
+    }));
+    expect(r.got).toEqual([false, false]);
+    expect(r.tries).toBe(2); // पहली नाकामी के बाद रास्ता बंद नहीं हुआ
+  });
+
+  test('sw.js अब भी vendor फ़ाइलों को precache न करे (मोबाइल डेटा बचे)', async () => {
+    const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+    expect(sw).not.toMatch(/["']\.\/vendor\/xlsx\.full\.min\.js["']/);
+    expect(sw).not.toMatch(/["']\.\/vendor\/papaparse\.min\.js["']/);
+  });
+});
+
+test.describe('SheetJS का संस्करण — ज्ञात खामियों वाला 0.18.5 दोबारा न लौटे', () => {
+  test('vendor/xlsx.full.min.js 0.20.2 या नया हो', async () => {
+    const js = fs.readFileSync(path.join(__dirname, '..', 'vendor', 'xlsx.full.min.js'), 'utf8');
+    const m = js.match(/"(0\.\d+\.\d+)"/g) || [];
+    const vers = m.map((s) => s.replace(/"/g, ''))
+      .filter((v) => /^0\.(1[89]|2\d)\./.test(v)); // सिर्फ़ SheetJS जैसे संस्करण-अंक
+    expect(vers.length).toBeGreaterThan(0);
+    const [maj, min, pat] = vers[0].split('.').map(Number);
+    const num = maj * 10000 + min * 100 + pat;
+    expect(num).toBeGreaterThanOrEqual(2002); // 0.20.2 — ReDoS और prototype-pollution दोनों बंद
+  });
+});
+
+test.describe('Lineman PIN — कम से कम 6 अंक (password सीधे PIN से बनता है)', () => {
+  test('_pinProblem — खाली चले, छोटा/ग़ैर-अंक रुके, 6 अंक चले', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => ({
+      khali: _pinProblem(''),
+      chaar: _pinProblem('1234'),
+      paanch: _pinProblem('12345'),
+      chah: _pinProblem('123456'),
+      lamba: _pinProblem('12345678'),
+      akshar: _pinProblem('abc123'),
+    }));
+    expect(r.khali).toBe('');   // खाली = इस HQ में PIN ज़रूरी नहीं
+    expect(r.chah).toBe('');
+    expect(r.lamba).toBe('');
+    expect(r.chaar).toContain('6 अंक');
+    expect(r.paanch).toContain('6 अंक');
+    expect(r.akshar).toContain('अंक');
+  });
+
+  test('savePins — एक भी PIN ग़लत हो तो कुछ भी सेव न हो (आधा-अधूरा न बचे)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      let put = 0;
+      const origFetch = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/HQ_PIN.json') > -1 && o && o.method === 'PUT') put++;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      openPinModal();
+      document.getElementById('pin-' + hqKey(HQS[0])).value = '123456'; // सही
+      document.getElementById('pin-' + hqKey(HQS[1])).value = '12';     // ग़लत
+      savePins();
+      const msg = document.getElementById('toast').textContent;
+      window.fetch = origFetch;
+      return { put, msg };
+    });
+    expect(r.put).toBe(0);               // एक भी PUT नहीं गया
+    expect(r.msg).toContain('6 अंक');
+    expect(r.msg).toContain(' — ');      // किस HQ में गड़बड़ है, वह भी दिखा
+  });
+
+  test('savePins — सभी सही हों तो सेव हो जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      let body = null;
+      const origFetch = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/HQ_PIN.json') > -1 && o && o.method === 'PUT') body = JSON.parse(o.body);
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      openPinModal();
+      HQS.forEach((hq) => { document.getElementById('pin-' + hqKey(hq)).value = ''; });
+      document.getElementById('pin-' + hqKey(HQS[0])).value = '987654';
+      savePins();
+      window.fetch = origFetch;
+      return { body, key: hqKey(HQS[0]) };
+    });
+    expect(r.body).toEqual({ [r.key]: '987654' });
+  });
+
+  test('modal में पुराने छोटे PIN पर ⚠ चेतावनी दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const html = await page.evaluate(() => {
+      HQ_PINS = {}; HQ_PINS[hqKey(HQS[0])] = '1234'; // पुराना 4-अंकी
+      openPinModal();
+      return document.getElementById('pin-fields').innerHTML;
+    });
+    expect(html).toContain('⚠');
+    expect(html).toContain('6 अंक');
+  });
+});
