@@ -8752,3 +8752,128 @@ test.describe('logout पर auth-गार्ड साफ़ हों — न
     expect(r.fails).toBe(0); // अटकी entry फिर से भेजी जा सकती है
   });
 });
+
+// असली production bug (29/9): एक device का सेव session "Adegaon" (अंग्रेज़ी) लिए बैठा था, जबकि
+// HQS में "आदेगांव" (देवनागरी) है। यह नाम न config.js में कभी था, न index.html के dropdown में —
+// किसी बहुत पुराने रूप से बचा हुआ था। error log में:
+//   sse-never-opened — [Adegaon/कुल उपभोक्ता • खाता: anonymous • HTTP 401 • जवाब: Permission denied]
+//   cash-refresh-partial — 8/8 श्रेणी ताज़ा नहीं हो पाईं (सब Adegaon/…)
+// वजह: HQ_AUTH_EMAIL["Adegaon"] undefined → _ensureCorrectHqAuth चुपचाप लौट जाता → device कभी
+// सही account पर आता ही नहीं → हर पढ़ना-लिखना /Adegaon/… पर, जिसे rules का "$other": false मना
+// करता। ऐप चालू दिखता रहता (cache से), पर दर्ज वसूली कभी सर्वर तक नहीं पहुंचती।
+test.describe('सेव session का HQ HQS में न हो तो बहाल ही न हो', () => {
+  test('अनजाने HQ वाला session null लौटे, और दोबारा न दोहराए (storage से हट जाए)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      localStorage.setItem('dc_cu', JSON.stringify({
+        cu: { role: 'lineman', name: 'आनंद कुमार कवरेती', hq: 'Adegaon', pin: '123456' },
+        at: Date.now(),
+      }));
+      const first = loadSession();
+      const left = localStorage.getItem('dc_cu');
+      return { first, left };
+    });
+    expect(r.first).toBeNull();
+    expect(r.left).toBeNull(); // साफ़ हो गया — हर बार ऐप खुलने पर यही न दोहराए
+  });
+
+  test('सही HQ वाला session पहले की तरह बहाल हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      localStorage.setItem('dc_cu', JSON.stringify({
+        cu: { role: 'lineman', name: 'रमेश', hq: HQS[0], pin: '123456' },
+        at: Date.now(),
+      }));
+      const s = loadSession();
+      return { hq: s && s.hq, name: s && s.name };
+    });
+    expect(r.hq).toBe('आदेगांव');
+    expect(r.name).toBe('रमेश');
+  });
+
+  test('JE का session भी बहाल हो (उसका hq हमेशा HQS[0] होता है)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      localStorage.setItem('dc_cu', JSON.stringify({
+        cu: { role: 'supervisor', name: 'प्रदीप', hq: HQS[0] }, at: Date.now(),
+      }));
+      const s = loadSession();
+      return s && s.role;
+    });
+    expect(r).toBe('supervisor');
+  });
+
+  test('अनजाने HQ पर बिना भेजे बदलाव हों तो लॉग में गिनती भी जाए (JE को पता चले)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      let logged = null;
+      const orig = window.logErr;
+      window.logErr = function (ctx, msg) { if (ctx === 'session-unknown-hq') logged = String(msg); };
+      const p = {}; p[cKey('Adegaon', 'कुल उपभोक्ता')] = { hq: 'Adegaon', cat: 'कुल उपभोक्ता' };
+      setPendingObj(p);
+      localStorage.setItem('dc_cu', JSON.stringify({
+        cu: { role: 'lineman', name: 'आनंद', hq: 'Adegaon' }, at: Date.now(),
+      }));
+      loadSession();
+      window.logErr = orig;
+      return logged;
+    });
+    expect(r).toContain('Adegaon');
+    expect(r).toContain('1 बदलाव');
+    expect(r).toContain('JE देखें');
+  });
+});
+
+// असली production bug की असली जड़ (JE ने बताई, 29/9): लाइनमैन आनंद ब्राउज़र का Translate बटन
+// दबाकर पन्ना अंग्रेज़ी कर लेता है। login वाले HQ dropdown के options में value attribute थी ही
+// नहीं, इसलिए select.value वही लौटाता जो दिखता है — और अनुवाद के बाद वह "Adegaon" हो जाता।
+// फिर HQ_AUTH_EMAIL["Adegaon"] undefined → device कभी सही account पर आता ही नहीं (anonymous
+// रह जाता) → हर पढ़ना-लिखना /Adegaon/… पर, जिसे rules का "$other": false मना करता।
+// Translate सिर्फ़ दिखने वाला text बदलता है, attributes को नहीं छूता — इसलिए value ही असली इलाज है।
+test.describe('ब्राउज़र अनुवाद से HQ का नाम न बिगड़े', () => {
+  test('हर HQ option में value हो, और select पर translate="no" भी', async () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const sel = html.slice(html.indexOf('id="hq-sel"'), html.indexOf('</select>', html.indexOf('id="hq-sel"')));
+    expect(sel).toContain('translate="no"');
+    ['आदेगांव', 'पिंडरई', 'जोबा', 'पाटन', 'बीबी', 'मढ़ी'].forEach((hq) => {
+      expect(sel).toContain('value="' + hq + '"');
+    });
+    // बिना value वाला कोई option न बचे (खाली "-- HQ चुनें --" को छोड़कर, उसकी value="" है)
+    expect(sel).not.toMatch(/<option>/);
+  });
+
+  test('अनुवाद के बाद भी select.value असली (हिंदी) नाम ही लौटाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const sel = document.getElementById('hq-sel');
+      sel.value = 'आदेगांव';
+      const before = sel.value;
+      // Chrome Translate ठीक यही करता है — सिर्फ़ दिखने वाला text बदलता है
+      Array.prototype.forEach.call(sel.options, (o) => {
+        if (o.value === 'आदेगांव') o.textContent = 'Adegaon';
+        if (o.value === 'मढ़ी') o.textContent = 'Madhi';
+      });
+      return { before, after: sel.value, dikhta: sel.options[sel.selectedIndex].textContent };
+    });
+    expect(r.before).toBe('आदेगांव');
+    expect(r.after).toBe('आदेगांव');   // ऐप को असली नाम ही मिला
+    expect(r.dikhta).toBe('Adegaon');  // भले दिखने में बदल गया हो
+  });
+
+  test('अनुवादित पन्ने से किया गया login भी सही HQ पर बैठे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      window.firebase = undefined;
+      // पहले पन्ना "अनुवादित" करो, फिर सामान्य तरीक़े से login
+      const sel = document.getElementById('hq-sel');
+      Array.prototype.forEach.call(sel.options, (o) => { if (o.value) o.textContent = 'Translated-' + o.value; });
+      document.getElementById('rc-lin').click();
+      document.getElementById('uname-inp').value = 'आनंद कुमार कवरेती';
+      sel.value = 'आदेगांव';
+      doLogin();
+      return { hq: CU && CU.hq, valid: CU ? HQS.indexOf(CU.hq) >= 0 : null };
+    });
+    expect(r.hq).toBe('आदेगांव');
+    expect(r.valid).toBe(true); // यही वह जांच है जो v9.182 में loadSession पर भी लगी
+  });
+});
