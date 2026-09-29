@@ -3414,7 +3414,10 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     await openApp(page);
     await loginJE(page);
     await page.evaluate(() => openPinModal());
-    await page.fill('#pin-आदेगांव', '1111');
+    // यह टेस्ट सिर्फ़ यह जांचता है कि payload में HQ-key सही बनती है — PIN की लंबाई इसका विषय
+    // नहीं। पहले यहां '1111' था; v9.178 से PIN कम से कम 6 अंक का चाहिए, इसलिए नमूना बदला
+    // (लंबाई का नियम अपने अलग describe ब्लॉक में जांचा जाता है, फ़ाइल के अंत में)
+    await page.fill('#pin-आदेगांव', '111111');
     const r = await page.evaluate(() => new Promise((resolve) => {
       const real = window.fetch;
       window.fetch = function (url, opts) {
@@ -3427,7 +3430,7 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
       };
       savePins();
     }));
-    expect(r.body[r.key]).toBe('1111');
+    expect(r.body[r.key]).toBe('111111');
   });
 });
 
