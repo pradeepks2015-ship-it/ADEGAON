@@ -357,6 +357,16 @@ function doLogout(askConfirm){
   if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
   stopDevicePing();
   clearSession();
+  // दोनों गार्ड यहीं साफ़ करने पड़ते हैं — ये सिर्फ़ इस पन्ने की याददाश्त में रहते हैं, session में नहीं।
+  // असली production bug (29/9, PIN बदलने के बाद): लाइनमैन का device पहले सही account पर था, यानी
+  // _authHealed[hq] कब का true हो चुका था। PIN बदलते ही sign-in नाकाम हुआ और यहीं logout हुआ, पर
+  // _authHealed[hq] true ही रह गया। फिर लाइनमैन ने नया PIN डालकर login किया — _finishLogin से
+  // _ensureCorrectHqAuth चला, account अब सही था, पर "!_authHealed[hq]" झूठ निकला, इसलिए
+  // _resetAuthFailForHQ() और flushPending() दोनों छूट गए। नतीजा: जिन entries पर pending-stuck-auth
+  // लग चुका था (लगातार 3 बार 401 के बाद auto-retry रुक जाता है) वो उसी session में अटकी ही रह जातीं —
+  // ऐप पूरी तरह बंद करके खोलने पर ही चलतीं (तब यह याददाश्त ख़ुद खाली हो जाती है)।
+  // _authWrongPin भी इसी वजह से: वह रह जाए तो आगे कभी PIN सच में ग़लत हो तो न logout होगा न toast
+  _authHealed={}; _authWrongPin={};
   CU=null; selectedRole="";
   document.getElementById("app-screen").classList.remove("active");
   document.getElementById("login-screen").classList.add("active");
