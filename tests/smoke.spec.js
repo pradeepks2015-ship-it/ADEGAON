@@ -8635,6 +8635,16 @@ test.describe('HQ PIN लागू करने वाली script', () => {
     expect(b).toBe(a);
   });
 
+  test('काम पूरा होते ही Firebase से नाता तोड़े — वरना job timeout तक अटका रहता है', () => {
+    const scr = codeOnly(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'set-hq-pin.js'), 'utf8'));
+    // run #2 में यही हुआ: छहों PIN लागू हो गए, पर RTDB का connection खुला रहने से Node बंद ही
+    // नहीं हुआ और job 5 मिनट का timeout खाकर लाल हो गया — काम सफल, निशान झूठा
+    expect(scr).toContain('goOffline');
+    expect(scr).toContain('deleteApp');
+    expect(scr).toMatch(/await\s+shutdown\s*\(/);      // सफल रास्ते पर सचमुच बुलाया जाए
+    expect(scr).toMatch(/\.unref\s*\(\s*\)/);          // और कुछ और अटकाए तो भी निकलने का रास्ता हो
+  });
+
   test('workflow "सभी" का विकल्प दे और PIN ऐप से लेने की बात बताए', () => {
     const yml = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'set-hq-pin.yml'), 'utf8');
     expect(yml).toContain('- सभी');
