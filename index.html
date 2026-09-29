@@ -590,7 +590,7 @@ try{
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">&#128274; Lineman PIN</div>
-    <div style="font-size:11px;color:var(--muted);padding:0 4px 10px;line-height:1.7;">हर HQ के लिए एक PIN — जिस HQ का खाली छोड़ेंगे, वहां बिना PIN के login चलता रहेगा (पुराना व्यवहार)। PIN <b>कम से कम 6 अंक</b> का रखें: लाइनमैन का password सीधे इसी से बनता है, इसलिए 4 अंक वाला PIN अंदाज़े से तोड़ा जा सकता है।<br><br>&#9888; <b>यह पन्ना सिर्फ़ रिकॉर्ड रखता है।</b> PIN सचमुच बदलने के लिए Firebase Console &rarr; Authentication में उस HQ के खाते का password <b>vasuli-&lt;नया PIN&gt;</b> करना ज़रूरी है — वरना लाइनमैन का login नाकाम हो जाएगा।</div>
+    <div style="font-size:11px;color:var(--muted);padding:0 4px 10px;line-height:1.7;">हर HQ के लिए एक PIN — जिस HQ का खाली छोड़ेंगे, वहां बिना PIN के login चलता रहेगा (पुराना व्यवहार)। PIN <b>कम से कम 6 अंक</b> का रखें: लाइनमैन का password सीधे इसी से बनता है, इसलिए 4 अंक वाला PIN अंदाज़े से तोड़ा जा सकता है।<br><br>&#9888; <b>यहां सेव करने से PIN तुरंत लागू नहीं होता।</b> सेव करने के बाद GitHub &rarr; Actions &rarr; <b>"HQ PIN लागू करें"</b> चलाएं (मुख्यालय चुनें या "सभी") — तभी लाइनमैन का login नया PIN मानेगा।</div>
     <div id="pin-fields"></div>
     <div class="mfooter">
       <button class="btn-save" onclick="savePins()">&#128190; सेव करें</button>

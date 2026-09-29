@@ -1,23 +1,25 @@
-// ── किसी मुख्यालय का Lineman PIN बदलना (GitHub Actions से, हाथ से चलाकर) ──────────────────
+// ── ऐप में भरा हुआ PIN असली Firebase Auth पर लागू करना (GitHub Actions से, हाथ से चलाकर) ──
 // लाइनमैन का login असल में Firebase Auth के उस मुख्यालय वाले खाते से होता है, और उसका password
 // सीधे PIN से बनता है: "vasuli-" + PIN (देखें js/auth.js: _hqAuthPassword)।
 //
-// Firebase Console से यह password बदला ही नहीं जा सकता — Authentication → Users में किसी
-// खाते के ⋮ मेनू में सिर्फ़ "Reset password", "Disable account" और "Delete account" हैं।
-// "Reset password" सिर्फ़ email भेजता है, और हमारे खाते hq-*@adegaondc.internal पर हैं —
-// यह असली domain ही नहीं है, इसलिए वह email कहीं नहीं पहुंचती। (JE ने 29/9 को Console में
-// यही देखा और स्क्रीनशॉट भेजा।) "Delete account" का रास्ता तो और ख़तरनाक है — नया खाता बनाने
-// पर UID बदल जाता है, जबकि database.rules.json में हर मुख्यालय का UID हार्डकोडेड है; यानी उस
-// मुख्यालय के सभी लाइनमैन का access एक झटके में चला जाएगा।
+// Firebase Console से यह password बदला ही नहीं जा सकता — Authentication → Users में किसी खाते के
+// ⋮ मेनू में सिर्फ़ "Reset password", "Disable account" और "Delete account" हैं। "Reset password"
+// सिर्फ़ email भेजता है, और हमारे खाते hq-*@adegaondc.internal पर हैं — यह असली domain ही नहीं है,
+// इसलिए वह email कहीं नहीं पहुंचती (JE ने 29/9 को Console में यही देखा)। "Delete account" का
+// रास्ता और ख़तरनाक है: नया खाता = नया UID, जबकि database.rules.json में हर मुख्यालय का UID
+// हार्डकोडेड है — उस मुख्यालय के सभी लाइनमैन का access एक झटके में चला जाएगा।
 //
-// इसलिए यही script — Admin SDK से सीधे password बदलती है। UID वही रहता है, rules अछूती रहती हैं।
-// वही FIREBASE_SERVICE_ACCOUNT secret जो deploy-rules.js और backup.js इस्तेमाल करते हैं।
+// यह script PIN input के तौर पर *नहीं* लेती — जान-बूझकर। पहली कोशिश (run #1) में PIN workflow
+// input था और GitHub ने उसे step के env ब्लॉक में साफ़-साफ़ लॉग में छाप दिया ("NEW_PIN: 000111")।
+// ::add-mask:: भी पूरा इलाज नहीं, क्योंकि mask लगने से पहले ही वह पंक्ति छप चुकी होती है।
+// इसलिए अब PIN वहीं से आता है जहां JE पहले से भरते हैं — ऐप का "🔒 Lineman PIN" पन्ना, यानी
+// database का /HQ_PIN (जिसे Security Rules सिर्फ़ JE को पढ़ने देती हैं)। script उसे पढ़कर Auth पर
+// लागू कर देती है। फ़ायदा यह भी कि "रिकॉर्ड" और "असली PIN" कभी अलग नहीं हो सकते।
 //
-// चलाने का तरीक़ा: GitHub → Actions → "HQ PIN बदलें" → Run workflow → मुख्यालय चुनें + नया PIN
-//
-// ध्यान: firebase-admin जान-बूझकर नीचे (जांच पूरी होने के बाद) require होता है — ग़लत PIN/HQ
-// पर SDK की ज़रूरत ही नहीं पड़नी चाहिए, और इसी से यह जांच बिना Firebase छुए स्थानीय रूप से
-// टेस्ट भी हो जाती है (देखें tests/smoke.spec.js का "HQ PIN बदलने वाली script" ब्लॉक)
+// चलाने का तरीक़ा: पहले ऐप में JE मेनू → 🔒 Lineman PIN → नया PIN भरकर सेव करें,
+// फिर GitHub → Actions → "HQ PIN लागू करें" → Run workflow → मुख्यालय चुनें (या "सभी")।
+
+const DB_URL = "https://adegaon-dc-top-50-default-rtdb.firebaseio.com";
 
 // js/config.js के HQ_AUTH_EMAIL की नक़ल — दोनों एक साथ बदलने पड़ते हैं (नया DC बनाते वक़्त भी,
 // देखें CLAUDE.md का आख़िरी हिस्सा)
@@ -35,45 +37,72 @@ const HQ_AUTH_EMAIL = {
 const MIN_PIN_LEN = 6;
 // js/auth.js का _hqAuthPassword — दोनों जगह एक जैसा होना ज़रूरी है, वरना login नाकाम हो जाएगा
 function hqAuthPassword(pin) { return "vasuli-" + pin; }
+// js/config.js का hqKey — /HQ_PIN में इसी कुंजी से PIN रखा जाता है
+function hqKey(hq) { return hq.replace(/[\s.#$[\]/]/g, "_"); }
 
 function fail(msg) { throw new Error(msg); }
 
 async function main() {
-  var hq = (process.env.HQ || "").trim();
-  var pin = (process.env.NEW_PIN || "").trim();
+  var want = (process.env.HQ || "").trim();
+  if (!want) fail("मुख्यालय नहीं चुना गया");
+  var all = Object.keys(HQ_AUTH_EMAIL);
+  if (want !== "सभी" && !HQ_AUTH_EMAIL[want]) {
+    fail('"' + want + '" कोई जाना-पहचाना मुख्यालय नहीं — ' + all.join(", ") + ' या "सभी" में से एक होना चाहिए');
+  }
+  var targets = want === "सभी" ? all : [want];
 
-  if (!hq) fail("HQ नहीं मिला");
-  if (!HQ_AUTH_EMAIL[hq]) fail('"' + hq + '" कोई जाना-पहचाना मुख्यालय नहीं — ' + Object.keys(HQ_AUTH_EMAIL).join(", ") + " में से एक होना चाहिए");
-  if (!/^\d+$/.test(pin)) fail("PIN में सिर्फ़ अंक होने चाहिए");
-  if (pin.length < MIN_PIN_LEN) fail("PIN कम से कम " + MIN_PIN_LEN + " अंक का होना चाहिए (मिला: " + pin.length + " अंक)");
+  var { initializeApp, cert } = require("firebase-admin/app");
+  var { getAuth } = require("firebase-admin/auth");
+  var { getDatabase } = require("firebase-admin/database");
+  // firebase-admin@14 में पुराना namespace वाला रूप नहीं बचा: require("firebase-admin") से मिली
+  // object में सिर्फ़ app वाले हिस्से हैं (initializeApp, cert, ...) — admin.auth() है ही नहीं।
+  // पहली असली कोशिश इसी पर गिरी थी: "admin.auth is not a function"
+  initializeApp({ credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)), databaseURL: DB_URL });
+  var auth = getAuth();
 
-  var email = HQ_AUTH_EMAIL[hq];
-  // PIN कभी लॉग में न छपे — GitHub Actions के लॉग repo पढ़ने वाला कोई भी देख सकता है
-  console.log("मुख्यालय: " + hq + "  |  खाता: " + email + "  |  नया PIN: " + pin.length + " अंक का");
+  // service account admin है, इसलिए Security Rules इसके रास्ते में नहीं आतीं
+  var snap = await getDatabase().ref("HQ_PIN").once("value");
+  var pins = snap.val() || {};
 
-  // जांच पूरी हो चुकी — अब असली काम, इसलिए अब SDK चाहिए
-  var admin = require("firebase-admin");
-  admin.initializeApp({ credential: admin.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)) });
+  var done = [], skipped = [];
+  for (var i = 0; i < targets.length; i++) {
+    var hq = targets[i];
+    var email = HQ_AUTH_EMAIL[hq];
+    var pin = String(pins[hqKey(hq)] == null ? "" : pins[hqKey(hq)]).trim();
 
-  var user = await admin.auth().getUserByEmail(email).catch(function (e) {
-    fail("यह खाता Firebase में मिला ही नहीं (" + email + ") — " + ((e && e.message) || e));
-  });
-  // UID वही रहना चाहिए, वरना database.rules.json की अनुमतियां टूट जाएंगी
-  console.log("खाता मिला, UID: " + user.uid + " (यह नहीं बदलेगा)");
+    // एक मुख्यालय की गड़बड़ी बाक़ी को न रोके — "सभी" चलाते वक़्त यही चाहिए
+    if (!pin) { skipped.push(hq + " — ऐप में PIN भरा ही नहीं है"); continue; }
+    if (!/^\d+$/.test(pin)) { skipped.push(hq + " — PIN में सिर्फ़ अंक होने चाहिए"); continue; }
+    if (pin.length < MIN_PIN_LEN) { skipped.push(hq + " — PIN कम से कम " + MIN_PIN_LEN + " अंक का चाहिए (ऐप में " + pin.length + " अंक का है)"); continue; }
 
-  await admin.auth().updateUser(user.uid, { password: hqAuthPassword(pin) });
+    // PIN कभी लॉग में न छपे — GitHub Actions का लॉग repo पढ़ने वाला कोई भी देख सकता है
+    var user = await auth.getUserByEmail(email).catch(function (e) {
+      fail("यह खाता Firebase में मिला ही नहीं (" + email + ") — " + ((e && e.message) || e));
+    });
+    await auth.updateUser(user.uid, { password: hqAuthPassword(pin) });
+    // UID वही रहता है, इसलिए database.rules.json की अनुमतियां अछूती रहती हैं
+    done.push(hq + " (" + pin.length + " अंक का PIN, UID " + user.uid + " — नहीं बदला)");
+  }
 
-  console.log("✅ " + hq + " का PIN बदल गया।");
   console.log("");
-  console.log("अब दो काम बाक़ी हैं:");
-  console.log("  1. ऐप में JE मेनू → 🔒 Lineman PIN → " + hq + " के लिए यही नया PIN भरकर सेव करें (रिकॉर्ड के लिए)");
-  console.log("  2. " + hq + " के लाइनमैनों को नया PIN बता दें");
+  if (done.length) {
+    console.log("✅ लागू हो गया:");
+    done.forEach(function (d) { console.log("   • " + d); });
+  }
+  if (skipped.length) {
+    console.log("");
+    console.log("⏭ छोड़ दिए गए (ऐप में ठीक करके दोबारा चलाएं):");
+    skipped.forEach(function (s) { console.log("   • " + s); });
+  }
+  if (!done.length) fail("एक भी मुख्यालय पर PIN लागू नहीं हुआ");
+
   console.log("");
+  console.log("अब बस इतना बाक़ी है: जिन मुख्यालयों का PIN बदला, उनके लाइनमैनों को नया PIN बता दें।");
   console.log("उनके फ़ोन पर \"🔐 PIN बदल गया लगता है\" दिखेगा और वे login स्क्रीन पर आ जाएंगे।");
   console.log("बिना भेजी गई वसूली सुरक्षित रहती है — नया PIN डालते ही अपने-आप चली जाएगी।");
 }
 
 main().catch(function (e) {
-  console.error("❌ PIN नहीं बदला:", (e && e.message) || e);
+  console.error("❌ गड़बड़:", (e && e.message) || e);
   process.exit(1);
 });
