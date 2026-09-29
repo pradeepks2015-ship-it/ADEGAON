@@ -77,10 +77,22 @@ try{
     <div id="lin-fields" style="display:none;">
       <label class="f-label">हेडक्वार्टर</label>
       <div class="sel-wrap">
-        <select id="hq-sel" class="f-select">
+        <!-- हर option में value ज़रूरी है, और पूरे select पर translate="no" भी।
+             असली production bug (29/9): एक लाइनमैन ब्राउज़र का Translate बटन दबाकर पन्ना
+             अंग्रेज़ी कर लेता था। पहले इन options में value थी ही नहीं, इसलिए select.value
+             वही लौटाता जो दिखता है — और अनुवाद के बाद वह "Adegaon" हो जाता (HQS में तो
+             "आदेगांव" है)। नतीजा: HQ_AUTH_EMAIL["Adegaon"] undefined → device कभी सही
+             account पर आता ही नहीं, anonymous रह जाता → हर पढ़ना-लिखना /Adegaon/… पर, जिसे
+             rules का "$other": false मना करता ("खाता: anonymous • HTTP 401 • Permission
+             denied", आठों श्रेणियां बासी)। और ऐप चालू दिखता रहता, इसलिए उसे पता ही न चलता।
+             अब value attribute से असली नाम जाता है (अनुवाद attributes को नहीं छूता), और
+             translate="no" से ये नाम दिखने में भी हिंदी ही रहते हैं — ये गांव के नाम हैं,
+             इनका अनुवाद वैसे भी ग़लत है (js/upload.js के दोनों dropdown पहले से सुरक्षित थे,
+             वहां o.value हमेशा सेट होती है) -->
+        <select id="hq-sel" class="f-select" translate="no">
           <option value="">-- HQ चुनें --</option>
-          <option>आदेगांव</option><option>पिंडरई</option><option>जोबा</option>
-          <option>पाटन</option><option>बीबी</option><option>मढ़ी</option>
+          <option value="आदेगांव">आदेगांव</option><option value="पिंडरई">पिंडरई</option><option value="जोबा">जोबा</option>
+          <option value="पाटन">पाटन</option><option value="बीबी">बीबी</option><option value="मढ़ी">मढ़ी</option>
         </select>
       </div>
       <label class="f-label">HQ PIN (JE से लें)</label>

@@ -8823,3 +8823,57 @@ test.describe('सेव session का HQ HQS में न हो तो ब�
     expect(r).toContain('JE देखें');
   });
 });
+
+// असली production bug की असली जड़ (JE ने बताई, 29/9): लाइनमैन आनंद ब्राउज़र का Translate बटन
+// दबाकर पन्ना अंग्रेज़ी कर लेता है। login वाले HQ dropdown के options में value attribute थी ही
+// नहीं, इसलिए select.value वही लौटाता जो दिखता है — और अनुवाद के बाद वह "Adegaon" हो जाता।
+// फिर HQ_AUTH_EMAIL["Adegaon"] undefined → device कभी सही account पर आता ही नहीं (anonymous
+// रह जाता) → हर पढ़ना-लिखना /Adegaon/… पर, जिसे rules का "$other": false मना करता।
+// Translate सिर्फ़ दिखने वाला text बदलता है, attributes को नहीं छूता — इसलिए value ही असली इलाज है।
+test.describe('ब्राउज़र अनुवाद से HQ का नाम न बिगड़े', () => {
+  test('हर HQ option में value हो, और select पर translate="no" भी', async () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const sel = html.slice(html.indexOf('id="hq-sel"'), html.indexOf('</select>', html.indexOf('id="hq-sel"')));
+    expect(sel).toContain('translate="no"');
+    ['आदेगांव', 'पिंडरई', 'जोबा', 'पाटन', 'बीबी', 'मढ़ी'].forEach((hq) => {
+      expect(sel).toContain('value="' + hq + '"');
+    });
+    // बिना value वाला कोई option न बचे (खाली "-- HQ चुनें --" को छोड़कर, उसकी value="" है)
+    expect(sel).not.toMatch(/<option>/);
+  });
+
+  test('अनुवाद के बाद भी select.value असली (हिंदी) नाम ही लौटाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const sel = document.getElementById('hq-sel');
+      sel.value = 'आदेगांव';
+      const before = sel.value;
+      // Chrome Translate ठीक यही करता है — सिर्फ़ दिखने वाला text बदलता है
+      Array.prototype.forEach.call(sel.options, (o) => {
+        if (o.value === 'आदेगांव') o.textContent = 'Adegaon';
+        if (o.value === 'मढ़ी') o.textContent = 'Madhi';
+      });
+      return { before, after: sel.value, dikhta: sel.options[sel.selectedIndex].textContent };
+    });
+    expect(r.before).toBe('आदेगांव');
+    expect(r.after).toBe('आदेगांव');   // ऐप को असली नाम ही मिला
+    expect(r.dikhta).toBe('Adegaon');  // भले दिखने में बदल गया हो
+  });
+
+  test('अनुवादित पन्ने से किया गया login भी सही HQ पर बैठे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      window.firebase = undefined;
+      // पहले पन्ना "अनुवादित" करो, फिर सामान्य तरीक़े से login
+      const sel = document.getElementById('hq-sel');
+      Array.prototype.forEach.call(sel.options, (o) => { if (o.value) o.textContent = 'Translated-' + o.value; });
+      document.getElementById('rc-lin').click();
+      document.getElementById('uname-inp').value = 'आनंद कुमार कवरेती';
+      sel.value = 'आदेगांव';
+      doLogin();
+      return { hq: CU && CU.hq, valid: CU ? HQS.indexOf(CU.hq) >= 0 : null };
+    });
+    expect(r.hq).toBe('आदेगांव');
+    expect(r.valid).toBe(true); // यही वह जांच है जो v9.182 में loadSession पर भी लगी
+  });
+});
