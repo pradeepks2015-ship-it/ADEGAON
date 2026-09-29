@@ -8705,3 +8705,50 @@ test.describe('PIN बदलने पर एक साथ कई re-auth ना
     expect(r.called).toBe(true);
   });
 });
+
+// असली production bug (29/9, PIN बदलने के तुरंत बाद): कई devices पर pending-stuck-auth लग गया
+// ("लगातार 3 बार 401/403 — auto-retry रोका")। _authHealed/_authWrongPin सिर्फ़ इस पन्ने की
+// याददाश्त में रहते हैं, session में नहीं — और doLogout उन्हें साफ़ नहीं करता था। इसलिए PIN बदलने
+// पर हुए logout के बाद, नया PIN डालकर login करने पर भी "!_authHealed[hq]" झूठ निकलता और
+// _resetAuthFailForHQ()+flushPending() दोनों छूट जाते — अटकी वसूली उसी session में अटकी रह जाती।
+test.describe('logout पर auth-गार्ड साफ़ हों — नया PIN डालते ही अटकी वसूली चल पड़े', () => {
+  test('doLogout के बाद _authHealed/_authWrongPin खाली हों', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      _authHealed = { 'आदेगांव': true, 'मढ़ी': true };
+      _authWrongPin = { 'आदेगांव': true };
+      doLogout(false);
+      return { healed: Object.keys(_authHealed), wrong: Object.keys(_authWrongPin), cu: CU };
+    });
+    expect(r.healed).toEqual([]);
+    expect(r.wrong).toEqual([]);
+    expect(r.cu).toBeNull();
+  });
+
+  test('पूरा चक्र — PIN बदला, logout हुआ, नया PIN से login पर अटकी entries फिर से भेजी जाएं', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      const hq = CU.hq;
+      // (1) पहले सब ठीक चल रहा था — यही _authHealed को true कर देता है
+      _authHealed = {}; _authHealed[hq] = true;
+      // (2) लगातार 401 से एक entry अटक चुकी है (pending-stuck-auth जैसी स्थिति)
+      const p = {}; p[cKey(hq, 'कुल उपभोक्ता')] = { hq: hq, cat: 'कुल उपभोक्ता', authFailCount: 3 };
+      setPendingObj(p);
+      // (3) PIN बदलने पर logout
+      doLogout(false);
+      const afterLogout = Object.keys(_authHealed).length;
+      // (4) नया PIN डालकर login — अब account सही है
+      CU = { role: 'lineman', name: 'रमेश', hq: hq, pin: '654321' };
+      window.firebase = { auth: () => ({ currentUser: { email: HQ_AUTH_EMAIL[hq] } }) };
+      let cbRan = false;
+      _ensureCorrectHqAuth(() => { cbRan = true; });
+      const entry = getPending()[cKey(hq, 'कुल उपभोक्ता')];
+      return { afterLogout, cbRan, fails: entry && entry.authFailCount };
+    });
+    expect(r.afterLogout).toBe(0);
+    expect(r.cbRan).toBe(true);
+    expect(r.fails).toBe(0); // अटकी entry फिर से भेजी जा सकती है
+  });
+});
