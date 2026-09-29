@@ -204,7 +204,15 @@ var _authWrongPin={};
 function _ensureCorrectHqAuth(cb){
   cb=cb||function(){};
   if(!CU||CU.role!=="lineman"||!navigator.onLine) return cb();
-  var hqEmail=HQ_AUTH_EMAIL[CU.hq];
+  // HQ की एक प्रति अभी ले लें और नीचे हर जगह यही इस्तेमाल करें — CU.hq नहीं।
+  // असली production bug (29/9, दो devices पर "Cannot read properties of null (reading 'hq')"):
+  // यह function एक साथ कई जगह से बुलाया जा सकता है (जैसे कई श्रेणियों में एक साथ save नाकाम
+  // होना — ऊपर _authWrongPin वाला comment भी यही कहता है)। JE ने PIN बदला, तो हर चालू sign-in
+  // पुराने PIN से नाकाम हुआ; पहले वाले ने doLogout() करके CU को null कर दिया, और उसके बाद जो
+  // दूसरा catch चला वह CU.hq पढ़ते ही गिर गया। गिरने से cb() भी कभी नहीं चला, यानी उसका इंतज़ार
+  // करने वाला (reconcileHQ वगैरह) चुपचाप अटक गया
+  var hq=CU.hq;
+  var hqEmail=HQ_AUTH_EMAIL[hq];
   if(!hqEmail) return cb();
   var fbAuthOk=false;
   try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
@@ -215,9 +223,9 @@ function _ensureCorrectHqAuth(cb){
     // पर अगर पहले कभी 401 की वजह से इस HQ की entries "अटकी" चिह्नित हो चुकी हैं, तो वो गिनती
     // अब मान्य नहीं: account सही है यानी rules इस HQ को लिखने देती हैं। पहले यह रीसेट सिर्फ़ नए
     // sign-in पर होता था, इसलिए मैन्युअल logout+login के बाद भी अटका डेटा हमेशा के लिए अटका रह जाता था
-    if(!_authHealed[CU.hq]){
-      _authHealed[CU.hq]=true;
-      _resetAuthFailForHQ(CU.hq);
+    if(!_authHealed[hq]){
+      _authHealed[hq]=true;
+      _resetAuthFailForHQ(hq);
       flushPending();
     }
     return cb();
@@ -240,8 +248,8 @@ function _ensureCorrectHqAuth(cb){
   }
   firebase.auth().signInWithEmailAndPassword(hqEmail,_hqAuthPassword(pin))
     .then(function(){
-      _authHealed[CU.hq]=true;
-      _resetAuthFailForHQ(CU.hq); // पुरानी "अनधिकृत" गिनती अब मान्य नहीं — दोबारा भेजने दो
+      _authHealed[hq]=true;
+      _resetAuthFailForHQ(hq); // पुरानी "अनधिकृत" गिनती अब मान्य नहीं — दोबारा भेजने दो
       flushPending();
       cb();
     })
@@ -256,8 +264,8 @@ function _ensureCorrectHqAuth(cb){
       // auth/invalid-credential) का मतलब है यह PIN अब काम का नहीं — !pin वाले रास्ते जैसा ही
       // साफ़ logout करके दोबारा सही PIN मांगना ही एकमात्र पक्का रास्ता है
       if(e&&e.code==="auth/network-request-failed") return cb();
-      if(!_authWrongPin[CU.hq]){
-        _authWrongPin[CU.hq]=true;
+      if(!_authWrongPin[hq]){
+        _authWrongPin[hq]=true;
         doLogout(false);
         toast("🔐 PIN बदल गया लगता है — कृपया सही PIN डालकर दोबारा login करें","inf");
       }
