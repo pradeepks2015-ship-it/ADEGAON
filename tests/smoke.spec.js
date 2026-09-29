@@ -8635,9 +8635,73 @@ test.describe('HQ PIN लागू करने वाली script', () => {
     expect(b).toBe(a);
   });
 
+  test('काम पूरा होते ही Firebase से नाता तोड़े — वरना job timeout तक अटका रहता है', () => {
+    const scr = codeOnly(fs.readFileSync(path.join(__dirname, '..', 'scripts', 'set-hq-pin.js'), 'utf8'));
+    // run #2 में यही हुआ: छहों PIN लागू हो गए, पर RTDB का connection खुला रहने से Node बंद ही
+    // नहीं हुआ और job 5 मिनट का timeout खाकर लाल हो गया — काम सफल, निशान झूठा
+    expect(scr).toContain('goOffline');
+    expect(scr).toContain('deleteApp');
+    expect(scr).toMatch(/await\s+shutdown\s*\(/);      // सफल रास्ते पर सचमुच बुलाया जाए
+    expect(scr).toMatch(/\.unref\s*\(\s*\)/);          // और कुछ और अटकाए तो भी निकलने का रास्ता हो
+  });
+
   test('workflow "सभी" का विकल्प दे और PIN ऐप से लेने की बात बताए', () => {
     const yml = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'set-hq-pin.yml'), 'utf8');
     expect(yml).toContain('- सभी');
     expect(yml).toContain('ऐप में जो भरा है');
+  });
+});
+
+// असली production bug (29/9, दो devices पर एक साथ): JE ने छहों मुख्यालयों का PIN बदला, तो हर
+// device का सेव किया हुआ पुराना PIN बेकार हो गया। _ensureCorrectHqAuth कई जगह से लगभग एक साथ
+// बुलाया जाता है, इसलिए कई sign-in एक साथ नाकाम हुए — पहले वाले ने doLogout() करके CU को null
+// कर दिया, और उसके बाद जो दूसरा catch चला वह CU.hq पढ़ते ही गिर गया:
+//   promise — Cannot read properties of null (reading 'hq') — (login से पहले) — v9.179
+// गिरने से cb() भी कभी नहीं चला, यानी उसका इंतज़ार करने वाला (reconcileHQ वगैरह) चुपचाप अटक गया।
+test.describe('PIN बदलने पर एक साथ कई re-auth नाकाम हों तो भी कुछ न गिरे', () => {
+  test('doLogout से CU null हो जाने के बाद वाला catch भी सुरक्षित चले, और cb() मिले', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const errs = [];
+      window.addEventListener('unhandledrejection', (e) => errs.push(String((e.reason && e.reason.message) || e.reason)));
+      CU.pin = '111111';                 // device पर सेव पुराना PIN
+      _authWrongPin = {}; _authHealed = {};
+      // JE ने PIN बदल दिया — हर sign-in "ग़लत PIN" से नाकाम होगा
+      window.firebase = {
+        auth: function () {
+          return {
+            currentUser: { email: 'someone-else@x.y' }, // ग़लत account → नया sign-in ज़रूरी
+            signInWithEmailAndPassword: function () {
+              return Promise.reject({ code: 'auth/wrong-password' });
+            },
+          };
+        },
+      };
+      let done = 0;
+      const finish = () => { done++; };
+      // ठीक वही स्थिति: दो कॉल लगभग एक साथ (कई श्रेणियों में एक साथ save नाकाम होना)
+      _ensureCorrectHqAuth(finish);
+      _ensureCorrectHqAuth(finish);
+      setTimeout(() => resolve({ done, errs, cu: CU }), 400);
+    }));
+    expect(r.errs).toEqual([]);   // कोई unhandled rejection नहीं
+    expect(r.done).toBe(2);       // दोनों callers को जवाब मिला — कोई अटका नहीं
+    expect(r.cu).toBeNull();      // logout फिर भी हुआ, यानी दोबारा PIN मांगा जाएगा
+  });
+
+  test('CU null हो जाने के बाद दोबारा बुलाने पर चुपचाप लौटे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const errs = [];
+      window.addEventListener('unhandledrejection', (e) => errs.push(String(e.reason)));
+      CU = null;
+      let called = false;
+      _ensureCorrectHqAuth(() => { called = true; });
+      setTimeout(() => resolve({ called, errs }), 200);
+    }));
+    expect(r.errs).toEqual([]);
+    expect(r.called).toBe(true);
   });
 });

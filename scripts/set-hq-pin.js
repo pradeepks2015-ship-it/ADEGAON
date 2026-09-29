@@ -42,6 +42,16 @@ function hqKey(hq) { return hq.replace(/[\s.#$[\]/]/g, "_"); }
 
 function fail(msg) { throw new Error(msg); }
 
+// Firebase से नाता तोड़कर process को बंद होने देना। सिर्फ़ इतना ही काफ़ी होना चाहिए, पर अगर
+// कोई और चीज़ event loop पकड़े रह जाए तो job हमेशा के लिए अटक जाएगा — इसलिए एक unref किया हुआ
+// टाइमर भी रखा है (unref का मतलब: यह ख़ुद process को ज़िंदा नहीं रखेगा, सिर्फ़ तभी चलेगा जब
+// process किसी और वजह से अब भी चल रहा हो)
+async function shutdown(db, deleteApp, getApp) {
+  setTimeout(function () { process.exit(0); }, 10000).unref();
+  try { db.goOffline(); } catch { /* पहले से बंद हो तो कोई बात नहीं */ }
+  try { await deleteApp(getApp()); } catch { /* वही */ }
+}
+
 async function main() {
   var want = (process.env.HQ || "").trim();
   if (!want) fail("मुख्यालय नहीं चुना गया");
@@ -51,7 +61,7 @@ async function main() {
   }
   var targets = want === "सभी" ? all : [want];
 
-  var { initializeApp, cert } = require("firebase-admin/app");
+  var { initializeApp, cert, getApp, deleteApp } = require("firebase-admin/app");
   var { getAuth } = require("firebase-admin/auth");
   var { getDatabase } = require("firebase-admin/database");
   // firebase-admin@14 में पुराना namespace वाला रूप नहीं बचा: require("firebase-admin") से मिली
@@ -61,7 +71,8 @@ async function main() {
   var auth = getAuth();
 
   // service account admin है, इसलिए Security Rules इसके रास्ते में नहीं आतीं
-  var snap = await getDatabase().ref("HQ_PIN").once("value");
+  var db = getDatabase();
+  var snap = await db.ref("HQ_PIN").once("value");
   var pins = snap.val() || {};
 
   var done = [], skipped = [];
@@ -84,6 +95,12 @@ async function main() {
     done.push(hq + " (" + pin.length + " अंक का PIN, UID " + user.uid + " — नहीं बदला)");
   }
 
+  // RTDB का connection खुला रहता है और Node का event loop उसी से चलता रहता है — main() पूरा
+  // होने के बाद भी process अपने-आप बंद नहीं होता। run #2 में यही हुआ: छहों PIN लागू हो गए, पर
+  // job 5 मिनट का timeout खाकर लाल हो गया — काम सफल, निशान झूठा। इसलिए पढ़ाई ख़त्म होते ही
+  // connection बंद करके app हटा देते हैं (fail() वाले रास्ते पर भी नीचे catch से यही होता है)
+  await shutdown(db, deleteApp, getApp);
+
   console.log("");
   if (done.length) {
     console.log("✅ लागू हो गया:");
@@ -104,5 +121,7 @@ async function main() {
 
 main().catch(function (e) {
   console.error("❌ गड़बड़:", (e && e.message) || e);
+  // गड़बड़ वाले रास्ते पर भी connection खुला रह सकता है — exit(1) उसे वैसे भी बंद कर देता है,
+  // इसलिए यहां अलग से shutdown की ज़रूरत नहीं (process.exit तुरंत सब गिरा देता है)
   process.exit(1);
 });
