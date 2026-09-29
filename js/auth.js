@@ -301,6 +301,25 @@ function loadSession(){
   if(!o||typeof o!=="object") return null;
   var cu=o.cu||o; // {cu,at} नया रूप — बिना cu वाला सीधा object पुराना (v9.107 तक का) रूप है
   if(!cu||!cu.role||!cu.hq||!cu.name) return null;
+  // HQ का नाम HQS में होना ज़रूरी है — वरना चुपचाप सब कुछ नाकाम होता रहता है और लाइनमैन को
+  // पता ही नहीं चलता। असली production bug (29/9): एक device का सेव session "Adegaon" (अंग्रेज़ी)
+  // लिए बैठा था, जबकि HQS में "आदेगांव" (देवनागरी) है — यह नाम न config.js में कभी था, न
+  // index.html के dropdown में, यानी किसी बहुत पुराने रूप से बचा हुआ था। नतीजा:
+  // HQ_AUTH_EMAIL["Adegaon"] undefined → _ensureCorrectHqAuth चुपचाप लौट जाता → device कभी
+  // सही account पर आता ही नहीं (anonymous रह जाता) → हर पढ़ना-लिखना /Adegaon/... पर जाता, जिसे
+  // Security Rules का "$other": false मना कर देता। लॉग में यही दिखा: "खाता: anonymous •
+  // HTTP 401 • जवाब: Permission denied", और आठों श्रेणियां कभी ताज़ा नहीं हुईं।
+  // ऐप चालू दिखता रहता (cache से), पर उसकी दर्ज की गई कोई वसूली कभी सर्वर तक नहीं पहुंचती।
+  // अब ऐसा session बहाल ही नहीं होता — login screen आती है और सही HQ चुनते ही सब ठीक हो जाता है
+  if(HQS.indexOf(cu.hq)<0){
+    try{
+      var _st=0;
+      try{ var _p=getPending(); Object.keys(_p).forEach(function(k){ if(_p[k]&&_p[k].hq===cu.hq) _st++; }); }catch(e){}
+      logErr("session-unknown-hq","सेव किया हुआ session अनजाने HQ \""+cu.hq+"\" पर था (HQS में नहीं) — दोबारा login कराया गया"+(_st?" • इस HQ पर "+_st+" बदलाव अब भी बिना भेजे पड़े हैं, JE देखें":""),cu.role+"|"+cu.hq+"|"+cu.name);
+    }catch(e){}
+    clearSession(); // वरना हर बार ऐप खुलने पर यही दोहराता रहेगा
+    return null;
+  }
   var at=+o.at||0, now=Date.now();
   // at भविष्य में हो (फ़ोन की घड़ी बदली गई) तो उसे भरोसेमंद न मानें — session चलने दें, समय ताज़ा हो जाएगा
   if(at&&at<=now&&(now-at)>SESSION_MAX_DAYS*24*60*60*1000) return null;
