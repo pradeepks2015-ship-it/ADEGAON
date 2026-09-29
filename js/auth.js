@@ -75,26 +75,48 @@ function fetchHQPinsFromFB(){
     }).catch(function(){});
 }
 
+// PIN कम से कम इतने अंक का हो। वजह: लाइनमैन का Firebase password सीधे PIN से बनता है
+// (_hqAuthPassword = "vasuli-"+pin) और हर HQ का email js/config.js में खुला पड़ा है। 4 अंक यानी
+// सिर्फ़ 10,000 संभावनाएं — App Check और Firebase की दर-सीमा के बावजूद यह कमज़ोर है। 6 अंक से
+// यह 10 लाख हो जाता है। पुराने छोटे PIN login में चलते रहेंगे (वह जांच Firebase करता है, यह नियम
+// सिर्फ़ नया PIN दर्ज करते वक़्त लगता है) — पर modal उन्हें ⚠ से दिखा देता है
+var MIN_PIN_LEN=6;
+function _pinProblem(v){
+  if(!v) return "";                                  // खाली = इस HQ में PIN ज़रूरी नहीं (पुराना व्यवहार)
+  if(!/^\d+$/.test(v)) return "सिर्फ़ अंक होने चाहिए";
+  if(v.length<MIN_PIN_LEN) return "कम से कम "+MIN_PIN_LEN+" अंक चाहिए";
+  return "";
+}
 function openPinModal(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE PIN सेट कर सकते हैं","err");return;}
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
   var el=document.getElementById("pin-fields");
   // audit-verified: hq/v दोनों escHtml() से गुज़रते हैं (escHtml अब सिंगल-कोट भी escape करता है, तो
-  // यहां single-quoted value='...' attribute में भी breakout नहीं हो सकता)
+  // यहां single-quoted value='...' attribute में भी breakout नहीं हो सकता); bad भी यहीं बने तय
+  // वाक्यों में से एक है (_pinProblem), बाहर से आया text नहीं
   // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=HQS.map(function(hq){
     var v=HQ_PINS[hqKey(hq)]||"";
-    return "<label class='f-label'>"+escHtml(hq)+"</label><input type='text' inputmode='numeric' class='f-input' id='pin-"+hqKey(hq)+"' value='"+escHtml(v)+"' placeholder='खाली = PIN ज़रूरी नहीं' style='margin-bottom:10px;'>";
+    var bad=_pinProblem(v);
+    return "<label class='f-label'>"+escHtml(hq)+
+      (bad?" <span style='color:var(--gold2);font-weight:700;'>⚠ "+escHtml(bad)+"</span>":"")+
+      "</label><input type='text' inputmode='numeric' class='f-input' id='pin-"+hqKey(hq)+"' value='"+escHtml(v)+
+      "' placeholder='खाली = PIN ज़रूरी नहीं' style='margin-bottom:10px;'>";
   }).join("");
   document.getElementById("pin-overlay").classList.add("open");
 }
 function closePinModal(){document.getElementById("pin-overlay").classList.remove("open");}
 function savePins(){
-  var d={};
+  var d={},bad=[];
   HQS.forEach(function(hq){
     var v=document.getElementById("pin-"+hqKey(hq)).value.trim();
+    var p=_pinProblem(v);
+    if(p){ bad.push(hq+" — "+p); return; }
     if(v) d[hqKey(hq)]=v;
   });
+  // एक भी ग़लत हो तो कुछ भी सेव न करें — आधा-अधूरा सेव होने पर JE को लगता कि सब हो गया,
+  // जबकि किसी HQ का PIN चुपचाप छूट जाता
+  if(bad.length){ toast("⚠️ ठीक करें — "+bad.join(" | "),"err"); return; }
   fetch(FB+"/HQ_PIN.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)})
     .then(function(r){
       if(!r.ok) throw new Error("HTTP "+r.status);

@@ -271,14 +271,8 @@ function openCashModal(){
   document.getElementById("cash-overlay").classList.add("open");
 }
 function closeCashModal(){document.getElementById("cash-overlay").classList.remove("open");}
-function ensureXLSX(cb){
-  if(window.XLSX){cb(true);return;}
-  var sc=document.createElement("script");
-  sc.src="vendor/xlsx.full.min.js";
-  sc.onload=function(){cb(true);};
-  sc.onerror=function(){cb(false);};
-  document.head.appendChild(sc);
-}
+// ensureXLSX अब js/storage.js में है (ensurePapa के साथ, एक ही de-dup तंत्र से) — यहां वाली
+// प्रति हटा दी गई, क्योंकि वह एक ही script को दो बार जोड़ सकती थी जब दो जगह से एक साथ मांग आती
 function cashFile(f){
   if(!f)return;
   var st=document.getElementById("cash-status");

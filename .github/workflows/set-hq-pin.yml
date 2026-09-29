@@ -1,0 +1,48 @@
+name: HQ PIN बदलें
+
+# लाइनमैन का login Firebase Auth के उस मुख्यालय वाले खाते से होता है और उसका password सीधे PIN
+# से बनता है ("vasuli-"+PIN)। Firebase Console से यह password बदला नहीं जा सकता — वहां सिर्फ़
+# "Reset password" (email भेजता है, पर hq-*@adegaondc.internal असली domain ही नहीं है),
+# "Disable account" और "Delete account" हैं। Delete का रास्ता तो ख़तरनाक है: नया खाता बनाने पर
+# UID बदल जाता है, जबकि database.rules.json में हर मुख्यालय का UID हार्डकोडेड है।
+# इसलिए यह workflow — Admin SDK से password बदलता है, UID वही रहता है।
+#
+# चलाने का तरीक़ा: GitHub → Actions → "HQ PIN बदलें" → Run workflow → मुख्यालय चुनें + नया PIN
+on:
+  workflow_dispatch:
+    inputs:
+      hq:
+        description: 'मुख्यालय'
+        required: true
+        type: choice
+        options:
+          - आदेगांव
+          - पिंडरई
+          - जोबा
+          - पाटन
+          - बीबी
+          - मढ़ी
+      new_pin:
+        description: 'नया PIN — सिर्फ़ अंक, कम से कम 6 (यहां vasuli- मत लिखें, वह अपने-आप जुड़ता है)'
+        required: true
+        type: string
+
+jobs:
+  set-pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install admin SDK
+        # deploy-rules.yml जैसा ही pin किया हुआ version — firebase-admin@14.4.0 को Node >=22
+        # चाहिए, इसलिए ऊपर node-version भी 22 है
+        run: npm install --no-save firebase-admin@14.4.0
+      - name: Set HQ PIN
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          HQ: ${{ inputs.hq }}
+          NEW_PIN: ${{ inputs.new_pin }}
+        run: node scripts/set-hq-pin.js

@@ -264,16 +264,40 @@ function prefetchAll(force){
 }
 
 // self-hosted libraries (Excel/CSV) — service worker द्वारा cache होती हैं, इसलिए offline में भी load हो जाती हैं
+// ── vendor libs सिर्फ़ ज़रूरत पड़ने पर ही उतरें ─────────────────────────────────────────────
+// xlsx.full.min.js ~930KB की है और लाइनमैन उसे कभी छूता ही नहीं (Excel/backup सिर्फ़ JE के पास हैं)।
+// sw.js में इसे precache से जान-बूझकर बाहर रखा गया है, और यह lazy-loader भी इसीलिए बना था —
+// पर v9.68 (self-hosting) से index.html में इसका सीधा <script> tag भी पड़ा रह गया था, इसलिए वह
+// पूरी फ़ाइल हर पहली बार, पेज को रोककर उतरती थी और यह loader उस फ़ाइल के लिए मरा हुआ कोड था।
+// अब वे tag हटा दिए गए हैं — हर रास्ता यहीं से जाता है।
+// एक ही script दो बार न जुड़े (दो जगह से एक साथ मांग आ सकती है), इसलिए हर src के इंतज़ार करने
+// वाले एक जगह जमा होते हैं और script सिर्फ़ एक बार जुड़ती है
+var _vendorWaiters={};
+function _ensureVendor(src,isLoaded,cb){
+  if(isLoaded()){ if(cb)cb(true); return; }
+  var w=_vendorWaiters[src];
+  if(w){ if(cb)w.push(cb); return; } // पहले से उतर रही है — उसी के साथ इंतज़ार करो
+  w=_vendorWaiters[src]=cb?[cb]:[];
+  var sc=document.createElement("script");
+  sc.src=src;
+  function done(ok){
+    _vendorWaiters[src]=null; // नाकाम रही हो तो अगली बार दोबारा कोशिश हो सके
+    w.splice(0).forEach(function(f){try{f(ok);}catch(e){}});
+  }
+  sc.onload=function(){done(true);};
+  sc.onerror=function(){done(false);};
+  document.head.appendChild(sc);
+}
+function ensureXLSX(cb){ _ensureVendor("vendor/xlsx.full.min.js",function(){return !!window.XLSX;},cb); }
+function ensurePapa(cb){ _ensureVendor("vendor/papaparse.min.js",function(){return !!window.Papa;},cb); }
+// "नेट आते ही पहले से उतार रखो" वाली warm-up कॉल (ui-core.js का online handler, main.js)।
+// सिर्फ़ JE के लिए — Excel/CSV वाले सारे काम (अपलोड, कैश-लिस्ट, बैकअप, गांव-वार Excel) JE के ही
+// हैं, लाइनमैन को ये बटन दिखते तक नहीं। पहले यह सबके लिए चलती थी, इसलिए index.html से <script>
+// tag हटाने के बाद भी लाइनमैन का फ़ोन वही ~930KB चुपचाप उतारता रहता — यानी सुधार आधा ही होता।
+// JE भी क्लिक करते वक़्त on-demand उतार ही लेते हैं (हर caller ensureXLSX(cb) से जाता है), यह
+// warm-up सिर्फ़ उस क्षण का इंतज़ार बचाने के लिए है
 function ensureLibs(){
-  if(typeof XLSX==="undefined"){
-    var s1=document.createElement("script");
-    s1.src="vendor/xlsx.full.min.js";
-    document.head.appendChild(s1);
-  }
-  if(typeof Papa==="undefined"){
-    var s2=document.createElement("script");
-    s2.src="vendor/papaparse.min.js";
-    document.head.appendChild(s2);
-  }
+  if(!CU||CU.role!=="supervisor") return;
+  ensureXLSX(null); ensurePapa(null);
 }
 

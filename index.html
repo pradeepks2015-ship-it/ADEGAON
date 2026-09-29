@@ -18,8 +18,12 @@ try{
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="वसूली ट्रैकर">
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="vendor/papaparse.min.js"></script>
-<script src="vendor/xlsx.full.min.js"></script>
+<!-- vendor/xlsx.full.min.js (~930KB) और vendor/papaparse.min.js यहां जान-बूझकर नहीं हैं।
+     v9.68 में self-host करते समय ये <script> tag जुड़ गए थे, इसलिए हर device (उस लाइनमैन का भी,
+     जिसे Excel/अपलोड दिखता तक नहीं) पहली बार ऐप खोलते ही ~930KB उतारता था — और वह भी पेज रोककर।
+     sw.js इन्हें precache से बाहर रखता है और storage.js का ensureXLSX/ensurePapa इन्हें ज़रूरत
+     पड़ने पर उतारने के लिए ही बना था, पर इन tag की वजह से वह पूरा इंतज़ाम बेमानी पड़ा था।
+     अब ये सिर्फ़ तभी उतरती हैं जब सच में Excel/CSV का काम पड़े (देखें js/storage.js)। -->
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" crossorigin="anonymous"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js" crossorigin="anonymous"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-check-compat.js" crossorigin="anonymous"></script>
@@ -586,7 +590,7 @@ try{
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">&#128274; Lineman PIN</div>
-    <div style="font-size:11px;color:var(--muted);padding:0 4px 10px;">हर HQ के लिए एक PIN — जिस HQ का खाली छोड़ेंगे, वहां बिना PIN के login चलता रहेगा (पुराना व्यवहार)। यह हल्की सुरक्षा है — कोई भी नाम भरकर घुस न सके, पूरी तरह secure account-login नहीं।</div>
+    <div style="font-size:11px;color:var(--muted);padding:0 4px 10px;line-height:1.7;">हर HQ के लिए एक PIN — जिस HQ का खाली छोड़ेंगे, वहां बिना PIN के login चलता रहेगा (पुराना व्यवहार)। PIN <b>कम से कम 6 अंक</b> का रखें: लाइनमैन का password सीधे इसी से बनता है, इसलिए 4 अंक वाला PIN अंदाज़े से तोड़ा जा सकता है।<br><br>&#9888; <b>यह पन्ना सिर्फ़ रिकॉर्ड रखता है।</b> PIN सचमुच बदलने के लिए Firebase Console &rarr; Authentication में उस HQ के खाते का password <b>vasuli-&lt;नया PIN&gt;</b> करना ज़रूरी है — वरना लाइनमैन का login नाकाम हो जाएगा।</div>
     <div id="pin-fields"></div>
     <div class="mfooter">
       <button class="btn-save" onclick="savePins()">&#128190; सेव करें</button>
