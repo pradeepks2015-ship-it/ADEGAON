@@ -4,13 +4,13 @@
 > (`git log --oneline -30`) — यहां सिर्फ़ **अभी की स्थिति**, **हाल के फ़ैसले** और **जो सीखा** है।
 > काम पूरा होने पर इसे अपडेट करते चलें।
 
-**आख़िरी अपडेट:** 29 सितंबर 2026 · **Version:** 9.183 · **CACHE_NAME:** adegaon-dc-v200
+**आख़िरी अपडेट:** 30 सितंबर 2026 · **Version:** 9.184 · **CACHE_NAME:** adegaon-dc-v201
 
 ---
 
 ## 1. अभी चालू काम
 
-**कुछ भी अधूरा नहीं।** आख़िरी PR #211 (v9.182–9.183) merge होकर लाइव है।
+**कुछ भी अधूरा नहीं।** आख़िरी PR #214 (v9.184) merge होकर लाइव है।
 
 | PR | क्या | कब |
 |---|---|---|
@@ -23,10 +23,32 @@
 | #209 | v9.180 + workflow shutdown | 29 सित ✅ |
 | #210 | v9.181 | 29 सित ✅ |
 | #211 | v9.182, v9.183 | 29 सित ✅ |
+| #212, #213 | सिर्फ़ STATUS.md (service worker, CSP रद्द) | 29 सित ✅ |
+| #214 | v9.184 — 401 की वजह लॉग में | 30 सित ✅ |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
 कर लें (पिछले squash-merge से conflict बचाने के लिए)।
+
+---
+
+## 1अ. 30 सितंबर
+
+### v9.184 — save/sync पर 401 की असली वजह लॉग में *(PR #214)*
+error log में नीलेश नायक (मढ़ी) और Manoj kumar dehariya (पाटन) के `save-fail HTTP 401` आए,
+जबकि दोनों **login किए हुए** थे। लॉग में सिर्फ़ "HTTP 401" था, इसलिए वजह (गुमनाम खाता, App Check
+या rules) अंदाज़े से ही बताई जा सकी। live-sync वाला लॉग (`sse-never-opened`) यह सब पहले से लिखता था।
+
+अब `save-fail` और `sync-put/patch/del-fail` में, **सिर्फ़ 401/403 पर**, `x` में जुड़ता है:
+`खाता: सही HQ/anonymous/कोई नहीं/दूसरा HQ • AppCheck token: था/नहीं था • login token: था/नहीं था • जवाब: <सर्वर>`
+(`_fbHttpErr`, `_authDiag` — `js/config.js`)। error का message जान-बूझकर वही "HTTP 401" रखा है,
+क्योंकि `_bumpAuthFail` और toast उसी से पहचानते हैं। **ऐप का बर्ताव नहीं बदला, सिर्फ़ लॉग।**
+
+**अगली बार ऐसा लॉग आए तो:** `खाता: anonymous` → login के वक़्त नेट टूटने वाला रास्ता (`js/auth.js:167`);
+`खाता: सही HQ` + जवाब में App Check → App Check की दिक़्क़त; `खाता: सही HQ` + "Permission denied" → rules।
+
+उसी दिन के बाक़ी लॉग जांचे, कोई ख़राबी नहीं मिली: पाटन के एक फ़ोन पर "(login से पहले)" 401 (लाइनमैन ने
+नया PIN नहीं डाला था, डेटा सुरक्षित है), और JE के फ़ोन पर `cash-refresh-partial` 34/48 (शाम को कमज़ोर नेट)।
 
 ---
 

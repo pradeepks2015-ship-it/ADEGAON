@@ -8877,3 +8877,76 @@ test.describe('ब्राउज़र अनुवाद से HQ का न�
     expect(r.valid).toBe(true); // यही वह जांच है जो v9.182 में loadSession पर भी लगी
   });
 });
+
+// ── v9.184: save/sync पर 401/403 की असली वजह लॉग में ──
+// असली production (30/9): नीलेश (मढ़ी) और Manoj (पाटन) login किए हुए थे, फिर भी "save-fail HTTP 401"
+// — लॉग में बस इतना था, वजह अंदाज़े से बतानी पड़ी। अब साथ में खाता, दोनों token और सर्वर का जवाब।
+// message वही "HTTP 401" रहना ज़रूरी है — auth-fail गिनती और toast उसी से पहचानते हैं
+test.describe('save/sync 401 — लॉग में खाता, token और सर्वर का जवाब (v9.184)', () => {
+  const denied = '{\n  "error" : "Permission denied"\n}';
+
+  test('save-fail (PATCH) 401 — खाता/AppCheck/login token/जवाब दर्ज हों, message "HTTP 401" ही रहे और auth-fail गिनती बढ़े', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate((body) => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      var hq = 'पाटन', cat = 'वैभव';
+      window.fetch = function () {
+        return Promise.resolve({ ok: false, status: 401, text: () => Promise.resolve(body) });
+      };
+      _fbSendPatch(hq, cat, { '123': { acc: '123', status: 'paid' } }, function () {
+        setTimeout(() => {
+          var l = getLogs().filter((x) => x.c === 'save-fail');
+          var pend = getPending()[cKey(hq, cat)];
+          resolve({ logs: l, fail: pend && pend.authFailCount });
+        }, 50);
+      });
+    }), denied);
+    expect(r.logs.length).toBe(1);
+    expect(r.logs[0].m).toBe('HTTP 401');
+    expect(r.logs[0].x).toContain('पाटन/वैभव');
+    expect(r.logs[0].x).toContain('खाता:');
+    expect(r.logs[0].x).toContain('AppCheck token:');
+    expect(r.logs[0].x).toContain('login token:');
+    expect(r.logs[0].x).toContain('जवाब: { "error" : "Permission denied" }');
+    expect(r.fail).toBe(1); // _bumpAuthFail ने 401 पहचाना — पहले जैसा
+  });
+
+  test('save-fail — नेट/सर्वर वाली (500) नाकामी पर यह जानकारी न जुड़े (लॉग में शोर नहीं)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      window.fetch = function () { return Promise.resolve({ ok: false, status: 500, text: () => Promise.resolve('oops') }); };
+      _fbSendPatch('पाटन', 'वैभव', { '123': { acc: '123', status: 'paid' } }, function () {
+        setTimeout(() => resolve(getLogs().filter((x) => x.c === 'save-fail')), 50);
+      });
+    }));
+    expect(r.length).toBe(1);
+    expect(r[0].m).toBe('HTTP 500');
+    expect(r[0].x).toBe('पाटन/वैभव');
+  });
+
+  test('sync-patch-fail (offline बदलाव दोबारा भेजते वक़्त) 401 — वही जानकारी दर्ज हो', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate((body) => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      var hq = 'मढ़ी', cat = 'मदन', k = cKey(hq, cat), p = {};
+      p[k] = { hq: hq, cat: cat, type: 'put', patch: { '555': { acc: '555', status: 'paid' } } };
+      setPendingObj(p);
+      window.fetch = function (url, opts) {
+        if (opts && opts.method === 'PATCH') return Promise.resolve({ ok: false, status: 401, text: () => Promise.resolve(body) });
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(null) }); // रिमार्क-मिलान वाली पढ़ाई
+      };
+      _flushing = false;
+      flushPending();
+      setTimeout(() => resolve(getLogs().filter((x) => x.c === 'sync-patch-fail')), 400);
+    }), denied);
+    expect(r.length).toBe(1);
+    expect(r[0].m).toBe('HTTP 401');
+    expect(r[0].x).toContain('मढ़ी/मदन');
+    expect(r[0].x).toContain('खाता:');
+    expect(r[0].x).toContain('जवाब: { "error" : "Permission denied" }');
+  });
+});

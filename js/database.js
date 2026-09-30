@@ -403,14 +403,14 @@ function _fbPutNow(hq,cat,arr,cb){
     headers:{"Content-Type":"application/json"},
     body:body
   }).then(function(r){
-    if(!r.ok) throw new Error("HTTP "+r.status);
+    if(!r.ok) return _fbHttpErr(r);
     // अभी-अभी हमने सर्वर पर जो रूप लिखा, अब सर्वर पर वही है — याद रख लो (कोई network call नहीं)
     _noteShape(hq,cat,wrote);
     clearPendingKey(cKey(hq,cat));
     updTime(); setSyncStatus(true);
     if(cb) cb(true);
   }).catch(function(e){
-    if(navigator.onLine) logErr("save-fail",e,hq+"/"+cat); // ऑनलाइन होते हुए save fail — असली गड़बड़
+    if(navigator.onLine) logErr("save-fail",e,hq+"/"+cat+_authDiag(e)); // ऑनलाइन होते हुए save fail — असली गड़बड़
     markPending(hq,cat,"put",null,e);
     setSyncStatus(false);
     _saveFailToast(e);
@@ -537,12 +537,12 @@ function _fbSendPatch(hq,cat,patch,cb){
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify(patch)
   }).then(function(r){
-    if(!r.ok) throw new Error("HTTP "+r.status);
+    if(!r.ok) return _fbHttpErr(r);
     clearPendingKey(cKey(hq,cat));
     updTime(); setSyncStatus(true);
     if(cb) cb(true);
   }).catch(function(e){
-    if(navigator.onLine) logErr("save-fail",e,hq+"/"+cat);
+    if(navigator.onLine) logErr("save-fail",e,hq+"/"+cat+_authDiag(e));
     markPending(hq,cat,"put",patch,e);
     setSyncStatus(false);
     _saveFailToast(e);
