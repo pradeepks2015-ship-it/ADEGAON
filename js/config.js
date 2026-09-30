@@ -14,7 +14,7 @@ var HQ_AUTH_EMAIL = {
   "बीबी":"hq-bibi@adegaondc.internal",
   "मढ़ी":"hq-madhi@adegaondc.internal"
 };
-var APP_VER = "9.183"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "9.184"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
@@ -78,6 +78,34 @@ function applyFBCatNames(d){
 function _fbJson(r){
   if(!r.ok) throw new Error("HTTP "+r.status);
   return r.json();
+}
+
+// ── save/sync पर 401/403 की असली वजह लॉग में ──
+// असली production (30/9): नीलेश (मढ़ी) और Manoj (पाटन) login किए हुए थे, फिर भी "save-fail HTTP 401"
+// — पर लॉग में बस इतना ही था, इसलिए वजह (गुमनाम खाता? App Check? rules?) अंदाज़े से बतानी पड़ी।
+// live-sync वाला लॉग (sse-never-opened) यह सब पहले से लिखता है, save वाला नहीं लिखता था।
+// error का message जान-बूझकर वही "HTTP 401" रखा है — auth-fail गिनती (_bumpAuthFail) और toast
+// उसी से पहचानते हैं। सर्वर का जवाब अलग .body में जाता है
+function _fbHttpErr(r){
+  var e=new Error("HTTP "+r.status);
+  if(r.status!==401&&r.status!==403) return Promise.reject(e);
+  return Promise.resolve().then(function(){ return r.text(); })
+    .then(function(t){ e.body=String(t||"").replace(/\s+/g," ").trim().slice(0,60); throw e; },
+          function(){ throw e; });
+}
+// लॉग के "x" हिस्से में जोड़ने लायक़ जांच-जानकारी — सिर्फ़ 401/403 पर (बाक़ी नाकामी नेट की होती है,
+// उनमें यह शोर ही होगा)
+function _authDiag(e){
+  var msg=(e&&e.message)||"";
+  if(!/HTTP (401|403)/.test(msg)) return "";
+  var s="";
+  try{
+    s+=" • खाता: "+(typeof _liveAcctKind==="function"?_liveAcctKind():"?");
+    s+=" • AppCheck token: "+((typeof AC_TOKEN!=="undefined"&&AC_TOKEN)?"था":"नहीं था");
+    s+=" • login token: "+((typeof ID_TOKEN!=="undefined"&&ID_TOKEN)?"था":"नहीं था");
+  }catch(x){}
+  if(e.body) s+=" • जवाब: "+e.body;
+  return s;
 }
 
 function loadCatNames(){

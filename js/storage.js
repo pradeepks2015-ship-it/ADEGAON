@@ -140,8 +140,8 @@ function flushPending(){
     }
     if(it.type==="del"){
       fetch(FB+"/"+fbPath(it.hq,it.cat)+".json",{method:"DELETE"})
-        .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);clearPendingKey(k);setSyncStatus(true);fin(true);})
-        .catch(function(e){if(navigator.onLine)logErr("sync-del-fail",e,it.hq+"/"+it.cat);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
+        .then(function(r){if(!r.ok)return _fbHttpErr(r);clearPendingKey(k);setSyncStatus(true);fin(true);})
+        .catch(function(e){if(navigator.onLine)logErr("sync-del-fail",e,it.hq+"/"+it.cat+_authDiag(e));_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
       return;
     }
     if(it.patch){
@@ -154,12 +154,12 @@ function flushPending(){
           method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(it.patch)
         });
       }).then(function(r){
-        if(!r.ok)throw new Error("HTTP "+r.status);
+        if(!r.ok)return _fbHttpErr(r);
         clearPendingKey(k);
         updTime();setSyncStatus(true);
         if(CU&&it.hq===activeHQ&&it.cat===activeCat){var d=cGet(it.hq,it.cat);renderSummaryWith(d);renderListWith(d);}
         fin(true);
-      }).catch(function(e){if(navigator.onLine)logErr("sync-patch-fail",e,it.hq+"/"+it.cat);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
+      }).catch(function(e){if(navigator.onLine)logErr("sync-patch-fail",e,it.hq+"/"+it.cat+_authDiag(e));_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
       return;
     }
     // put (पुराना array फॉर्मेट) — पहले server data लो, merge करो, फिर save — दोनों के बदलाव बचें
@@ -184,7 +184,7 @@ function flushPending(){
           fin(!!ok);
         });
       })
-      .catch(function(e){if(navigator.onLine)logErr("sync-put-fail",e,it.hq+"/"+it.cat);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
+      .catch(function(e){if(navigator.onLine)logErr("sync-put-fail",e,it.hq+"/"+it.cat+_authDiag(e));_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
   });
   if(needCat){
     var reqs=Object.keys(CAT_NAMES).map(function(hq){
