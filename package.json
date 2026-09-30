@@ -14,7 +14,7 @@
     "@playwright/test": "^1.61.1",
     "eslint": "^10.8.0",
     "eslint-plugin-no-unsanitized": "^4.1.5",
-    "espree": "^10.4.0",
+    "espree": "^11.2.0",
     "globals": "^15.15.0"
   }
 }
