@@ -64,4 +64,54 @@
 उपयोगकर्ता (JE) से हमेशा हिंदी में बात करें — कोड कमेंट भी हिंदी में लिखे जाते हैं (established convention)।
 
 ## किसी अन्य Distribution Centre के लिए यह ऐप दोबारा बनानी हो तो
-सिर्फ़ यही बदलना पड़ेगा (कोई feature/logic नहीं बदलता): नया Firebase प्रोजेक्ट (DB + Auth + App Check), `js/config.js` का HQS/HQ_AUTH_EMAIL/JE_EMAIL, `js/firebase.js` का पूरा config, `scripts/backup.js` की अलग HQS/DB_URL, `js/village.js` का VILLAGE_ALIASES (खाली करके नए सिरे से), `index.html` का `#hq-sel` dropdown (hardcoded options), `database.rules.json`/`.firebaserc` (नए project-id और हर HQ के नए Firebase Auth UID के साथ दोबारा बनाना), और सभी जगह ब्रांडिंग टेक्स्ट ("आदेगांव"/"सिवनी"/"लखनादौन")।
+कोई feature/logic नहीं बदलता — सिर्फ़ नीचे की चीज़ें। सूची 1/10/2026 को पूरे repo में
+`adegaon-dc-top-50`, `adegaondc`, JE email, App Check key, हर HQ नाम, "आदेगांव/Adegaon/ADEGAON",
+"सिवनी", "लखनादौन" खोजकर बनाई गई है (टिप्पणियों वाली जगहें छोड़कर)। बदलाव के बाद यही खोज
+दोबारा चलाकर पक्का करें कि कुछ छूटा नहीं:
+`grep -rniI --exclude-dir={node_modules,.git,test-results} -e adegaon -e आदेगांव -e पिंडरई -e सिवनी -e लखनादौन -e pradeepks2015 .`
+
+**ट्रांसफ़र हो तो पहले आदेगांव सौंपें** (वरना यह ऐप JE के निजी खातों पर टिका रहेगा): नए JE को
+Firebase प्रोजेक्ट में Owner, Netlify में member, GitHub में collaborator बनाएं; `JE_EMAIL`
+(`js/config.js`) और `database.rules.json` के हर `auth.token.email === '...'` में नए JE का email।
+
+### क. JE के करने के काम (वेबसाइटों पर)
+1. **Firebase:** नया प्रोजेक्ट → Realtime Database → Authentication में Email/Password चालू →
+   Users → Add user: हर HQ का `hq-<नाम>@<dc>.internal`, password `vasuli-<6 अंक PIN>` (हर UID नोट करें) →
+   App Check (reCAPTCHA v3, site key नोट करें; reCAPTCHA admin में नई Netlify domain जोड़ें) →
+   Service accounts → नई private key (JSON — किसी को न भेजें) → Web app जोड़कर config लें
+2. **Authentication → Settings → Authorized domains** में नई Netlify domain जोड़ें — छूटा तो login ही नहीं होगा
+3. **GitHub:** नया repo; Settings → Secrets → Actions में `FIREBASE_SERVICE_ACCOUNT` = ऊपर का JSON
+4. **Netlify:** नई साइट, नए repo के `main` से जोड़ें
+
+### ख. कोड में बदलाव
+| फ़ाइल | क्या बदलना है |
+|---|---|
+| `js/config.js` | `HQS`, `HQ_AUTH_EMAIL` (नया `.internal` domain), `JE_EMAIL` |
+| `js/firebase.js` | `FB` (पहली पंक्ति), पूरा `firebaseConfig`, `appCheck().activate("<site key>")` |
+| `.firebaserc` | project-id |
+| `database.rules.json` | हर HQ की कुंजी + उसका नया UID, हर जगह JE email — फिर `main` पर merge से अपने-आप deploy |
+| `scripts/backup.js` | `DB_URL`, अपनी `HQS` सूची |
+| `scripts/deploy-rules.js` | `DB_URL` |
+| `scripts/set-hq-pin.js` | `DB_URL`, `HQ_AUTH_EMAIL` की नक़ल |
+| `.github/workflows/set-hq-pin.yml` | `options:` में HQ नाम |
+| `.github/workflows/backup.yml` | artifact नाम `adegaon-backup-…` (सिर्फ़ नाम) |
+| `index.html` | `<title>`, org-banner, login-title, `login-sub` (डिवीजन/सर्कल), `.sb-org`, `#hdr-sub`, `#hq-sel` के options (`value` के साथ, `translate="no"` बना रहे), बिलिंग popup का डिवीजन/सर्कल पाठ |
+| `manifest.json` | `name`, `description` (install के वक़्त फ़ोन पर यही दिखता है; `short_name` पहले से सामान्य "वसूली ट्रैकर") |
+| `privacy.html` | DC/डिवीजन/सर्कल का नाम, संपर्क email |
+| `js/reports.js` | SMS/WhatsApp संदेशों में DC/सर्कल का नाम, नमूना CSV की गांव वाली पंक्ति, बैकअप फ़ाइल-नाम `ADEGAON_backup_`, **बिलिंग साइट `billing.mpez.co.in`** (दूसरी discom — पश्चिम/मध्य क्षेत्र — हो तो उसकी साइट) |
+| `js/share.js` | फ़ोटो-शेयर कार्ड की ऊपरी पंक्ति ("आदेगांव बिजली वितरण केंद्र") |
+| `js/scorecards.js` | WhatsApp स्कोरकार्ड का शीर्षक |
+| `js/upload.js` | PDF रिपोर्ट का शीर्षक |
+| `js/home-scorecard.js` | डिस्प्ले बोर्ड पर "ADEGAON DC" |
+| `js/village.js` | `VILLAGE_ALIASES` ख़ाली करें (आदेगांव के गांवों के स्पेलिंग-सुधार हैं), Excel फ़ाइल-नाम `ADEGAON_गांव_वार_` |
+| `js/migration.js` | dry-run फ़ाइल-नाम (सिर्फ़ नाम) |
+| `package.json` | `name`, `description` (सिर्फ़ पहचान) |
+| `sw.js` | `CACHE_NAME` का `adegaon-dc-` हिस्सा (वैकल्पिक, पर नई साइट पर साफ़ शुरुआत) |
+| `.well-known/assetlinks.json` | Android ऐप (TWA) की पहचान — नया APK न बनाना हो तो फ़ाइल हटा दें |
+| `google1f9a33c82033cc77.html` | Google Search Console की आदेगांव वाली पुष्टि — नई कॉपी में हटा दें |
+| `tests/smoke.spec.js` | बहुत से टेस्ट HQ नाम ("आदेगांव", "पाटन"…) सीधे इस्तेमाल करते हैं — नए नामों पर बदलें, फिर पूरा suite |
+| `CLAUDE.md`, `STATUS.md` | नया DC/डिवीजन/सर्कल, repo और Netlify साइट का नाम; `STATUS.md` नए सिरे से |
+
+### ग. शुरू करना (JE)
+JE login → 🔒 Lineman PIN में हर HQ का वही PIN भरें जो ऊपर Firebase में डाला → श्रेणियों के नाम →
+हर HQ का लेजर अपलोड → लाइनमैनों को नया लिंक और PIN।
