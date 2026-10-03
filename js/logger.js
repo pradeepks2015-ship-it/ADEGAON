@@ -29,8 +29,22 @@ function _learnServerOffset(resolvedServerTs,localNowAtRequest){
 // चरण 3 माइग्रेशन (per-record) से पहले/बाद यह पक्का करने के लिए ज़रूरी कि कोई device पुराने
 // write-path वाले code पर न रह जाए (वरना वह migrated list को दोबारा array में लिख सकता है)
 var deviceTimer=null;
+var _lastPingAt=0;
+// ऐप पर लौटने (minimize से वापस) पर भी हाज़िरी — पर घंटे में एक बार से ज़्यादा नहीं।
+// असली production (3/10): पिंडरई के विकास साहू ने दोपहर 1:09 पर वसूली की, फिर भी "कर्मचारी
+// सक्रियता" में पिंडरई "आज किसी ने ऐप नहीं खोला" में था। ping सिर्फ़ _finishLogin (नए सिरे से
+// खुलना) और हर 4 घंटे के setInterval से होता था — लाइनमैन ऐप बंद नहीं करते, minimize करते हैं,
+// वापस आने पर _finishLogin दोबारा नहीं चलता, और पीछे पड़े tab का टाइमर Android रोक देता है।
+// खर्च: ~100 बाइट का PUT (upload — download quota में नहीं)
+var PING_RESUME_GAP_MS=60*60*1000;
+document.addEventListener("visibilitychange",function(){
+  if(document.visibilityState!=="visible") return;
+  if(Date.now()-_lastPingAt<PING_RESUME_GAP_MS) return;
+  pingDeviceVersion();
+});
 function pingDeviceVersion(){
   if(!navigator.onLine||!CU)return;
+  _lastPingAt=Date.now();
   var reqAt=Date.now();
   fetch(FB+"/DEVICE_VERSIONS/"+DEV_ID+".json",{
     method:"PUT",
@@ -101,14 +115,25 @@ function _dvRmkTs(at){
 }
 
 // हर कर्मचारी ने पिछले N दिन में कितना काम किया — यह पूरी तरह उसी cached data से बनता है जो
-// डिवाइस पर पहले से मौजूद है (cGet), एक भी नई network call नहीं
+// डिवाइस पर पहले से मौजूद है (cGet), एक भी नई network call नहीं।
+// हर व्यक्ति के साथ यह भी कि किन मुख्यालयों में काम दिखा (hqs) और दिखाने लायक़ नाम (name) —
+// ताकि जिसकी "हाज़िरी" (DEVICE_VERSIONS ping) न लगी हो, वह भी तालिका में आ सके
+//
+// "वसूली" अब भुगतान तारीख़ (paydate) से गिनी जाती है, रिकॉर्ड के ts से नहीं। असली production
+// (3/10): ऊपर की पट्टी में "303 वसूली" थी जबकि तालिका का जोड़ 57 — JE ने सही पकड़ा कि इसमें
+// पुरानी वसूली भी है। ts हर बदलाव पर आज का हो जाता है: पुराने वसूल उपभोक्ता पर आज रिमार्क
+// (saveRmk — updatedBy भी रिमार्क वाले का हो जाता है), reconcileHQ से दूसरे बटन में चढ़ाना,
+// कैश लिस्ट (पुरानी paydate पर भी ts आज)। paydate इन सब में नहीं बदलती, वही असली दिन है।
+// सीमा: "किसने वसूल मार्क किया" अलग से दर्ज नहीं होता — नाम updatedBy (आख़िरी बदलने वाला) से
 function _dvActivity(sinceTs){
-  var out={},seen={};
+  var out={},seenPaid={},seenWork={};
   var sd=new Date(sinceTs); sd.setHours(0,0,0,0);
   var sinceDay=sd.getTime(); // रिमार्क में सिर्फ़ तारीख़ है, इसलिए दिन की शुरुआत से तुलना
-  var bump=function(name){
+  var sinceVal=sinceTs?(sd.getFullYear()*10000+(sd.getMonth()+1)*100+sd.getDate()):0; // paydate (yyyymmdd) से तुलना के लिए
+  var bump=function(name,hq){
     var k=_dvNameKey(name);
-    if(!out[k]) out[k]={work:0,paid:0,rmk:0};
+    if(!out[k]) out[k]={work:0,paid:0,rmk:0,hqs:{},name:String(name)};
+    if(hq) out[k].hqs[hq]=1;
     return out[k];
   };
   HQS.forEach(function(hq){
@@ -121,15 +146,22 @@ function _dvActivity(sinceTs){
         (x.remarksArr||[]).forEach(function(r){
           if(!r||!r.by) return;
           var t=_dvRmkTs(r.at);
-          if(t&&t>=sinceDay) bump(r.by).rmk++;
+          if(t&&t>=sinceDay) bump(r.by,hq).rmk++;
         });
-        // status/updatedBy हर श्रेणी में copy हो जाता है (propagateStatus) — इसलिए एक ही उपभोक्ता
-        // को एक ही बार गिनें, वरना वसूली की संख्या कई गुना बढ़ी हुई दिखेगी
-        if(x.acc){ var dk=hq+"|"+String(x.acc).trim(); if(seen[dk]) return; seen[dk]=1; }
-        if(!x.updatedBy||!x.ts||x.ts<sinceTs) return;
-        var o=bump(x.updatedBy);
-        o.work++;
-        if(x.status==="paid") o.paid++;
+        // status/paydate/updatedBy हर श्रेणी में copy हो जाते हैं (propagateStatus) — इसलिए एक ही
+        // उपभोक्ता को एक ही बार गिनें, वरना वसूली कई गुना बढ़ी दिखेगी। "देखा" सिर्फ़ तब दर्ज हो जब
+        // गिनती सचमुच हुई — पहले हर रिकॉर्ड पर दर्ज हो जाता था, तो किसी बटन में बाकी और दूसरे में
+        // वसूल वाला उपभोक्ता (बीच का mismatch) गिनती से छूट सकता था
+        var dk=x.acc?(hq+"|"+String(x.acc).trim()):null;
+        if(x.updatedBy&&x.status==="paid"&&(!dk||!seenPaid[dk])){
+          var pv=latestPayVal(x);
+          if(pv&&pv>=sinceVal){ if(dk) seenPaid[dk]=1; bump(x.updatedBy,hq).paid++; }
+        }
+        // बाक़ी बदलाव (जैसे "वापस बाकी") — सिर्फ़ तब दिखते हैं जब न वसूली न रिमार्क हो
+        if(x.updatedBy&&x.ts&&x.ts>=sinceTs&&x.status!=="paid"&&(!dk||!seenWork[dk])){
+          if(dk) seenWork[dk]=1;
+          bump(x.updatedBy,hq).work++;
+        }
       });
     }
   });
@@ -165,19 +197,52 @@ function _dvTodayLabel(){
   try{ return new Date().toLocaleDateString("hi-IN",{day:"numeric",month:"long"}); }
   catch(e){ return ""; }
 }
+// कैश लिस्ट से चढ़ी वसूली का updatedBy "<JE> (कैश लिस्ट)" होता है (home-scorecard.js) — वह असली
+// भुगतान है, पर किसी लाइनमैन का मैदानी काम नहीं
+function _dvIsCashName(n){ return /\(कैश लिस्ट\)\s*$/.test(String(n==null?"":n)); }
+// JE के नाम — DEVICE_VERSIONS में role "supervisor" वाले
+function _dvSupKeys(raw){
+  var s={};
+  Object.keys(raw||{}).forEach(function(k){
+    var r=raw[k];
+    if(r&&typeof r==="object"&&r.role==="supervisor") s[_dvNameKey(r.name)]=1;
+  });
+  return s;
+}
+// जिन्होंने चुनी अवधि में वसूली/रिमार्क किया पर जिनकी "हाज़िरी" (ping) उस अवधि में नहीं लगी।
+// पहले ये तालिका से पूरी तरह ग़ायब रहते थे — काम ऊपर की गिनती में था, पर व्यक्ति कहीं नहीं
+// (देखें pingDeviceVersion के ऊपर वाली टिप्पणी: विकास साहू, पिंडरई, 3/10)
+function _dvExtras(act,pingedKeys,supKeys){
+  var list=[];
+  Object.keys(act||{}).forEach(function(k){
+    var a=act[k];
+    if(!a||!(a.paid||a.rmk)) return; // सिर्फ़ तारीख़-पक्का काम — "बदलाव" (ts) पुराना भी हो सकता है
+    if(pingedKeys[k]) return;
+    list.push({key:k,name:a.name,hqs:Object.keys(a.hqs||{}),cash:_dvIsCashName(a.name),sup:!!supKeys[k]});
+  });
+  return list;
+}
 function _dvTodayStrip(raw){
   var d0=new Date(); d0.setHours(0,0,0,0);
   var todayStart=d0.getTime();
-  var people={},hqSet={};
+  var people={},hqSet={},pinged={};
   Object.keys(raw||{}).forEach(function(k){
     var r=raw[k];
     if(!r||typeof r!=="object") return;
     if((Number(r.t)||0)<todayStart) return;
     people[_dvNameKey(r.name)+"|"+String(r.hq==null?"":r.hq)]=1; // एक ही व्यक्ति के कई device = एक
+    pinged[_dvNameKey(r.name)]=1;
     if(r.hq) hqSet[r.hq]=1;
   });
-  var nPeople=Object.keys(people).length;
   var act=_dvActivity(todayStart);
+  // हाज़िरी न लगी हो पर आज वसूली/रिमार्क दिखा — वह भी सक्रिय है, और उसका मुख्यालय "चुप" नहीं।
+  // JE और कैश लिस्ट इसमें नहीं गिने जाते (वह मैदानी काम नहीं, मुख्यालय को "सक्रिय" नहीं बनाता)
+  _dvExtras(act,pinged,_dvSupKeys(raw)).forEach(function(x){
+    if(x.cash||x.sup) return;
+    people["@"+x.key]=1;
+    x.hqs.forEach(function(h){ hqSet[h]=1; });
+  });
+  var nPeople=Object.keys(people).length;
   var paid=0,rmk=0;
   Object.keys(act).forEach(function(k){ paid+=act[k].paid||0; rmk+=act[k].rmk||0; });
   var quiet=HQS.filter(function(hq){ return !hqSet[hq]; });
@@ -249,6 +314,13 @@ function _dvPaint(){
     p.devs++;
     if(t>=p.t){ p.t=t; p.v=r.v||"?"; p.name=r.name||p.name; p.role=r.role; } // सबसे नया ping ही असली version/नाम
   });
+  // जिसने इस अवधि में काम किया पर हाज़िरी नहीं लगी — वह भी दिखे (उसका version पता नहीं, इसलिए
+  // "पुराना version" वाली चेतावनी में नहीं गिना जाता)
+  var pingedKeys={};
+  Object.keys(people).forEach(function(k){ pingedKeys[_dvNameKey(people[k].name)]=1; });
+  _dvExtras(act,pingedKeys,_dvSupKeys(raw)).forEach(function(x){
+    people["@"+x.key]={name:x.name||"?",hq:x.hqs.join(", ")||"?",role:"",t:0,v:null,devs:0,key:"@"+x.key,extra:true,cash:x.cash};
+  });
   var rows=Object.keys(people).map(function(k){return people[k];});
   if(!rows.length){
     // audit-verified: _dvWindowLabel() सिर्फ़ hardcoded शब्द/संख्या लौटाता है और _dvControls()
@@ -257,12 +329,13 @@ function _dvPaint(){
     el.innerHTML=todayStrip+"<div class='log-empty'>"+(_DV_WINDOW===1?"आज":("पिछले "+_DV_WINDOW+" दिन में"))+" कोई सक्रिय नहीं — ऊपर से अवधि बदलकर देखें</div>"+_dvControls(hidden);
     return;
   }
+  var isOld=function(r){ return !r.extra&&r.v!==APP_VER; };
   rows.sort(function(a,b){
-    var aOld=a.v!==APP_VER, bOld=b.v!==APP_VER;
+    var aOld=isOld(a), bOld=isOld(b);
     if(aOld!==bOld) return aOld?-1:1; // पुराने version पहले दिखें — उन्हीं को अपडेट करवाना है
     return (b.t||0)-(a.t||0);
   });
-  var anyOld=rows.some(function(r){return r.v!==APP_VER;});
+  var anyOld=rows.some(isOld);
   var html=todayStrip+_dvControls(hidden);
   html+=anyOld
     ?"<div style='background:rgba(240,80,80,.08);border:1px solid rgba(240,80,80,.3);border-radius:10px;padding:9px 11px;margin-bottom:8px;font-size:12px;color:var(--red);font-weight:700;'>⚠️ कुछ सक्रिय devices अभी भी पुराने version पर हैं — इन्हें अपडेट करवाएं</div>"
@@ -275,7 +348,7 @@ function _dvPaint(){
   }
   html+="<table class='wasc-table'><thead><tr><th class='wasc-th-left'>कर्मचारी</th><th>HQ</th><th>"+(_DV_WINDOW===1?"आज का काम":(_DV_WINDOW?(_DV_WINDOW+" दिन का काम"):"काम"))+"</th><th>आख़िरी बार लॉगिन</th><th>Version</th></tr></thead><tbody>";
   rows.forEach(function(r){
-    var old=r.v!==APP_VER;
+    var old=isOld(r);
     var a=act[_dvNameKey(r.name)]||{work:0,paid:0,rmk:0};
     var bits=[];
     if(a.paid) bits.push("<b style='color:var(--green);'>"+a.paid+"</b> वसूली");
@@ -288,8 +361,10 @@ function _dvPaint(){
       "<td class='wasc-hq'>"+escHtml(_dvTitle(r.name))+((r.role==="supervisor"&&!/\(JE\)/i.test(r.name))?" (JE)":"")+(r.devs>1?"<br><small style='color:var(--muted);font-weight:400;'>"+r.devs+" devices</small>":"")+"</td>"+
       "<td>"+escHtml(r.hq)+"</td>"+
       "<td>"+workHtml+"</td>"+
-      "<td>"+escHtml(_dvAgo(r.t))+"<br><small style='color:var(--muted);'>"+escHtml(r.t?new Date(r.t).toLocaleDateString("hi-IN"):"?")+"</small></td>"+
-      "<td>"+(old?"⚠️ v":"✅ v")+escHtml(r.v)+"</td></tr>";
+      (r.extra
+        ?("<td><span style='color:var(--gold2);'>हाज़िरी नहीं</span><br><small style='color:var(--muted);'>"+(r.cash?"कैश लिस्ट से":"पर काम दिखा")+"</small></td><td>—</td></tr>")
+        :("<td>"+escHtml(_dvAgo(r.t))+"<br><small style='color:var(--muted);'>"+escHtml(r.t?new Date(r.t).toLocaleDateString("hi-IN"):"?")+"</small></td>"+
+          "<td>"+(old?"⚠️ v":"✅ v")+escHtml(r.v)+"</td></tr>"));
   });
   html+="</tbody></table>";
   // audit-verified: name/hq/v/_dvAgo/तारीख़/noData सभी escHtml() से गुज़रते हैं; workHtml/old/devs

@@ -2193,18 +2193,22 @@ test.describe('कर्मचारी सक्रियता सूची �
     await loginJE(page);
     const a = await page.evaluate(() => {
       const now = Date.now();
-      // एक ही acc दो श्रेणियों में (propagateStatus से ऐसा होता ही है) — dedup होना चाहिए
+      const td = new Date(now); const today = td.getDate() + '/' + (td.getMonth() + 1) + '/' + td.getFullYear();
+      // एक ही acc दो श्रेणियों में (propagateStatus से ऐसा होता ही है) — dedup होना चाहिए।
+      // v9.185: वसूली भुगतान तारीख़ (paydate) से गिनी जाती है, ts से नहीं — इसलिए paydate दी है
       cSet('जोबा', 'कुल उपभोक्ता', [
-        { acc: '1', name: 'A', status: 'paid', amount: 100, updatedBy: 'Devendra kumar', ts: now - 3600000 },
+        { acc: '1', name: 'A', status: 'paid', paydate: today, amount: 100, updatedBy: 'Devendra kumar', ts: now - 3600000 },
         { acc: '2', name: 'B', status: 'pending', amount: 100, updatedBy: 'Devendra kumar', ts: now - 3600000 },
-        { acc: '3', name: 'C', status: 'paid', amount: 100, updatedBy: 'कोई और', ts: now - 40 * 86400000 }, // बहुत पुराना
+        { acc: '3', name: 'C', status: 'paid', paydate: '1/1/2020', amount: 100, updatedBy: 'कोई और', ts: now - 40 * 86400000 }, // बहुत पुराना
       ]);
       cSet('जोबा', 'घरेलू', [
-        { acc: '1', name: 'A', status: 'paid', amount: 100, updatedBy: 'Devendra kumar', ts: now - 3600000 },
+        { acc: '1', name: 'A', status: 'paid', paydate: today, amount: 100, updatedBy: 'Devendra kumar', ts: now - 3600000 },
       ]);
       return _dvActivity(now - 7 * 86400000);
     });
-    expect(a['devendra kumar']).toEqual({ work: 2, paid: 1, rmk: 0 }); // acc "1" दो जगह था पर एक ही बार गिना
+    // acc "1" दो जगह था पर एक ही बार गिना; "work" अब सिर्फ़ ग़ैर-वसूली बदलाव (acc "2")
+    expect(a['devendra kumar']).toMatchObject({ work: 1, paid: 1, rmk: 0 });
+    expect(a['devendra kumar'].hqs).toEqual({ 'जोबा': 1 });
     expect(a['कोई और']).toBeUndefined(); // 7-दिन की खिड़की से बाहर
   });
 
@@ -2270,6 +2274,110 @@ test.describe('कर्मचारी सक्रियता सूची �
       return new Promise((res) => setTimeout(() => res(gone), 200));
     });
     expect(deleted.length).toBe(0);
+  });
+
+  // ── v9.185: असली production (3/10) — विकास साहू (पिंडरई) ने दोपहर 1:09 पर वसूली की, पर पिंडरई
+  // "आज किसी ने ऐप नहीं खोला" में था और विकास तालिका में थे ही नहीं; ऊपर "303 वसूली" जबकि तालिका
+  // का जोड़ 57 — JE ने पकड़ा कि इसमें पुरानी वसूली भी है (गिनती ts से होती थी, paydate से नहीं)
+  const todayStr = () => { const d = new Date(); return d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear(); };
+
+  test('_dvActivity — पुरानी वसूली पर आज रिमार्क/मिलान से ts आज का हो जाए, तो भी वह "आज की वसूली" न गिने (paydate से गिनती)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const a = await page.evaluate((today) => {
+      const now = Date.now();
+      cSet('पिंडरई', 'कुल उपभोक्ता', [
+        // आज सचमुच वसूल (paydate आज)
+        { acc: '11', name: 'A', status: 'paid', paydate: today, updatedBy: 'Vikas sahu', ts: now - 3600000 },
+        // 20 दिन पुरानी वसूली — आज किसी ने रिमार्क लिखा, तो ts आज का और updatedBy रिमार्क वाले का
+        { acc: '12', name: 'B', status: 'paid', paydate: '1/1/2026', updatedBy: 'Raja', ts: now - 60000 },
+      ]);
+      return _dvActivity(new Date(new Date().setHours(0, 0, 0, 0)).getTime());
+    }, todayStr());
+    expect(a['vikas sahu'].paid).toBe(1);
+    expect(a['vikas sahu'].hqs).toEqual({ 'पिंडरई': 1 });
+    expect(a['raja']).toBeUndefined(); // पुरानी वसूली — न वसूली गिनी, न "बदलाव"
+  });
+
+  test('_dvActivity — एक बटन में बाकी, दूसरे में वसूल (बीच का mismatch) हो तो भी वसूली न छूटे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const a = await page.evaluate((today) => {
+      const now = Date.now();
+      cSet('पिंडरई', 'कुल उपभोक्ता', [{ acc: '21', name: 'A', status: 'pending', updatedBy: 'x', ts: now - 40 * 86400000 }]);
+      cSet('पिंडरई', 'घरेलू', [{ acc: '21', name: 'A', status: 'paid', paydate: today, updatedBy: 'Vikas sahu', ts: now - 60000 }]);
+      return _dvActivity(new Date(new Date().setHours(0, 0, 0, 0)).getTime());
+    }, todayStr());
+    expect(a['vikas sahu'].paid).toBe(1); // पहले "कुल उपभोक्ता" वाली बाकी प्रति पर ही "देखा" लग जाता था
+  });
+
+  test('_dvTodayStrip — हाज़िरी न लगी हो पर आज वसूली दिखे तो वह मुख्यालय "किसी ने ऐप नहीं खोला" में न आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate((today) => {
+      cSet('पिंडरई', 'कुल उपभोक्ता', [{ acc: '31', name: 'A', status: 'paid', paydate: today, updatedBy: 'Vikas sahu', ts: Date.now() - 3600000 }]);
+      var div = document.createElement('div');
+      div.innerHTML = _dvTodayStrip({ d5: { v: APP_VER, hq: 'जोबा', role: 'lineman', name: 'Devendra kumar', t: Date.now() - 3600000 } });
+      return div.textContent;
+    }, todayStr());
+    expect(txt).toContain('2 कर्मचारी सक्रिय'); // Devendra (हाज़िरी) + Vikas (काम)
+    expect(txt).toContain('2/6 मुख्यालय');
+    const quiet = txt.split('आज किसी ने ऐप नहीं खोला:')[1] || '';
+    expect(quiet).not.toContain('पिंडरई');
+    expect(quiet).toContain('पाटन');
+  });
+
+  test('_dvTodayStrip — JE की कैश लिस्ट वाली वसूली उस मुख्यालय को "सक्रिय" न बनाए (मैदानी काम नहीं)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const txt = await page.evaluate((today) => {
+      cSet('बीबी', 'कुल उपभोक्ता', [{ acc: '41', name: 'A', status: 'paid', paydate: today, updatedBy: 'Pradeep (कैश लिस्ट)', ts: Date.now() - 60000 }]);
+      var div = document.createElement('div');
+      div.innerHTML = _dvTodayStrip({});
+      return div.textContent;
+    }, todayStr());
+    expect(txt.split('आज किसी ने ऐप नहीं खोला:')[1] || '').toContain('बीबी');
+  });
+
+  test('तालिका — हाज़िरी न लगी हो पर काम किया हो तो पंक्ति दिखे ("हाज़िरी नहीं"), और "पुराना version" चेतावनी न आए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openDvModal());
+    await page.evaluate(mockDV);
+    await page.evaluate((today) => {
+      cSet('पिंडरई', 'कुल उपभोक्ता', [{ acc: '51', name: 'A', status: 'paid', paydate: today, updatedBy: 'Vikas sahu', ts: Date.now() - 3600000 }]);
+      _dvRender();
+    }, todayStr());
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('Vikas Sahu') > -1);
+    const r = await page.evaluate(() => {
+      var el = document.getElementById('mig-devices');
+      var row = Array.prototype.find.call(el.querySelectorAll('tr'), (tr) => tr.textContent.indexOf('Vikas Sahu') > -1);
+      return { row: row ? row.textContent : '', text: el.textContent };
+    });
+    expect(r.row).toContain('पिंडरई');
+    expect(r.row).toContain('1 वसूली');
+    expect(r.row).toContain('हाज़िरी नहीं');
+    expect(r.text).toContain('सभी सक्रिय devices'); // Vikas का version अज्ञात — लाल चेतावनी नहीं
+  });
+
+  test('ऐप पर लौटने (minimize से वापस) पर हाज़िरी लगे — पर घंटे में एक बार से ज़्यादा नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      var puts = 0;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/DEVICE_VERSIONS/') > -1 && opts && opts.method === 'PUT') puts++;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      var fire = () => document.dispatchEvent(new Event('visibilitychange'));
+      _lastPingAt = Date.now() - 2 * 3600000; // आख़िरी हाज़िरी 2 घंटे पहले
+      fire();
+      var afterFirst = puts;
+      fire(); // तुरंत फिर लौटे — दोबारा नहीं
+      return { afterFirst: afterFirst, afterSecond: puts };
+    });
+    expect(r.afterFirst).toBe(1);
+    expect(r.afterSecond).toBe(1);
   });
 });
 
