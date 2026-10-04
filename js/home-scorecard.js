@@ -56,7 +56,9 @@ function renderHomeSc(){
   if(!el)return;
   // showBoard="0" यानी JE ने पूरा डिस्प्ले बोर्ड होम पेज से हटाने का चुनाव किया है — पुराने बोर्ड
   // (जिनमें यह field ही नहीं) पहले जैसे दिखते रहें, इसलिए सिर्फ़ "0" पर ही छुपाएं, undefined पर नहीं
-  if(!HSC||HSC.showBoard==="0"){el.innerHTML="";return;}
+  var _boardOff=!HSC||HSC.showBoard==="0";
+  _homeBgSync(_boardOff); // बोर्ड बंद हो तब पीछे पृष्ठभूमि फ़ोटो (नीचे "पृष्ठभूमि फ़ोटो" हिस्सा)
+  if(_boardOff){el.innerHTML="";return;}
   var cp=Number(HSC.curPaid)||0,lp=Number(HSC.lyPaid)||0;
   var ca=Number(HSC.curAmt)||0,la=Number(HSC.lyAmt)||0;
   var dp=cp-lp, da=ca-la;
@@ -555,6 +557,8 @@ function openHscModal(){
   document.getElementById("hsc-showboard").checked=!(HSC&&HSC.showBoard==="0");
   document.getElementById("hsc-showcrpu").checked=!(HSC&&HSC.showCrpu==="0");
   document.getElementById("hsc-showeff").checked=!(HSC&&HSC.showEff==="0");
+  _hscBgTs=_hscBgOpenTs=Number(HSC&&HSC.bgTs)||0;
+  _hscBgPaintThumb();
   if(HSC){
     document.getElementById("hsc-ason").value=HSC.asOn||"";
     document.getElementById("hsc-curpaid").value=HSC.curPaid||"";
@@ -607,6 +611,7 @@ function saveHsc(){
     beTgt:document.getElementById("hsc-betgt").value.replace(/,/g,"").trim(),
     ceTgt:document.getElementById("hsc-cetgt").value.replace(/,/g,"").trim(),
     atcTgt:document.getElementById("hsc-atctgt").value.replace(/,/g,"").trim(),
+    bgTs:_hscBgTs||0, // पृष्ठभूमि फ़ोटो का version — 0 = कोई फ़ोटो नहीं (फ़ोटो ख़ुद HOME_BG पर)
     updatedBy:CU?CU.name:"",updatedAt:new Date().toLocaleString("hi-IN"),
     ts:serverNow() // नया-पुराना तय करने के लिए — बड़ा ts हमेशा जीतता है (डिवाइस की ग़लत घड़ी से सुरक्षित)
   };
@@ -617,7 +622,12 @@ function saveHsc(){
   closeHscModal();
   fetch(FB+"/HOME_SCORECARD.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)})
     .then(function(r){
-      if(r.ok){_setHscPending(false);toast("✅ डिस्प्ले बोर्ड प्रकाशित — सबके होम पेज पर दिखेगा","ok");return;}
+      if(r.ok){
+        _setHscPending(false);toast("✅ डिस्प्ले बोर्ड प्रकाशित — सबके होम पेज पर दिखेगा","ok");
+        // JE ने पृष्ठभूमि फ़ोटो हटाई — अब सर्वर पर पड़ी रहने की ज़रूरत नहीं
+        if(!d.bgTs&&_hscBgOpenTs){ _hscBgOpenTs=0; fetch(FB+"/HOME_BG.json",{method:"DELETE"}).catch(function(){}); }
+        return;
+      }
       _setHscPending(true);
       logErr("hsc-publish",new Error("HTTP "+r.status));
       if(r.status===401||r.status===403)
@@ -628,3 +638,160 @@ function saveHsc(){
     .catch(function(){_setHscPending(true);toast("📴 ऑफलाइन — बोर्ड device पर save है, नेट आने पर app खोलते ही अपने आप प्रकाशित होगा","inf");});
 }
 
+
+// ─── पृष्ठभूमि फ़ोटो (वॉटरमार्क): डिस्प्ले बोर्ड बंद हो तब login पन्ने के पीछे हल्की फ़ोटो ───
+// JE की मांग (4/10): बोर्ड न दिखे तो पन्ना ख़ाली न लगे — पीछे कोई फ़ोटो (जैसे किसी कर्मचारी की)।
+// डेटा-ख़र्च सबसे बड़ी चिंता है: बोर्ड (HOME_SCORECARD) हर ऐप-खुलने पर उतरता है, इसलिए फ़ोटो
+// (~90 KB) उसमें नहीं — अलग /HOME_BG पर रहती है, और बोर्ड में सिर्फ़ उसका version (bgTs) जाता है।
+// हर फ़ोन फ़ोटो एक बार उतारकर IndexedDB में रख लेता है (localStorage नहीं — JE के फ़ोन पर वह
+// सूचियों से लगभग भरा रहता है, और Cache Storage नहीं — sw.js हर version पर उसे मिटा देता है);
+// दोबारा तभी उतरती है जब JE नई फ़ोटो लगाएं (bgTs बदले)।
+var HOME_BG_W=720, HOME_BG_H=1280; // इससे बड़ी फ़ोटो छोटी करके — पूरा पन्ना ढकने को काफ़ी
+var HOME_BG_MAX=300000;            // data URL की अधिकतम लंबाई — database.rules.json में भी यही सीमा
+var _HOME_BG_RE=/^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/; // सिर्फ़ असली JPEG — CSS url() में कुछ और न घुसे
+var _hscBgTs=0;       // JE के सेटिंग पन्ने पर चुना हुआ version (0 = कोई फ़ोटो नहीं)
+var _hscBgOpenTs=0;   // सेटिंग खुलते वक़्त का version — हटाने पर ही सर्वर से मिटाएं
+var _homeBgMem=null;  // {ts,img} — IndexedDB की याद, बार-बार खोलना न पड़े
+var _homeBgTried={};  // इस session में किस version को उतारने की कोशिश हो चुकी — बार-बार fetch न हो
+
+function _homeBgOk(img){ return typeof img==="string"&&img.length<=HOME_BG_MAX&&_HOME_BG_RE.test(img); }
+function _homeBgIdb(cb){
+  try{
+    var rq=indexedDB.open("dc_homebg",1);
+    rq.onupgradeneeded=function(){ rq.result.createObjectStore("kv"); };
+    rq.onsuccess=function(){ cb(rq.result); };
+    rq.onerror=function(){ cb(null); };
+  }catch(e){ cb(null); } // private mode/पुराना browser — तब सिर्फ़ इसी session की याद
+}
+function _homeBgCacheGet(cb){
+  if(_homeBgMem){ cb(_homeBgMem); return; }
+  _homeBgIdb(function(db){
+    if(!db){ cb(null); return; }
+    try{
+      var g=db.transaction("kv","readonly").objectStore("kv").get("bg");
+      g.onsuccess=function(){ _homeBgMem=g.result||null; cb(_homeBgMem); };
+      g.onerror=function(){ cb(null); };
+    }catch(e){ cb(null); }
+  });
+}
+function _homeBgCacheSet(v){
+  _homeBgMem=v;
+  _homeBgIdb(function(db){
+    if(!db) return;
+    try{ db.transaction("kv","readwrite").objectStore("kv").put(v,"bg"); }catch(e){}
+  });
+}
+function _homeBgApply(img){
+  var ls=document.getElementById("login-screen");
+  if(!ls) return;
+  var el=null;
+  for(var i=0;i<ls.children.length;i++){ if(ls.children[i].className==="wm-bg"){ el=ls.children[i]; break; } }
+  if(!img){ if(el) ls.removeChild(el); return; }
+  if(!el){
+    el=document.createElement("div");
+    el.className="wm-bg";
+    el.setAttribute("aria-hidden","true");
+    ls.insertBefore(el,ls.firstChild);
+  }
+  el.style.backgroundImage='url("'+img+'")'; // img पहले _homeBgOk से गुज़र चुकी — सिर्फ़ base64 अक्षर
+}
+// renderHomeSc से — बोर्ड बंद (boardOff) हो और JE ने फ़ोटो लगाई हो तो दिखाओ, वरना हटाओ
+function _homeBgSync(boardOff){
+  var want=(boardOff&&HSC)?(Number(HSC.bgTs)||0):0;
+  if(!want){ _homeBgApply(null); return; }
+  _homeBgCacheGet(function(c){
+    if(c&&Number(c.ts)===want&&_homeBgOk(c.img)){ _homeBgApply(c.img); return; } // फ़ोन पर पहले से — कोई network नहीं
+    _homeBgApply(null); // पुरानी फ़ोटो न दिखे
+    if(_homeBgTried[want]||!navigator.onLine||isDataPaused()) return; // 🛑 डेटा बचाओ मोड में नहीं उतरती
+    _homeBgTried[want]=1;
+    fetch(FB+"/HOME_BG.json?t="+Date.now())
+      .then(_fbJson)
+      .then(function(d){
+        trackUsageOf(d);
+        if(!d||!_homeBgOk(d.img)) return;
+        var ts=Number(d.ts)||0;
+        _homeBgCacheSet({ts:ts,img:d.img});
+        // उतरने के बीच बोर्ड फिर चालू हुआ या फ़ोटो बदली — अभी की हालत से ही दिखाओ
+        if(HSC&&HSC.showBoard==="0"&&Number(HSC.bgTs)===ts) _homeBgApply(d.img);
+      })
+      .catch(function(){ delete _homeBgTried[want]; }); // नेट की गड़बड़ — अगली बार फिर कोशिश
+  });
+}
+
+// ── JE का सेटिंग हिस्सा (index.html का #hsc-bg-box) ──
+function _hscBgPaintThumb(){
+  var th=document.getElementById("hsc-bg-thumb"),note=document.getElementById("hsc-bg-note"),del=document.getElementById("hsc-bg-del");
+  if(!th) return;
+  if(!_hscBgTs){
+    th.style.backgroundImage=""; th.textContent="कोई फ़ोटो नहीं";
+    if(note) note.textContent=""; if(del) del.disabled=true;
+    return;
+  }
+  if(del) del.disabled=false;
+  var want=_hscBgTs;
+  _homeBgCacheGet(function(c){
+    if(want!==_hscBgTs) return;
+    if(c&&Number(c.ts)===want&&_homeBgOk(c.img)){
+      th.textContent=""; th.style.backgroundImage='url("'+c.img+'")';
+      if(note) note.textContent="छोटी करके ~"+Math.round(c.img.length*3/4/1024)+" KB";
+    } else {
+      th.style.backgroundImage=""; th.textContent="फ़ोटो लगी है";
+      if(note) note.textContent="";
+    }
+  });
+}
+// फ़ोन पर ही छोटी — 720×1280 के अंदर, JPEG; फिर भी बड़ी रहे तो गुणवत्ता घटाकर
+function _hscBgCompress(img){
+  var sc=Math.min(1,HOME_BG_W/img.width,HOME_BG_H/img.height);
+  var w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc));
+  var c=document.createElement("canvas"); c.width=w; c.height=h;
+  var x=c.getContext("2d");
+  x.fillStyle="#ffffff"; x.fillRect(0,0,w,h); // पारदर्शी PNG का पीछे काला न बने
+  x.drawImage(img,0,0,w,h);
+  var qs=[0.6,0.45,0.3];
+  for(var i=0;i<qs.length;i++){
+    var u=c.toDataURL("image/jpeg",qs[i]);
+    if(_homeBgOk(u)) return u;
+  }
+  return null;
+}
+function hscBgPick(inp){
+  if(!CU||CU.role!=="supervisor"){ toast("सिर्फ JE फ़ोटो लगा सकते हैं","err"); return; }
+  var f=inp&&inp.files&&inp.files[0];
+  if(inp) inp.value=""; // वही फ़ोटो दोबारा चुनें तो भी onchange चले
+  if(!f) return;
+  if(!navigator.onLine){ toast("📴 फ़ोटो लगाने के लिए नेट चाहिए","err"); return; }
+  var rd=new FileReader();
+  rd.onload=function(){
+    var img=new Image();
+    img.onload=function(){
+      var url=_hscBgCompress(img);
+      if(!url){ toast("⚠ यह फ़ोटो छोटी नहीं हो पाई — कोई और फ़ोटो चुनें","err"); return; }
+      _hscBgUpload(url);
+    };
+    img.onerror=function(){ toast("⚠ यह फ़ोटो पढ़ी नहीं जा सकी — कोई और चुनें","err"); };
+    img.src=rd.result;
+  };
+  rd.onerror=function(){ toast("⚠ यह फ़ोटो पढ़ी नहीं जा सकी — कोई और चुनें","err"); };
+  rd.readAsDataURL(f);
+}
+// फ़ोटो चुनते ही सर्वर पर — पर सबको तभी दिखेगी जब JE "प्रकाशित करें" दबाएं (बोर्ड में bgTs जाता है)
+function _hscBgUpload(url){
+  var ts=serverNow();
+  toast("⏳ फ़ोटो चढ़ रही है...","inf");
+  fetch(FB+"/HOME_BG.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({img:url,ts:ts})})
+    .then(function(r){
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      _hscBgTs=ts;
+      _homeBgCacheSet({ts:ts,img:url});
+      _hscBgPaintThumb();
+      toast("✅ फ़ोटो चढ़ गई — नीचे 'प्रकाशित करें' दबाएं, तब सबको दिखेगी","ok");
+    })
+    .catch(function(e){ logErr("homebg-upload",e); toast("⚠ फ़ोटो नहीं चढ़ी — दोबारा कोशिश करें","err"); });
+}
+function hscBgRemove(){
+  if(!_hscBgTs){ toast("कोई फ़ोटो लगी ही नहीं है","inf"); return; }
+  _hscBgTs=0;
+  _hscBgPaintThumb();
+  toast("'प्रकाशित करें' दबाने पर फ़ोटो सबके पन्ने से हट जाएगी","inf");
+}

@@ -9058,3 +9058,196 @@ test.describe('save/sync 401 — लॉग में खाता, token और 
     expect(r[0].x).toContain('जवाब: { "error" : "Permission denied" }');
   });
 });
+
+// ── v9.186: डिस्प्ले बोर्ड बंद हो तब login पन्ने के पीछे पृष्ठभूमि फ़ोटो (वॉटरमार्क) — JE की मांग ──
+// फ़ोटो अलग /HOME_BG पर (बोर्ड हर ऐप-खुलने पर उतरता है, उसमें ~90 KB नहीं डालनी), बोर्ड में सिर्फ़
+// version (bgTs); हर फ़ोन एक बार उतारकर IndexedDB में रखता है
+test.describe('पृष्ठभूमि फ़ोटो (वॉटरमार्क) — बोर्ड बंद हो तब login पन्ने के पीछे', () => {
+  // असली JPEG data URL — canvas से (page के अंदर)
+  const makeJpeg = (w, h) => {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, w, h); g.addColorStop(0, '#3a7bd5'); g.addColorStop(1, '#f7c948');
+    x.fillStyle = g; x.fillRect(0, 0, w, h);
+    return c.toDataURL('image/jpeg', 0.8);
+  };
+
+  test('बोर्ड बंद + JE की फ़ोटो लगी हो → पीछे फ़ोटो दिखे (सर्वर से उतरकर)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(({ mk }) => new Promise((resolve) => {
+      const img = new Function('return (' + mk + ')(320,200)')();
+      let gets = 0;
+      window.fetch = function (url) {
+        if (String(url).indexOf('/HOME_BG.json') > -1) { gets++; return Promise.resolve({ ok: true, json: () => Promise.resolve({ img: img, ts: 5 }) }); }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      HSC = { showBoard: '0', bgTs: 5, ts: 1 };
+      renderHomeSc();
+      const t0 = Date.now();
+      (function wait() {
+        const u = document.querySelector('#login-screen > .wm-bg');
+        if (u || Date.now() - t0 > 3000) resolve({ bg: u ? u.style.backgroundImage : null, gets: gets, board: document.getElementById('home-sc').innerHTML });
+        else setTimeout(wait, 50);
+      })();
+    }), { mk: makeJpeg.toString() });
+    expect(r.gets).toBe(1);
+    expect(r.bg).toContain('data:image/jpeg;base64,');
+    expect(r.board).toBe(''); // बोर्ड बंद ही रहे
+  });
+
+  test('बोर्ड चालू हो तो फ़ोटो न दिखे (और न उतरे)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      let gets = 0;
+      window.fetch = function (url) {
+        if (String(url).indexOf('/HOME_BG.json') > -1) gets++;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      HSC = { showBoard: '1', curPaid: '10', curAmt: '5', bgTs: 5, ts: 1 };
+      renderHomeSc();
+      return new Promise((res) => setTimeout(() => res({ gets: gets, wm: !!document.querySelector('#login-screen > .wm-bg') }), 400));
+    });
+    expect(r.wm).toBe(false);
+    expect(r.gets).toBe(0);
+  });
+
+  test('एक बार उतरी फ़ोटो दोबारा न उतरे — फ़ोन (IndexedDB) से दिखे; JE नई लगाएं (bgTs बदले) तभी उतरे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(({ mk }) => new Promise((resolve) => {
+      const img = new Function('return (' + mk + ')(320,200)')();
+      let gets = 0;
+      window.fetch = function (url) {
+        if (String(url).indexOf('/HOME_BG.json') > -1) { gets++; return Promise.resolve({ ok: true, json: () => Promise.resolve({ img: img, ts: 7 }) }); }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      HSC = { showBoard: '0', bgTs: 7, ts: 1 };
+      renderHomeSc();
+      setTimeout(() => {
+        // ऐप दोबारा खुलने जैसा — याद (memory) साफ़, सिर्फ़ IndexedDB बचा
+        _homeBgMem = null; _homeBgTried = {};
+        const ls = document.getElementById('login-screen'); const old = ls.querySelector(':scope > .wm-bg'); if (old) old.remove();
+        renderHomeSc();
+        setTimeout(() => {
+          const afterReopen = { gets: gets, wm: !!document.querySelector('#login-screen > .wm-bg') };
+          HSC = { showBoard: '0', bgTs: 8, ts: 2 }; // JE ने नई फ़ोटो लगाई
+          renderHomeSc();
+          setTimeout(() => resolve({ afterReopen: afterReopen, afterNew: gets }), 500);
+        }, 500);
+      }, 500);
+    }), { mk: makeJpeg.toString() });
+    expect(r.afterReopen.gets).toBe(1); // दोबारा खुलने पर network नहीं
+    expect(r.afterReopen.wm).toBe(true);
+    expect(r.afterNew).toBe(2);        // version बदला — अब उतरी
+  });
+
+  test('डेटा बचाओ मोड में फ़ोटो न उतरे', async ({ page }) => {
+    await openApp(page);
+    const gets = await page.evaluate(() => {
+      let n = 0;
+      window.fetch = function (url) {
+        if (String(url).indexOf('/HOME_BG.json') > -1) n++;
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      DATA_PAUSED = true;
+      HSC = { showBoard: '0', bgTs: 9, ts: 1 };
+      renderHomeSc();
+      return new Promise((res) => setTimeout(() => res(n), 400));
+    });
+    expect(gets).toBe(0);
+  });
+
+  test('सर्वर से JPEG के अलावा कुछ भी आए (SVG, ग़लत अक्षर, CSS तोड़ने की कोशिश) तो न लगे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const bad = [
+        'data:image/svg+xml;base64,PHN2Zy8+',
+        'data:image/jpeg;base64,AAAA"); background:url(https://x.example/a',
+        'javascript:alert(1)',
+        'data:image/jpeg;base64,' + 'A'.repeat(300001),
+      ];
+      return bad.map((s) => _homeBgOk(s));
+    });
+    expect(r).toEqual([false, false, false, false]);
+  });
+
+  test('JE फ़ोटो चुने → फ़ोन पर छोटी होकर (≤720 चौड़ी, JPEG, सीमा के अंदर) HOME_BG पर जाए, और प्रकाशित बोर्ड में वही bgTs', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      let put = null, board = null;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/HOME_BG.json') > -1 && opts && opts.method === 'PUT') { put = JSON.parse(opts.body); return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); }
+        if (String(url).indexOf('/HOME_SCORECARD.json') > -1 && opts && opts.method === 'PUT') { board = JSON.parse(opts.body); return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      openHscModal();
+      // बड़ी फ़ोटो (2400×1800) — कैमरे जैसी
+      const c = document.createElement('canvas'); c.width = 2400; c.height = 1800;
+      const x = c.getContext('2d'); for (let i = 0; i < 60; i++) { x.fillStyle = 'hsl(' + (i * 6) + ',70%,50%)'; x.fillRect(i * 40, 0, 40, 1800); }
+      c.toBlob((blob) => {
+        const f = new File([blob], 'photo.png', { type: 'image/png' });
+        hscBgPick({ files: [f], value: 'x' });
+        const t0 = Date.now();
+        (function wait() {
+          if (put || Date.now() - t0 > 5000) {
+            if (!put) { resolve({ put: null }); return; }
+            const im = new Image();
+            im.onload = () => {
+              document.getElementById('hsc-curpaid').value = '10';
+              document.getElementById('hsc-curamt').value = '5';
+              document.getElementById('hsc-showboard').checked = false;
+              saveHsc();
+              setTimeout(() => resolve({ put: { ts: put.ts, len: put.img.length, head: put.img.slice(0, 23) }, w: im.width, h: im.height, board: board, thumb: document.getElementById('hsc-bg-thumb').style.backgroundImage }), 200);
+            };
+            im.src = put.img;
+          } else setTimeout(wait, 50);
+        })();
+      }, 'image/png');
+    }));
+    expect(r.put).not.toBeNull();
+    expect(r.put.head).toBe('data:image/jpeg;base64,');
+    expect(r.put.len).toBeLessThanOrEqual(300000);
+    expect(r.w).toBe(720);
+    expect(r.h).toBe(540);
+    expect(r.board.bgTs).toBe(r.put.ts);
+    expect(r.board.showBoard).toBe('0');
+    expect(r.thumb).toContain('data:image/jpeg');
+  });
+
+  test('JE फ़ोटो हटाएं → प्रकाशित बोर्ड में bgTs 0, और सर्वर से HOME_BG मिटे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      let board = null, del = 0;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('/HOME_BG.json') > -1 && opts && opts.method === 'DELETE') { del++; }
+        if (String(url).indexOf('/HOME_SCORECARD.json') > -1 && opts && opts.method === 'PUT') { board = JSON.parse(opts.body); }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+      };
+      HSC = { curPaid: '10', curAmt: '5', showBoard: '0', bgTs: 11, ts: 1 };
+      openHscModal();
+      hscBgRemove();
+      saveHsc();
+      setTimeout(() => resolve({ bgTs: board && board.bgTs, del: del }), 300);
+    }));
+    expect(r.bgTs).toBe(0);
+    expect(r.del).toBe(1);
+  });
+
+  test('lineman फ़ोटो नहीं लगा सकता (और नियमों में भी सिर्फ़ JE, सिर्फ़ JPEG, आकार की सीमा)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const puts = await page.evaluate(() => {
+      let n = 0;
+      window.fetch = function (url, opts) { if (opts && opts.method === 'PUT') n++; return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); };
+      hscBgPick({ files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })], value: 'x' });
+      return new Promise((res) => setTimeout(() => res(n), 300));
+    });
+    expect(puts).toBe(0);
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+    expect(rules.HOME_BG['.write']).toContain("auth.token.email === 'pradeepks2015@gmail.com'");
+    expect(rules.HOME_BG.img['.validate']).toContain("beginsWith('data:image/jpeg;base64,')");
+    expect(rules.HOME_BG.img['.validate']).toContain('length <= 300000');
+    expect(rules.HOME_BG.$f['.validate']).toBe(false);
+  });
+});

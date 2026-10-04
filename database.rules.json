@@ -12,6 +12,20 @@
       ".read": "auth != null",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com' && (!newData.exists() || !data.child('ts').exists() || newData.child('ts').val() >= data.child('ts').val())"
     },
+    "HOME_BG": {
+      ".read": "auth != null",
+      ".write": "auth.token.email === 'pradeepks2015@gmail.com' && (!newData.exists() || !data.child('ts').exists() || newData.child('ts').val() >= data.child('ts').val())",
+      ".validate": "newData.hasChildren(['img','ts'])",
+      "img": {
+        ".validate": "newData.isString() && newData.val().beginsWith('data:image/jpeg;base64,') && newData.val().length <= 300000"
+      },
+      "ts": {
+        ".validate": "newData.isNumber()"
+      },
+      "$f": {
+        ".validate": false
+      }
+    },
     "HQ_PIN": {
       ".read": "auth.token.email === 'pradeepks2015@gmail.com'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com'"

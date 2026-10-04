@@ -479,6 +479,20 @@ try{
       <input type="checkbox" id="hsc-showboard" checked style="width:19px;height:19px;accent-color:var(--gold);flex-shrink:0;">
       🏠 होम पेज पर यह पूरा डिस्प्ले बोर्ड दिखाएं <span style="font-weight:400;color:var(--muted);">(हटाएं तो login से पहले किसी को कुछ नहीं दिखेगा)</span>
     </label>
+    <!-- बोर्ड बंद हो तब login पन्ने के पीछे हल्की फ़ोटो (वॉटरमार्क) — देखें js/home-scorecard.js का "पृष्ठभूमि फ़ोटो" हिस्सा -->
+    <div id="hsc-bg-box" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 13px;margin:-4px 0 14px;">
+      <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;">🖼 पृष्ठभूमि फ़ोटो (वॉटरमार्क)</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:9px;">बोर्ड बंद हो तब login पन्ने के पीछे हल्की दिखेगी</div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <div id="hsc-bg-thumb" style="width:86px;height:86px;border-radius:10px;background:var(--card) center/cover no-repeat;border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);text-align:center;">कोई फ़ोटो नहीं</div>
+        <div style="display:flex;flex-direction:column;gap:7px;flex:1;">
+          <button type="button" class="btn-save" style="padding:8px;font-size:12px;" onclick="document.getElementById('hsc-bg-file').click()">📷 फ़ोटो बदलें</button>
+          <button type="button" class="btn-save" id="hsc-bg-del" style="padding:8px;font-size:12px;background:var(--red);" onclick="hscBgRemove()">🗑 हटाएं</button>
+          <div id="hsc-bg-note" style="font-size:10px;color:var(--muted);"></div>
+        </div>
+      </div>
+      <input type="file" id="hsc-bg-file" accept="image/*" style="display:none" onchange="hscBgPick(this)">
+    </div>
     <div class="fg"><label>As On (दिनांक)</label><input class="fi" id="hsc-ason" placeholder="16-07-2026"></div>
     <div class="up-sel2">
       <div class="fg"><label>इस वर्ष Paid Consumers</label><input class="fi" id="hsc-curpaid" inputmode="numeric"></div>
