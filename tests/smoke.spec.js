@@ -9234,6 +9234,31 @@ test.describe('पृष्ठभूमि फ़ोटो (वॉटरमा�
     expect(r.del).toBe(1);
   });
 
+  // लाइनमैन का session 30 दिन टिकता है — login पन्ना शायद ही कभी दिखता है। renderHomeSc हर ऐप-
+  // खुलने पर चलता है, इसलिए रोक न होती तो हर लाइनमैन का फ़ोन ~100 KB उतारता जो कभी दिखती ही नहीं
+  test('login किए फ़ोन (पन्ना सामने नहीं) फ़ोटो न उतारें — logout पर पन्ना सामने आए तभी उतरे', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(({ mk }) => new Promise((resolve) => {
+      const img = new Function('return (' + mk + ')(320,200)')();
+      let gets = 0;
+      window.fetch = function (url) {
+        if (String(url).indexOf('/HOME_BG.json') > -1) { gets++; return Promise.resolve({ ok: true, json: () => Promise.resolve({ img: img, ts: 12 }) }); }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      HSC = { showBoard: '0', bgTs: 12, ts: 1 };
+      renderHomeSc(); // ऐप खुलने/बोर्ड आने जैसा — पर लाइनमैन अंदर है
+      setTimeout(() => {
+        const whileIn = gets;
+        doLogout(false); // अब login पन्ना सामने
+        setTimeout(() => resolve({ whileIn: whileIn, afterLogout: gets, wm: !!document.querySelector('#login-screen > .wm-bg') }), 600);
+      }, 400);
+    }), { mk: makeJpeg.toString() });
+    expect(r.whileIn).toBe(0);
+    expect(r.afterLogout).toBe(1);
+    expect(r.wm).toBe(true);
+  });
+
   test('lineman फ़ोटो नहीं लगा सकता (और नियमों में भी सिर्फ़ JE, सिर्फ़ JPEG, आकार की सीमा)', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);

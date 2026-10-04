@@ -695,6 +695,14 @@ function _homeBgApply(img){
   }
   el.style.backgroundImage='url("'+img+'")'; // img पहले _homeBgOk से गुज़र चुकी — सिर्फ़ base64 अक्षर
 }
+function _homeBgLoginVisible(){
+  var ls=document.getElementById("login-screen");
+  return !!(ls&&ls.classList.contains("active"));
+}
+// login पन्ना दिखाए जाने की हर जगह से (main.js, auth.js का doLogout, ui-core.js का goBack)
+function homeBgOnLoginShown(){
+  try{ _homeBgSync(!HSC||HSC.showBoard==="0"); }catch(e){}
+}
 // renderHomeSc से — बोर्ड बंद (boardOff) हो और JE ने फ़ोटो लगाई हो तो दिखाओ, वरना हटाओ
 function _homeBgSync(boardOff){
   var want=(boardOff&&HSC)?(Number(HSC.bgTs)||0):0;
@@ -703,6 +711,11 @@ function _homeBgSync(boardOff){
     if(c&&Number(c.ts)===want&&_homeBgOk(c.img)){ _homeBgApply(c.img); return; } // फ़ोन पर पहले से — कोई network नहीं
     _homeBgApply(null); // पुरानी फ़ोटो न दिखे
     if(_homeBgTried[want]||!navigator.onLine||isDataPaused()) return; // 🛑 डेटा बचाओ मोड में नहीं उतरती
+    // सिर्फ़ तब उतारें जब login पन्ना सचमुच सामने हो। renderHomeSc हर फ़ोन पर ऐप खुलते ही चलता है
+    // (main.js), जबकि लाइनमैन का session 30 दिन टिकता है — वे यह पन्ना शायद ही कभी देखते हैं।
+    // बिना इस रोक के हर लाइनमैन का फ़ोन ~100 KB उतारता जो कभी दिखती ही नहीं। पन्ना बाद में खुले
+    // (logout वग़ैरह) तो homeBgOnLoginShown() से फिर यहीं आते हैं
+    if(!_homeBgLoginVisible()) return;
     _homeBgTried[want]=1;
     fetch(FB+"/HOME_BG.json?t="+Date.now())
       .then(_fbJson)

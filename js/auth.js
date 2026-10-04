@@ -389,6 +389,7 @@ function doLogout(askConfirm){
   CU=null; selectedRole="";
   document.getElementById("app-screen").classList.remove("active");
   document.getElementById("login-screen").classList.add("active");
+  homeBgOnLoginShown(); // बोर्ड बंद हो तो पीछे की फ़ोटो — अभी पन्ना सामने आया, अब उतारना ठीक
   document.getElementById("uname-inp").value="";
   document.getElementById("sup-pw").value="";
   document.getElementById("hq-sel").value="";

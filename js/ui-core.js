@@ -146,6 +146,7 @@ function goToLogin(){
   if(catNamesTimer){clearInterval(catNamesTimer);catNamesTimer=null;}
   document.getElementById("app-screen").classList.remove("active");
   document.getElementById("login-screen").classList.add("active");
+  homeBgOnLoginShown(); // बोर्ड बंद हो तो पीछे की फ़ोटो — अभी पन्ना सामने आया, अब उतारना ठीक
   // Re-init on next login click — don't clear fields so user can re-enter easily
 }
 
