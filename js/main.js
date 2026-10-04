@@ -30,6 +30,7 @@ function startApp(){
     _finishLogin(CU.name,true);
   } else {
     document.getElementById("login-screen").classList.add("active");
+    homeBgOnLoginShown(); // बोर्ड बंद हो तो पीछे की फ़ोटो — अभी पन्ना सामने आया, अब उतारना ठीक
   }
 }
 setTimeout(startApp,2000); // network धीमा/बंद हो तो भी app खुल जाए
