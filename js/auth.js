@@ -165,7 +165,13 @@ function doLogin(){
       .catch(function(e){
         hideLoader();
         if(e&&e.code==="auth/network-request-failed"){ // नेट बीच में टूटा — पुराने session/cache पर आगे बढ़ें
+          // डाला गया PIN भी याद रखें — असली production (4/10, बीबी/SOHAN, v9.184 वाले लॉग से पक्का):
+          // "खाता: anonymous • Permission denied"। यहां PIN छूट जाता था, तो नेट लौटने पर
+          // _ensureCorrectHqAuth के पास sign-in के लिए कुछ नहीं होता और वह लाइनमैन को ज़बरदस्ती
+          // logout करके दोबारा PIN मांगता। अब चुपचाप सही खाते में चला जाता है। PIN ग़लत निकला
+          // तो वही पुराना रास्ता: logout + "PIN बदल गया लगता है" (इसलिए बिना जांचे रखना सुरक्षित)
           CU={role:"lineman",name:name,hq:hq};
+          if(typedPin) CU.pin=typedPin;
           _finishLogin(name);
           return;
         }
@@ -179,6 +185,9 @@ function doLogin(){
     if(u&&u.email) firebase.auth().signOut();
   }catch(e){}
   CU={role:"lineman",name:name,hq:hq};
+  // नेट बंद रहते login — ऊपर network-fail वाले रास्ते जैसा ही: PIN याद रहे ताकि नेट आते ही
+  // "online" event पर _ensureCorrectHqAuth चुपचाप सही खाते में ले जाए
+  if(typedPin) CU.pin=typedPin;
   _finishLogin(name);
 }
 // PIN से Firebase password बनाना — कम से कम 6 अक्षर चाहिए, इसलिए आगे एक तय prefix जोड़ते हैं
