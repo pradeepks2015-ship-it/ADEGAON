@@ -3279,6 +3279,74 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
   });
 
+  // v9.187 — असली production (4/10, बीबी/SOHAN): "खाता: anonymous • Permission denied"। login के बीच
+  // नेट टूटने (या नेट बंद रहते login) पर डाला गया PIN याद नहीं रहता था, तो नेट लौटने पर ऐप सही
+  // खाते में जा ही नहीं सकती थी और लाइनमैन को ज़बरदस्ती logout करके दोबारा PIN मांगती
+  const netFailLogin = (pin) => {
+    window.firebase = window.firebase || {};
+    window.firebase.auth = function () {
+      return { currentUser: null, signInWithEmailAndPassword: function () { return Promise.reject({ code: 'auth/network-request-failed' }); } };
+    };
+    selectRole('lineman');
+    document.getElementById('uname-inp').value = 'SOHAN';
+    document.getElementById('hq-sel').value = 'बीबी';
+    document.getElementById('lin-pin').value = pin;
+    doLogin();
+  };
+
+  test('login के बीच नेट टूटे → डाला PIN याद रहे; नेट लौटते ही चुपचाप सही खाते में (बिना logout, बिना दोबारा PIN)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(netFailLogin, '135790');
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const saved = JSON.parse(localStorage.getItem('dc_cu') || '{}');
+      let signedWith = null;
+      window.firebase.auth = function () {
+        return {
+          currentUser: { email: null, isAnonymous: true }, // गुमनाम — असली लॉग वाली हालत
+          signInWithEmailAndPassword: function (email, pw) { signedWith = { email: email, pw: pw }; return Promise.resolve({}); },
+        };
+      };
+      _authHealed = {}; _authWrongPin = {};
+      _ensureCorrectHqAuth(function () {
+        resolve({ pinInCU: CU && CU.pin, pinSaved: saved.cu && saved.cu.pin, signedWith: signedWith, stillIn: !!CU });
+      });
+    }));
+    expect(r.pinInCU).toBe('135790');
+    expect(r.pinSaved).toBe('135790'); // ऐप बंद-खुलने पर भी याद रहे (session में)
+    expect(r.signedWith).toEqual({ email: 'hq-bibi@adegaondc.internal', pw: 'vasuli-135790' });
+    expect(r.stillIn).toBe(true); // ज़बरदस्ती logout नहीं
+  });
+
+  test('login के बीच नेट टूटे और PIN ग़लत डाला हो → नेट लौटने पर पहले जैसा logout + संदेश (ग़लत PIN से अंदर न रहे)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(netFailLogin, '000000');
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.firebase.auth = function () {
+        return { currentUser: { email: null, isAnonymous: true }, signInWithEmailAndPassword: function () { return Promise.reject({ code: 'auth/wrong-password' }); }, signOut: function () { return Promise.resolve(); } };
+      };
+      _authHealed = {}; _authWrongPin = {};
+      _ensureCorrectHqAuth(function () { setTimeout(() => resolve({ cu: CU, login: document.getElementById('login-screen').classList.contains('active') }), 100); });
+    }));
+    expect(r.cu).toBeNull();
+    expect(r.login).toBe(true);
+  });
+
+  test('नेट बिल्कुल बंद रहते login → भी PIN याद रहे', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+      selectRole('lineman');
+      document.getElementById('uname-inp').value = 'SOHAN';
+      document.getElementById('hq-sel').value = 'बीबी';
+      document.getElementById('lin-pin').value = '246810';
+      doLogin();
+    });
+    await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 15000 });
+    expect(await page.evaluate(() => CU && CU.pin)).toBe('246810');
+  });
+
   test('_ensureCorrectHqAuth — anonymous auth में login हो तो online होते ही सही HQ account से sign-in हो (bug: login के वक़्त network कमज़ोर होने पर device हमेशा के लिए anonymous रह जाता, हर save 401 देता रहता)', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => new Promise((resolve) => {
