@@ -9344,3 +9344,142 @@ test.describe('पृष्ठभूमि फ़ोटो (वॉटरमा�
     expect(rules.HOME_BG.$f['.validate']).toBe(false);
   });
 });
+
+// ── v9.188: घंटों पीछे पड़े फ़ोन पर लौटते ही पुराने (ख़त्म) token न जाएं ──
+// असली production (6/10): App Check Verified% 97 → 94। App Check token ~1 घंटा चलता है, ताज़ा करने
+// का टाइमर (30 मिनट) minimize में Android रोक देता है — लौटते ही fetchPause और v9.185 की "हाज़िरी"
+// ख़त्म token के साथ जाती थीं और "unverified" में गिनती थीं
+test.describe('token ताज़गी — ख़त्म होने वाले token से पहले नया (v9.188)', () => {
+  // असली जैसा JWT: payload में exp (सेकंड)
+  const jwtSetup = () => {
+    window.mkJwt = (expInSec, tag) => {
+      const b64 = (o) => btoa(JSON.stringify(o)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+      return b64({ alg: 'none' }) + '.' + b64({ exp: Math.floor(Date.now() / 1000) + expInSec, t: tag }) + '.sig';
+    };
+  };
+
+  test('App Check token ख़त्म हो चुका हो → request से पहले नया लिया जाए, और request उसी नए token के साथ जाए', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(jwtSetup);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const fresh = window.mkJwt(3600, 'new');
+      let gets = 0, sentAc = null;
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = () => ({ getToken: () => { gets++; return Promise.resolve({ token: fresh }); } });
+      window.firebase.auth = () => ({ currentUser: { getIdToken: () => Promise.resolve(ID_TOKEN) } });
+      _rawFetch = (url, opts) => { sentAc = opts.headers['X-Firebase-AppCheck']; return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve(null) }); };
+      AC_READY = true;
+      ID_TOKEN = window.mkJwt(3600, 'id');
+      AC_TOKEN = window.mkJwt(-60, 'old'); // एक मिनट पहले ख़त्म
+      fetch(FB + '/PAUSE.json').then(() => resolve({ gets: gets, sentNew: sentAc === fresh }));
+    }));
+    expect(r.gets).toBe(1);
+    expect(r.sentNew).toBe(true);
+  });
+
+  test('token ताज़ा हों → कोई अतिरिक्त काम नहीं (हर request पर बेवजह token न मांगे)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(jwtSetup);
+    const gets = await page.evaluate(() => new Promise((resolve) => {
+      let n = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = () => ({ getToken: () => { n++; return Promise.resolve({ token: 'x' }); } });
+      window.firebase.auth = () => ({ currentUser: { getIdToken: () => { n++; return Promise.resolve('y'); } } });
+      _rawFetch = () => Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve(null) });
+      AC_READY = true;
+      ID_TOKEN = window.mkJwt(3000, 'id');
+      AC_TOKEN = window.mkJwt(3000, 'ac');
+      Promise.all([fetch(FB + '/a.json'), fetch(FB + '/b.json')]).then(() => resolve(n));
+    }));
+    expect(gets).toBe(0);
+  });
+
+  test('login token ख़त्म हो चुका हो → वह भी पहले नया, और ?auth= में नया जाए', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(jwtSetup);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const freshId = window.mkJwt(3600, 'idnew');
+      let sentUrl = null;
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = () => ({ getToken: () => Promise.resolve({ token: AC_TOKEN }) });
+      window.firebase.auth = () => ({ currentUser: { getIdToken: () => Promise.resolve(freshId) } });
+      _rawFetch = (url) => { sentUrl = url; return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve(null) }); };
+      AC_READY = true;
+      AC_TOKEN = window.mkJwt(3600, 'ac');
+      ID_TOKEN = window.mkJwt(-10, 'idold');
+      fetch(FB + '/x.json').then(() => resolve({ hasNew: sentUrl.indexOf(encodeURIComponent(freshId)) > -1 || sentUrl.indexOf(freshId) > -1 }));
+    }));
+    expect(r.hasNew).toBe(true);
+  });
+
+  test('नया token न मिले (reCAPTCHA अटका) → ज़्यादा से ज़्यादा ~4 सेकंड रुककर request फिर भी जाए (कुछ अटके नहीं)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(jwtSetup);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = () => ({ getToken: () => new Promise(() => {}) }); // कभी जवाब नहीं
+      window.firebase.auth = () => ({ currentUser: { getIdToken: () => Promise.resolve(ID_TOKEN) } });
+      let sent = false;
+      _rawFetch = () => { sent = true; return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve(null) }); };
+      AC_READY = true;
+      ID_TOKEN = window.mkJwt(3600, 'id');
+      AC_TOKEN = window.mkJwt(-60, 'old');
+      const t0 = Date.now();
+      fetch(FB + '/x.json').then(() => resolve({ sent: sent, ms: Date.now() - t0 }));
+    }));
+    expect(r.sent).toBe(true);
+    expect(r.ms).toBeGreaterThanOrEqual(3500);
+    expect(r.ms).toBeLessThan(6000);
+  });
+
+  test('एक साथ कई requests (लौटते ही) → नया token सिर्फ़ एक बार मांगा जाए', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(jwtSetup);
+    const gets = await page.evaluate(() => new Promise((resolve) => {
+      let n = 0;
+      const fresh = window.mkJwt(3600, 'new');
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = () => ({ getToken: () => { n++; return new Promise((r) => setTimeout(() => r({ token: fresh }), 100)); } });
+      window.firebase.auth = () => ({ currentUser: { getIdToken: () => Promise.resolve(ID_TOKEN) } });
+      _rawFetch = () => Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve(null) });
+      AC_READY = true;
+      ID_TOKEN = window.mkJwt(3600, 'id');
+      AC_TOKEN = window.mkJwt(-60, 'old');
+      Promise.all([fetch(FB + '/a.json'), fetch(FB + '/b.json'), fetch(FB + '/c.json')]).then(() => resolve(n));
+    }));
+    expect(gets).toBe(1);
+  });
+
+  test('401 आए और App Check token ख़त्म हो चुका हो → दोबारा कोशिश से पहले App Check भी नया (पहले सिर्फ़ null होने पर होता था)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(jwtSetup);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const fresh = window.mkJwt(3600, 'new');
+      let forced = 0, calls = 0, secondAc = null;
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = () => ({ getToken: (force) => { if (force) forced++; return Promise.resolve({ token: fresh }); } });
+      window.firebase.auth = () => ({ currentUser: { getIdToken: () => Promise.resolve(ID_TOKEN) } });
+      _rawFetch = (url, opts) => {
+        calls++;
+        if (calls === 1) return Promise.resolve({ status: 401, ok: false });
+        secondAc = opts.headers['X-Firebase-AppCheck'];
+        return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve(null) });
+      };
+      ID_TOKEN = window.mkJwt(3600, 'id');
+      AC_TOKEN = window.mkJwt(-60, 'old');
+      _fbFetchWithAuth(FB + '/x.json', { method: 'GET' }).then(() => resolve({ forced: forced, secondNew: secondAc === fresh }));
+    }));
+    expect(r.forced).toBe(1);
+    expect(r.secondNew).toBe(true);
+  });
+
+  test('JWT न हो और समय पता न हो (जैसे पुराने टेस्ट के नक़ली token) → पुराना न माना जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      AC_TOKEN = 'नक़ली'; AC_TOKEN_AT = 0;
+      ID_TOKEN = 'नक़ली'; ID_TOKEN_AT = 0;
+      return { ac: _acStale(), id: _idStale() };
+    });
+    expect(r).toEqual({ ac: false, id: false });
+  });
+});

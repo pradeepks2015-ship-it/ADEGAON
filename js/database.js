@@ -718,7 +718,7 @@ function _liveAuthReady(fn){
       var u=null;
       try{ u=firebase.auth().currentUser; }catch(e){}
       if(!u) return fn();
-      u.getIdToken().then(function(t){ ID_TOKEN=t; fn(); },function(){ fn(); });
+      u.getIdToken().then(function(t){ _setIdToken(t); fn(); },function(){ fn(); });
     };
     if(typeof _ensureCorrectHqAuth==="function") _ensureCorrectHqAuth(go); else go();
   });

@@ -15,6 +15,56 @@ var firebaseConfig = {
 var ID_TOKEN = null;
 var AC_TOKEN = null; // App Check token — साबित करता है कि request असली app से है (अभी monitor mode)
 var AC_READY = false; // पहला App Check token मिल चुका है (सफल/असफल दोनों) — वरना request अनिश्चित काल इंतज़ार न करे
+// ── token ताज़े हैं या नहीं — घंटों पीछे पड़े फ़ोन पर लौटते ही पुराने token न जाएं ──
+// असली production (6/10): App Check Verified% 97 → 94 (unverified 3% → 6%)। App Check token ~1 घंटा
+// चलता है और _acRefresh हर 30 मिनट setInterval से — पर ऐप minimize हो तो Android यह टाइमर रोक
+// देता है। घंटों बाद लौटते ही (visibilitychange) कुछ requests तुरंत जाती हैं — डेटा बचाओ स्विच
+// (fetchPause) और v9.185 की "हाज़िरी" — और वो ख़त्म हो चुके token के साथ जाकर "unverified" में
+// गिनती थीं (मना भी होतीं, चुपचाप — error log में नहीं)। अब हर Firebase request से पहले जांच:
+// token ख़त्म होने वाला हो तो पहले नया लो (ज़्यादा से ज़्यादा FRESH_WAIT_MS रुककर, फिर जैसा है वैसा)
+var AC_TOKEN_AT = 0, ID_TOKEN_AT = 0; // token *बदलने* का समय (JWT में exp न मिले तब के लिए)
+var TOKEN_MARGIN_MS = 5*60*1000;      // ख़त्म होने से इतना पहले ही नया लो
+var AC_FALLBACK_MS = 25*60*1000, ID_FALLBACK_MS = 50*60*1000;
+var FRESH_WAIT_MS = 4000;             // नया token इतनी देर में न मिले तो request रोके न रखो
+function _jwtExpMs(t){
+  try{
+    var p=String(t).split(".")[1];
+    if(!p) return 0;
+    p=p.replace(/-/g,"+").replace(/_/g,"/");
+    while(p.length%4) p+="=";
+    var o=JSON.parse(atob(p));
+    return (o&&o.exp)?o.exp*1000:0;
+  }catch(e){ return 0; }
+}
+// फ़ोन की घड़ी ग़लत हो सकती है — exp सर्वर का समय है, इसलिए serverNow() से तुलना (logger.js पहले लोड होता है)
+function _nowSrv(){ return (typeof serverNow==="function")?serverNow():Date.now(); }
+function _tokStale(tok,gotAt,fallbackMs){
+  if(!tok) return false;
+  var exp=_jwtExpMs(tok);
+  if(exp) return exp-_nowSrv()<TOKEN_MARGIN_MS;
+  return gotAt>0&&Date.now()-gotAt>fallbackMs; // समय पता ही न हो (gotAt 0) तो पुराना न मानें
+}
+function _setAcToken(t){ t=t||null; if(t&&t!==AC_TOKEN) AC_TOKEN_AT=Date.now(); AC_TOKEN=t; }
+function _setIdToken(t){ if(t&&t!==ID_TOKEN) ID_TOKEN_AT=Date.now(); ID_TOKEN=t; }
+function _acStale(){ return _tokStale(AC_TOKEN,AC_TOKEN_AT,AC_FALLBACK_MS); }
+function _idStale(){ return _tokStale(ID_TOKEN,ID_TOKEN_AT,ID_FALLBACK_MS); }
+var _freshJob=null; // एक साथ कई requests हों तो ताज़ा करने का काम एक ही बार
+function _fbEnsureFresh(){
+  if(!_acStale()&&!_idStale()) return Promise.resolve();
+  if(_freshJob) return _freshJob;
+  var jobs=[];
+  try{
+    if(_acStale()) jobs.push(firebase.appCheck().getToken(false).then(function(t){ _setAcToken(t&&t.token); }).catch(function(){}));
+  }catch(e){}
+  try{
+    var u=firebase.auth().currentUser;
+    if(u&&_idStale()) jobs.push(u.getIdToken(false).then(function(t){ _setIdToken(t); }).catch(function(){}));
+  }catch(e){}
+  if(!jobs.length) return Promise.resolve();
+  _freshJob=Promise.race([Promise.all(jobs),new Promise(function(r){ setTimeout(r,FRESH_WAIT_MS); })])
+    .then(function(){ _freshJob=null; });
+  return _freshJob;
+}
 var _tokenWaiters = []; // app खुलते ही token बनने से पहले निकली DB-calls यहां इंतज़ार करती हैं
 // Firebase अपना सेव किया हुआ login बहाल कर चुका है (चाहे मिला हो या नहीं) — तब तक
 // firebase.auth().currentUser देखना भरोसेमंद नहीं
@@ -37,7 +87,7 @@ var _acRetryT=null;
 function _acRefresh(){
   try{
     firebase.appCheck().getToken(false)
-      .then(function(t){AC_TOKEN=(t&&t.token)||null;})
+      .then(function(t){_setAcToken(t&&t.token);})
       .catch(function(){AC_TOKEN=null;})
       .then(function(){
         if(!AC_READY){AC_READY=true; _acWaiters.splice(0).forEach(function(f){try{f();}catch(e){}});}
@@ -66,7 +116,7 @@ try{
     if(!AUTH_READY){AUTH_READY=true; _authWaiters.splice(0).forEach(function(f){try{f();}catch(e){}});}
     if(u){
       u.getIdToken().then(function(t){
-        ID_TOKEN=t;
+        _setIdToken(t);
         _tokenWaiters.splice(0).forEach(function(f){try{f();}catch(e){}});
       });
     }
@@ -101,7 +151,7 @@ function _fbFetchOnce(url,opts){ return _rawFetch(_withToken(url), _fbOpts(opts)
 function _acForceRefresh(){
   try{
     return firebase.appCheck().getToken(true)
-      .then(function(t){AC_TOKEN=(t&&t.token)||null;})
+      .then(function(t){_setAcToken(t&&t.token);})
       .catch(function(){});
   }catch(e){return Promise.resolve();}
 }
@@ -114,10 +164,10 @@ function _fbFetchWithAuth(url,opts){
       // (असली production लॉग, v9.165: "AppCheck token: था" फिर भी सर्वर मना — race थी, fetch जाते
       // वक़्त AC_TOKEN अभी null था)। इसलिए AC_TOKEN missing हो तो उसे भी ताज़ा करके login token के
       // साथ एक बार दोबारा कोशिश करो
-      var acJob=AC_TOKEN?Promise.resolve():_acForceRefresh();
+      var acJob=(AC_TOKEN&&!_acStale())?Promise.resolve():_acForceRefresh();
       return acJob.then(function(){
         return u.getIdToken(true).then(function(t){
-          ID_TOKEN=t;
+          _setIdToken(t);
           return _fbFetchOnce(url,opts);
         }).catch(function(){return r;});
       });
@@ -132,7 +182,7 @@ function _fbFetchWithAuth(url,opts){
 }
 window.fetch = function(url, opts){
   if(typeof url==="string" && url.indexOf(FB)===0){
-    if(ID_TOKEN && AC_READY) return _fbFetchWithAuth(url,opts);
+    if(ID_TOKEN && AC_READY) return _fbEnsureFresh().then(function(){ return _fbFetchWithAuth(url,opts); });
     // offline — तुरंत fail होकर offline-queue संभाले। पर v9.172 के लॉग (save-fail "Failed to fetch")
     // से पता चला कि कमज़ोर नेट पर फ़ोन ख़ुद को offline मान लेता है जबकि नेट थोड़ा-बहुत चल रहा होता है —
     // ऐसी request सर्वर तक पहुंच जाती और App Check header न होने से "unverified" में गिनती थी। इसलिए
