@@ -44,7 +44,51 @@ function _tokStale(tok,gotAt,fallbackMs){
   if(exp) return exp-_nowSrv()<TOKEN_MARGIN_MS;
   return gotAt>0&&Date.now()-gotAt>fallbackMs; // समय पता ही न हो (gotAt 0) तो पुराना न मानें
 }
-function _setAcToken(t){ t=t||null; if(t&&t!==AC_TOKEN) AC_TOKEN_AT=Date.now(); AC_TOKEN=t; }
+// ── App Check token न बने तो उसकी वजह लॉग में ──
+// असली production (9/10): App Check metrics में "outdated client" (login token था, App Check token
+// नहीं) 1–8 अक्टूबर 5–14%, फिर 9/10 को ~60% — पर error log "पिछले 2 दिन में कोई error नहीं"।
+// वजह: getToken() की नाकामी यहां चुपचाप निगल ली जाती थी, और जिस फ़ोन पर token नहीं बनता वह
+// LOGS में भी नहीं लिख पाता (Enforced — लॉग को भी token चाहिए)। इसलिए दो हिस्से:
+//  (1) नाकामी तुरंत लॉग करने की कोशिश — एक session में हर वजह (code) सिर्फ़ एक बार
+//  (2) फ़ोन में नोट (localStorage) — token फिर बनते ही पक्का लॉग "कितनी देर अटका, क्यों, कितनी
+//      कोशिशें" (उस वक़्त token है, इसलिए यह लॉग सचमुच पहुंचता है)। SDK एक ख़ास मनाही (HTTP 403)
+//      पर पूरे दिन के लिए रोक देता है — तब यह लॉग अगले दिन आएगा, पर आएगा
+var AC_FAIL_KEY="dc_acfail";
+var _acFailLogged={};
+function _acNoteFail(e,where){
+  try{
+    var code=String((e&&e.code)||"unknown");
+    var msg=String((e&&e.message)||e||"").slice(0,180);
+    var rc=(typeof grecaptcha!=="undefined")?"हां":"नहीं";
+    var rec=null;
+    try{ rec=JSON.parse(localStorage.getItem(AC_FAIL_KEY)||"null"); }catch(x){}
+    if(!rec||typeof rec!=="object") rec={since:Date.now(),n:0};
+    rec.n=(rec.n||0)+1; rec.code=code; rec.msg=msg; rec.rc=rc; rec.on=navigator.onLine?"हां":"नहीं";
+    try{ localStorage.setItem(AC_FAIL_KEY,JSON.stringify(rec)); }catch(x){}
+    if(_acFailLogged[code]||typeof logErr!=="function") return;
+    _acFailLogged[code]=1;
+    logErr("appcheck-fail",new Error(code+" • "+msg),where+" • reCAPTCHA लोड: "+rc+" • नेट: "+rec.on);
+  }catch(x){}
+}
+function _acNoteOk(){
+  try{
+    var raw=localStorage.getItem(AC_FAIL_KEY);
+    if(!raw) return;
+    localStorage.removeItem(AC_FAIL_KEY);
+    var rec=JSON.parse(raw);
+    if(!rec||!rec.since||typeof logErr!=="function") return;
+    var mins=Math.max(0,Math.round((Date.now()-rec.since)/60000));
+    var dur=mins<60?(mins+" मिनट"):(Math.floor(mins/60)+" घंटे "+(mins%60)+" मिनट");
+    logErr("appcheck-recovered",new Error("App Check token "+dur+" तक नहीं बना — वजह: "+rec.code+" • "+rec.msg),
+      "कोशिशें: "+rec.n+" • reCAPTCHA लोड: "+rec.rc+" • नेट: "+rec.on);
+  }catch(x){}
+}
+function _setAcToken(t){
+  t=t||null;
+  if(t&&t!==AC_TOKEN) AC_TOKEN_AT=Date.now();
+  AC_TOKEN=t;
+  if(t) _acNoteOk(); // पहले token न बन पाया था तो अब (token के साथ) उसका पक्का लॉग
+}
 function _setIdToken(t){ if(t&&t!==ID_TOKEN) ID_TOKEN_AT=Date.now(); ID_TOKEN=t; }
 function _acStale(){ return _tokStale(AC_TOKEN,AC_TOKEN_AT,AC_FALLBACK_MS); }
 function _idStale(){ return _tokStale(ID_TOKEN,ID_TOKEN_AT,ID_FALLBACK_MS); }
@@ -54,7 +98,7 @@ function _fbEnsureFresh(){
   if(_freshJob) return _freshJob;
   var jobs=[];
   try{
-    if(_acStale()) jobs.push(firebase.appCheck().getToken(false).then(function(t){ _setAcToken(t&&t.token); }).catch(function(){}));
+    if(_acStale()) jobs.push(firebase.appCheck().getToken(false).then(function(t){ _setAcToken(t&&t.token); }).catch(function(e){ _acNoteFail(e,"ताज़ा करते वक़्त"); }));
   }catch(e){}
   try{
     var u=firebase.auth().currentUser;
@@ -88,7 +132,7 @@ function _acRefresh(){
   try{
     firebase.appCheck().getToken(false)
       .then(function(t){_setAcToken(t&&t.token);})
-      .catch(function(){AC_TOKEN=null;})
+      .catch(function(e){AC_TOKEN=null;_acNoteFail(e,"ऐप खुलते/हर 30 मिनट");})
       .then(function(){
         if(!AC_READY){AC_READY=true; _acWaiters.splice(0).forEach(function(f){try{f();}catch(e){}});}
         // असली production bug (v9.165 के sse-never-opened लॉग से पकड़ा गया, सर्वर का जवाब
@@ -152,7 +196,7 @@ function _acForceRefresh(){
   try{
     return firebase.appCheck().getToken(true)
       .then(function(t){_setAcToken(t&&t.token);})
-      .catch(function(){});
+      .catch(function(e){ _acNoteFail(e,"401/403 के बाद"); });
   }catch(e){return Promise.resolve();}
 }
 function _fbFetchWithAuth(url,opts){
