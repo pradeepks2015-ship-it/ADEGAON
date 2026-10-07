@@ -10,7 +10,7 @@
 
 ## 1. अभी चालू काम
 
-**कुछ भी अधूरा नहीं।** आख़िरी PR (v9.190) merge होकर लाइव है।
+**कुछ भी अधूरा नहीं।** आख़िरी PR #223 (v9.190) merge होकर लाइव है।
 
 | PR | क्या | कब |
 |---|---|---|
@@ -31,7 +31,7 @@
 | #220 | v9.187 — नेट टूटे तो भी login PIN याद रहे | 5 अक्टू ✅ |
 | #221 | v9.188 — लौटते ही पुराने token न जाएं | 6 अक्टू ✅ |
 | #222 | v9.189 — logo छोटा, WhatsApp झलक | 7 अक्टू ✅ |
-| (अगला) | v9.190 — App Check token नाकामी का लॉग | 9 अक्टू ✅ |
+| #223 | v9.190 — App Check token नाकामी का लॉग | 9 अक्टू ✅ |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
@@ -41,7 +41,7 @@ dev branch main के बराबर है। नया काम शुर�
 
 ## 1ग. 9 अक्टूबर
 
-### v9.190 — App Check token न बने तो उसकी वजह लॉग में
+### v9.190 — App Check token न बने तो उसकी वजह लॉग में *(PR #223)*
 Console में Verified% 94 से गिरकर 92 हुआ। JE ने metrics की क़िस्में भेजीं (1–9 अक्टूबर):
 
 | क़िस्म | गिनती |
