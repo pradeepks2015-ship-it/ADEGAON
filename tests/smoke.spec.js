@@ -9483,3 +9483,55 @@ test.describe('token ताज़गी — ख़त्म होने वा�
     expect(r).toEqual({ ac: false, id: false });
   });
 });
+
+// ── v9.189: logo छोटा, WhatsApp पर लिंक की झलक — बिना ऐप धीमी किए, बिना बैंडविड्थ बढ़ाए ──
+// login पन्ने का logo 92px में दिखता था पर 327 KB की icon-512.png उतरती थी; और sw.js हर नए फ़ोन
+// पर icon-512 + icon-maskable-512 (~510 KB) भी precache करता था, जो सिर्फ़ install के वक़्त चाहिए
+test.describe('logo और लिंक-झलक (v9.189)', () => {
+  test('login logo छोटी WebP फ़ाइल हो (< 30 KB) और सचमुच दिखे', async ({ page }) => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    expect(html).toMatch(/<img class="login-logo" src="icons\/login-logo\.webp"/);
+    const size = fs.statSync(path.join(__dirname, '..', 'icons', 'login-logo.webp')).size;
+    expect(size).toBeLessThan(30 * 1024);
+    await openApp(page);
+    const w = await page.evaluate(() => new Promise((res) => {
+      const im = document.querySelector('.login-logo');
+      if (im.complete) res(im.naturalWidth); else im.onload = () => res(im.naturalWidth);
+    }));
+    expect(w).toBe(276); // 92px × 3 (तेज़ स्क्रीन)
+  });
+
+  test('WebP न खुले तो पहले icon-192.png, फिर ⚡ (logo की जगह ख़ाली न रहे)', async ({ page }) => {
+    await page.route('**/icons/login-logo.webp', (r) => r.fulfill({ status: 404, body: '' }));
+    await openApp(page);
+    await page.waitForFunction(() => { const im = document.querySelector('.login-logo'); return im && /icon-192\.png$/.test(im.src); });
+    const ok = await page.evaluate(() => new Promise((res) => {
+      const im = document.querySelector('.login-logo');
+      if (im.complete) res(im.naturalWidth > 0); else im.onload = () => res(im.naturalWidth > 0);
+    }));
+    expect(ok).toBe(true);
+  });
+
+  test('sw.js — 512px वाले icons precache न हों; जो भी precache सूची में है वह फ़ाइल सचमुच मौजूद हो', () => {
+    const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+    const block = sw.slice(sw.indexOf('var CORE='), sw.indexOf('self.addEventListener("install"'));
+    const code = block.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    expect(code).not.toContain('icon-512.png');
+    expect(code).not.toContain('icon-maskable-512.png');
+    expect(code).toContain('./icons/login-logo.webp');
+    const local = (code.match(/"\.\/[^"]+"/g) || []).map((s) => s.slice(3, -1)).filter((s) => s);
+    local.forEach((f) => expect(fs.existsSync(path.join(__dirname, '..', f)), f).toBe(true));
+  });
+
+  test('WhatsApp/Google झलक — description, og:title, og:image (पूरा https पता, फ़ाइल मौजूद और 300 KB से छोटी)', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const meta = (attr, key) => { const m = html.match(new RegExp('<meta ' + attr + '="' + key + '" content="([^"]+)"')); return m ? m[1] : null; };
+    expect(meta('name', 'description')).toBeTruthy();
+    expect(meta('property', 'og:title')).toBeTruthy();
+    const img = meta('property', 'og:image');
+    expect(img).toMatch(/^https:\/\/[^/]+\/icons\/[^/]+\.png$/);
+    const file = path.join(__dirname, '..', img.replace(/^https:\/\/[^/]+\//, ''));
+    expect(fs.existsSync(file)).toBe(true);
+    expect(fs.statSync(file).size).toBeLessThan(300 * 1024);
+  });
+});

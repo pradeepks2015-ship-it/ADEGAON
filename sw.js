@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v205";
+var CACHE_NAME="adegaon-dc-v206";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -43,8 +43,10 @@ var CORE=[
 var OPTIONAL=[
   "./manifest.json",
   "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./icons/icon-maskable-512.png",
+  // icon-512.png (327 KB) और icon-maskable-512.png (183 KB) अब यहां नहीं — ये सिर्फ़ manifest.json में
+  // ऐप install होते वक़्त browser ख़ुद नेट से लेता है; offline चलने के लिए इनकी ज़रूरत नहीं थी, फिर
+  // भी हर नए फ़ोन पर ~510 KB उतरते थे। login पन्ने का logo अब यह छोटी फ़ाइल है (~14 KB)
+  "./icons/login-logo.webp",
   "./icons/apple-touch-icon.png",
   "./icons/tower-decoration.svg",
   "./icons/scorecard-icon.svg",

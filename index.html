@@ -4,6 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>वसूली ट्रैकर | आदेगांव DC</title>
+<!-- WhatsApp/Google पर लिंक की झलक — सिर्फ़ तब पढ़ी जाती है जब कोई लिंक share करे (WhatsApp/crawler
+     ख़ुद उतारते हैं); ऐप चलाने वाले फ़ोन पर इससे कोई अतिरिक्त download नहीं। तस्वीर का पूरा पता
+     ज़रूरी है (WhatsApp relative पता नहीं समझता), और 300 KB से छोटी — icon-192 (56 KB) -->
+<meta name="description" content="आदेगांव बिजली वितरण केंद्र (लखनादौन डिवीजन, सिवनी सर्कल) — लाइनमैन और JE के लिए वसूली ट्रैकर। सिर्फ़ विभाग के कर्मचारियों के लिए।">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="वसूली ट्रैकर">
+<meta property="og:title" content="वसूली ट्रैकर | आदेगांव DC">
+<meta property="og:description" content="आदेगांव बिजली वितरण केंद्र — लाइनमैन और JE के लिए वसूली ट्रैकर">
+<meta property="og:url" content="https://adegaondc.netlify.app/">
+<meta property="og:image" content="https://adegaondc.netlify.app/icons/icon-192.png">
+<meta property="og:image:width" content="192">
+<meta property="og:image:height" content="192">
+<meta property="og:locale" content="hi_IN">
+<meta name="twitter:card" content="summary">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#eef2f7" id="meta-theme-color">
 <script>
@@ -49,7 +63,9 @@ try{
 
 <div id="login-screen" class="screen">
   <div class="org-banner" style="position:fixed;top:0;left:0;right:0;z-index:50;">&#9889; आदेगांव बिजली वितरण केंद्र</div>
-  <img class="login-logo" src="icons/icon-512.png" alt="logo" onerror="this.outerHTML='<div style=\'font-size:60px;margin-bottom:10px\'>&#9889;</div>'">
+  <!-- 92px में दिखता है — पहले 327 KB की icon-512.png थी; अब 276px WebP (~14 KB, तेज़ स्क्रीन के लिए 3 गुना)।
+       WebP न खुले (बहुत पुराना browser) तो पहले icon-192.png, फिर ⚡ -->
+  <img class="login-logo" src="icons/login-logo.webp" width="92" height="92" alt="आदेगांव DC logo" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='icons/icon-192.png';}else{this.outerHTML='<div style=\'font-size:60px;margin-bottom:10px\'>&#9889;</div>';}">
   <div class="login-title">आदेगांव DC वसूली ट्रैकर</div>
   <div class="login-sub">लखनादौन डिवीजन सिवनी सर्कल</div>
   <div id="ver-badge" style="font-size:10px;font-weight:600;color:var(--gold);border:1px solid var(--border);background:var(--card);border-radius:12px;padding:3px 12px;margin:-14px 0 20px;"></div>
