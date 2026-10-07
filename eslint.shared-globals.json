@@ -1,4 +1,5 @@
 [
+  "AC_FAIL_KEY",
   "AC_FALLBACK_MS",
   "AC_READY",
   "AC_RETRY_MS",
@@ -94,7 +95,10 @@
   "_FILTER_LABEL",
   "_HOME_BG_RE",
   "_ac",
+  "_acFailLogged",
   "_acForceRefresh",
+  "_acNoteFail",
+  "_acNoteOk",
   "_acRefresh",
   "_acRetryT",
   "_acStale",

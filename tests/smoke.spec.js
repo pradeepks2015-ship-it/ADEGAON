@@ -9535,3 +9535,92 @@ test.describe('logo और लिंक-झलक (v9.189)', () => {
     expect(fs.statSync(file).size).toBeLessThan(300 * 1024);
   });
 });
+
+// ── v9.190: App Check token न बने तो वजह लॉग में ──
+// असली production (9/10): App Check metrics में "outdated client" (login token था, App Check token
+// नहीं) ~60% पर, फिर भी error log ख़ाली — नाकामी चुपचाप निगली जाती थी, और token-रहित फ़ोन LOGS में
+// भी नहीं लिख पाता (Enforced)। इसलिए तुरंत लॉग की कोशिश + token लौटते ही पक्का लॉग
+test.describe('App Check token नाकामी का लॉग (v9.190)', () => {
+  const throttled = () => {
+    const e = new Error('Requests throttled due to 403 error. Attempts allowed again after 01d:00m:00s');
+    e.code = 'appCheck/throttled';
+    return e;
+  };
+
+  test('token न बने → वजह (code + संदेश) के साथ appcheck-fail लॉग हो, और फ़ोन में नोट रहे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate((errSrc) => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); localStorage.removeItem('dc_acfail'); } catch (e) {}
+      _acFailLogged = {};
+      AC_TOKEN = null; AC_READY = true; AC_RETRY_MS = 100000;
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = () => ({ getToken: () => Promise.reject(new Function('return (' + errSrc + ')()')()) });
+      window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      _acRefresh();
+      setTimeout(() => {
+        const logs = getLogs().filter((l) => l.c === 'appcheck-fail');
+        resolve({ logs: logs, note: JSON.parse(localStorage.getItem('dc_acfail') || 'null') });
+      }, 100);
+    }), throttled.toString());
+    expect(r.logs.length).toBe(1);
+    expect(r.logs[0].m).toContain('appCheck/throttled');
+    expect(r.logs[0].m).toContain('01d:00m:00s');
+    expect(r.logs[0].x).toContain('reCAPTCHA लोड:');
+    expect(r.note.code).toBe('appCheck/throttled');
+    expect(r.note.n).toBe(1);
+  });
+
+  test('वही वजह बार-बार → लॉग एक ही बार (हर 15 सेकंड की कोशिश से लॉग न भरे), पर गिनती बढ़ती रहे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate((errSrc) => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); localStorage.removeItem('dc_acfail'); } catch (e) {}
+      _acFailLogged = {};
+      const mk = new Function('return (' + errSrc + ')')();
+      for (let i = 0; i < 5; i++) _acNoteFail(mk(), 'टेस्ट');
+      resolve({ n: getLogs().filter((l) => l.c === 'appcheck-fail').length, count: JSON.parse(localStorage.getItem('dc_acfail')).n });
+    }), throttled.toString());
+    expect(r.n).toBe(1);
+    expect(r.count).toBe(5);
+  });
+
+  test('token फिर बन जाए → "कितनी देर अटका, क्यों, कितनी कोशिशें" का पक्का लॉग, और नोट साफ़', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      try { localStorage.removeItem('dc_logs3'); } catch (e) {}
+      localStorage.setItem('dc_acfail', JSON.stringify({ since: Date.now() - 125 * 60000, n: 300, code: 'appCheck/throttled', msg: 'Requests throttled due to 403 error', rc: 'हां', on: 'हां' }));
+      window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      _setAcToken('नया-token');
+      return { logs: getLogs().filter((l) => l.c === 'appcheck-recovered'), note: localStorage.getItem('dc_acfail') };
+    });
+    expect(r.logs.length).toBe(1);
+    expect(r.logs[0].m).toContain('2 घंटे 5 मिनट');
+    expect(r.logs[0].m).toContain('appCheck/throttled');
+    expect(r.logs[0].x).toContain('कोशिशें: 300');
+    expect(r.note).toBeNull();
+  });
+
+  test('सामान्य हालत (पहले कोई नाकामी नहीं) → token बनने पर कोई लॉग नहीं', async ({ page }) => {
+    await openApp(page);
+    const n = await page.evaluate(() => {
+      try { localStorage.removeItem('dc_logs3'); localStorage.removeItem('dc_acfail'); } catch (e) {}
+      _setAcToken('token-1'); _setAcToken('token-2');
+      return getLogs().filter((l) => /^appcheck-/.test(l.c)).length;
+    });
+    expect(n).toBe(0);
+  });
+
+  test('401/403 के बाद force-refresh भी नाकाम हो → वह भी लॉग हो (पहले बिल्कुल चुप था)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      try { localStorage.removeItem('dc_logs3'); localStorage.removeItem('dc_acfail'); } catch (e) {}
+      _acFailLogged = {};
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = () => ({ getToken: () => { const e = new Error('reCAPTCHA error'); e.code = 'appCheck/recaptcha-error'; return Promise.reject(e); } });
+      window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      _acForceRefresh().then(() => resolve(getLogs().filter((l) => l.c === 'appcheck-fail').map((l) => l.m + ' | ' + l.x)));
+    }));
+    expect(r.length).toBe(1);
+    expect(r[0]).toContain('appCheck/recaptcha-error');
+    expect(r[0]).toContain('401/403 के बाद');
+  });
+});
