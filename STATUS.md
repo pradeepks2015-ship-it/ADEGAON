@@ -4,7 +4,7 @@
 > (`git log --oneline -30`) — यहां सिर्फ़ **अभी की स्थिति**, **हाल के फ़ैसले** और **जो सीखा** है।
 > काम पूरा होने पर इसे अपडेट करते चलें।
 
-**आख़िरी अपडेट:** 9 अक्टूबर 2026 · **Version:** 9.193 · **CACHE_NAME:** adegaon-dc-v210
+**आख़िरी अपडेट:** 9 अक्टूबर 2026 · **Version:** 9.194 · **CACHE_NAME:** adegaon-dc-v211
 
 ---
 
@@ -35,6 +35,7 @@
 | #224 | v9.191 — असली होस्ट GitHub Pages दर्ज, झलक का पता | 9 अक्टू ✅ |
 | #225 | v9.192 — App Check की कमी से वसूली अटके नहीं | 9 अक्टू ✅ |
 | #226 | v9.193 — login पर ऐप की पहचान, लोगो पर अंग्रेज़ी नाम | 9 अक्टू ✅ |
+| #227 | v9.194 — privacy.html पूरी अंग्रेज़ी में | 9 अक्टू ✅ |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
@@ -55,6 +56,11 @@ dev branch main के बराबर है। नया काम शुर�
 - ऊपर की नीली पट्टी "⚡ आदेगांव बिजली वितरण केंद्र" **वैसी ही** रखी (JE का फ़ैसला)
 - `privacy.html` के सबसे ऊपर अंग्रेज़ी में "About this app" जोड़ा
 - A2 (MPEZ लोगो) यहां पहले से लागू नहीं था, क्योंकि हमारा लोगो अपना है। A4 (शीर्षक और meta) v9.189 में हो चुका था
+
+### v9.194 — `privacy.html` पूरी अंग्रेज़ी में *(PR #227)*
+JE के कहने पर। पहले पन्ना हिंदी में था और Google का जांचक उसे पढ़ नहीं पाता। अब `lang="en"` है, शीर्षक और
+meta description भी अंग्रेज़ी में हैं, और बातें वही हैं। टेस्ट जांचता है कि HTML टिप्पणी छोड़कर कोई हिंदी
+अक्षर न हो।
 
 **ध्यान:** सिवनी सर्कल वाला ऐप भी `pradeepks2015-ship-it.github.io` पर हो, तो Google के लिए दोनों एक ही
 साइट हैं। उस ऐप का MPEZ लोगो हटाना आदेगांव के लिए भी ज़रूरी है।
@@ -125,9 +131,10 @@ token न बनने की अवधि (~8/10 11:40 IST से 9/10 ~15:15 I
 
 ### सुरक्षा-सूची (JE की भेजी, 19 बिंदु) — कोड से जांच
 ज़्यादातर ✅। खुले बिंदु, जो अभी ज़रूरी नहीं:
-- **login (Authentication) पर App Check सिर्फ़ "Monitoring"।** email और "vasuli-+PIN" वाला नियम public
-  कोड में है, इसलिए script से PIN आज़माने का रास्ता सिर्फ़ Firebase की अपनी रोक से बंद है। outdated-उछाल
-  सुलझने के बाद Enforce पर सोचें
+- ~~login (Authentication) पर App Check सिर्फ़ "Monitoring"~~ — **JE ने बताया (9/10): Authentication पर भी
+  Enforced है।** इसलिए script से PIN आज़माने का रास्ता भी App Check से बंद है। असर: Google की काली सूची
+  जैसी घटना में (token न बने) नया login और re-auth भी रुकेंगे। तब भी पहले से login फ़ोन की वसूली कतार
+  में सुरक्षित रहती है, और v9.192 से token लौटते ही अपने-आप चली जाती है
 - **JE offline login का hash** साधारण SHA-256 है (`_saveJEHash`)। ख़तरा तभी जब खुला फ़ोन किसी के हाथ लगे
 - Firebase SDK 10.14.1 (2024)
 
@@ -417,7 +424,7 @@ Excel serial (1899-12-30 से दिन, UTC से बनाया)। पह
 - **JE का काम:** सभी लाइनमैन को नए version पर लाना (JE मेनू → "सभी डिवाइस" में हर फ़ोन का version दिखता है)
 - **10 अक्टूबर के आसपास:** पहला असली लेजर अपलोड जिसमें `sweepStalePaid` चलेगा — toast में
   "🧹 N पुरानी अन्य बटनों से हटाई" की संख्या JE से पूछें, उससे पता चलेगा ख़राबी कितनी बड़ी थी
-- ~~App Check Verified%~~ — 2/10 को **97%** (Enforced), लक्ष्य 95% पार। Authentication वाला App Check "Monitoring" पर ही रहे (PREVIEW; enforce करने पर 1% लाइनमैनों का login रुक सकता है)
+- ~~App Check Verified%~~ — 2/10 को **97%** (Enforced), लक्ष्य 95% पार। Authentication वाला App Check भी Enforced है (JE, 9/10)
 - **लाइनमैन से कभी "Chrome में site data मिटाओ" न कहें** — बिना भेजी वसूली उसी में है। ऐप अटके तो:
   बंद करके खोलें → फिर भी न चले तो logout/login
 - **error log** में `sse-never-opened`, `array-put-noflags`, `save-fail`, `paid-backup-fail`,
