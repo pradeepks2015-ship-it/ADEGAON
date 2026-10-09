@@ -5,12 +5,17 @@
 ## Tech Stack
 - Vanilla JavaScript (कोई build step नहीं)
 - Firebase Realtime Database + Firebase Auth + Firebase App Check
-- Netlify पर डिप्लॉय (साइट: adegaondc)
+- **असली चालू ऐप GitHub Pages पर है:** `https://pradeepks2015-ship-it.github.io/ADEGAON/` — `main` पर हर
+  merge से "pages build and deployment" workflow अपने-आप चढ़ाता है। **लाइनमैन यहीं काम करते हैं — इसे कभी
+  बंद/Unpublish न करें** (वरना सबके फ़ोन पर ऐप बंद)
+- Netlify (साइट: adegaondc) **22/9/2026 से रुका है** — मुफ़्त plan के क्रेडिट ख़त्म, हर production deploy
+  "Skipped"; वहां v9.153 पड़ा है। इसे "लाइव" न मानें, इसका पता किसी को न दें (JE का फ़ैसला 9/10: GitHub
+  Pages ही रखें)। PR की "deploy-preview" हरी होना यह नहीं बताता कि production चढ़ा
 - Playwright से टेस्ट
 
 ## Repo/Branch
 - GitHub: `pradeepks2015-ship-it/ADEGAON`
-- `main` branch से Netlify auto-deploy होता है
+- `main` branch से GitHub Pages अपने-आप deploy होता है (Netlify ऊपर देखें — रुका है)
 - सारा development branch `claude/recovery-tractor-cloud-file-cx3d5z` पर होता है, फिर PR बनाकर `main` में merge होता है
 
 ## मुख्य फाइलें
@@ -56,6 +61,12 @@
    ```
    नया top-level global (जो दूसरी js/*.js फाइल में इस्तेमाल हो) जोड़ें तो पहले `node scripts/gen-eslint-globals.js` चलाएं, वरना lint फेल होगी।
 3. Commit → `git fetch origin main` करके rebase करें (पिछले squash-merge से conflict बचाने के लिए) → push → PR बनाएं → PR की "smoke" **और** "lint" दोनों CI checks पास होने का इंतज़ार करें → तभी merge करें (squash) → PR activity से unsubscribe करें।
+   merge के बाद **"लाइव" तभी कहें** जब GitHub Pages का deploy सफल दिखे —
+   `gh api "repos/pradeepks2015-ship-it/ADEGAON/deployments?environment=github-pages&per_page=1"` से id, फिर उसके
+   `/statuses` में `success`। (9/10 तक हम "merge = Netlify पर लाइव" मानते रहे, जबकि Netlify 22/9 से रुका था।)
+   GitHub पर push कभी "Internal Server Error" दे तो `git -c http.version=HTTP/1.1 push` आज़माएं (7/10 को यही चला)।
+   **ध्यान:** GitHub Pages हमारी `_headers` फ़ाइल नहीं मानता (वह सिर्फ़ Netlify की है) — वहां हर फ़ाइल ~10 मिनट
+   cache रहती है, इसलिए नया version फ़ोनों तक पहुंचने में 10 मिनट तक ज़्यादा लग सकते हैं
 4. बड़े visual/UI बदलाव हों तो पहले screenshot लेकर दिखाएं, अनुमति के बाद ही merge करें।
 5. कभी भी बिना पूछे risky/destructive git ऑपरेशन (force push to main, reset --hard, आदि) न करें।
 6. Firebase Security Rules में कोई बदलाव करना हो तो पहले `database.rules.json` में बदलें, commit/PR/merge की सामान्य प्रक्रिया से गुज़ारें — merge होते ही `.github/workflows/deploy-rules.yml` अपने-आप असली Firebase Database पर rules publish कर देता है (backup.js जैसा ही `FIREBASE_SERVICE_ACCOUNT` secret इस्तेमाल होता है, कोई मैन्युअल Console कदम नहीं चाहिए)। PR merge होने के बाद Actions टैब में "Deploy Firebase Rules" workflow हरा (green) होने की पुष्टि कर लें।
@@ -77,11 +88,12 @@ Firebase प्रोजेक्ट में Owner, Netlify में member, 
 ### क. JE के करने के काम (वेबसाइटों पर)
 1. **Firebase:** नया प्रोजेक्ट → Realtime Database → Authentication में Email/Password चालू →
    Users → Add user: हर HQ का `hq-<नाम>@<dc>.internal`, password `vasuli-<6 अंक PIN>` (हर UID नोट करें) →
-   App Check (reCAPTCHA v3, site key नोट करें; reCAPTCHA admin में नई Netlify domain जोड़ें) →
+   App Check (reCAPTCHA v3, site key नोट करें; reCAPTCHA admin में `<github-user>.github.io` जोड़ें) →
    Service accounts → नई private key (JSON — किसी को न भेजें) → Web app जोड़कर config लें
-2. **Authentication → Settings → Authorized domains** में नई Netlify domain जोड़ें — छूटा तो login ही नहीं होगा
+2. **Authentication → Settings → Authorized domains** में `<github-user>.github.io` जोड़ें — छूटा तो login ही नहीं होगा
 3. **GitHub:** नया repo; Settings → Secrets → Actions में `FIREBASE_SERVICE_ACCOUNT` = ऊपर का JSON
-4. **Netlify:** नई साइट, नए repo के `main` से जोड़ें
+4. **GitHub Pages:** नए repo → Settings → Pages → Source: "Deploy from a branch", `main` / root।
+   (Netlify का मुफ़्त plan बार-बार deploy पर क्रेडिट ख़त्म कर देता है — 22/9/2026 को यही हुआ)
 
 ### ख. कोड में बदलाव
 | फ़ाइल | क्या बदलना है |
@@ -95,7 +107,7 @@ Firebase प्रोजेक्ट में Owner, Netlify में member, 
 | `scripts/set-hq-pin.js` | `DB_URL`, `HQ_AUTH_EMAIL` की नक़ल |
 | `.github/workflows/set-hq-pin.yml` | `options:` में HQ नाम |
 | `.github/workflows/backup.yml` | artifact नाम `adegaon-backup-…` (सिर्फ़ नाम) |
-| `index.html` | `<title>`, `meta description` और `og:*` (WhatsApp झलक — `og:url`/`og:image` में नई Netlify domain), org-banner, login-title, `login-sub` (डिवीजन/सर्कल), `.sb-org`, `#hdr-sub`, `#hq-sel` के options (`value` के साथ, `translate="no"` बना रहे), बिलिंग popup का डिवीजन/सर्कल पाठ |
+| `index.html` | `<title>`, `meta description` और `og:*` (WhatsApp झलक — `og:url`/`og:image` में नया GitHub Pages पता, `/<repo>/` समेत; टेस्ट भी यही पता जांचता है), org-banner, login-title, `login-sub` (डिवीजन/सर्कल), `.sb-org`, `#hdr-sub`, `#hq-sel` के options (`value` के साथ, `translate="no"` बना रहे), बिलिंग popup का डिवीजन/सर्कल पाठ |
 | `icons/*` | सभी logo पर **"ADEGAON DC" छपा है** — नए DC का logo बनाकर `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` बदलें, और `login-logo.webp` (276×276 WebP, ~14 KB — बड़ी फ़ाइल न लगाएं, टेस्ट 30 KB से ऊपर पर फेल होगा) |
 | `manifest.json` | `name`, `description` (install के वक़्त फ़ोन पर यही दिखता है; `short_name` पहले से सामान्य "वसूली ट्रैकर") |
 | `privacy.html` | DC/डिवीजन/सर्कल का नाम, संपर्क email |

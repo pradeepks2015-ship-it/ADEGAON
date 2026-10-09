@@ -9529,8 +9529,10 @@ test.describe('logo और लिंक-झलक (v9.189)', () => {
     expect(meta('name', 'description')).toBeTruthy();
     expect(meta('property', 'og:title')).toBeTruthy();
     const img = meta('property', 'og:image');
-    expect(img).toMatch(/^https:\/\/[^/]+\/icons\/[^/]+\.png$/);
-    const file = path.join(__dirname, '..', img.replace(/^https:\/\/[^/]+\//, ''));
+    // असली चालू ऐप GitHub Pages पर है — पते में repo का हिस्सा (/ADEGAON/) होता है
+    expect(img).toMatch(/^https:\/\/pradeepks2015-ship-it\.github\.io\/ADEGAON\/icons\/[^/]+\.png$/);
+    expect(meta('property', 'og:url')).toBe('https://pradeepks2015-ship-it.github.io/ADEGAON/');
+    const file = path.join(__dirname, '..', img.replace(/^https:\/\/[^/]+\/ADEGAON\//, ''));
     expect(fs.existsSync(file)).toBe(true);
     expect(fs.statSync(file).size).toBeLessThan(300 * 1024);
   });
