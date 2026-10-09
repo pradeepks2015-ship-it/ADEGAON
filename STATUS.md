@@ -10,7 +10,7 @@
 
 ## 1. अभी चालू काम
 
-**कुछ भी अधूरा नहीं।** आख़िरी PR (v9.191) merge होकर GitHub Pages पर लाइव है (Netlify 22/9 से रुका — नीचे देखें)।
+**कुछ भी अधूरा नहीं।** आख़िरी PR #224 (v9.191) merge होकर GitHub Pages पर लाइव है (Netlify 22/9 से रुका — नीचे देखें)।
 
 | PR | क्या | कब |
 |---|---|---|
@@ -32,7 +32,7 @@
 | #221 | v9.188 — लौटते ही पुराने token न जाएं | 6 अक्टू ✅ |
 | #222 | v9.189 — logo छोटा, WhatsApp झलक | 7 अक्टू ✅ |
 | #223 | v9.190 — App Check token नाकामी का लॉग | 9 अक्टू ✅ |
-| (अगला) | v9.191 — असली होस्ट GitHub Pages दर्ज, झलक का पता | 9 अक्टू ✅ |
+| #224 | v9.191 — असली होस्ट GitHub Pages दर्ज, झलक का पता | 9 अक्टू ✅ |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
@@ -68,7 +68,7 @@ dev branch main के बराबर है। नया काम शुर�
 **आगे:** Google Search Console में "Security issues" के email चालू रखें, ताकि फिर निशान लगे तो लाइनमैनों
 से पहले पता चले।
 
-### v9.191 *(सिर्फ़ झलक का पता + दस्तावेज़)*
+### v9.191 *(सिर्फ़ झलक का पता + दस्तावेज़, PR #224)*
 - `index.html` के `og:url`/`og:image` Netlify की जगह GitHub Pages पते पर, क्योंकि Netlify पर पुराना ऐप है।
   टेस्ट अब यही पता जांचता है
 - `CLAUDE.md`: असली host GitHub Pages, उसे कभी बंद न करें। Netlify रुका है। merge के बाद "लाइव" कहने से
