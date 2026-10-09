@@ -2585,6 +2585,7 @@ test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
     // बाद में आया कोई और (असंबंधित, जैसे देर से आया login-welcome) toast बीच में overwrite कर सकता था
     const r = await page.evaluate(() => new Promise((resolve) => {
       Object.defineProperty(navigator, 'onLine', { get: () => true });
+      AC_TOKEN = 'ac-ok'; // v9.192: App Check token था, फिर भी 401 = खाते की गड़बड़ी (token न होने वाला 401 अब "अटकी" में नहीं गिना जाता)
       let count = 0;
       const orig = window.fetch;
       window.fetch = function (url, opts) {
@@ -3441,6 +3442,7 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
   test('पहला 401 आते ही सही account से जुड़ने की कोशिश हो (हार मानने का इंतज़ार न करे)', async ({ page }) => {
     await openApp(page);
     const tried = await page.evaluate(() => new Promise((resolve) => {
+      AC_TOKEN = 'ac-ok'; // v9.192: App Check token था, फिर भी 401 = खाते की गड़बड़ी (token न होने वाला 401 अब "अटकी" में नहीं गिना जाता)
       CU = { role: 'lineman', name: '401', hq: 'आदेगांव', pin: '4321' };
       _authHealed = {};
       window.firebase = window.firebase || {};
@@ -9065,6 +9067,7 @@ test.describe('save/sync 401 — लॉग में खाता, token और 
     await openApp(page);
     await loginJE(page);
     const r = await page.evaluate((body) => new Promise((resolve) => {
+      AC_TOKEN = 'ac-ok'; // v9.192: App Check token था, फिर भी 401 = खाते की गड़बड़ी (token न होने वाला 401 अब "अटकी" में नहीं गिना जाता)
       try { localStorage.removeItem('dc_logs3'); } catch (e) {}
       var hq = 'पाटन', cat = 'वैभव';
       window.fetch = function () {
@@ -9624,5 +9627,60 @@ test.describe('App Check token नाकामी का लॉग (v9.190)', ()
     expect(r.length).toBe(1);
     expect(r[0]).toContain('appCheck/recaptcha-error');
     expect(r[0]).toContain('401/403 के बाद');
+  });
+});
+
+// ── v9.192: App Check token न होने वाले 401 से वसूली "अटकी" न हो; token लौटते ही रुकी वसूली जाए ──
+// असली production (8–9/10, पाटन/Neeku sarraty, v9.190 के appcheck-recovered लॉग से): reCAPTCHA ने
+// 27 घंटे token नहीं दिया (Google की काली सूची के दौरान), 148 कोशिशें। तीन 401 पर entry "अटकी"
+// (authFailCount 3) मानकर auto-retry रुक जाता, और token लौटने पर भी ऐप बंद-खोलने तक अटकी रहती
+test.describe('App Check की कमी से वसूली अटके नहीं (v9.192)', () => {
+  test('App Check token न हो तो 401 "अटकी" गिनती में न जुड़े (कितनी भी बार हो)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const p = {}; const k = cKey('पाटन', 'कुल उपभोक्ता');
+      p[k] = { hq: 'पाटन', cat: 'कुल उपभोक्ता', type: 'put', patch: { '7': { acc: '7', status: 'paid' } } };
+      setPendingObj(p);
+      AC_TOKEN = null;
+      for (let i = 0; i < 6; i++) { const e = new Error('HTTP 401'); _bumpAuthFail(k, e); }
+      return getPending()[k].authFailCount || 0;
+    });
+    expect(r).toBe(0);
+  });
+
+  test('token हो पर सर्वर App Check की वजह से मना करे ("Missing appcheck token") → भी "अटकी" न गिने', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const p = {}; const k = cKey('पाटन', 'वैभव');
+      p[k] = { hq: 'पाटन', cat: 'वैभव', type: 'put', patch: { '8': { acc: '8' } } };
+      setPendingObj(p);
+      AC_TOKEN = 'ac-ok';
+      const e = new Error('HTTP 401'); e.body = '{ "error" : "Missing appcheck token" }';
+      _bumpAuthFail(k, e);
+      return getPending()[k].authFailCount || 0;
+    });
+    expect(r).toBe(0);
+  });
+
+  test('token लौटते ही "अटकी" मानी गई वसूली तुरंत भेजी जाए — ऐप बंद-खोलने का इंतज़ार नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const p = {}; const k = cKey('पाटन', 'कुल उपभोक्ता');
+      p[k] = { hq: 'पाटन', cat: 'कुल उपभोक्ता', type: 'put', authFailCount: 3, patch: { '9': { acc: '9', status: 'paid' } } };
+      setPendingObj(p);
+      localStorage.setItem('dc_acfail', JSON.stringify({ since: Date.now() - 27 * 3600000, n: 148, code: 'appCheck/recaptcha-error', msg: 'ReCAPTCHA error', rc: 'हां', on: 'हां' }));
+      let patched = 0;
+      window.fetch = function (url, opts) {
+        if (opts && opts.method === 'PATCH' && String(url).indexOf(fbPath('पाटन', 'कुल उपभोक्ता')) > -1) patched++;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(null) });
+      };
+      _flushing = false;
+      AC_TOKEN = null;
+      _setAcToken('नया-token'); // reCAPTCHA फिर चला
+      setTimeout(() => resolve({ patched: patched, left: Object.keys(getPending()).length }), 600);
+    }));
+    expect(r.patched).toBe(1);
+    expect(r.left).toBe(0); // भेजी जा चुकी
   });
 });

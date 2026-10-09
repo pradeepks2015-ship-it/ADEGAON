@@ -540,6 +540,7 @@
   "renderScBody",
   "renderScDateTable",
   "renderSummaryWith",
+  "resetAuthFailAll",
   "rmkKeyOf",
   "rmkStatus",
   "runMigration",

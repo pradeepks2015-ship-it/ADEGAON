@@ -29,6 +29,15 @@ function _bumpAuthFail(k,err){
   var entry=p[k];
   if(!entry) return;
   var msg=(err&&err.message)||"";
+  // App Check token ही न हो (या सर्वर ने App Check की वजह से मना किया हो) तो यह खाते/PIN की
+  // गड़बड़ी नहीं — "अटकी" गिनती में न जोड़ें। असली production (8–9/10, पाटन/Neeku sarraty):
+  // reCAPTCHA ने 27 घंटे token नहीं दिया (Google की काली सूची के दौरान); तीन 401 पर वसूली "अटकी"
+  // मानकर अपने-आप भेजना बंद हो जाता, और token लौटने पर भी ऐप बंद-खोलने तक अटकी रहती
+  var acMissing=(typeof AC_TOKEN!=="undefined"&&!AC_TOKEN)||/app ?check/i.test((err&&err.body)||"");
+  if(/HTTP (401|403)/.test(msg)&&acMissing){
+    p[k]=entry; setPendingObj(p); // गिनती जैसी है वैसी — token लौटते ही _acNoteOk भेज देगा
+    return;
+  }
   if(/HTTP (401|403)/.test(msg)){
     entry.authFailCount=(entry.authFailCount||0)+1;
     // हार मानने से पहले खुद ठीक होने की एक कोशिश: 401 की सबसे आम वजह यह है कि device सही HQ
@@ -69,6 +78,16 @@ function isPending(hq,cat){return !!getPending()[cKey(hq,cat)];}
 // किसी HQ के लिए सही Firebase account से sign-in वापस मिल जाए (देखें ui-core.js: _ensureCorrectHqAuth)
 // तो उस HQ की पुरानी "authFailCount" गिनती अब मान्य नहीं रह जाती — वरना flushPending() हमेशा के लिए
 // उन entries को छोड़ता रहेगा (देखें नीचे STUCK_AUTH_MAX check), भले ही अब असल में sync हो सकता हो
+// App Check token लंबी नाकामी के बाद लौटा — उस दौरान "अटकी" मानी गई सारी entries फिर से भेजने
+// लायक़ (वो 401 खाते की वजह से नहीं, token न होने से थे)। _acNoteOk (js/firebase.js) से
+function resetAuthFailAll(){
+  var p=getPending(),changed=false;
+  Object.keys(p).forEach(function(k){
+    if(p[k]&&p[k].authFailCount){ p[k].authFailCount=0; changed=true; }
+  });
+  if(changed) setPendingObj(p);
+  return changed;
+}
 function _resetAuthFailForHQ(hq){
   var p=getPending(),changed=false;
   Object.keys(p).forEach(function(k){
