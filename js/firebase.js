@@ -76,6 +76,11 @@ function _acNoteOk(){
     if(!raw) return;
     localStorage.removeItem(AC_FAIL_KEY);
     var rec=JSON.parse(raw);
+    // token न होने के दौरान रुकी वसूली अभी भेजें — ऐप बंद-खोलने का इंतज़ार नहीं
+    try{
+      if(typeof resetAuthFailAll==="function") resetAuthFailAll();
+      if(typeof flushPending==="function") setTimeout(function(){ try{ flushPending(); }catch(x){} },0);
+    }catch(x){}
     if(!rec||!rec.since||typeof logErr!=="function") return;
     var mins=Math.max(0,Math.round((Date.now()-rec.since)/60000));
     var dur=mins<60?(mins+" मिनट"):(Math.floor(mins/60)+" घंटे "+(mins%60)+" मिनट");
