@@ -9703,4 +9703,12 @@ test.describe('login पन्ने पर ऐप की पहचान (v9.19
     expect(r.ok()).toBe(true);
     expect(await r.text()).toContain('This is not an official website');
   });
+
+  test('v9.194: privacy.html पूरी अंग्रेज़ी में हो (Google का जांचक पढ़ सके) — टिप्पणी छोड़कर कोई हिंदी अक्षर नहीं', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'privacy.html'), 'utf8');
+    expect(html).toMatch(/<html lang="en">/);
+    const text = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<style[\s\S]*?<\/style>/g, '');
+    expect(text).not.toMatch(/[\u0900-\u097F]/);
+    expect(text).toContain('does not collect any payment, bank, UPI or card details');
+  });
 });
