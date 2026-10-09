@@ -9687,12 +9687,13 @@ test.describe('App Check की कमी से वसूली अटके �
 
 // ── v9.193: Google के लाल ठप्पे (8/10, phishing) से बचाव — login पन्ने पर ऐप की साफ़ पहचान ──
 test.describe('login पन्ने पर ऐप की पहचान (v9.193)', () => {
-  test('अंग्रेज़ी पंक्ति "not an official website" दिखे और Privacy Policy का लिंक काम करे', async ({ page }) => {
+  test('अंग्रेज़ी पंक्ति "not the department\'s official website" दिखे और Privacy Policy का लिंक काम करे', async ({ page }) => {
     await openApp(page);
     const d = page.locator('#login-screen .login-disclaimer');
     await expect(d).toBeVisible();
-    await expect(d).toContainText('not an official website of the department');
-    await expect(d).toContainText('internal tool used by Adegaon DC staff');
+    // JE की चुनी पंक्ति (विकल्प ग)
+    await expect(d).toContainText('made for the internal office use of Adegaon DC');
+    await expect(d).toContainText("not the department's official website");
     // पहले वाली "बिल भुगतान नहीं होता" पंक्ति JE ने हटवाई थी
     await expect(d).not.toContainText(/payment/i);
     const a = d.locator('a');
