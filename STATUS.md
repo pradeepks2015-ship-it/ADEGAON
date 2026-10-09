@@ -33,7 +33,7 @@
 | #222 | v9.189 — logo छोटा, WhatsApp झलक | 7 अक्टू ✅ |
 | #223 | v9.190 — App Check token नाकामी का लॉग | 9 अक्टू ✅ |
 | #224 | v9.191 — असली होस्ट GitHub Pages दर्ज, झलक का पता | 9 अक्टू ✅ |
-| (अगला) | v9.192 — App Check की कमी से वसूली अटके नहीं | 9 अक्टू ✅ |
+| #225 | v9.192 — App Check की कमी से वसूली अटके नहीं | 9 अक्टू ✅ |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
@@ -53,7 +53,7 @@ token न बनने की अवधि (~8/10 11:40 IST से 9/10 ~15:15 I
 **नतीजा:** App Check का नारंगी "outdated client" उछाल काली सूची की वजह से था, कोड की वजह से नहीं।
 मेरे पहले के दोनों अंदाज़े (ख़त्म token → v9.188, और bot) ग़लत थे।
 
-### v9.192 — App Check की कमी से वसूली "अटकी" न हो *(PR अगला)*
+### v9.192 — App Check की कमी से वसूली "अटकी" न हो *(PR #225)*
 इस घटना में एक असली कमज़ोरी दिखी। तीन 401 पर ऐप entry को "अटकी" (`authFailCount` = `STUCK_AUTH_MAX`)
 मानकर अपने-आप भेजना बंद कर देती थी, और token लौटने पर भी वह गिनती ऐप बंद-खोलने तक साफ़ नहीं होती थी।
 - `_bumpAuthFail` (`js/storage.js`): **App Check token न हो** (`!AC_TOKEN`), या सर्वर का जवाब App
