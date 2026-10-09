@@ -66,7 +66,7 @@ try{
   <div class="org-banner" style="position:fixed;top:0;left:0;right:0;z-index:50;">&#9889; आदेगांव बिजली वितरण केंद्र</div>
   <!-- 92px में दिखता है — पहले 327 KB की icon-512.png थी; अब 276px WebP (~14 KB, तेज़ स्क्रीन के लिए 3 गुना)।
        WebP न खुले (बहुत पुराना browser) तो पहले icon-192.png, फिर ⚡ -->
-  <img class="login-logo" src="icons/login-logo.webp" width="92" height="92" alt="आदेगांव DC logo" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='icons/icon-192.png';}else{this.outerHTML='<div style=\'font-size:60px;margin-bottom:10px\'>&#9889;</div>';}">
+  <img class="login-logo" src="icons/login-logo.webp" width="92" height="92" alt="Vasuli Tracker Adegaon logo" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='icons/icon-192.png';}else{this.outerHTML='<div style=\'font-size:60px;margin-bottom:10px\'>&#9889;</div>';}">
   <div class="login-title">आदेगांव DC वसूली ट्रैकर</div>
   <div class="login-sub">लखनादौन डिवीजन सिवनी सर्कल</div>
   <div id="ver-badge" style="font-size:10px;font-weight:600;color:var(--gold);border:1px solid var(--border);background:var(--card);border-radius:12px;padding:3px 12px;margin:-14px 0 20px;"></div>
@@ -119,6 +119,10 @@ try{
     <input type="text" id="uname-inp" class="f-input" placeholder="जैसे: राजेश कुमार">
     <button class="login-btn" onclick="doLogin()">&#128272; प्रवेश करें</button>
   </div>
+  <!-- ऐप की पहचान साफ़ लिखी रहे — 8/10 को Google ने github.io पर "धोखाधड़ी वाली साइट" का लाल ठप्पा
+       लगाया था (login पन्ना + विभाग जैसा नाम + मुफ़्त होस्ट = phishing जैसा दिखना)। JE के कहने पर
+       अंग्रेज़ी में, ताकि Google का स्वचालित जांचक भी पढ़ सके; privacy नीति का लिंक भी यहीं -->
+  <div class="login-disclaimer" translate="no">This is not an official website of the department. It is an internal tool used by Adegaon DC staff to track bill recovery.<br><a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a></div>
   <div id="home-sc" style="width:100%;max-width:360px;margin-top:14px;"></div>
 </div>
 
