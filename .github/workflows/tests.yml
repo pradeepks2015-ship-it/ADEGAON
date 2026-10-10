@@ -23,7 +23,9 @@ jobs:
 
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 मिनट था — suite (~500 टेस्ट) अकेले ~14-15 मिनट लेता है, 10/10 को v9.195 के 8 नए टेस्ट
+    # के बाद सीमा पर कटने लगा (टेस्ट फेल नहीं, "cancelled")। अटका टेस्ट फिर भी 60 सेकंड में ख़ुद फेल होता है
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
