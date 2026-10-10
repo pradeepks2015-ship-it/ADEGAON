@@ -9795,7 +9795,7 @@ test.describe('lazy फ़ाइलें (v9.195)', () => {
     expect(core).toContain('"./js/lazy.js"');
   });
 
-  lazyTest('लाइनमैन: ऐप खुलने पर lazy फ़ाइलें नहीं उतरतीं; PDF दबाते ही upload.js उतरकर असली downloadPDF चलता है', async ({ page }) => {
+  lazyTest('लाइनमैन: lazy फ़ाइलें नहीं उतरतीं, फिर भी PDF/Excel बटन असली हों — PDF बिना नेट भी (upload.js बंद होने पर भी) चले', async ({ page }) => {
     const got = [];
     page.on('request', (r) => { const m = r.url().match(/\/(js\/[\w-]+\.js)/); if (m) got.push(m[1]); });
     const errors = [];
@@ -9804,14 +9804,17 @@ test.describe('lazy फ़ाइलें (v9.195)', () => {
     await loginLineman(page);
     await page.waitForTimeout(5000); // JE वाला preload (4 सेकंड) लाइनमैन पर न चले
     LAZY_FILES.forEach((f) => expect(got, f).not.toContain(f));
-    expect(await page.evaluate(() => [typeof processRows, !!window.downloadPDF._lazyStub])).toEqual(['undefined', true]);
-    await page.evaluate(() => { window.__realPdf = 0; });
-    // असली downloadPDF उतरते ही चलता है — उसे पहचानने के लिए ensureLibs (vendor PDF lib) को रोककर देखते हैं
-    await page.evaluate(() => { window.ensureLibs = function () { window.__realPdf++; return new Promise(function () {}); }; });
+    expect(await page.evaluate(() => typeof processRows)).toBe('undefined');
+    // PDF/Excel अब js/reports.js में — शुरू से असली, stub नहीं (v9.195 की पहली कोशिश में ये upload.js में थे
+    // और गांव में बिना नेट पहली बार PDF दबाने पर "नेट चाहिए" आता — JE के सवाल से पकड़ा गया)
+    expect(await page.evaluate(() => [typeof downloadPDF, !!downloadPDF._lazyStub, typeof downloadExcel, !!downloadExcel._lazyStub, typeof _filteredForDownload]))
+      .toEqual(['function', false, 'function', false, 'function']);
+    await page.route('**/js/upload.js*', (r) => r.abort());
+    await page.evaluate(() => { cSet(activeHQ, activeCat, [{ acc: '1', name: 'क', amount: 100, status: 'pending' }]); activeFilter = 'all'; window.__opened = 0; window.open = function () { window.__opened++; return null; }; });
     await page.click('button[onclick="downloadPDF()"]');
-    await page.waitForFunction(() => typeof processRows === 'function' && !window.downloadPDF._lazyStub);
-    expect(got.filter((f) => f === 'js/upload.js').length).toBe(1);
-    expect(got).not.toContain('js/migration-tool.js'); // सिर्फ़ ज़रूरत वाली फ़ाइल
+    await page.waitForFunction(() => window.__opened === 1);
+    expect(got).not.toContain('js/upload.js');
+    expect(await page.evaluate(() => getLogs().filter((l) => l.c === 'lazy-load-fail').length)).toBe(0);
     expect(errors).toEqual([]);
   });
 
@@ -9838,18 +9841,20 @@ test.describe('lazy फ़ाइलें (v9.195)', () => {
 
   lazyTest('फ़ाइल न उतरे (नेट नहीं) तो बटन चुपचाप न बैठे — साफ़ संदेश + error log; नेट लौटने पर दोबारा दबाना चले', async ({ page }) => {
     await openApp(page);
-    await loginLineman(page);
+    await page.evaluate(() => { window.lazyPreloadAll = function () {}; }); // preload रोककर असली stub रास्ता
+    await loginJE(page);
     await page.route('**/js/upload.js*', (r) => r.abort());
-    await page.click('button[onclick="downloadExcel()"]');
+    await page.locator('button', { hasText: 'अपलोड' }).first().click();
     await expect(page.locator('#toast')).toContainText('यह सुविधा अभी खुल नहीं पाई');
     const log = await page.evaluate(() => getLogs().filter((l) => l.c === 'lazy-load-fail').map((l) => l.x + ' | ' + l.m));
     expect(log.length).toBe(1);
-    expect(log[0]).toContain('downloadExcel');
+    expect(log[0]).toContain('openUpModal');
     expect(log[0]).toContain('js/upload.js');
+    await expect(page.locator('#up-overlay')).not.toHaveClass(/open/);
     await page.unroute('**/js/upload.js*');
-    await page.evaluate(() => { window.ensureLibs = function () { return new Promise(function () {}); }; });
-    await page.click('button[onclick="downloadExcel()"]');
-    await page.waitForFunction(() => typeof processRows === 'function' && !window.downloadExcel._lazyStub);
+    await page.locator('button', { hasText: 'अपलोड' }).first().click();
+    await expect(page.locator('#up-overlay')).toHaveClass(/open/);
+    expect(await page.evaluate(() => typeof processRows)).toBe('function');
   });
 
   lazyTest('JE के फ़ोन पर login के बाद चारों lazy फ़ाइलें अपने-आप पहले से उतरें (बिना नेट भी खुलें)', async ({ page }) => {

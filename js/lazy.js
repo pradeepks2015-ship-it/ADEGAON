@@ -1,8 +1,9 @@
 // ── कुछ फ़ाइलें ज़रूरत पड़ने पर ही उतरें (v9.195) ──
 // पहले हर फ़ोन (लाइनमैन का भी) ऐप खुलते ही सारी JS उतारकर पढ़ता था, जिसमें JE के काम वाली
 // स्क्रीनें भी थीं — लेजर अपलोड, श्रेणी का नाम बदलना, चरण 3 माइग्रेशन, डेटा-उपयोग। लाइनमैन इन्हें
-// कभी खोलता ही नहीं (PDF/Excel बटन छोड़कर, जो upload.js में हैं — इसलिए "सिर्फ़ JE" नहीं, "पहली बार
-// दबाने पर")। अब ये तभी उतरती हैं जब पहली बार कोई इनका बटन दबाए; JE के फ़ोन पर login के कुछ
+// कभी खोलता ही नहीं। (PDF/Excel डाउनलोड लाइनमैन भी करता है और PDF बिना नेट भी बनता है — इसलिए वह
+// upload.js से निकालकर js/reports.js में रखा है, हमेशा उतरता है।) अब ये फ़ाइलें तभी उतरती हैं जब
+// पहली बार कोई इनका बटन दबाए; JE के फ़ोन पर login के कुछ
 // सेकंड बाद अपने-आप पहले से उतर जाती हैं, ताकि गांव में बिना नेट के भी चलें।
 //
 // तरीक़ा: नीचे LAZY_ENTRY में हर वह function है जिसे बाक़ी ऐप (index.html के onclick या दूसरी
@@ -15,7 +16,7 @@
 var LAZY_ENTRY = {
   "js/upload.js": ["openUpModal","closeUpModal","closeUpOutside","updateUpCounter","onUpHqChange",
     "_upKeepToggle","_upKeepPreview","onCatChange","setUpMode","dOver","dLeave","dDrop","handleFile",
-    "confirmUpload","downloadExcel","downloadPDF"],
+    "confirmUpload"],
   "js/cat-admin.js": ["openEditCat"],
   "js/migration-tool.js": ["openMigModal","closeMigModal","_migRunDryRun","downloadMigReport"],
   "js/usage-view.js": ["openUsageModal","closeUsageModal","closeUsageOutside"]

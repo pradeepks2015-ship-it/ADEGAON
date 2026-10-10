@@ -28,7 +28,7 @@
 - `js/home-scorecard.js` — होम पेज डिस्प्ले बोर्ड + कैश लिस्ट (bulk cash-payment upload)
 - `js/reports.js` — फोन एक्शन मॉडल (SMS/WhatsApp templates), स्कोरकार्ड, PDF/Excel, service-worker registration
 - `js/migration.js` — पुराने array-format से नए per-record object-format में माइग्रेशन
-- `js/lazy.js` — **कुछ फ़ाइलें ज़रूरत पड़ने पर ही उतरती हैं** (v9.195): `upload.js`, `cat-admin.js`, `migration-tool.js` (चरण 3 की JE-स्क्रीन), `usage-view.js` (डेटा-उपयोग की JE-स्क्रीन)। ये `index.html`/`sw.js` CORE में **नहीं** हैं। इनका कोई function बाहर (index.html onclick या दूसरी js) से बुलाएं तो उसे `LAZY_ENTRY` में जोड़ें — टेस्ट "lazy फ़ाइलें" भूलने पर फेल होगा। इन फ़ाइलों में ऊपर-स्तर पर सिर्फ़ function/var declarations रहें
+- `js/lazy.js` — **कुछ फ़ाइलें ज़रूरत पड़ने पर ही उतरती हैं** (v9.195): `upload.js`, `cat-admin.js`, `migration-tool.js` (चरण 3 की JE-स्क्रीन), `usage-view.js` (डेटा-उपयोग की JE-स्क्रीन)। ये `index.html`/`sw.js` CORE में **नहीं** हैं। इनका कोई function बाहर (index.html onclick या दूसरी js) से बुलाएं तो उसे `LAZY_ENTRY` में जोड़ें — टेस्ट "lazy फ़ाइलें" भूलने पर फेल होगा। इन फ़ाइलों में ऊपर-स्तर पर सिर्फ़ function/var declarations रहें। **लाइनमैन जो बटन बिना नेट दबा सकता है (जैसे PDF), उसका कोड lazy फ़ाइल में न रखें**
 - `js/storage.js` — local cache (cGet/cSet/cKey), offline queue (getPending, flushPending, pendingCount), mergeArrays
 - `js/auth.js` — login/logout, Lineman PIN, `_ensureCorrectHqAuth` (हर HQ का अपना Firebase account)
 - `js/upload.js` — लेजर अपलोड (Replace/Merge), "पुरानी वसूली सुरक्षित रखें" + तारीख़-कट-ऑफ़, रिमार्क बचाना
