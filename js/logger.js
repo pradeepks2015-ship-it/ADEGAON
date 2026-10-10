@@ -177,11 +177,6 @@ function _dvCutoff(){
   if(_DV_WINDOW===1){ var d=new Date(); d.setHours(0,0,0,0); return d.getTime(); }
   return Date.now()-_DV_WINDOW*86400000;
 }
-function _dvWindowLabel(){
-  if(!_DV_WINDOW) return "अब तक";
-  return _DV_WINDOW===1?"आज":(_DV_WINDOW+" दिन");
-}
-
 // ── "आज" की एक-पंक्ति झलक ──────────────────────────────────────────────────────
 // JE का असली सवाल है "आज कितने लोग काम पर थे"। उसे "आज कितने लॉगिन हुए" से नापना अब ग़लत नाप है:
 // v9.108 से session 30 दिन टिकता है, यानी लाइनमैन एक बार login करके महीने भर काम करता रहता है —
@@ -323,7 +318,7 @@ function _dvPaint(){
   });
   var rows=Object.keys(people).map(function(k){return people[k];});
   if(!rows.length){
-    // audit-verified: _dvWindowLabel() सिर्फ़ hardcoded शब्द/संख्या लौटाता है और _dvControls()
+    // audit-verified: _DV_WINDOW सिर्फ़ संख्या है (hardcoded शब्दों के साथ) और _dvControls()
     // सिर्फ़ संख्याओं + hardcoded markup से बनता है — कोई user-typed field नहीं
     // eslint-disable-next-line no-unsanitized/property
     el.innerHTML=todayStrip+"<div class='log-empty'>"+(_DV_WINDOW===1?"आज":("पिछले "+_DV_WINDOW+" दिन में"))+" कोई सक्रिय नहीं — ऊपर से अवधि बदलकर देखें</div>"+_dvControls(hidden);

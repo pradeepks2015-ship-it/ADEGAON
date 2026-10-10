@@ -46,6 +46,25 @@ module.exports = [
       // गया है, कारण के साथ।
       "no-unsanitized/method": ["error", { escape: { methods: ["escHtml", "escJsAttr"] } }],
       "no-unsanitized/property": ["error", { escape: { methods: ["escHtml", "escJsAttr"] } }],
+      // ── कोड-गुणवत्ता कदम 2 (10/10, v9.197): असली bug पकड़ने वाले नियम ──
+      // चालू करते वक़्त इन सब में ग़लतियां 0 थीं — यानी कोई कोड नहीं बदला, बस आगे कोई ऐसी ग़लती
+      // जुड़े तो CI तुरंत रोक दे। जान-बूझकर छोड़े: no-var (1288 जगह, सिर्फ़ शैली), no-implicit-coercion
+      // (+x जैसा जान-बूझकर), consistent-return (13 जगह — बदलने में व्यवहार बदलने का जोखिम), no-shadow
+      // (3 जगह, अलग-अलग function में एक ही नाम — हानिरहित)
+      eqeqeq: ["error", "smart"],                  // == सिर्फ़ null के साथ (x==null), बाक़ी हर जगह ===
+      "no-self-compare": "error",                  // x===x जैसी टाइपो
+      "no-constant-binary-expression": "error",    // a||{} === b जैसी हमेशा-एक-जैसी शर्त
+      "no-unreachable-loop": "error",
+      "no-unmodified-loop-condition": "error",     // कभी न रुकने वाला loop
+      "no-dupe-else-if": "error",
+      "no-template-curly-in-string": "error",      // "${x}" — backtick भूल गए
+      "no-promise-executor-return": "error",
+      "array-callback-return": "error",            // .map/.filter में return भूलना
+      "no-return-assign": "error",
+      "no-sequences": "error",
+      "no-throw-literal": "error",                 // throw "x" — stack/लॉग खो जाता है
+      "no-unused-expressions": ["error", { allowShortCircuit: true, allowTernary: true }],
+      "default-case-last": "error",
     },
   },
   {
