@@ -1049,3 +1049,60 @@ test.describe('अपलोड — Merge का साफ़ संदेश औ
     expect(s.label).toBe('बाकी जगह (1000 limit)');
   });
 });
+
+// ── v9.201: Replace डिफ़ॉल्ट (JE का फ़ैसला) + ग़लती से छोटी फ़ाइल पर पूरी सूची न कटे ──
+test.describe('अपलोड — Replace डिफ़ॉल्ट और कटने से पहले पुष्टि (v9.201)', () => {
+  const seed = async (page, nOld) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate((n) => {
+      const r = [];
+      for (let i = 0; i < n; i++) r.push({ acc: String(1000 + i), name: 'उ' + i, amount: 100, status: 'pending', remarksArr: [] });
+      cSet('आदेगांव', 'कुल उपभोक्ता', r);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      onUpHqChange();
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      updateUpCounter();
+    }, nOld);
+  };
+  const rows = (accs) => accs.map((a) => ({ acc: String(a), name: 'नया ' + a, amount: 200, status: 'pending', remarksArr: [] }));
+
+  test('खिड़की खुलते ही Replace चुना हो — पिछली बार Merge चुना था तब भी', async ({ page }) => {
+    await seed(page, 3);
+    expect(await page.evaluate(() => [upMode, document.getElementById('mode-rep').className.includes('sel-pending')])).toEqual(['replace', true]);
+    await page.evaluate(() => { setUpMode('merge'); closeUpModal(); openUpModal(); });
+    expect(await page.evaluate(() => upMode)).toBe('replace');
+  });
+
+  test('100 की सूची पर 5 वाली फ़ाइल Replace — पुष्टि मांगे; "रद्द" पर सूची जस की तस', async ({ page }) => {
+    await seed(page, 100);
+    const msgs = [];
+    page.on('dialog', (d) => { msgs.push(d.message()); d.dismiss(); });
+    await page.evaluate((r) => { parsedRows = r; confirmUpload(); }, rows([1000, 1001, 1002, 1003, 1004]));
+    expect(msgs.length).toBe(1);
+    expect(msgs[0]).toContain('Replace से 95 उपभोक्ता सूची से हट जाएंगे');
+    expect(msgs[0]).toContain('Merge');
+    expect(await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता').length)).toBe(100);
+    await expect(page.locator('#toast')).toContainText('अपलोड रोक दिया');
+  });
+
+  test('"OK" दबाने पर Replace हो जाए (JE ने सोच-समझकर चुना)', async ({ page }) => {
+    await seed(page, 100);
+    page.on('dialog', (d) => d.accept());
+    await page.evaluate((r) => { parsedRows = r; confirmUpload(); }, rows([1000, 1001, 1002, 1003, 1004]));
+    await page.waitForFunction(() => cGet('आदेगांव', 'कुल उपभोक्ता').length === 5);
+  });
+
+  test('असली मासिक लेजर (कुछ ही हटे, कुछ नए जुड़े) — कोई पुष्टि-संदेश नहीं', async ({ page }) => {
+    await seed(page, 100);
+    const msgs = [];
+    page.on('dialog', (d) => { msgs.push(d.message()); d.dismiss(); });
+    const accs = [];
+    for (let i = 10; i < 100; i++) accs.push(1000 + i); // 10 कटे
+    for (let i = 0; i < 15; i++) accs.push(5000 + i);   // 15 नए
+    await page.evaluate((r) => { parsedRows = r; confirmUpload(); }, rows(accs));
+    await page.waitForFunction(() => cGet('आदेगांव', 'कुल उपभोक्ता').length === 105);
+    expect(msgs).toEqual([]);
+  });
+});

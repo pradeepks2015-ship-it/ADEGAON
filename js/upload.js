@@ -95,7 +95,9 @@ function openUpModal(){
   var kf=document.getElementById("up-keepfrom");
   if(kf){ var n=new Date(); kf.value=n.getFullYear()+"-"+("0"+(n.getMonth()+1)).slice(-2)+"-01"; }
   _upKeepToggle();
-  updateUpCounter();
+  // v9.201 (JE का फ़ैसला): हर बार खुलने पर Replace — हर महीने ज़्यादातर पूरा नया लेजर ही डाला जाता है।
+  // पिछली बार का Merge चुपचाप याद न रहे (Replace की ग़लती से बचाव नीचे confirmUpload में)
+  setUpMode("replace");
   document.getElementById("up-overlay").classList.add("open");
 }
 
@@ -354,6 +356,8 @@ function processRows(rows){
 // की device-कॉपी + "हटाएं" के समय बना backup (7 दिन, देखें fbDel) — सबसे उसी Consumer No के
 // रिमार्क इकट्ठा करके नई सूची के record में जोड़े जाते हैं (text|by|at से dedup — दोहराव नहीं)
 var RMK_BK_MAX_AGE_MS=7*24*60*60*1000;
+// Replace से इतने (और इतने हिस्से से ज़्यादा) उपभोक्ता हटने वाले हों तो पहले पुष्टि (देखें confirmUpload)
+var REPLACE_WARN_MIN_GONE=20, REPLACE_WARN_FRAC=0.2;
 function _upCollectOldRemarks(hq,cat){
   var byAcc={};
   function add(acc,arr,srcCat){
@@ -461,6 +465,25 @@ function confirmUpload(){
         return true;
       });
     })();
+
+    // v9.201: Replace अब डिफ़ॉल्ट है — ग़लती से छोटी फ़ाइल (जैसे सिर्फ़ कुछ नए उपभोक्ता, Merge पर बदलना
+    // भूल गए) डालने पर पूरी सूची उसी पर कट जाती। नया मासिक लेजर लगभग उतना ही बड़ा होता है (कुछ नए
+    // कनेक्शन जुड़ते, कुछ कटते), इसलिए बहुत उपभोक्ता हटने वाले हों तभी पूछो — "रद्द" पर कुछ नहीं बदलता
+    var _exR=cGet(hq,cat)||[];
+    if(_exR.length){
+      var _newAcc={};
+      arr.forEach(function(r){ if(r&&r.acc) _newAcc[String(r.acc).trim()]=1; });
+      var _gone=_exR.filter(function(e){ return e&&e.acc&&!_newAcc[String(e.acc).trim()]; }).length;
+      if(_gone>=REPLACE_WARN_MIN_GONE&&_gone>_exR.length*REPLACE_WARN_FRAC){
+        if(!confirm("⚠️ अभी \""+cat+"\" में "+_exR.length+" उपभोक्ता हैं, नई फ़ाइल में "+arr.length+"।\n"+
+          "Replace से "+_gone+" उपभोक्ता सूची से हट जाएंगे।\n\n"+
+          "सिर्फ़ नए उपभोक्ता जोड़ने हों तो 'रद्द' दबाकर ➕ Merge चुनें।\n"+
+          "पूरा नया लेजर है और यही चाहिए तो 'OK' दबाएं।")){
+          toast("अपलोड रोक दिया — कुछ नहीं बदला","inf");
+          return;
+        }
+      }
+    }
 
     // Replace mode या पहली बार — पुरानी वसूली सुरक्षित रखें (checkbox on हो तो)
     var kept=0,dropped=0;
