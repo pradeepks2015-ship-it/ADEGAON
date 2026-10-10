@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v211";
+var CACHE_NAME="adegaon-dc-v212";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -11,6 +11,8 @@ var CACHE_NAME="adegaon-dc-v211";
 // कोई भी बाद में offline पड़े तो जो cache नहीं हुई वो script सिरे से लोड ही नहीं होती जबकि जो हुई
 // वो चलती रहती — असली bug यही था ("escHtml is not defined [home-scorecard.js]" जैसी errors,
 // क्योंकि list.js cache नहीं हुई थी पर उसका function इस्तेमाल करने वाली home-scorecard.js हो गई थी)
+// v9.195: js/upload.js, js/cat-admin.js, js/migration-tool.js, js/usage-view.js जान-बूझकर यहां नहीं —
+// ये ज़रूरत पड़ने पर ही उतरती हैं (js/lazy.js), और तब नीचे वाला fetch handler इन्हें cache कर लेता है
 var CORE=[
   "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js",
   "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js",
@@ -18,17 +20,16 @@ var CORE=[
   "./css/style.css",
   "./js/config.js",
   "./js/logger.js",
+  "./js/lazy.js",
   "./js/firebase.js",
   "./js/storage.js",
   "./js/database.js",
   "./js/usage.js",
   "./js/ui-core.js",
   "./js/auth.js",
-  "./js/cat-admin.js",
   "./js/list.js",
   "./js/share.js",
   "./js/celebration.js",
-  "./js/upload.js",
   "./js/reports.js",
   "./js/scorecards.js",
   "./js/village.js",
