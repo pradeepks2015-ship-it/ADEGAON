@@ -125,7 +125,7 @@ function onPhotoSelected(input){
         else toast("⚠ फ़ोटो सेव नहीं हुई, दोबारा कोशिश करें","err");
       }).catch(function(){ toast("📴 ऑफलाइन — नेट आने पर दोबारा कोशिश करें","err"); });
     };
-    img.src=e.target.result;
+    img.src=/** @type {string} */(e.target.result);
   };
   reader.readAsDataURL(file);
 }

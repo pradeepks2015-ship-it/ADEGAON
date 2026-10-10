@@ -103,7 +103,7 @@ function _finishCatRename(i,newName,jobs,okCount,movedTot){
   saveCatNames();
   // 3. CATS rebuild + UI update immediately
   rebuildCatsForHQ(activeHQ);
-  var mine=null;
+  /** @type {any} */ var mine=null;
   jobs.forEach(function(j){ if(j.done&&j.hq===activeHQ) mine=j; });
   if(mine&&activeCat===mine.oldCat){
     activeCat=newName;

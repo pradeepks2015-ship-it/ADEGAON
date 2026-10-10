@@ -1,0 +1,14 @@
+{
+  // कोड-गुणवत्ता कदम 3 (10/10, v9.198): js/*.js की type-जांच — सिर्फ़ CI/`npm run typecheck`, कोई build नहीं,
+  // ऐप में कुछ नहीं जाता। strict बंद है (vanilla JS पर बहुत शोर); DOM की जानकारी types/globals.d.ts में
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "ES2021",
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "strict": false,
+    "skipLibCheck": true
+  },
+  "include": ["js/**/*.js", "types/**/*.d.ts"]
+}

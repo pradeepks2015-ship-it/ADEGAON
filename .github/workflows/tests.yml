@@ -19,6 +19,9 @@ jobs:
       - run: npm run lint
       - run: npm run check-xss
       - run: npm run check-globals
+      # कोड-गुणवत्ता कदम 3 (v9.198): type-जांच — नाम का टाइपो (CU.nmae), दूसरी फ़ाइल के function को ग़लत
+      # गिनती में arguments, text पर संख्या वाला काम… जो ESLint नहीं पकड़ता। ऐप में कुछ नहीं जाता (tsconfig.json)
+      - run: npm run typecheck
       - run: npm audit --audit-level=high
 
   smoke:

@@ -53,7 +53,7 @@ function _lazyStub(name,file){
     var slowT=setTimeout(function(){ if(typeof toast==="function") toast("⏳ खुल रहा है…","inf"); },LAZY_SLOW_MS);
     return lazyLoad(file).then(function(){
       clearTimeout(slowT);
-      var real=window[name];
+      var real=/** @type {any} */(window)[name];
       if(typeof real!=="function"||real===stub) throw new Error(name+" फ़ाइल में नहीं मिला • "+file);
       return real.apply(self,args);
     }).catch(function(e){
@@ -69,7 +69,8 @@ function _lazyStub(name,file){
 (function(){
   Object.keys(LAZY_ENTRY).forEach(function(file){
     LAZY_ENTRY[file].forEach(function(name){
-      if(typeof window[name]!=="function") window[name]=_lazyStub(name,file);
+      var w=/** @type {any} */(window);
+      if(typeof w[name]!=="function") w[name]=_lazyStub(name,file);
     });
   });
 })();

@@ -54,11 +54,12 @@
    PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npx playwright test
    ```
    (local dev server: `python3 -m http.server 8080 --directory <repo-path>`)
-   साथ ही CI वाली तीनों जांचें भी साफ़ होनी चाहिए — यही तीनों `.github/workflows/tests.yml` में भी चलती हैं:
+   साथ ही CI वाली चारों जांचें भी साफ़ होनी चाहिए — यही चारों `.github/workflows/tests.yml` में भी चलती हैं:
    ```
    npm run lint           # 0 errors
    npm run check-xss      # onclick में escHtml() का सही इस्तेमाल
    npm run check-globals  # एक ही global नाम दो फ़ाइलों में declare न हो
+   npm run typecheck      # type-जांच (tsc) — 0 errors; DOM/बाहरी library की जानकारी types/globals.d.ts में
    ```
    नया top-level global (जो दूसरी js/*.js फाइल में इस्तेमाल हो) जोड़ें तो पहले `node scripts/gen-eslint-globals.js` चलाएं, वरना lint फेल होगी।
 3. Commit → `git fetch origin main` करके rebase करें (पिछले squash-merge से conflict बचाने के लिए) → push → PR बनाएं → PR की "smoke" **और** "lint" दोनों CI checks पास होने का इंतज़ार करें → तभी merge करें (squash) → PR activity से unsubscribe करें।

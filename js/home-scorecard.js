@@ -68,7 +68,7 @@ function renderHomeSc(){
   var proHtml="";
   if(tgt>0||cd2>0){
     proHtml+="<div style='margin-top:8px;'>";
-    [[tgt,"🎯 Power BI टारगेट"+(HSC.pbiMonth?" ("+escHtml(HSC.pbiMonth)+")":""),"#64b5f6"],[cd2,"🧾 कैश डिमांड (Current Month)","#4db6ac"]].forEach(function(it){
+    /** @type {Array<[number,string,string]>} */([[tgt,"🎯 Power BI टारगेट"+(HSC.pbiMonth?" ("+escHtml(HSC.pbiMonth)+")":""),"#64b5f6"],[cd2,"🧾 कैश डिमांड (Current Month)","#4db6ac"]]).forEach(function(it){
       if(!it[0])return;
       var p=(ca/it[0])*100;
       proHtml+="<div style='margin-bottom:8px;'>"+
@@ -299,7 +299,7 @@ function cashFile(f){
     var rd=new FileReader();
     rd.onload=function(e){
       try{
-        var wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
+        var wb=XLSX.read(new Uint8Array(/** @type {ArrayBuffer} */(e.target.result)),{type:"array"});
         var ws=wb.Sheets[wb.SheetNames[0]];
         // cellDates:true से तारीख़ वाले cell असली Date बनकर आते हैं; न बन पाएं तो serial number
         // रह जाते हैं — _cashCellToDate दोनों संभाल लेता है
@@ -783,7 +783,7 @@ function hscBgPick(inp){
       _hscBgUpload(url);
     };
     img.onerror=function(){ toast("⚠ यह फ़ोटो पढ़ी नहीं जा सकी — कोई और चुनें","err"); };
-    img.src=rd.result;
+    img.src=/** @type {string} */(rd.result);
   };
   rd.onerror=function(){ toast("⚠ यह फ़ोटो पढ़ी नहीं जा सकी — कोई और चुनें","err"); };
   rd.readAsDataURL(f);
