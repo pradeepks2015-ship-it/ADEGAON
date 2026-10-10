@@ -29,7 +29,7 @@ jobs:
       # Firebase/Google Cloud storage में कुछ भी सेव नहीं होता — फ़ाइल सिर्फ़ यहीं (GitHub
       # Actions artifact) बनती है, और तय दिनों बाद अपने-आप मिट जाती है — storage कभी नहीं बढ़ता
       - name: Upload backup artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: adegaon-backup-${{ github.run_id }}
           path: backup-output/*.xlsx
