@@ -4,7 +4,7 @@
 > (`git log --oneline -30`) — यहां सिर्फ़ **अभी की स्थिति**, **हाल के फ़ैसले** और **जो सीखा** है।
 > काम पूरा होने पर इसे अपडेट करते चलें।
 
-**आख़िरी अपडेट:** 9 अक्टूबर 2026 · **Version:** 9.197 · **CACHE_NAME:** adegaon-dc-v214
+**आख़िरी अपडेट:** 9 अक्टूबर 2026 · **Version:** 9.198 · **CACHE_NAME:** adegaon-dc-v215
 
 ---
 
@@ -39,6 +39,7 @@
 | #228 | v9.195 — JE की स्क्रीनें ज़रूरत पड़ने पर ही उतरें | 10 अक्टू ✅ |
 | #229 | v9.196 — Google Search से छिपाव + टेस्ट फ़ाइल विषय-वार | 10 अक्टू ✅ |
 | #230 | v9.197 — ESLint के 15 नए नियम, 2 बेकार functions हटे | 10 अक्टू ✅ |
+| (अगला) | v9.198 — type-जांच (tsc) CI में | 10 अक्टू ✅ |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
@@ -71,7 +72,15 @@ JE ने दोनों योजनाएं सुनीं और "क" व
     - unused args (2 जगह)
   - `fmtDateTime` (ui-core) और `_dvWindowLabel` (logger) हटाए, क्योंकि कहीं इस्तेमाल नहीं थे
   - `_celebFirstTimeToday` **रखा** — टेस्ट इसी से जश्न की दिन-वार गिनती जांचता है
-- कदम 3: मुख्य फ़ाइलों पर `// @ts-check` + JSDoc
+- **कदम 3 (हुआ, v9.198, PR अगला):** पूरे `js/` पर type-जांच (`npm run typecheck` = `tsc -p .`, TypeScript 5.6.3
+  सिर्फ़ devDependency), जो CI के lint job में चलती है
+  - पहली नाप में 145 शिकायतें थीं। ~120 सिर्फ़ औज़ार की नासमझी थीं (`getElementById` का `.value`), जो `types/globals.d.ts`
+    में एक बार समझाकर हट गईं। बची 17 एक-एक जांचीं: **कोई असली bug नहीं मिला**। इन पर छोटी JSDoc-टिप्पणियां लगाईं, या
+    `textContent=String(n)` किया, जो व्यवहार में बिल्कुल वही है
+  - `CU` का ढांचा (`CurrentUser`: role, name, hq, pin?) अब लिखा हुआ है
+  - जान-बूझकर ग़लत कोड पर जांचा कि यह पकड़ता है: `CU.nmae` टाइपो, दूसरी फ़ाइल के function को ग़लत गिनती में arguments,
+    और string पर `.toFixed`। ये ESLint नहीं पकड़ता
+  - `strict` बंद है, क्योंकि vanilla JS पर बहुत शोर होता
 - कदम 4: `database.js` (1059 लाइन) को 3 हिस्सों में बांटना
 - ~~globals को modules में बदलना~~ — जोखिम ज़्यादा, सलाह नहीं
 

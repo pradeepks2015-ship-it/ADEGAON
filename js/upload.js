@@ -6,14 +6,14 @@ function updateUpCounter(){
   if(hq&&cat) exist=cGet(hq,cat).length;
   var maxR=getMaxRecords(cat||activeCat);
   var avail=Math.max(0,maxR-exist);
-  document.getElementById("cnt-exist").textContent=exist;
-  document.getElementById("cnt-avail").textContent=avail;
+  document.getElementById("cnt-exist").textContent=String(exist);
+  document.getElementById("cnt-avail").textContent=String(avail);
   document.getElementById("cnt-avail").title="Limit: "+maxR;
   // file count if already parsed
   var fileWrap=document.getElementById("cnt-file-wrap");
   if(parsedRows.length){
     fileWrap.style.display="block";
-    document.getElementById("cnt-file").textContent=parsedRows.length;
+    document.getElementById("cnt-file").textContent=String(parsedRows.length);
   } else {
     fileWrap.style.display="none";
   }
@@ -326,7 +326,7 @@ function processRows(rows){
   document.getElementById("uz-t").textContent=parsedRows.length+" valid records";
   // Update counter with file info
   document.getElementById("cnt-file-wrap").style.display="block";
-  document.getElementById("cnt-file").textContent=parsedRows.length;
+  document.getElementById("cnt-file").textContent=String(parsedRows.length);
   updateUpCounter();
   // Enable button if any valid records found
   var canUpload=parsedRows.length>0;

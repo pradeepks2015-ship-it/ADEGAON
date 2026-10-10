@@ -249,6 +249,7 @@ function downloadFullBackup(){
       try{
         var wb=XLSX.utils.book_new();
         var head=["क्र.","नाम","पिता/पति","Consumer No","बकाया","Tariff","Load","Unit","Mobile","पता","स्थिति","भुगतान तिथि","पिछला भुगतान","पिछला तिथि","रिमार्क (सभी)","अपडेट by","अपडेट समय"];
+        /** @type {Array<Array<string|number>>} */
         var sum=[["HQ","श्रेणी","कुल","वसूल","बाकी","बाकी राशि"]];
         var totalRecs=0;
         HQS.forEach(function(hq){

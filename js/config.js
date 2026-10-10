@@ -14,7 +14,7 @@ var HQ_AUTH_EMAIL = {
   "बीबी":"hq-bibi@adegaondc.internal",
   "मढ़ी":"hq-madhi@adegaondc.internal"
 };
-var APP_VER = "9.197"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "9.198"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
@@ -87,7 +87,7 @@ function _fbJson(r){
 // error का message जान-बूझकर वही "HTTP 401" रखा है — auth-fail गिनती (_bumpAuthFail) और toast
 // उसी से पहचानते हैं। सर्वर का जवाब अलग .body में जाता है
 function _fbHttpErr(r){
-  var e=new Error("HTTP "+r.status);
+  var e=/** @type {Error & {body?:string}} */(new Error("HTTP "+r.status));
   if(r.status!==401&&r.status!==403) return Promise.reject(e);
   return Promise.resolve().then(function(){ return r.text(); })
     .then(function(t){ e.body=String(t||"").replace(/\s+/g," ").trim().slice(0,60); throw e; },
@@ -153,6 +153,10 @@ function fetchPhCustomMsgFromFB(){
       if(typeof _phUpdateCustomBtnLabel==="function") _phUpdateCustomBtnLabel();
     }).catch(function(){});
 }
-var CU = null, activeHQ = "", activeCat = "", activeFilter = "all";
+/** लॉगिन किया हुआ व्यक्ति (null = लॉगिन नहीं) — pin सिर्फ़ लाइनमैन का, सिर्फ़ memory में (देखें js/auth.js)
+ * @typedef {{role:string, name:string, hq:string, pin?:string}} CurrentUser */
+/** @type {CurrentUser|null} */
+var CU = null;
+var activeHQ = "", activeCat = "", activeFilter = "all";
 var upMode = "merge", parsedRows = [], selectedRole = "", rmkStatus = "pending";
 var pollTimer = null;

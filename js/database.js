@@ -745,6 +745,8 @@ function FetchLiveSource(url){
   self.onerror=null;
   self._l={};
   self._closed=false;
+  /** @type {number|undefined} मनाही का HTTP status (एरर लॉग के लिए) */ self.httpStatus=undefined;
+  /** @type {string|undefined} */ self.errText=undefined;
   self._ctrl=new AbortController();
   // stream तभी खोलें जब सही account (लाइनमैन = उसी HQ का account) और उसका ताज़ा login token पक्का
   // हो — देखें _liveAuthReady। तब तक readyState 0 (जुड़ रहा है) रहता है
