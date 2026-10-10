@@ -112,10 +112,9 @@ Firebase प्रोजेक्ट में Owner, Netlify में member, 
 | `icons/*` | सभी logo पर **"ADEGAON DC" छपा है** — नए DC का logo बनाकर `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` बदलें, और `login-logo.webp` (276×276 WebP, ~14 KB — बड़ी फ़ाइल न लगाएं, टेस्ट 30 KB से ऊपर पर फेल होगा) |
 | `manifest.json` | `name`, `description` (install के वक़्त फ़ोन पर यही दिखता है; `short_name` पहले से सामान्य "वसूली ट्रैकर") |
 | `privacy.html` | DC/डिवीजन/सर्कल का नाम, संपर्क email |
-| `js/reports.js` | SMS/WhatsApp संदेशों में DC/सर्कल का नाम, नमूना CSV की गांव वाली पंक्ति, बैकअप फ़ाइल-नाम `ADEGAON_backup_`, **बिलिंग साइट `billing.mpez.co.in`** (दूसरी discom — पश्चिम/मध्य क्षेत्र — हो तो उसकी साइट) |
+| `js/reports.js` | PDF रिपोर्ट का शीर्षक (v9.195 से यहां), SMS/WhatsApp संदेशों में DC/सर्कल का नाम, नमूना CSV की गांव वाली पंक्ति, बैकअप फ़ाइल-नाम `ADEGAON_backup_`, **बिलिंग साइट `billing.mpez.co.in`** (दूसरी discom — पश्चिम/मध्य क्षेत्र — हो तो उसकी साइट) |
 | `js/share.js` | फ़ोटो-शेयर कार्ड की ऊपरी पंक्ति ("आदेगांव बिजली वितरण केंद्र") |
 | `js/scorecards.js` | WhatsApp स्कोरकार्ड का शीर्षक |
-| `js/upload.js` | PDF रिपोर्ट का शीर्षक |
 | `js/home-scorecard.js` | डिस्प्ले बोर्ड पर "ADEGAON DC" |
 | `js/village.js` | `VILLAGE_ALIASES` ख़ाली करें (आदेगांव के गांवों के स्पेलिंग-सुधार हैं), Excel फ़ाइल-नाम `ADEGAON_गांव_वार_` |
 | `js/migration-tool.js` | dry-run फ़ाइल-नाम (सिर्फ़ नाम) |

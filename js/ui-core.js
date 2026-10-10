@@ -31,11 +31,6 @@ function updTime(){
 }
 
 // Format date+time for display
-function fmtDateTime(dt){
-  if(!dt) return "";
-  return dt;
-}
-
 // ध्यान दें: यहां जान-बूझकर prefetchAll() नहीं बुलाया — गांव में नेटवर्क बार-बार आता-जाता रहता है,
 // तो "online" event दिन में कई बार लग सकता है, और हर बार सभी HQ/श्रेणी का पूरा data दोबारा
 // डाउनलोड करना असली bandwidth bug था (चारों modal-fix से भी बड़ा, क्योंकि यह बिना कुछ खोले भी अपने
