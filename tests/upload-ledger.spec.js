@@ -992,3 +992,117 @@ test.describe('मिटने से पहले वसूली का backup
     expect(r.status).toBe('pending'); // और अपना काम कर गई
   });
 });
+
+// ── v9.200: Merge में "पुरानी वसूली सुरक्षित रखें" भ्रम न बने + सीमा की सही संख्या ──
+// JE (11/10) ने Merge चुनकर "1820 पुरानी (पिछले लेजर की) हट जाएगी" देखा और पूछा कि रिमार्क रहेंगे या नहीं —
+// जबकि भरी सूची पर Merge में वह तारीख़-कट-ऑफ़ लागू ही नहीं होता (सिर्फ़ नए Consumer No जुड़ते हैं)।
+// और लेबल "बाकी जगह (1000 limit)" लिखा था, जबकि कुल उपभोक्ता की सीमा 3500 है
+test.describe('अपलोड — Merge का साफ़ संदेश और सही सीमा (v9.200)', () => {
+  const open = async (page, recs) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate((r) => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', r);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      onUpHqChange();
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('merge');
+    }, recs);
+  };
+  const state = (page) => page.evaluate(() => ({
+    keep: getComputedStyle(document.getElementById('up-keep-sec')).display,
+    note: getComputedStyle(document.getElementById('up-merge-note')).display,
+    noteText: document.getElementById('up-merge-note').textContent,
+    label: document.getElementById('cnt-avail-label').textContent,
+    avail: document.getElementById('cnt-avail').textContent,
+  }));
+
+  test('भरी सूची + Merge: कट-ऑफ़ वाला हिस्सा छिपे, साफ़ संदेश दिखे; Replace पर वापस', async ({ page }) => {
+    await open(page, [1, 2, 3].map((a) => ({ acc: String(a), name: 'उ' + a, amount: 100, status: 'pending' })));
+    let s = await state(page);
+    expect(s.keep).toBe('none');
+    expect(s.note).toBe('block');
+    expect(s.noteText).toContain('Merge सिर्फ़ नए उपभोक्ता जोड़ता है');
+    expect(s.noteText).toContain('3 उपभोक्ताओं');
+    expect(s.noteText).toContain('Replace');
+    await page.evaluate(() => setUpMode('replace'));
+    s = await state(page);
+    expect(s.keep).not.toBe('none');
+    expect(s.note).toBe('none');
+  });
+
+  test('ख़ाली सूची + Merge (असल में Replace-रास्ता) — कट-ऑफ़ वाला हिस्सा दिखता रहे', async ({ page }) => {
+    await open(page, []);
+    const s = await state(page);
+    expect(s.keep).not.toBe('none');
+    expect(s.note).toBe('none');
+  });
+
+  test('सीमा का लेबल श्रेणी की असली सीमा दिखाए — कुल उपभोक्ता 3500, बाक़ी 1000', async ({ page }) => {
+    await open(page, [{ acc: '1', name: 'क', amount: 1, status: 'pending' }]);
+    let s = await state(page);
+    expect(s.label).toBe('बाकी जगह (3500 limit)');
+    expect(s.avail).toBe('3499');
+    await page.evaluate(() => { document.getElementById('up-cat').value = CATS[1]; updateUpCounter(); });
+    s = await state(page);
+    expect(s.label).toBe('बाकी जगह (1000 limit)');
+  });
+});
+
+// ── v9.201: Replace डिफ़ॉल्ट (JE का फ़ैसला) + ग़लती से छोटी फ़ाइल पर पूरी सूची न कटे ──
+test.describe('अपलोड — Replace डिफ़ॉल्ट और कटने से पहले पुष्टि (v9.201)', () => {
+  const seed = async (page, nOld) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate((n) => {
+      const r = [];
+      for (let i = 0; i < n; i++) r.push({ acc: String(1000 + i), name: 'उ' + i, amount: 100, status: 'pending', remarksArr: [] });
+      cSet('आदेगांव', 'कुल उपभोक्ता', r);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      onUpHqChange();
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      updateUpCounter();
+    }, nOld);
+  };
+  const rows = (accs) => accs.map((a) => ({ acc: String(a), name: 'नया ' + a, amount: 200, status: 'pending', remarksArr: [] }));
+
+  test('खिड़की खुलते ही Replace चुना हो — पिछली बार Merge चुना था तब भी', async ({ page }) => {
+    await seed(page, 3);
+    expect(await page.evaluate(() => [upMode, document.getElementById('mode-rep').className.includes('sel-pending')])).toEqual(['replace', true]);
+    await page.evaluate(() => { setUpMode('merge'); closeUpModal(); openUpModal(); });
+    expect(await page.evaluate(() => upMode)).toBe('replace');
+  });
+
+  test('100 की सूची पर 5 वाली फ़ाइल Replace — पुष्टि मांगे; "रद्द" पर सूची जस की तस', async ({ page }) => {
+    await seed(page, 100);
+    const msgs = [];
+    page.on('dialog', (d) => { msgs.push(d.message()); d.dismiss(); });
+    await page.evaluate((r) => { parsedRows = r; confirmUpload(); }, rows([1000, 1001, 1002, 1003, 1004]));
+    expect(msgs.length).toBe(1);
+    expect(msgs[0]).toContain('Replace से 95 उपभोक्ता सूची से हट जाएंगे');
+    expect(msgs[0]).toContain('Merge');
+    expect(await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता').length)).toBe(100);
+    await expect(page.locator('#toast')).toContainText('अपलोड रोक दिया');
+  });
+
+  test('"OK" दबाने पर Replace हो जाए (JE ने सोच-समझकर चुना)', async ({ page }) => {
+    await seed(page, 100);
+    page.on('dialog', (d) => d.accept());
+    await page.evaluate((r) => { parsedRows = r; confirmUpload(); }, rows([1000, 1001, 1002, 1003, 1004]));
+    await page.waitForFunction(() => cGet('आदेगांव', 'कुल उपभोक्ता').length === 5);
+  });
+
+  test('असली मासिक लेजर (कुछ ही हटे, कुछ नए जुड़े) — कोई पुष्टि-संदेश नहीं', async ({ page }) => {
+    await seed(page, 100);
+    const msgs = [];
+    page.on('dialog', (d) => { msgs.push(d.message()); d.dismiss(); });
+    const accs = [];
+    for (let i = 10; i < 100; i++) accs.push(1000 + i); // 10 कटे
+    for (let i = 0; i < 15; i++) accs.push(5000 + i);   // 15 नए
+    await page.evaluate((r) => { parsedRows = r; confirmUpload(); }, rows(accs));
+    await page.waitForFunction(() => cGet('आदेगांव', 'कुल उपभोक्ता').length === 105);
+    expect(msgs).toEqual([]);
+  });
+});

@@ -9,6 +9,19 @@ function updateUpCounter(){
   document.getElementById("cnt-exist").textContent=String(exist);
   document.getElementById("cnt-avail").textContent=String(avail);
   document.getElementById("cnt-avail").title="Limit: "+maxR;
+  // पहले लेबल में "1000 limit" लिखा रहता था, जबकि कुल उपभोक्ता की सीमा 3500 है (getMaxRecords)
+  var al=document.getElementById("cnt-avail-label"); if(al) al.textContent="बाकी जगह ("+maxR+" limit)";
+  // Merge + पहले से भरी सूची = confirmUpload का merge-रास्ता: सिर्फ़ नए Consumer No जुड़ते हैं, पुरानों की
+  // राशि/वसूली/तारीख़-कट-ऑफ़ कुछ नहीं बदलता — इसलिए "पुरानी वसूली सुरक्षित रखें" वाला हिस्सा वहां भ्रम है।
+  // (ख़ाली सूची पर Merge असल में Replace-रास्ता ही चलाता है, तब यह हिस्सा दिखता रहे)
+  var mergeOnly=(upMode==="merge"&&exist>0);
+  var ks=document.getElementById("up-keep-sec"); if(ks) ks.style.display=mergeOnly?"none":"";
+  var mn=document.getElementById("up-merge-note");
+  if(mn){
+    mn.style.display=mergeOnly?"block":"none";
+    mn.textContent=mergeOnly?("➕ Merge सिर्फ़ नए उपभोक्ता जोड़ता है — पहले से मौजूद "+exist+" उपभोक्ताओं की बकाया राशि और वसूली नहीं बदलती, रिमार्क वैसे ही रहते हैं। "+
+      "नए महीने का पूरा लेजर डालना हो तो 🔄 Replace चुनें (राशि नई होगी, पुराने रिमार्क साथ आएंगे)।"):"";
+  }
   // file count if already parsed
   var fileWrap=document.getElementById("cnt-file-wrap");
   if(parsedRows.length){
@@ -82,7 +95,9 @@ function openUpModal(){
   var kf=document.getElementById("up-keepfrom");
   if(kf){ var n=new Date(); kf.value=n.getFullYear()+"-"+("0"+(n.getMonth()+1)).slice(-2)+"-01"; }
   _upKeepToggle();
-  updateUpCounter();
+  // v9.201 (JE का फ़ैसला): हर बार खुलने पर Replace — हर महीने ज़्यादातर पूरा नया लेजर ही डाला जाता है।
+  // पिछली बार का Merge चुपचाप याद न रहे (Replace की ग़लती से बचाव नीचे confirmUpload में)
+  setUpMode("replace");
   document.getElementById("up-overlay").classList.add("open");
 }
 
@@ -341,6 +356,8 @@ function processRows(rows){
 // की device-कॉपी + "हटाएं" के समय बना backup (7 दिन, देखें fbDel) — सबसे उसी Consumer No के
 // रिमार्क इकट्ठा करके नई सूची के record में जोड़े जाते हैं (text|by|at से dedup — दोहराव नहीं)
 var RMK_BK_MAX_AGE_MS=7*24*60*60*1000;
+// Replace से इतने (और इतने हिस्से से ज़्यादा) उपभोक्ता हटने वाले हों तो पहले पुष्टि (देखें confirmUpload)
+var REPLACE_WARN_MIN_GONE=20, REPLACE_WARN_FRAC=0.2;
 function _upCollectOldRemarks(hq,cat){
   var byAcc={};
   function add(acc,arr,srcCat){
@@ -448,6 +465,25 @@ function confirmUpload(){
         return true;
       });
     })();
+
+    // v9.201: Replace अब डिफ़ॉल्ट है — ग़लती से छोटी फ़ाइल (जैसे सिर्फ़ कुछ नए उपभोक्ता, Merge पर बदलना
+    // भूल गए) डालने पर पूरी सूची उसी पर कट जाती। नया मासिक लेजर लगभग उतना ही बड़ा होता है (कुछ नए
+    // कनेक्शन जुड़ते, कुछ कटते), इसलिए बहुत उपभोक्ता हटने वाले हों तभी पूछो — "रद्द" पर कुछ नहीं बदलता
+    var _exR=cGet(hq,cat)||[];
+    if(_exR.length){
+      var _newAcc={};
+      arr.forEach(function(r){ if(r&&r.acc) _newAcc[String(r.acc).trim()]=1; });
+      var _gone=_exR.filter(function(e){ return e&&e.acc&&!_newAcc[String(e.acc).trim()]; }).length;
+      if(_gone>=REPLACE_WARN_MIN_GONE&&_gone>_exR.length*REPLACE_WARN_FRAC){
+        if(!confirm("⚠️ अभी \""+cat+"\" में "+_exR.length+" उपभोक्ता हैं, नई फ़ाइल में "+arr.length+"।\n"+
+          "Replace से "+_gone+" उपभोक्ता सूची से हट जाएंगे।\n\n"+
+          "सिर्फ़ नए उपभोक्ता जोड़ने हों तो 'रद्द' दबाकर ➕ Merge चुनें।\n"+
+          "पूरा नया लेजर है और यही चाहिए तो 'OK' दबाएं।")){
+          toast("अपलोड रोक दिया — कुछ नहीं बदला","inf");
+          return;
+        }
+      }
+    }
 
     // Replace mode या पहली बार — पुरानी वसूली सुरक्षित रखें (checkbox on हो तो)
     var kept=0,dropped=0;
