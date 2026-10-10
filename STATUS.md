@@ -38,7 +38,7 @@
 | #227 | v9.194 — privacy.html पूरी अंग्रेज़ी में | 9 अक्टू ✅ |
 | #228 | v9.195 — JE की स्क्रीनें ज़रूरत पड़ने पर ही उतरें | 10 अक्टू ✅ |
 | #229 | v9.196 — Google Search से छिपाव + टेस्ट फ़ाइल विषय-वार | 10 अक्टू ✅ |
-| (अगला) | v9.197 — ESLint के 15 नए नियम, 2 बेकार functions हटे | 10 अक्टू ✅ |
+| #230 | v9.197 — ESLint के 15 नए नियम, 2 बेकार functions हटे | 10 अक्टू ✅ |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
@@ -60,7 +60,7 @@ JE ने दोनों योजनाएं सुनीं और "क" व
 **कोड-गुणवत्ता (6.5 → 7.5 की योजना, हर हफ़्ते एक PR):**
 - **कदम 1 (हुआ):** 9878 लाइन की `tests/smoke.spec.js` को 12 विषय-वार फ़ाइलों में बांटा, और साझा helpers
   `tests/helpers.js` में रखे। बंटवारा एक script से हुआ और किसी टेस्ट का एक अक्षर नहीं बदला: पहले भी 500 `test(` थे, अब भी 500
-- **कदम 2 (हुआ, v9.197, PR अगला):**
+- **कदम 2 (हुआ, v9.197, PR #230):**
   - ESLint में 15 नए नियम जोड़े, जो असली bug पकड़ते हैं: `eqeqeq` smart, `array-callback-return`, `no-throw-literal`,
     `no-template-curly-in-string`, `no-unused-expressions`, `no-unmodified-loop-condition` आदि
   - चालू करते वक़्त इन सबमें 0 ग़लतियां थीं, इसलिए कोई कोड नहीं बदला। जान-बूझकर ग़लत कोड वाली फ़ाइल पर चलाकर जांचा कि नियम पकड़ते हैं
