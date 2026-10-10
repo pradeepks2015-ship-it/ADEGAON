@@ -5,15 +5,17 @@ on:
   push:
     branches: [main]
 
+# checkout/setup-node v5 और Node 22 (10/10): v4 वाले औज़ार पुराने Node 20 पर चलते थे — GitHub ने चेतावनी
+# दी थी, और Node 20 अप्रैल 2026 में ख़त्म (EOL) हो चुका। बाक़ी तीनों workflow पहले से Node 22 पर थे
 jobs:
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run lint
@@ -30,10 +32,10 @@ jobs:
     # के बाद सीमा पर कटने लगा (टेस्ट फेल नहीं, "cancelled")। अटका टेस्ट फिर भी 60 सेकंड में ख़ुद फेल होता है
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
