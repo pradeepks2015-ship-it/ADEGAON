@@ -11,7 +11,7 @@
 // है, फिर असली function को वही arguments देकर चलाता है। फ़ाइल उतरते ही उसका असली `function X`
 // इस stub को अपने-आप हटा देता है (global function declaration)।
 // नई lazy फ़ाइल में कोई नया function बाहर से बुलाया जाए तो उसे यहां जोड़ना ज़रूरी है — वरना वह
-// बटन "X is not defined" पर टूटेगा। यह जांच tests/smoke.spec.js ("lazy फ़ाइलें") अपने-आप करता है।
+// बटन "X is not defined" पर टूटेगा। यह जांच tests/app-shell.spec.js ("lazy फ़ाइलें") अपने-आप करता है।
 // उतरना नाकाम हो (नेट नहीं, फ़ाइल cache में नहीं) तो बटन चुपचाप नहीं बैठता — साफ़ संदेश + error log।
 var LAZY_ENTRY = {
   "js/upload.js": ["openUpModal","closeUpModal","closeUpOutside","updateUpCounter","onUpHqChange",

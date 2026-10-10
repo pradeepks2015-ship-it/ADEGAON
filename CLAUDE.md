@@ -39,7 +39,7 @@
 - `js/usage.js` — Firebase डेटा-उपयोग का अनुमानित ट्रेंड (Blaze plan पर बिना बताए बिल न बढ़े); JE-only viewer `js/usage-view.js` में
 - `index.html`, `css/style.css`
 - `sw.js` — service worker + CACHE_NAME
-- `tests/smoke.spec.js` — पूरा टेस्ट suite
+- `tests/*.spec.js` — पूरा टेस्ट suite, विषय-वार 12 फ़ाइलें (boot-ui, data-recovery, migration, auth-pin, upload-ledger, network-bandwidth…); साझा helpers (`openApp`, `loginLineman`, `loginJE`, lazy-फ़ाइल fixture) `tests/helpers.js` में। नया टेस्ट उसी विषय वाली फ़ाइल में जोड़ें
 - `database.rules.json` — Firebase Realtime Database की Security Rules (source of truth — `main` पर push होते ही `.github/workflows/deploy-rules.yml` अपने-आप असली Firebase पर deploy कर देता है, देखें `scripts/deploy-rules.js`)
 - `eslint.config.js` / `eslint.shared-globals.json` — CI लिंट सेटअप; कोई नई top-level global var/function (जो दूसरी js/*.js फाइल में इस्तेमाल हो) जोड़ें तो `node scripts/gen-eslint-globals.js` चलाकर globals list दोबारा बनाएं। दो फ़ाइलों में ग़लती से एक ही नाम declare न हो जाए (global scope share होने से चुपचाप overwrite का ख़तरा) — यह `npm run check-globals` (CI में भी) से अपने-आप जांचा जाता है, देखें `scripts/check-duplicate-globals.js`
 
@@ -123,7 +123,7 @@ Firebase प्रोजेक्ट में Owner, Netlify में member, 
 | `sw.js` | `CACHE_NAME` का `adegaon-dc-` हिस्सा (वैकल्पिक, पर नई साइट पर साफ़ शुरुआत) |
 | `.well-known/assetlinks.json` | Android ऐप (TWA) की पहचान — नया APK न बनाना हो तो फ़ाइल हटा दें |
 | `google1f9a33c82033cc77.html` | Google Search Console की आदेगांव वाली पुष्टि — नई कॉपी में हटा दें |
-| `tests/smoke.spec.js` | बहुत से टेस्ट HQ नाम ("आदेगांव", "पाटन"…) सीधे इस्तेमाल करते हैं — नए नामों पर बदलें, फिर पूरा suite |
+| `tests/*.spec.js` | बहुत से टेस्ट HQ नाम ("आदेगांव", "पाटन"…) सीधे इस्तेमाल करते हैं — नए नामों पर बदलें, फिर पूरा suite |
 | `CLAUDE.md`, `STATUS.md` | नया DC/डिवीजन/सर्कल, repo और Netlify साइट का नाम; `STATUS.md` नए सिरे से |
 
 ### ग. शुरू करना (JE)

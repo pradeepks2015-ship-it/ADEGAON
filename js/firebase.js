@@ -132,7 +132,7 @@ var _acWaiters = []; // वैसे ही App Check token के लिए —
 var AC_RETRY_MS=15000; // App Check token न मिले तो अगली कोशिश कितनी जल्दी (30 मिनट के सामान्य refresh से अलग)
 var _acRetryT=null;
 // App Check token लाना/ताज़ा करना — फ़ंक्शन को यहां (top-level) रखा है, try ब्लॉक के अंदर नहीं,
-// ताकि tests सीधे बुला सकें (देखें tests/smoke.spec.js)
+// ताकि tests सीधे बुला सकें (देखें tests/auth-pin.spec.js)
 function _acRefresh(){
   try{
     firebase.appCheck().getToken(false)
