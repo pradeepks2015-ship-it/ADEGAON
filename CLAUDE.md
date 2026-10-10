@@ -23,7 +23,10 @@
 - `js/firebase.js` — Firebase config, auth token handling
 - `js/ui-core.js` — login/logout/UI core, doLogout, goBack
 - `js/list.js` — कंज्यूमर लिस्ट render + filter + status (renderListWith, markPaid, propagateStatus)
-- `js/database.js` — fbGet, normList, startListen
+- `js/database.js` — पढ़ना और बुनियाद: fbPath, ETag, normList, डेटा-बचाओ मोड, fbGet
+- `js/database-write.js` — लिखना: fbSet, `_fbPut`/PATCH, सर्वर के रिमार्क मिलाना, fbDel
+- `js/database-live.js` — लाइव-sync: startListen, SSE/`FetchLiveSource`, token-expiry जांच
+  (v9.199 तक ये तीनों एक ही database.js में थे — **लोड-क्रम यही रहना चाहिए**: database → database-write → database-live)
 - `js/village.js` — गांव-वार वसूली + VILLAGE_ALIASES (आदेगांव-विशिष्ट गांव-नाम स्पेलिंग सुधार)
 - `js/home-scorecard.js` — होम पेज डिस्प्ले बोर्ड + कैश लिस्ट (bulk cash-payment upload)
 - `js/reports.js` — फोन एक्शन मॉडल (SMS/WhatsApp templates), स्कोरकार्ड, PDF/Excel, service-worker registration

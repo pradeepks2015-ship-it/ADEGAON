@@ -1258,8 +1258,8 @@ test.describe('डेटा उपयोग का मीटर — हर ड�
 
   test('सभी भारी डाउनलोड रास्तों पर गिनती लगी हो (SSE/prefetch/चरण-3 छूटे नहीं)', async () => {
     const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-    expect(read('js/database.js')).toContain('trackUsageOf(d); // SSE');       // live sync — सबसे भारी
-    expect(read('js/database.js')).toContain('trackUsageOf(patchData)');       // SSE patch
+    expect(read('js/database-live.js')).toContain('trackUsageOf(d); // SSE');       // live sync — सबसे भारी
+    expect(read('js/database-live.js')).toContain('trackUsageOf(patchData)');       // SSE patch
     expect(read('js/storage.js').match(/trackUsageOf\(d\)/g).length).toBe(2);  // prefetch + flushPending
     expect(read('js/migration-tool.js').match(/trackUsageOf\(/g).length).toBe(1); // चरण-3 जाँच (v9.195 से अलग फ़ाइल)
     expect(read('js/migration.js').match(/trackUsageOf\(/g).length).toBe(2);      // _migrateOne + MIGRATED
