@@ -28,6 +28,7 @@
 - `js/home-scorecard.js` — होम पेज डिस्प्ले बोर्ड + कैश लिस्ट (bulk cash-payment upload)
 - `js/reports.js` — फोन एक्शन मॉडल (SMS/WhatsApp templates), स्कोरकार्ड, PDF/Excel, service-worker registration
 - `js/migration.js` — पुराने array-format से नए per-record object-format में माइग्रेशन
+- `js/lazy.js` — **कुछ फ़ाइलें ज़रूरत पड़ने पर ही उतरती हैं** (v9.195): `upload.js`, `cat-admin.js`, `migration-tool.js` (चरण 3 की JE-स्क्रीन), `usage-view.js` (डेटा-उपयोग की JE-स्क्रीन)। ये `index.html`/`sw.js` CORE में **नहीं** हैं। इनका कोई function बाहर (index.html onclick या दूसरी js) से बुलाएं तो उसे `LAZY_ENTRY` में जोड़ें — टेस्ट "lazy फ़ाइलें" भूलने पर फेल होगा। इन फ़ाइलों में ऊपर-स्तर पर सिर्फ़ function/var declarations रहें
 - `js/storage.js` — local cache (cGet/cSet/cKey), offline queue (getPending, flushPending, pendingCount), mergeArrays
 - `js/auth.js` — login/logout, Lineman PIN, `_ensureCorrectHqAuth` (हर HQ का अपना Firebase account)
 - `js/upload.js` — लेजर अपलोड (Replace/Merge), "पुरानी वसूली सुरक्षित रखें" + तारीख़-कट-ऑफ़, रिमार्क बचाना
@@ -35,7 +36,7 @@
 - `js/scorecards.js` — स्कोरकार्ड + तारीख़-वार तालिका, `normPayDate`/`payDateVal` (तारीख़ के सारे रूप यहीं संभलते हैं)
 - `js/logger.js` — `logErr()` — असली production bugs इसी लॉग से पकड़े जाते हैं (JE मेनू → error log)
 - `js/main.js`, `js/profile.js`, `js/cat-admin.js`, `js/celebration.js`
-- `js/usage.js` — Firebase डेटा-उपयोग का अनुमानित ट्रेंड (Blaze plan पर बिना बताए बिल न बढ़े, JE-only viewer)
+- `js/usage.js` — Firebase डेटा-उपयोग का अनुमानित ट्रेंड (Blaze plan पर बिना बताए बिल न बढ़े); JE-only viewer `js/usage-view.js` में
 - `index.html`, `css/style.css`
 - `sw.js` — service worker + CACHE_NAME
 - `tests/smoke.spec.js` — पूरा टेस्ट suite
@@ -117,7 +118,7 @@ Firebase प्रोजेक्ट में Owner, Netlify में member, 
 | `js/upload.js` | PDF रिपोर्ट का शीर्षक |
 | `js/home-scorecard.js` | डिस्प्ले बोर्ड पर "ADEGAON DC" |
 | `js/village.js` | `VILLAGE_ALIASES` ख़ाली करें (आदेगांव के गांवों के स्पेलिंग-सुधार हैं), Excel फ़ाइल-नाम `ADEGAON_गांव_वार_` |
-| `js/migration.js` | dry-run फ़ाइल-नाम (सिर्फ़ नाम) |
+| `js/migration-tool.js` | dry-run फ़ाइल-नाम (सिर्फ़ नाम) |
 | `package.json` | `name`, `description` (सिर्फ़ पहचान) |
 | `sw.js` | `CACHE_NAME` का `adegaon-dc-` हिस्सा (वैकल्पिक, पर नई साइट पर साफ़ शुरुआत) |
 | `.well-known/assetlinks.json` | Android ऐप (TWA) की पहचान — नया APK न बनाना हो तो फ़ाइल हटा दें |

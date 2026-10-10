@@ -3,9 +3,26 @@
 // हर बाहरी request (CDN/Firebase/Google) block की जाती है ताकि:
 //  1. tests कभी असली production database को न छुएं
 //  2. app का offline-first रास्ता भी हर PR पर अपने आप जांचा जाए
-const { test, expect } = require('@playwright/test');
+const { test: baseTest, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
+
+// v9.195: कुछ फ़ाइलें अब ज़रूरत पड़ने पर ही उतरती हैं (js/lazy.js)। पुराने सैकड़ों टेस्ट इनके functions
+// (processRows, _migAnalyzeList, _usageRender…) सीधे बुलाते हैं — उनके लिए index.html के आख़िर में
+// ये फ़ाइलें पहले जैसी (साथ-साथ) जोड़ देते हैं, ताकि वे वही जांचें जो पहले जांचते थे। ज़रूरत-पर-उतरने
+// वाला असली रास्ता अलग से lazyTest (बिना इस जोड़ के) वाले टेस्ट जांचते हैं — देखें "lazy फ़ाइलें"
+const LAZY_FILES = ['js/upload.js', 'js/cat-admin.js', 'js/migration-tool.js', 'js/usage-view.js'];
+const lazyTest = baseTest;
+const test = baseTest.extend({
+  context: async ({ context }, use) => {
+    await context.route((u) => /^\/(index\.html)?$/.test(u.pathname), async (route) => {
+      const r = await route.fetch();
+      const body = (await r.text()).replace('</body>', LAZY_FILES.map((f) => `<script src="${f}"></script>`).join('') + '</body>');
+      await route.fulfill({ response: r, body });
+    });
+    await use(context);
+  },
+});
 
 /** @param {import('@playwright/test').Page} page */
 async function blockExternal(page) {
@@ -7530,8 +7547,10 @@ test.describe('डेटा उपयोग का मीटर — हर ड�
   // (object दोबारा बनाने पर वे आपस में मिलकर ग़ायब हो जाते)। यानी चरण 3 ठीक वही गड़बड़ी छिपा
   // देता जिसे पकड़ने के लिए वह बना है
   test('चरण 3 की जांच हमेशा सर्वर का कच्चा सच पढ़े — वहाँ ETag न लगे', async () => {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'migration.js'), 'utf8');
+    // v9.195: चरण 3 की JE-स्क्रीन अब अलग फ़ाइल में (ज़रूरत पड़ने पर उतरती है)
+    const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'migration-tool.js'), 'utf8');
     const dry = src.slice(src.indexOf('function _migRunDryRun'), src.indexOf('function _migRender'));
+    expect(dry.length).toBeGreaterThan(100);
     expect(dry).not.toContain('_etagHeaders');
     expect(dry).not.toContain('if-none-match');
     expect(dry).toContain('trackUsageOf(d)'); // भारी है, पर मीटर में गिना जाता है — छिपा नहीं
@@ -7542,7 +7561,8 @@ test.describe('डेटा उपयोग का मीटर — हर ड�
     expect(read('js/database.js')).toContain('trackUsageOf(d); // SSE');       // live sync — सबसे भारी
     expect(read('js/database.js')).toContain('trackUsageOf(patchData)');       // SSE patch
     expect(read('js/storage.js').match(/trackUsageOf\(d\)/g).length).toBe(2);  // prefetch + flushPending
-    expect(read('js/migration.js').match(/trackUsageOf\(/g).length).toBe(3);   // चरण-3 जाँच + _migrateOne + MIGRATED
+    expect(read('js/migration-tool.js').match(/trackUsageOf\(/g).length).toBe(1); // चरण-3 जाँच (v9.195 से अलग फ़ाइल)
+    expect(read('js/migration.js').match(/trackUsageOf\(/g).length).toBe(2);      // _migrateOne + MIGRATED
     expect(read('js/home-scorecard.js')).toContain('trackUsageOf(d)');
   });
 
@@ -9710,5 +9730,144 @@ test.describe('login पन्ने पर ऐप की पहचान (v9.19
     const text = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<style[\s\S]*?<\/style>/g, '');
     expect(text).not.toMatch(/[\u0900-\u097F]/);
     expect(text).toContain('does not collect any payment, bank, UPI or card details');
+  });
+});
+
+// ── v9.195: JE की स्क्रीनें ज़रूरत पड़ने पर ही उतरें — कोई बटन चुपचाप न टूटे ──
+// यहां lazyTest है (ऊपर वाला test नहीं) — यानी index.html में lazy फ़ाइलें नहीं जोड़ी जातीं, असली
+// लाइनमैन-फ़ोन जैसा रास्ता चलता है
+test.describe('lazy फ़ाइलें (v9.195)', () => {
+  const root = path.join(__dirname, '..');
+  const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+  const espree = require('espree');
+  const strip = (s) => {
+    const a = espree.parse(s, { ecmaVersion: 2022, comment: true, range: true });
+    let t = s;
+    a.comments.slice().reverse().forEach((c) => { t = t.slice(0, c.range[0]) + ' ' + t.slice(c.range[1]); });
+    return t;
+  };
+  const lazyEntry = () => {
+    const src = read('js/lazy.js');
+    const block = src.slice(src.indexOf('var LAZY_ENTRY'), src.indexOf('};', src.indexOf('var LAZY_ENTRY')) + 2);
+    return Function('"use strict";' + block.replace('var LAZY_ENTRY =', 'return'))();
+  };
+
+  test('हर वह नाम जिसे बाक़ी ऐप lazy फ़ाइल से बुलाता है, LAZY_ENTRY में हो (वरना बटन "not defined" पर टूटे)', () => {
+    const entry = lazyEntry();
+    expect(Object.keys(entry).sort()).toEqual([...LAZY_FILES].sort());
+    const others = fs.readdirSync(path.join(root, 'js')).map((f) => 'js/' + f)
+      .filter((f) => f.endsWith('.js') && !LAZY_FILES.includes(f));
+    const src = {};
+    others.forEach((f) => { src[f] = strip(read(f)); });
+    src['index.html'] = read('index.html').replace(/<!--[\s\S]*?-->/g, '');
+    const missing = [];
+    for (const f of LAZY_FILES) {
+      const ast = espree.parse(read(f), { ecmaVersion: 2022 });
+      const fns = [];
+      ast.body.forEach((n) => {
+        // lazy फ़ाइल में ऊपर-स्तर पर सिर्फ़ declarations — कोई चलने वाला कोड नहीं (क्रम/समय पर निर्भरता न हो)
+        expect(['FunctionDeclaration', 'VariableDeclaration'], f + ' में ऊपर-स्तर का ' + n.type).toContain(n.type);
+        if (n.type === 'FunctionDeclaration') fns.push(n.id.name);
+        else n.declarations.forEach((d) => {
+          const re = new RegExp('(^|[^\\w$.])' + d.id.name.replace(/\$/g, '\\$') + '(?![\\w$])');
+          const users = Object.keys(src).filter((k) => re.test(src[k]));
+          expect(users, f + ' का var ' + d.id.name + ' बाहर इस्तेमाल न हो (stub सिर्फ़ functions के लिए है)').toEqual([]);
+        });
+      });
+      for (const nm of fns) {
+        const re = new RegExp('(^|[^\\w$.])' + nm.replace(/\$/g, '\\$') + '(?![\\w$])');
+        if (Object.keys(src).some((k) => re.test(src[k])) && !entry[f].includes(nm)) missing.push(f + ': ' + nm);
+      }
+      // उल्टा भी: LAZY_ENTRY का हर नाम उस फ़ाइल में सचमुच function हो
+      entry[f].forEach((nm) => expect(fns, f + ' में ' + nm).toContain(nm));
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test('index.html और sw.js की पहले-उतरने वाली सूची में lazy फ़ाइलें न हों; lazy.js हो', () => {
+    const html = read('index.html');
+    LAZY_FILES.forEach((f) => expect(html).not.toContain(`<script src="${f}"`));
+    expect(html).toContain('<script src="js/lazy.js"></script>');
+    expect(html.indexOf('js/lazy.js')).toBeLessThan(html.indexOf('js/ui-core.js'));
+    const sw = read('sw.js');
+    const core = sw.slice(sw.indexOf('var CORE='), sw.indexOf('var OPTIONAL='));
+    LAZY_FILES.forEach((f) => expect(core).not.toContain('"./' + f + '"'));
+    expect(core).toContain('"./js/lazy.js"');
+  });
+
+  lazyTest('लाइनमैन: ऐप खुलने पर lazy फ़ाइलें नहीं उतरतीं; PDF दबाते ही upload.js उतरकर असली downloadPDF चलता है', async ({ page }) => {
+    const got = [];
+    page.on('request', (r) => { const m = r.url().match(/\/(js\/[\w-]+\.js)/); if (m) got.push(m[1]); });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForTimeout(5000); // JE वाला preload (4 सेकंड) लाइनमैन पर न चले
+    LAZY_FILES.forEach((f) => expect(got, f).not.toContain(f));
+    expect(await page.evaluate(() => [typeof processRows, !!window.downloadPDF._lazyStub])).toEqual(['undefined', true]);
+    await page.evaluate(() => { window.__realPdf = 0; });
+    // असली downloadPDF उतरते ही चलता है — उसे पहचानने के लिए ensureLibs (vendor PDF lib) को रोककर देखते हैं
+    await page.evaluate(() => { window.ensureLibs = function () { window.__realPdf++; return new Promise(function () {}); }; });
+    await page.click('button[onclick="downloadPDF()"]');
+    await page.waitForFunction(() => typeof processRows === 'function' && !window.downloadPDF._lazyStub);
+    expect(got.filter((f) => f === 'js/upload.js').length).toBe(1);
+    expect(got).not.toContain('js/migration-tool.js'); // सिर्फ़ ज़रूरत वाली फ़ाइल
+    expect(errors).toEqual([]);
+  });
+
+  lazyTest('हर lazy फ़ाइल उतरने के बाद उसका हर stub असली function से बदल जाए', async ({ page }) => {
+    await openApp(page);
+    const res = await page.evaluate(async () => {
+      const out = {};
+      for (const f of Object.keys(LAZY_ENTRY)) {
+        await lazyLoad(f);
+        out[f] = LAZY_ENTRY[f].filter((n) => typeof window[n] !== 'function' || window[n]._lazyStub);
+      }
+      return out;
+    });
+    Object.values(res).forEach((left) => expect(left).toEqual([]));
+  });
+
+  lazyTest('stub से बुलाने पर वही arguments असली function तक पहुंचें (डेटा-उपयोग: लाइनमैन को "सिर्फ JE" संदेश)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => openUsageModal());
+    await expect(page.locator('#toast')).toContainText('सिर्फ JE डेटा उपयोग देख सकते हैं');
+    expect(await page.evaluate(() => !!window.openUsageModal._lazyStub)).toBe(false);
+  });
+
+  lazyTest('फ़ाइल न उतरे (नेट नहीं) तो बटन चुपचाप न बैठे — साफ़ संदेश + error log; नेट लौटने पर दोबारा दबाना चले', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.route('**/js/upload.js*', (r) => r.abort());
+    await page.click('button[onclick="downloadExcel()"]');
+    await expect(page.locator('#toast')).toContainText('यह सुविधा अभी खुल नहीं पाई');
+    const log = await page.evaluate(() => getLogs().filter((l) => l.c === 'lazy-load-fail').map((l) => l.x + ' | ' + l.m));
+    expect(log.length).toBe(1);
+    expect(log[0]).toContain('downloadExcel');
+    expect(log[0]).toContain('js/upload.js');
+    await page.unroute('**/js/upload.js*');
+    await page.evaluate(() => { window.ensureLibs = function () { return new Promise(function () {}); }; });
+    await page.click('button[onclick="downloadExcel()"]');
+    await page.waitForFunction(() => typeof processRows === 'function' && !window.downloadExcel._lazyStub);
+  });
+
+  lazyTest('JE के फ़ोन पर login के बाद चारों lazy फ़ाइलें अपने-आप पहले से उतरें (बिना नेट भी खुलें)', async ({ page }) => {
+    const got = [];
+    page.on('request', (r) => { const m = r.url().match(/\/(js\/[\w-]+\.js)/); if (m) got.push(m[1]); });
+    await openApp(page);
+    await loginJE(page);
+    await page.waitForFunction(() => Object.keys(LAZY_ENTRY).every((f) =>
+      LAZY_ENTRY[f].every((n) => typeof window[n] === 'function' && !window[n]._lazyStub)), null, { timeout: 15000 });
+    LAZY_FILES.forEach((f) => expect(got, f).toContain(f));
+  });
+
+  lazyTest('JE: अपलोड बटन (stub से) सचमुच अपलोड-खिड़की खोले', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => { window.lazyPreloadAll = function () {}; }); // preload रोककर असली stub रास्ता
+    await loginJE(page);
+    expect(await page.evaluate(() => !!window.openUpModal._lazyStub)).toBe(true);
+    await page.locator('button', { hasText: 'अपलोड' }).first().click();
+    await expect(page.locator('#up-overlay')).toHaveClass(/open/);
   });
 });
