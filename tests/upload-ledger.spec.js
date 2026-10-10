@@ -992,3 +992,60 @@ test.describe('मिटने से पहले वसूली का backup
     expect(r.status).toBe('pending'); // और अपना काम कर गई
   });
 });
+
+// ── v9.200: Merge में "पुरानी वसूली सुरक्षित रखें" भ्रम न बने + सीमा की सही संख्या ──
+// JE (11/10) ने Merge चुनकर "1820 पुरानी (पिछले लेजर की) हट जाएगी" देखा और पूछा कि रिमार्क रहेंगे या नहीं —
+// जबकि भरी सूची पर Merge में वह तारीख़-कट-ऑफ़ लागू ही नहीं होता (सिर्फ़ नए Consumer No जुड़ते हैं)।
+// और लेबल "बाकी जगह (1000 limit)" लिखा था, जबकि कुल उपभोक्ता की सीमा 3500 है
+test.describe('अपलोड — Merge का साफ़ संदेश और सही सीमा (v9.200)', () => {
+  const open = async (page, recs) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate((r) => {
+      cSet('आदेगांव', 'कुल उपभोक्ता', r);
+      openUpModal();
+      document.getElementById('up-hq').value = 'आदेगांव';
+      onUpHqChange();
+      document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+      setUpMode('merge');
+    }, recs);
+  };
+  const state = (page) => page.evaluate(() => ({
+    keep: getComputedStyle(document.getElementById('up-keep-sec')).display,
+    note: getComputedStyle(document.getElementById('up-merge-note')).display,
+    noteText: document.getElementById('up-merge-note').textContent,
+    label: document.getElementById('cnt-avail-label').textContent,
+    avail: document.getElementById('cnt-avail').textContent,
+  }));
+
+  test('भरी सूची + Merge: कट-ऑफ़ वाला हिस्सा छिपे, साफ़ संदेश दिखे; Replace पर वापस', async ({ page }) => {
+    await open(page, [1, 2, 3].map((a) => ({ acc: String(a), name: 'उ' + a, amount: 100, status: 'pending' })));
+    let s = await state(page);
+    expect(s.keep).toBe('none');
+    expect(s.note).toBe('block');
+    expect(s.noteText).toContain('Merge सिर्फ़ नए उपभोक्ता जोड़ता है');
+    expect(s.noteText).toContain('3 उपभोक्ताओं');
+    expect(s.noteText).toContain('Replace');
+    await page.evaluate(() => setUpMode('replace'));
+    s = await state(page);
+    expect(s.keep).not.toBe('none');
+    expect(s.note).toBe('none');
+  });
+
+  test('ख़ाली सूची + Merge (असल में Replace-रास्ता) — कट-ऑफ़ वाला हिस्सा दिखता रहे', async ({ page }) => {
+    await open(page, []);
+    const s = await state(page);
+    expect(s.keep).not.toBe('none');
+    expect(s.note).toBe('none');
+  });
+
+  test('सीमा का लेबल श्रेणी की असली सीमा दिखाए — कुल उपभोक्ता 3500, बाक़ी 1000', async ({ page }) => {
+    await open(page, [{ acc: '1', name: 'क', amount: 1, status: 'pending' }]);
+    let s = await state(page);
+    expect(s.label).toBe('बाकी जगह (3500 limit)');
+    expect(s.avail).toBe('3499');
+    await page.evaluate(() => { document.getElementById('up-cat').value = CATS[1]; updateUpCounter(); });
+    s = await state(page);
+    expect(s.label).toBe('बाकी जगह (1000 limit)');
+  });
+});

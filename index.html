@@ -291,6 +291,11 @@ try{
         </div>
       </div>
     </div>
+    <!-- v9.200: Merge (सूची में पहले से records हों तब) में यह पूरा हिस्सा लागू ही नहीं होता — वहां सिर्फ़ नए
+         Consumer No जुड़ते हैं, पुरानों की राशि/वसूली नहीं बदलती। JE (11/10) Merge चुनकर "1820 पुरानी हट
+         जाएगी" देखकर भ्रम में पड़े, इसलिए Merge में यह छिपता है और उसकी जगह साफ़ संदेश (up-merge-note) -->
+    <div id="up-merge-note" style="display:none;margin:10px 2px;padding:9px 11px;background:rgba(66,165,245,.08);border:1px solid rgba(66,165,245,.35);border-radius:10px;font-size:12px;line-height:1.55;color:var(--text);"></div>
+    <div id="up-keep-sec">
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;margin:10px 2px 6px;">
       <input type="checkbox" id="up-keeppaid" checked onchange="_upKeepToggle()" style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;">
       पुरानी ✅ वसूली सुरक्षित रखें
@@ -303,12 +308,13 @@ try{
       <input type="date" class="fi" id="up-keepfrom" onchange="_upKeepPreview()" style="margin-bottom:6px;">
       <div id="up-keepnote" style="font-size:11.5px;color:var(--green);font-weight:700;line-height:1.5;"></div>
     </div>
+    </div>
     <!-- COUNTER BOX -->
     <div id="cat-hint" style="display:none;background:rgba(0,200,150,.08);border:1px solid rgba(0,200,150,.2);border-radius:9px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#086b52;"></div>
     <div class="up-counter-box" id="up-counter-box">
       <div class="up-counter-row" id="up-counter-row">
         <div class="up-counter-item"><div class="up-counter-label">मौजूद</div><div class="up-counter-val exist" id="cnt-exist">0</div></div>
-        <div class="up-counter-item"><div class="up-counter-label">बाकी जगह (1000 limit)</div><div class="up-counter-val avail" id="cnt-avail">1000</div></div>
+        <div class="up-counter-item"><div class="up-counter-label" id="cnt-avail-label">बाकी जगह</div><div class="up-counter-val avail" id="cnt-avail">0</div></div>
         <div class="up-counter-item" id="cnt-file-wrap" style="display:none;"><div class="up-counter-label">इस फाइल में</div><div class="up-counter-val file" id="cnt-file">0</div></div>
       </div>
       <div id="cnt-limit-warn" class="limit-warn-box" style="display:none;margin-top:8px;margin-bottom:0;">⛔ लिमिट भरी है — Replace mode use करें</div>

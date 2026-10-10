@@ -9,6 +9,19 @@ function updateUpCounter(){
   document.getElementById("cnt-exist").textContent=String(exist);
   document.getElementById("cnt-avail").textContent=String(avail);
   document.getElementById("cnt-avail").title="Limit: "+maxR;
+  // पहले लेबल में "1000 limit" लिखा रहता था, जबकि कुल उपभोक्ता की सीमा 3500 है (getMaxRecords)
+  var al=document.getElementById("cnt-avail-label"); if(al) al.textContent="बाकी जगह ("+maxR+" limit)";
+  // Merge + पहले से भरी सूची = confirmUpload का merge-रास्ता: सिर्फ़ नए Consumer No जुड़ते हैं, पुरानों की
+  // राशि/वसूली/तारीख़-कट-ऑफ़ कुछ नहीं बदलता — इसलिए "पुरानी वसूली सुरक्षित रखें" वाला हिस्सा वहां भ्रम है।
+  // (ख़ाली सूची पर Merge असल में Replace-रास्ता ही चलाता है, तब यह हिस्सा दिखता रहे)
+  var mergeOnly=(upMode==="merge"&&exist>0);
+  var ks=document.getElementById("up-keep-sec"); if(ks) ks.style.display=mergeOnly?"none":"";
+  var mn=document.getElementById("up-merge-note");
+  if(mn){
+    mn.style.display=mergeOnly?"block":"none";
+    mn.textContent=mergeOnly?("➕ Merge सिर्फ़ नए उपभोक्ता जोड़ता है — पहले से मौजूद "+exist+" उपभोक्ताओं की बकाया राशि और वसूली नहीं बदलती, रिमार्क वैसे ही रहते हैं। "+
+      "नए महीने का पूरा लेजर डालना हो तो 🔄 Replace चुनें (राशि नई होगी, पुराने रिमार्क साथ आएंगे)।"):"";
+  }
   // file count if already parsed
   var fileWrap=document.getElementById("cnt-file-wrap");
   if(parsedRows.length){
