@@ -368,6 +368,8 @@ test('सूची के ऊपर क्रम वाली कोई पं�
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   expect(html).not.toContain('sort-hint');
   expect(html).not.toContain('क्रम चालू');
+});
+
 // ── v9.203: गांव की पट्टी — टैप करते ही उसी गांव की सूची (JE: अंग्रेज़ी नाम, सबसे ज़्यादा बाकी पहले) ──
 test.describe('गांव की पट्टी (v9.203)', () => {
   const recs = [
