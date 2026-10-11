@@ -70,7 +70,7 @@ function promiseDue(x){
   return "";
 }
 function _fmtDue(iso){ var p=String(iso||"").split("-"); return p.length===3?(Number(p[2])+"/"+Number(p[1])+"/"+p[0]):""; }
-// "📅 आज जमा का वादा" बटन (JE का दिया नाम, 11/10) में = आज या बीते दिनों के वादे (आगे के वादे card पर दिखते हैं, बटन में नहीं)
+// वादे का निशान 🤝 — 📅 कई फ़ोनों पर "JUL 17" छपे कैलेंडर जैसा दिखता था (JE, 11/10)। "आज जमा का वादा" बटन (JE का दिया नाम) में = आज या बीते दिनों के वादे (आगे के वादे card पर दिखते हैं, बटन में नहीं)
 function isPromiseDue(x,today){ var pd=promiseDue(x); return !!pd&&pd<=(today||_isoToday()); }
 function renderList(){var d=cGet(activeHQ,activeCat);renderListWith(d);}
 var _renderLimit=100;
@@ -114,7 +114,7 @@ function renderListWith(data){
     else if(activeFilter==="pending") emptyMsg="सभी वसूली हो चुकी है!";
     else if(q) emptyMsg="कोई परिणाम नहीं";
     else emptyMsg="सूची खाली है";
-    var emptyIco=activeFilter==="promise"?"📅":activeFilter==="paid"?"✅":activeFilter==="pending"?"⏳":(q?"🔍":"📋");
+    var emptyIco=activeFilter==="promise"?"🤝":activeFilter==="paid"?"✅":activeFilter==="pending"?"⏳":(q?"🔍":"📋");
     var emptySub=activeFilter==="promise"?"✏️ रिमार्क में वादा-तारीख़ डालें — उस दिन उपभोक्ता यहां दिखेगा":
                  (!q&&activeFilter==="all")?"📤 अपलोड बटन से लिस्ट डालें":"🔍 खोज या फ़िल्टर बदलें";
     // audit-verified: emptyMsg/emptyIco/emptySub सब hardcoded literals में से चुने जाते हैं (कभी भी
@@ -139,7 +139,7 @@ function renderListWith(data){
     if(remarksArr.length){
       rmkHtml="<div class='cc-rmk-list'>";
       remarksArr.slice().reverse().forEach(function(r){
-        rmkHtml+="<div class='cc-rmk-item'><span>💬 "+escHtml(r.text)+(r.due?" <b>📅 "+escHtml(_fmtDue(r.due))+"</b>":"")+"</span><span class='cc-rmk-by'>— "+escHtml(r.by)+(r.at?" • "+r.at:"")+"</span></div>";
+        rmkHtml+="<div class='cc-rmk-item'><span>💬 "+escHtml(r.text)+(r.due?" <b>🤝 "+escHtml(_fmtDue(r.due))+"</b>":"")+"</span><span class='cc-rmk-by'>— "+escHtml(r.by)+(r.at?" • "+r.at:"")+"</span></div>";
       });
       rmkHtml+="</div>";
     }
@@ -155,7 +155,7 @@ function renderListWith(data){
     }
     var payDateInfo=x.paydate?"<span class='cc-paydate'>💰 वसूल: "+escHtml(x.paydate)+"</span>":"";
     var pdue=promiseDue(x), dueChip="";
-    if(pdue) dueChip="<span class='chip chip-due"+(pdue<today?" over":pdue===today?" today":"")+"'>📅 वादा: "+escHtml(_fmtDue(pdue))+
+    if(pdue) dueChip="<span class='chip chip-due"+(pdue<today?" over":pdue===today?" today":"")+"'>🤝 वादा: "+escHtml(_fmtDue(pdue))+
       (pdue<today?" (बीत गया)":pdue===today?" (आज)":"")+"</span>";
     return "<div class='con-card "+(isPaid?"paid":"pending")+"'>"+
       "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+(x.father?" / "+escHtml(x.father):"")+"</div><button class='cc-share' title='शेयर' aria-label='शेयर' onclick=\"shareCard("+oi+",'"+escJsAttr(x.acc||"")+"',this)\">"+CC_SHARE_ICON+"</button><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
@@ -516,7 +516,7 @@ function openRmkModal(idx,acc){
       // सीधे डाला गया हो तो टैग बेकार/redundant है
       var catTag=(r.cat&&r.cat!==activeCat)?" <span class='prev-rmk-cat'>📁 "+escHtml(r.cat)+"</span>":"";
       return "<div class='prev-rmk-item'>"+
-        "<div class='prev-rmk-text'>💬 "+escHtml(r.text)+(r.due?" <b>📅 "+escHtml(_fmtDue(r.due))+"</b>":"")+catTag+"</div>"+
+        "<div class='prev-rmk-text'>💬 "+escHtml(r.text)+(r.due?" <b>🤝 "+escHtml(_fmtDue(r.due))+"</b>":"")+catTag+"</div>"+
         "<div class='prev-rmk-meta'>— "+escHtml(r.by)+(r.at?" • "+r.at:"")+"</div>"+
       "</div>";
     }).join("");
@@ -569,7 +569,7 @@ function saveRmk(){
   }
   var newText=document.getElementById("rmk-text").value.trim();
   // सिर्फ़ तारीख़ डाली, कुछ लिखा नहीं — तब भी रिमार्क बने (text में तारीख़, ताकि पुराने फ़ोन पर भी दिखे)
-  if(due&&!newText) newText="📅 "+_fmtDue(due)+" को जमा करने का वादा";
+  if(due&&!newText) newText="🤝 "+_fmtDue(due)+" को जमा करने का वादा";
   /** रिमार्क की एक entry — due (yyyy-mm-dd) v9.202 से, सिर्फ़ वादे वाले रिमार्क में
    * @type {{text:string, by:string, at:string, cat:string, due?:string}|null} */
   var newEntry=null;
@@ -589,7 +589,7 @@ function saveRmk(){
   closeRmkModal();
   renderSummaryWith(d); renderListWith(d);
   var total=(d[idx].remarksArr||[]).length;
-  toast(due?("✅ रिमार्क सेव — 📅 "+_fmtDue(due)+" को \"आज जमा का वादा\" बटन में दिखेगा"):("✅ रिमार्क सेव! (कुल "+total+")"),"ok");
+  toast(due?("✅ रिमार्क सेव — 🤝 "+_fmtDue(due)+" को \"आज जमा का वादा\" बटन में दिखेगा"):("✅ रिमार्क सेव! (कुल "+total+")"),"ok");
   fbSet(activeHQ,activeCat,d,prevSnap,null);
   propagateStatus(d[idx].acc,activeCat,rmkStatus,d[idx].paydate||"",dtStr,d[idx].ts);
   // JE की शिकायत: किसी category में डाला कमेंट "कुल उपभोक्ता" में नहीं दिखता था — हर category उसी
