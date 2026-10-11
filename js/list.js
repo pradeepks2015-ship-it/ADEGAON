@@ -79,7 +79,7 @@ function renderListWith(data){
   _syncSortBtn();
   var today=_isoToday();
   var fbP=document.getElementById("fb-promise");
-  if(fbP){ var nP=data.filter(function(x){ return isPromiseDue(x,today); }).length; fbP.textContent="📅 आज जमा का वादा"+(nP?" ("+nP+")":""); }
+  if(fbP){ var nP=data.filter(function(x){ return isPromiseDue(x,today); }).length; fbP.textContent="आज जमा का वादा"+(nP?" ("+nP+")":""); } // JE: बटन पर कैलेंडर का निशान नहीं
   var q=(document.getElementById("search-inp").value||"").toLowerCase().trim();
   var c=document.getElementById("con-list");
   var filtered=data.filter(function(x){

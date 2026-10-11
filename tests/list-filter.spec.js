@@ -252,12 +252,12 @@ test.describe('सूची का क्रम और वादा-तारी
     const last = await page.evaluate(() => { const a = cGet(activeHQ, activeCat)[0].remarksArr; return a[a.length - 1]; });
     expect(last.due).toBe(iso(0));
     expect(last.text).toBe('आज शाम देंगे');
-    await expect(page.locator('#fb-promise')).toHaveText('📅 आज जमा का वादा (1)');
+    await expect(page.locator('#fb-promise')).toHaveText('आज जमा का वादा (1)');
     await page.click('#fb-promise');
     expect(await names(page)).toEqual(['वादा करने वाला']);
     await expect(page.locator('.chip-due')).toContainText('(आज)');
     await page.evaluate(() => markPaid(0, '1'));
-    await expect(page.locator('#fb-promise')).toHaveText('📅 आज जमा का वादा');
+    await expect(page.locator('#fb-promise')).toHaveText('आज जमा का वादा');
     await expect(page.locator('#con-list')).toContainText('आज कोई वादा बाकी नहीं');
   });
 
@@ -268,7 +268,7 @@ test.describe('सूची का क्रम और वादा-तारी
     expect(last.text).toContain('को जमा करने का वादा');
     expect(last.due).toBe(iso(3));
     await expect(page.locator('.chip-due')).toBeVisible();
-    await expect(page.locator('#fb-promise')).toHaveText('📅 आज जमा का वादा');
+    await expect(page.locator('#fb-promise')).toHaveText('आज जमा का वादा');
   });
 
   test('बीता वादा लाल "(बीत गया)" और सबसे ऊपर; बीती तारीख़ नई डालने से रोके', async ({ page }) => {
