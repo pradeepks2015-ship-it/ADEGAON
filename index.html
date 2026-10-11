@@ -203,8 +203,13 @@ try{
       <!-- v9.202: आज/बीते दिन के वादे वाले बाकी उपभोक्ता (रिमार्क में डाली वादा-तारीख़ से) -->
       <button class="filter-btn" data-f="promise" id="fb-promise" onclick="setFilter(this)">आज जमा का वादा</button>
     </div>
-    <!-- v9.202: सूची का क्रम — बड़ी बकाया वाले ऊपर (हर फ़ोन पर अपनी पसंद याद रहती है) -->
-    <div class="sort-wrap"><button type="button" class="sort-btn" id="sort-btn" onclick="toggleListSort()">&#8377; बड़ी बकाया पहले</button></div>
+    <!-- v9.202: सूची का क्रम — JE के कहने पर ड्रॉप-डाउन (बटन नहीं); हर फ़ोन पर अपनी पसंद याद रहती है -->
+    <div class="sort-wrap"><label for="sort-sel" class="sort-lbl">क्रम:</label>
+      <select id="sort-sel" class="sort-sel" onchange="setListSort(this.value)">
+        <option value="ledger">लेजर जैसा</option>
+        <option value="amount">&#8377; बड़ी बकाया पहले</option>
+      </select>
+    </div>
     <div class="con-list" id="con-list"></div>
   </div>
   <div class="bottom-nav">

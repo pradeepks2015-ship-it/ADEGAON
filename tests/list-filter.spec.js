@@ -221,20 +221,21 @@ test.describe('सूची का क्रम और वादा-तारी
   };
   const names = (page) => page.$$eval('#con-list .con-card .cc-name', (els) => els.map((e) => e.textContent.trim()));
 
-  test('"₹ बड़ी बकाया पहले" दबाने पर सबसे बड़ी बकाया ऊपर; दोबारा दबाने पर लेजर क्रम; पसंद याद रहे', async ({ page }) => {
+  test('क्रम ड्रॉप-डाउन में "₹ बड़ी बकाया पहले" चुनने पर सबसे बड़ी बकाया ऊपर; दोबारा दबाने पर लेजर क्रम; पसंद याद रहे', async ({ page }) => {
     await seed(page, [
       { acc: '1', name: 'छोटा', amount: 500, status: 'pending' },
       { acc: '2', name: 'बड़ा', amount: 52000, status: 'pending' },
       { acc: '3', name: 'मध्यम', amount: 3000, status: 'pending' },
     ]);
     expect(await names(page)).toEqual(['छोटा', 'बड़ा', 'मध्यम']);
-    await page.click('#sort-btn');
+    await expect(page.locator('#sort-sel')).toHaveValue('ledger');
+    await page.selectOption('#sort-sel', 'amount');
     expect(await names(page)).toEqual(['बड़ा', 'मध्यम', 'छोटा']);
-    await expect(page.locator('#sort-btn')).toHaveClass(/on/);
+    await expect(page.locator('#sort-sel')).toHaveClass(/on/);
     expect(await page.evaluate(() => localStorage.getItem('dc_listsort'))).toBe('amount');
     // डेटा का क्रम नहीं बदला — सिर्फ़ दिखाने का
     expect(await page.evaluate(() => cGet(activeHQ, activeCat).map((x) => x.acc))).toEqual(['1', '2', '3']);
-    await page.click('#sort-btn');
+    await page.selectOption('#sort-sel', 'ledger');
     expect(await names(page)).toEqual(['छोटा', 'बड़ा', 'मध्यम']);
   });
 

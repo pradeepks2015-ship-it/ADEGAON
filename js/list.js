@@ -43,8 +43,8 @@ function debounceSearch(){
 // खोज में गांव का नाम लिखें (पता भी खोजा जाता है), फिर यही क्रम। पसंद हर फ़ोन पर याद रहती है
 var LIST_SORT_KEY="dc_listsort";
 var listSort=(function(){ try{ return localStorage.getItem(LIST_SORT_KEY)==="amount"?"amount":"ledger"; }catch(e){ return "ledger"; } })();
-function toggleListSort(){
-  listSort=(listSort==="amount")?"ledger":"amount";
+function setListSort(v){
+  listSort=(v==="amount")?"amount":"ledger";
   try{ localStorage.setItem(LIST_SORT_KEY,listSort); }catch(e){}
   _renderLimit=100;
   renderList();
@@ -55,9 +55,9 @@ function toggleListSort(){
 var _PANCHAYAT_TARIFF_RE=/LV\s*-?\s*3\s*[.\-]\s*[12](?!\d)/i;
 function isPanchayatTariff(x){ return !!(x&&x.tariff&&_PANCHAYAT_TARIFF_RE.test(String(x.tariff))); }
 function _syncSortBtn(){
-  var b=document.getElementById("sort-btn"); if(!b) return;
-  b.className="sort-btn"+(listSort==="amount"?" on":"");
-  b.textContent=(listSort==="amount"?"✓ ":"")+"₹ बड़ी बकाया पहले";
+  var b=document.getElementById("sort-sel"); if(!b) return;
+  b.value=listSort;
+  b.className="sort-sel"+(listSort==="amount"?" on":"");
 }
 // वादा: रिमार्क के साथ वैकल्पिक तारीख़ (remarksArr की entry में due:"yyyy-mm-dd")। बाकी उपभोक्ता का
 // सबसे नया वादा ही गिना जाता है; वसूल होते ही वादा अपने-आप ख़त्म (status देखकर)। पुराने version वाले
