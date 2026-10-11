@@ -13,6 +13,7 @@ interface HTMLElement {
   checked: boolean;
   href: string;
   max: any;
+  min: any;
   type: string;
   files: FileList | null;
   src: string;

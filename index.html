@@ -167,6 +167,7 @@ try{
             <button type="button" class="logout-item" id="wasc-menu-item" style="display:none;color:#00695c;" onclick="openWaScorecard()">&#128202; स्कोरकार्ड डिस्प्ले</button>
             <button type="button" class="logout-item" id="todaysc-menu-item" style="display:none;color:#ef6c00;" onclick="openTodayScorecard()">&#128979;&#65039; आज की वसूली</button>
             <button type="button" class="logout-item" id="voicesc-menu-item" style="display:none;color:#5e35b1;" onclick="openVoiceScorecard()">&#128203; मुख्यालय व टैरिफ रिपोर्ट</button>
+            <button type="button" class="logout-item" id="sort-menu-item" style="color:#1565c0;" onclick="toggleListSort(event)">&#128203; लेजर क्रम <span class="sort-menu-state" id="sort-menu-state">बंद</span></button>
             <button type="button" class="logout-item" id="village-menu-item" style="color:#a34d00;" onclick="openVillageModal()">&#127961; ग्राम-वार वसूली</button>
             <button type="button" class="logout-item" id="cash-menu-item" style="display:none;color:var(--green);" onclick="openCashModal()">&#128181; कैश लिस्ट</button>
             <button type="button" class="logout-item" id="backup-menu-item" style="display:none;color:var(--gold);" onclick="downloadFullBackup()">&#128190; पूरा बैकअप</button>
@@ -200,6 +201,8 @@ try{
       <button class="filter-btn active-all" data-f="all" onclick="setFilter(this)">सभी</button>
       <button class="filter-btn" data-f="pending" onclick="setFilter(this)">&#9203; बाकी</button>
       <button class="filter-btn" data-f="paid" onclick="setFilter(this)">&#10004; वसूल</button>
+      <!-- v9.202: आज/बीते दिन के वादे वाले बाकी उपभोक्ता (रिमार्क में डाली वादा-तारीख़ से) -->
+      <button class="filter-btn" data-f="promise" id="fb-promise" onclick="setFilter(this)">आज जमा का वादा</button>
     </div>
     <div class="con-list" id="con-list"></div>
   </div>
@@ -374,6 +377,10 @@ try{
     </div>
     <div class="fg"><label>नया रिमार्क / टिप्पणी</label>
       <textarea class="fta" id="rmk-text" placeholder="जैसे: घर पर नहीं मिले..."></textarea>
+    </div>
+    <!-- v9.202: उपभोक्ता ने "फलां तारीख़ को देंगे" कहा हो तो — उस दिन वह "📅 वादे" बटन में आ जाता है -->
+    <div class="fg" id="rmk-due-grp"><label>&#129309; वादा-तारीख़ (वैकल्पिक) — उपभोक्ता ने कब जमा करने को कहा</label>
+      <input type="date" class="fi" id="rmk-due">
     </div>
     <div class="mfooter">
       <button class="btn-cancel" onclick="closeRmkModal()">रद्द करें</button>

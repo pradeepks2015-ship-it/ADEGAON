@@ -16,6 +16,9 @@ const LAZY_FILES = ['js/upload.js', 'js/cat-admin.js', 'js/migration-tool.js', '
 const lazyTest = baseTest;
 const test = baseTest.extend({
   context: async ({ context }, use) => {
+    // v9.202: सूची का डिफ़ॉल्ट अब "बड़ी बकाया पहले" है; पुराने सैकड़ों टेस्ट cards का लेजर-क्रम मानकर लिखे हैं,
+    // इसलिए उनके लिए "📋 लेजर क्रम" पहले से चुना (नया डिफ़ॉल्ट lazyTest वाला अलग टेस्ट जांचता है)
+    await context.addInitScript(() => { try { if (!localStorage.getItem('dc_listsort')) localStorage.setItem('dc_listsort', 'ledger'); } catch (e) {} });
     await context.route((u) => /^\/(index\.html)?$/.test(u.pathname), async (route) => {
       const r = await route.fetch();
       const body = (await r.text()).replace('</body>', LAZY_FILES.map((f) => `<script src="${f}"></script>`).join('') + '</body>');
