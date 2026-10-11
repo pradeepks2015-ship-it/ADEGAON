@@ -49,6 +49,7 @@ function openProfileModal(){
   document.getElementById("profile-meta").textContent=(CU.role==="supervisor"?"कनिष्ठ अभियंता (JE)":"लाइनमैन")+" | "+CU.hq;
   _syncThemeSwitch();
   _syncSoundSwitch();
+  _syncBigTextSwitch();
   _syncRemovePhotoBtn();
 }
 function _syncRemovePhotoBtn(){
@@ -92,6 +93,21 @@ function toggleTheme(){
   var mc=document.getElementById("meta-theme-color");
   if(mc) mc.setAttribute("content", next?"#0d1520":"#eef2f7");
   _syncThemeSwitch();
+}
+
+// ─── बड़े अक्षर (v9.205): डार्क मोड जैसा ही — html पर एक class (big-text), localStorage में याद ───
+// सूची के छोटे (9-11px) हिस्से — Consumer No, फ़ोन, पता, टैरिफ़, वादा, बटन — बड़े होते हैं; card थोड़ा लंबा,
+// इसलिए डिफ़ॉल्ट बंद। सिर्फ़ दिखावट — कोई डेटा/नेट नहीं
+function _syncBigTextSwitch(){
+  var on=document.documentElement.classList.contains("big-text");
+  var btn=document.getElementById("bigtext-switch-btn");
+  if(btn) btn.className="theme-switch"+(on?" on":"");
+}
+function toggleBigText(){
+  var on=!document.documentElement.classList.contains("big-text");
+  document.documentElement.classList.toggle("big-text",on);
+  try{ localStorage.setItem("dc_bigtext", on?"1":"0"); }catch(e){}
+  _syncBigTextSwitch();
 }
 
 function onPhotoSelected(input){

@@ -538,3 +538,16 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
   padding:7px 14px;text-align:center;line-height:1.5;position:relative;z-index:101;}
 /* शून्य-रेखा (neutral) — असली तरंग-आरेख की तरह; बहुत हल्की, ताकि लहर ही मुख्य रहे */
 .ldr-axis{stroke:currentColor;stroke-width:1.5;stroke-dasharray:3 4;opacity:.22;color:#2f7ff0;}
+
+/* ── v9.205: बड़े अक्षर (Profile → 🔠 बड़े अक्षर) — html.big-text; सिर्फ़ सूची के छोटे हिस्से ── */
+html.big-text .cc-name{font-size:17px;}
+html.big-text .cc-amt{font-size:23px;}
+html.big-text .cc-amt span{font-size:13px;}
+html.big-text .chip{font-size:12.5px;padding:3px 9px;}
+html.big-text .abtn{font-size:13.5px;padding:8px 14px;}
+html.big-text .cc-rmk-item,html.big-text .cc-info{font-size:12.5px;}
+html.big-text .cc-extra span{font-size:12.5px!important;} /* list.js में inline font-size:10px है */
+html.big-text .sbadge{font-size:12.5px;}
+html.big-text .filter-btn{font-size:13px;}
+html.big-text .vg-chip{font-size:13px;}
+html.big-text .si{font-size:15px;}
