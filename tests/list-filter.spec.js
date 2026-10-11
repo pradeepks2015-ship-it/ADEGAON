@@ -280,18 +280,19 @@ test.describe('सूची का क्रम और वादा-तारी
     await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा');
   });
 
-  test('बटन में सिर्फ़ इस सप्ताह (सोमवार–रविवार) के वादे; पिछले सप्ताह का बीता वादा लाल "(बीत गया)"; बीती तारीख़ नई डालने से रोके', async ({ page }) => {
+  test('बटन में इस सप्ताह (सोमवार–रविवार) के और पिछले सप्ताहों के टूटे वादे (v9.208) — टूटे सबसे ऊपर लाल "(बीत गया)"; अगले सप्ताह के नहीं; बीती तारीख़ नई डालने से रोके', async ({ page }) => {
     await seed(page, [
       { acc: '1', name: 'रविवार वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'x', by: 'a', at: '1', due: wkDay(6) }] },
       { acc: '2', name: 'पिछले सप्ताह वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'y', by: 'a', at: '2', due: wkDay(-1) }] },
       { acc: '3', name: 'सोमवार वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'z', by: 'a', at: '3', due: wkDay(0) }] },
       { acc: '4', name: 'अगले सप्ताह वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'w', by: 'a', at: '4', due: wkDay(7) }] },
     ]);
-    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा (2)');
-    // पिछले सप्ताह का वादा बटन में नहीं, पर "सभी" सूची में card पर लाल
-    await expect(page.locator('.con-card', { hasText: 'पिछले सप्ताह वाला' }).locator('.chip-due.over')).toContainText('(बीत गया)');
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा (3)');
     await page.click('#fb-promise');
-    expect(await names(page)).toEqual(['सोमवार वाला', 'रविवार वाला']); // तारीख़ के क्रम में
+    expect(await names(page)).toEqual(['पिछले सप्ताह वाला', 'सोमवार वाला', 'रविवार वाला']); // तारीख़ के क्रम में — टूटा वादा सबसे ऊपर
+    await expect(page.locator('.con-card', { hasText: 'पिछले सप्ताह वाला' }).locator('.chip-due.over')).toContainText('(बीत गया)');
+    await page.evaluate(() => markPaid(0, '2')); // वसूल होते ही बटन से हटे
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा (2)');
     expect(await page.evaluate(() => { const w = _weekRange(); return [new Date(w[0] + 'T12:00').getDay(), new Date(w[1] + 'T12:00').getDay()]; })).toEqual([1, 0]);
     await page.evaluate((d) => { openRmkModal(0, '1'); document.getElementById('rmk-due').value = d; document.getElementById('rmk-text').value = 'z'; saveRmk(); }, iso(-1));
     await expect(page.locator('#toast')).toContainText('वादा-तारीख़ आज या आगे की होनी चाहिए');
