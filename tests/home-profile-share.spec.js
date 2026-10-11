@@ -814,3 +814,40 @@ test.describe('बड़े अक्षर (v9.205)', () => {
     expect(await page.evaluate(() => [document.documentElement.classList.contains('big-text'), localStorage.getItem('dc_bigtext'), document.documentElement.getAttribute('data-theme')])).toEqual([false, '0', 'dark']);
   });
 });
+
+// ── v9.206: SMS में छोटा संदेश (BSNL पर 7-टुकड़े वाला अटकता था), WhatsApp में पूरा ──
+test.describe('फोन-नंबर मॉडल — SMS छोटा, WhatsApp पूरा (v9.206)', () => {
+  const bodies = (page) => page.evaluate(() => ({
+    sms: decodeURIComponent(document.getElementById('ph-sms-btn').href.split('body=')[1]),
+    wa: decodeURIComponent(document.getElementById('ph-wa-btn').href.split('text=')[1]),
+    head: document.getElementById('ph-sms-prev-h').textContent,
+    prev: document.getElementById('ph-sms-prev-t').textContent,
+  }));
+
+  test('विच्छेदन सूचना: SMS 2 टुकड़ों में (धारा 56 + 15 दिन), WhatsApp में पूरा कानूनी संदेश; पूर्वावलोकन वही', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => { openPhModal('रामप्रसाद पटेल', '9876543210', '1134021693', 3273); _phSelectMsgType('disconnect'); });
+    const b = await bodies(page);
+    expect(b.sms).toBe('⚠️ रामप्रसाद पटेल जी, बिजली क्र. 1134021693 पर ₹3,273 बकाया। 15 दिन में भुगतान न होने पर धारा 56 में कनेक्शन कट सकता है। –आदेगांव DC');
+    expect(await page.evaluate((t) => _smsParts(t), b.sms)).toBe(2);
+    expect(b.wa).toContain('विद्युत अधिनियम, 2003 की धारा 56'); // WhatsApp में पूरा वाला ही
+    expect(await page.evaluate((t) => _smsParts(t), b.wa)).toBeGreaterThanOrEqual(6); // पुराना SMS कितना लंबा था
+    expect(b.prev).toBe(b.sms);
+    expect(b.head).toContain('छोटा — 2 SMS');
+    await expect(page.locator('#ph-sms-prev')).toBeVisible();
+  });
+
+  test('सामान्य रिमाइंडर: SMS 2 टुकड़ों में; "अपना संदेश" दोनों में वैसा ही; टुकड़ों की गिनती सही', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => { openPhModal('रामप्रसाद पटेल', '9876543210', '1134021693', 3273); _phSelectMsgType('reminder'); });
+    let b = await bodies(page);
+    expect(b.sms).toBe('नमस्ते रामप्रसाद पटेल जी, बिजली क्र. 1134021693 पर ₹3,273 बकाया है। कृपया शीघ्र भुगतान करें। –आदेगांव DC');
+    expect(await page.evaluate((t) => _smsParts(t), b.sms)).toBe(2);
+    await page.evaluate(() => { PH_CUSTOM_MSG = { text: 'योजना की सूचना', label: 'योजना', by: '', at: '' }; _phSelectMsgType('custom'); });
+    b = await bodies(page);
+    expect([b.sms, b.wa]).toEqual(['योजना की सूचना', 'योजना की सूचना']);
+    expect(await page.evaluate(() => [_smsParts('test'), _smsParts('a'.repeat(161)), _smsParts('क'.repeat(70)), _smsParts('क'.repeat(71)), _smsParts('')])).toEqual([1, 2, 1, 2, 0]);
+  });
+});
