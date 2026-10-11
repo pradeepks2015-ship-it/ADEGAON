@@ -46,7 +46,7 @@
 | #236 | v9.203 — गांव की पट्टी | 11 अक्टू ✅ |
 | #237 | v9.204 — वादा एक टैप में | 11 अक्टू ✅ |
 | #238 | v9.205 — बड़े अक्षर (Profile में) | 11 अक्टू ✅ |
-| (अगला) | v9.206 — SMS छोटा, WhatsApp पूरा | 11 अक्टू ✅ |
+| #239 | v9.206 — SMS छोटा, WhatsApp पूरा | 11 अक्टू ✅ |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
@@ -56,7 +56,7 @@ dev branch main के बराबर है। नया काम शुर�
 
 ## 1ढ. 11 अक्टूबर (छठा हिस्सा) — BSNL पर SMS अटकना
 
-### v9.206 *(PR अगला)*
+### v9.206 *(PR #239)*
 JE ने screenshot भेजा: BSNL SIM से "⚠️ वैधानिक सूचना" SMS "Sending…" पर अटका था। **यह ऐप की ग़लती नहीं थी**, क्योंकि ऐप सिर्फ़
 `sms:` से फ़ोन का SMS ऐप खोलता है। पर संदेश 418 अक्षर का था, यानी हिंदी Unicode में **7 SMS के टुकड़े**। BSNL कई plans पर ऐसे लंबे
 (multipart) SMS अटका देता है, और रोज़ की SMS-सीमा 7 गुना जल्दी भरती है।
