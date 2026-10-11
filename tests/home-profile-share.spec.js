@@ -777,3 +777,40 @@ test.describe('पृष्ठभूमि फ़ोटो (वॉटरमा�
     expect(rules.HOME_BG.$f['.validate']).toBe(false);
   });
 });
+
+// ── v9.205: बड़े अक्षर — Profile में डार्क मोड के साथ (JE: "जहां से डार्क मोड करते हैं वहीं से") ──
+test.describe('बड़े अक्षर (v9.205)', () => {
+  test('डिफ़ॉल्ट बंद; Profile का स्विच दबाते ही सूची के छोटे अक्षर बड़े; याद रहे (reload के बाद भी, बिना झटके)', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.locator('#loader').waitFor({ state: 'hidden', timeout: 20000 });
+    await page.evaluate(() => { cSet(activeHQ, activeCat, [{ acc: '1134000001', name: 'क', amount: 900, status: 'pending', phone: '9876543210', addr: 'JAMUA', tariff: 'LV1.2' }]); renderList(); });
+    await page.locator('#con-list .chip-addr').first().waitFor();
+    const size = () => page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('#con-list .chip-addr')).fontSize));
+    const tariff = () => page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('#con-list .cc-extra span')).fontSize));
+    expect(await page.evaluate(() => document.documentElement.classList.contains('big-text'))).toBe(false);
+    const small = await size();
+    expect(await tariff()).toBe(10);
+    await page.evaluate(() => openProfileModal());
+    await expect(page.locator('#bigtext-switch-btn')).not.toHaveClass(/ on/);
+    await page.click('#bigtext-switch-btn');
+    await expect(page.locator('#bigtext-switch-btn')).toHaveClass(/ on/);
+    expect(await size()).toBeGreaterThan(small + 2);
+    expect(await tariff()).toBe(12.5); // inline font-size:10px भी बड़ा हो (!important)
+    expect(await page.evaluate(() => localStorage.getItem('dc_bigtext'))).toBe('1');
+    // reload पर पहले ही (inline script से) — Profile खोले बिना
+    await page.reload();
+    expect(await page.evaluate(() => document.documentElement.classList.contains('big-text'))).toBe(true);
+  });
+
+  test('दोबारा दबाने पर सामान्य; डार्क मोड के साथ भी अलग-अलग चलें', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => openProfileModal());
+    await page.click('#bigtext-switch-btn');
+    await page.click('#theme-switch-btn');
+    expect(await page.evaluate(() => [document.documentElement.classList.contains('big-text'), document.documentElement.getAttribute('data-theme')])).toEqual([true, 'dark']);
+    await page.click('#bigtext-switch-btn');
+    expect(await page.evaluate(() => [document.documentElement.classList.contains('big-text'), localStorage.getItem('dc_bigtext'), document.documentElement.getAttribute('data-theme')])).toEqual([false, '0', 'dark']);
+  });
+});

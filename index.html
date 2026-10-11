@@ -29,6 +29,8 @@
 // पेज दिखने से *पहले* ही theme लगाएं — वरना पहले हल्का (light) फ्लैश दिखकर फिर dark में बदलेगा
 try{
   if(localStorage.getItem("dc_theme")==="dark") document.documentElement.setAttribute("data-theme","dark");
+  // v9.205: बड़े अक्षर भी पहले ही — वरना छोटे दिखकर फिर बड़े होते (झटका)
+  if(localStorage.getItem("dc_bigtext")==="1") document.documentElement.classList.add("big-text");
 }catch(e){}
 </script>
 <link rel="icon" href="icons/icon-192.png">
@@ -246,6 +248,11 @@ try{
     <div class="theme-row">
       <span>&#127769; डार्क मोड <span style="font-weight:400;color:var(--muted);">(कम रोशनी में आँखों को आराम)</span></span>
       <button class="theme-switch" id="theme-switch-btn" onclick="toggleTheme()" aria-label="डार्क मोड टॉगल करें"><span class="theme-switch-knob"></span></button>
+    </div>
+    <!-- v9.205: बड़े अक्षर — JE: "जहां से डार्क मोड करते हैं वहीं से" (धूप में / 45+ उम्र वालों के लिए; डिफ़ॉल्ट बंद) -->
+    <div class="theme-row">
+      <span>&#128288; बड़े अक्षर <span style="font-weight:400;color:var(--muted);">(सूची के नंबर, पता, बटन — पढ़ने में आसान)</span></span>
+      <button class="theme-switch" id="bigtext-switch-btn" onclick="toggleBigText()" aria-label="बड़े अक्षर चालू/बंद करें"><span class="theme-switch-knob"></span></button>
     </div>
     <div class="theme-row">
       <span>&#128227; वसूली पर आवाज़ <span style="font-weight:400;color:var(--muted);">(ताली और घंटी — फ़ोन में ही बनती है)</span></span>
