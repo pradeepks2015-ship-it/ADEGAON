@@ -464,3 +464,60 @@ test.describe('गांव की पट्टी — नाम वाले �
     await expect(page.locator('#vg-wrap')).toBeVisible();
   });
 });
+
+// ── v9.204: वादा एक टैप में — "कल / 2 दिन में / हफ़्ते में / तारीख़…" (JE ने नमूना देखकर "ठीक है" कहा) ──
+test.describe('वादा एक टैप में (v9.204)', () => {
+  const iso = (offset) => {
+    const t = new Date(); t.setDate(t.getDate() + offset);
+    return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+  };
+  const open = async (page) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.locator('#loader').waitFor({ state: 'hidden', timeout: 20000 });
+    await page.evaluate(() => { cSet(activeHQ, activeCat, [{ acc: '1', name: 'क', amount: 900, status: 'pending' }]); renderList(); openRmkModal(0, '1'); });
+  };
+  const lastRmk = (page) => page.evaluate(() => { const a = cGet(activeHQ, activeCat)[0].remarksArr || []; return a[a.length - 1]; });
+
+  test('बोलकर लिखा रिमार्क + "कल" एक टैप → वही text, कल की तारीख़; पुष्टि-पंक्ति दिखे; कैलेंडर-खाना छिपा रहे', async ({ page }) => {
+    await open(page);
+    await expect(page.locator('#rmk-due')).toBeHidden();
+    await page.fill('#rmk-text', 'बेटा पैसे भेजेगा');
+    await page.click('#rmk-due-grp .due-chip[data-d="1"]');
+    await expect(page.locator('#rmk-due-grp .due-chip[data-d="1"]')).toHaveClass(/on/);
+    await expect(page.locator('#rmk-due-note')).toContainText('उस दिन "आज जमा का वादा" में दिखेगा');
+    await expect(page.locator('#rmk-due')).toBeHidden();
+    await page.click('#rmk-overlay .btn-save');
+    const r = await lastRmk(page);
+    expect([r.text, r.due]).toEqual(['बेटा पैसे भेजेगा', iso(1)]);
+  });
+
+  test('"2 दिन में" / "हफ़्ते में" सही तारीख़; दोबारा वही बटन = वादा हटे; बिना लिखे text अपने-आप', async ({ page }) => {
+    await open(page);
+    await page.click('#rmk-due-grp .due-chip[data-d="2"]');
+    expect(await page.inputValue('#rmk-due')).toBe(iso(2));
+    await page.click('#rmk-due-grp .due-chip[data-d="2"]'); // दोबारा = हटाओ
+    expect(await page.inputValue('#rmk-due')).toBe('');
+    await expect(page.locator('#rmk-due-grp .due-chip.on')).toHaveCount(0);
+    await expect(page.locator('#rmk-due-note')).toHaveText('');
+    await page.click('#rmk-due-grp .due-chip[data-d="7"]');
+    await page.click('#rmk-overlay .btn-save');
+    const r = await lastRmk(page);
+    expect(r.due).toBe(iso(7));
+    expect(r.text).toContain('को जमा करने का वादा');
+  });
+
+  test('"तारीख़…" पर ही कैलेंडर-खाना दिखे; वहां चुनी तारीख़ सेव हो; खिड़की दोबारा खुलने पर सब साफ़', async ({ page }) => {
+    await open(page);
+    await page.click('#rmk-due-grp .due-chip[data-d="pick"]');
+    await expect(page.locator('#rmk-due')).toBeVisible();
+    await page.fill('#rmk-due', iso(9));
+    await expect(page.locator('#rmk-due-note')).toContainText('उस दिन');
+    await page.click('#rmk-overlay .btn-save');
+    expect((await lastRmk(page)).due).toBe(iso(9));
+    await page.evaluate(() => openRmkModal(0, '1'));
+    await expect(page.locator('#rmk-due')).toBeHidden();
+    await expect(page.locator('#rmk-due-grp .due-chip.on')).toHaveCount(0);
+    expect(await page.inputValue('#rmk-due')).toBe('');
+  });
+});
