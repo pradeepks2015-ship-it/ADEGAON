@@ -589,6 +589,7 @@
   "toast",
   "toggleBoard",
   "toggleCelebSound",
+  "toggleListSort",
   "togglePw",
   "toggleTheme",
   "toggleUserMenu",

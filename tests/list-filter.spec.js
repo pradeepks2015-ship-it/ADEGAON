@@ -221,22 +221,28 @@ test.describe('सूची का क्रम और वादा-तारी
   };
   const names = (page) => page.$$eval('#con-list .con-card .cc-name', (els) => els.map((e) => e.textContent.trim()));
 
-  test('क्रम ड्रॉप-डाउन में "₹ बड़ी बकाया पहले" चुनने पर सबसे बड़ी बकाया ऊपर; दोबारा दबाने पर लेजर क्रम; पसंद याद रहे', async ({ page }) => {
+  test('नाम वाले मेनू में "₹ बड़ी बकाया पहले" दबाने पर सबसे बड़ी बकाया ऊपर; दोबारा दबाने पर लेजर क्रम; पसंद याद रहे', async ({ page }) => {
     await seed(page, [
       { acc: '1', name: 'छोटा', amount: 500, status: 'pending' },
       { acc: '2', name: 'बड़ा', amount: 52000, status: 'pending' },
       { acc: '3', name: 'मध्यम', amount: 3000, status: 'pending' },
     ]);
     expect(await names(page)).toEqual(['छोटा', 'बड़ा', 'मध्यम']);
-    await expect(page.locator('#sort-sel')).toHaveValue('ledger');
-    await page.selectOption('#sort-sel', 'amount');
+    await expect(page.locator('#sort-hint')).toBeHidden();
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await expect(page.locator('#sort-menu-state')).toHaveText('बंद');
+    await page.click('#sort-menu-item');
     expect(await names(page)).toEqual(['बड़ा', 'मध्यम', 'छोटा']);
-    await expect(page.locator('#sort-sel')).toHaveClass(/on/);
+    await expect(page.locator('#sort-hint')).toBeVisible(); // सूची के ऊपर एक पंक्ति — क्रम चालू है
+    await expect(page.locator('#sort-menu-state')).toHaveText('✓ चालू');
+    await expect(page.locator('#logout-menu')).not.toHaveClass(/open/); // दबाते ही मेनू बंद
     expect(await page.evaluate(() => localStorage.getItem('dc_listsort'))).toBe('amount');
     // डेटा का क्रम नहीं बदला — सिर्फ़ दिखाने का
     expect(await page.evaluate(() => cGet(activeHQ, activeCat).map((x) => x.acc))).toEqual(['1', '2', '3']);
-    await page.selectOption('#sort-sel', 'ledger');
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await page.click('#sort-menu-item');
     expect(await names(page)).toEqual(['छोटा', 'बड़ा', 'मध्यम']);
+    await expect(page.locator('#sort-hint')).toBeHidden();
   });
 
   test('रिमार्क में आज की वादा-तारीख़ → "📅 आज जमा का वादा (1)" बटन, card पर "(आज)", वसूल होते ही वादा ख़त्म', async ({ page }) => {
