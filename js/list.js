@@ -110,7 +110,9 @@ function _weekRange(){
   var sun=new Date(mon); sun.setDate(mon.getDate()+6);
   return [_isoOf(mon),_isoOf(sun)];
 }
-function isPromiseDue(x,wk){ var pd=promiseDue(x); if(!pd) return false; wk=wk||_weekRange(); return pd>=wk[0]&&pd<=wk[1]; }
+// v9.208 (JE, 11/10): पिछले सप्ताहों के टूटे वादे (अब भी बाकी) भी इसी बटन में — तारीख़ के क्रम से सबसे ऊपर, लाल "(बीत गया)"।
+// वसूल होते ही promiseDue() ख़ाली, तो अपने-आप हट जाते हैं। अगले सप्ताह के वादे अब भी नहीं
+function isPromiseDue(x,wk){ var pd=promiseDue(x); if(!pd) return false; wk=wk||_weekRange(); return pd<=wk[1]; }
 // ── v9.203: गांव की पट्टी — सूची के ऊपर गांवों के बटन, टैप करते ही उसी गांव की सूची ──
 // गांव = लेजर का "पता" खाना, js/village.js वाली ही कुंजी (_vgNormKey: बड़े अक्षर + VILLAGE_ALIASES के
 // स्पेलिंग-सुधार, जैसे JUMUA → JAMUA) — ताकि गांव-वार वसूली और यह पट्टी एक जैसा गिनें। JE (11/10): नाम
