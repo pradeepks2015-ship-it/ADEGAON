@@ -213,6 +213,11 @@ test.describe('सूची का क्रम और वादा-तारी
     const t = new Date(); t.setDate(t.getDate() + offset);
     return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
   };
+  // v9.207: इस सप्ताह के सोमवार से n दिन बाद (n=-1 → पिछला रविवार, 6 → इस सप्ताह का रविवार, 7 → अगला सोमवार)
+  const wkDay = (n) => {
+    const t = new Date(); t.setHours(12, 0, 0, 0); t.setDate(t.getDate() - ((t.getDay() + 6) % 7) + n);
+    return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+  };
   const seed = async (page, recs) => {
     await openApp(page);
     await page.evaluate(() => { try { localStorage.removeItem('dc_listsort'); } catch (e) {} listSort = 'ledger'; });
@@ -242,7 +247,7 @@ test.describe('सूची का क्रम और वादा-तारी
     expect(await names(page)).toEqual(['छोटा', 'बड़ा', 'मध्यम']);
   });
 
-  test('रिमार्क में आज की वादा-तारीख़ → "📅 आज जमा का वादा (1)" बटन, card पर "(आज)", वसूल होते ही वादा ख़त्म', async ({ page }) => {
+  test('रिमार्क में आज की वादा-तारीख़ → "इस सप्ताह जमा का वादा (1)" बटन, card पर "(आज)", वसूल होते ही वादा ख़त्म', async ({ page }) => {
     await seed(page, [
       { acc: '1', name: 'वादा करने वाला', amount: 900, status: 'pending' },
       { acc: '2', name: 'दूसरा', amount: 100, status: 'pending' },
@@ -256,39 +261,44 @@ test.describe('सूची का क्रम और वादा-तारी
     const last = await page.evaluate(() => { const a = cGet(activeHQ, activeCat)[0].remarksArr; return a[a.length - 1]; });
     expect(last.due).toBe(iso(0));
     expect(last.text).toBe('आज शाम देंगे');
-    await expect(page.locator('#fb-promise')).toHaveText('आज जमा का वादा (1)');
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा (1)');
     await page.click('#fb-promise');
     expect(await names(page)).toEqual(['वादा करने वाला']);
     await expect(page.locator('.chip-due')).toContainText('(आज)');
     await page.evaluate(() => markPaid(0, '1'));
-    await expect(page.locator('#fb-promise')).toHaveText('आज जमा का वादा');
-    await expect(page.locator('#con-list')).toContainText('आज कोई वादा बाकी नहीं');
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा');
+    await expect(page.locator('#con-list')).toContainText('इस सप्ताह कोई वादा बाकी नहीं');
   });
 
   test('सिर्फ़ तारीख़ (बिना लिखे) — रिमार्क अपने-आप बने; आगे का वादा card पर दिखे पर "वादे" बटन में नहीं', async ({ page }) => {
     await seed(page, [{ acc: '1', name: 'क', amount: 900, status: 'pending' }]);
-    await page.evaluate((d) => { openRmkModal(0, '1'); document.getElementById('rmk-due').value = d; saveRmk(); }, iso(3));
+    await page.evaluate((d) => { openRmkModal(0, '1'); document.getElementById('rmk-due').value = d; saveRmk(); }, wkDay(7));
     const last = await page.evaluate(() => { const a = cGet(activeHQ, activeCat)[0].remarksArr; return a[a.length - 1]; });
     expect(last.text).toContain('को जमा करने का वादा');
-    expect(last.due).toBe(iso(3));
+    expect(last.due).toBe(wkDay(7)); // अगले सप्ताह का सोमवार
     await expect(page.locator('.chip-due')).toBeVisible();
-    await expect(page.locator('#fb-promise')).toHaveText('आज जमा का वादा');
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा');
   });
 
-  test('बीता वादा लाल "(बीत गया)" और सबसे ऊपर; बीती तारीख़ नई डालने से रोके', async ({ page }) => {
+  test('बटन में सिर्फ़ इस सप्ताह (सोमवार–रविवार) के वादे; पिछले सप्ताह का बीता वादा लाल "(बीत गया)"; बीती तारीख़ नई डालने से रोके', async ({ page }) => {
     await seed(page, [
-      { acc: '1', name: 'आज वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'x', by: 'a', at: '1', due: iso(0) }] },
-      { acc: '2', name: 'बीता वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'y', by: 'a', at: '2', due: iso(-2) }] },
+      { acc: '1', name: 'रविवार वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'x', by: 'a', at: '1', due: wkDay(6) }] },
+      { acc: '2', name: 'पिछले सप्ताह वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'y', by: 'a', at: '2', due: wkDay(-1) }] },
+      { acc: '3', name: 'सोमवार वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'z', by: 'a', at: '3', due: wkDay(0) }] },
+      { acc: '4', name: 'अगले सप्ताह वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'w', by: 'a', at: '4', due: wkDay(7) }] },
     ]);
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा (2)');
+    // पिछले सप्ताह का वादा बटन में नहीं, पर "सभी" सूची में card पर लाल
+    await expect(page.locator('.con-card', { hasText: 'पिछले सप्ताह वाला' }).locator('.chip-due.over')).toContainText('(बीत गया)');
     await page.click('#fb-promise');
-    expect(await names(page)).toEqual(['बीता वाला', 'आज वाला']);
-    await expect(page.locator('.chip-due.over')).toContainText('(बीत गया)');
+    expect(await names(page)).toEqual(['सोमवार वाला', 'रविवार वाला']); // तारीख़ के क्रम में
+    expect(await page.evaluate(() => { const w = _weekRange(); return [new Date(w[0] + 'T12:00').getDay(), new Date(w[1] + 'T12:00').getDay()]; })).toEqual([1, 0]);
     await page.evaluate((d) => { openRmkModal(0, '1'); document.getElementById('rmk-due').value = d; document.getElementById('rmk-text').value = 'z'; saveRmk(); }, iso(-1));
     await expect(page.locator('#toast')).toContainText('वादा-तारीख़ आज या आगे की होनी चाहिए');
     expect(await page.evaluate(() => cGet(activeHQ, activeCat)[0].remarksArr.length)).toBe(1);
   });
 
-  test('"वसूल हुआ" चुनने पर वादा-तारीख़ वाला खाना छिपे; PDF/Excel में "आज के वादे" वाली सूची जाए', async ({ page }) => {
+  test('"वसूल हुआ" चुनने पर वादा-तारीख़ वाला खाना छिपे; PDF/Excel में "इस सप्ताह के वादे" वाली सूची जाए', async ({ page }) => {
     await seed(page, [
       { acc: '1', name: 'क', amount: 1, status: 'pending', remarksArr: [{ text: 'x', by: 'a', at: '1', due: iso(0) }] },
       { acc: '2', name: 'ख', amount: 1, status: 'pending' },
@@ -299,7 +309,7 @@ test.describe('सूची का क्रम और वादा-तारी
     await expect(page.locator('#rmk-due-grp')).toBeVisible();
     await page.evaluate(() => closeRmkModal());
     await page.click('#fb-promise');
-    expect(await page.evaluate(() => [_filteredForDownload().map((x) => x.acc), _FILTER_LABEL[activeFilter]])).toEqual([['1'], 'आज जमा का वादा']);
+    expect(await page.evaluate(() => [_filteredForDownload().map((x) => x.acc), _FILTER_LABEL[activeFilter]])).toEqual([['1'], 'इस सप्ताह जमा का वादा']);
   });
 });
 
@@ -485,7 +495,7 @@ test.describe('वादा एक टैप में (v9.204)', () => {
     await page.fill('#rmk-text', 'बेटा पैसे भेजेगा');
     await page.click('#rmk-due-grp .due-chip[data-d="1"]');
     await expect(page.locator('#rmk-due-grp .due-chip[data-d="1"]')).toHaveClass(/on/);
-    await expect(page.locator('#rmk-due-note')).toContainText('उस दिन "आज जमा का वादा" में दिखेगा');
+    await expect(page.locator('#rmk-due-note')).toContainText('उस सप्ताह "इस सप्ताह जमा का वादा" में दिखेगा');
     await expect(page.locator('#rmk-due')).toBeHidden();
     await page.click('#rmk-overlay .btn-save');
     const r = await lastRmk(page);
@@ -512,7 +522,7 @@ test.describe('वादा एक टैप में (v9.204)', () => {
     await page.click('#rmk-due-grp .due-chip[data-d="pick"]');
     await expect(page.locator('#rmk-due')).toBeVisible();
     await page.fill('#rmk-due', iso(9));
-    await expect(page.locator('#rmk-due-note')).toContainText('उस दिन');
+    await expect(page.locator('#rmk-due-note')).toContainText('उस सप्ताह');
     await page.click('#rmk-overlay .btn-save');
     expect((await lastRmk(page)).due).toBe(iso(9));
     await page.evaluate(() => openRmkModal(0, '1'));
