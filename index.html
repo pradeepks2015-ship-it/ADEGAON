@@ -464,6 +464,8 @@ try{
         <button type="button" class="ph-custom-cancel" onclick="_phCloseCustomEdit()">रद्द करें</button>
       </div>
     </div>
+    <!-- v9.206: SMS में क्या जाएगा (छोटा रूप) और कितने SMS लगेंगे — WhatsApp में पूरा संदेश जाता है -->
+    <div class="sms-prev" id="ph-sms-prev" style="display:none;"><b id="ph-sms-prev-h"></b><span id="ph-sms-prev-t"></span></div>
     <div class="ph-btns">
       <a class="ph-btn ph-btn-call" id="ph-call-btn" href="#">
         <div class="ph-btn-icon">📞</div>
@@ -471,11 +473,11 @@ try{
       </a>
       <a class="ph-btn ph-btn-sms" id="ph-sms-btn" href="#">
         <div class="ph-btn-icon">💬</div>
-        <div><div class="ph-btn-title">SMS भेजें</div><div class="ph-btn-sub">Text Message भेजें</div></div>
+        <div><div class="ph-btn-title">SMS भेजें</div><div class="ph-btn-sub">छोटा संदेश — BSNL पर भी जाए</div></div>
       </a>
       <a class="ph-btn ph-btn-wa" id="ph-wa-btn" href="#" target="_blank">
         <div class="ph-btn-icon">🟢</div>
-        <div><div class="ph-btn-title">WhatsApp करें</div><div class="ph-btn-sub">WhatsApp Message भेजें</div></div>
+        <div><div class="ph-btn-title">WhatsApp करें</div><div class="ph-btn-sub">पूरा संदेश (लंबा वाला)</div></div>
       </a>
     </div>
     <button class="ph-cancel" onclick="closePhModal()">रद्द करें</button>

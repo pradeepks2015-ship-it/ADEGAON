@@ -37,6 +37,27 @@ function _phBuildMsg(type,ctx){
     "\nधन्यवाद,\nआदेगांव बिजली वितरण केंद्र"+
     "\n(नोट: यदि भुगतान कर दिया है तो कृपया इस संदेश को अनदेखा करें)";
 }
+// ── v9.206: SMS के लिए छोटा संदेश, WhatsApp में पूरा ──
+// JE (11/10): BSNL SIM से "वैधानिक सूचना" SMS "Sending…" पर अटका रहता था। हिंदी (Unicode) SMS में एक टुकड़े
+// में सिर्फ़ ~67 अक्षर जाते हैं — पूरा संदेश 418 अक्षर = 7 SMS; BSNL कई plans पर लंबे (multipart) SMS अटका
+// देता है, और रोज़ की SMS-सीमा भी 7 गुना जल्दी भरती है। इसलिए SMS में 2 टुकड़ों वाला छोटा रूप (शब्द JE ने
+// नमूना देखकर तय किए), WhatsApp में पूरा। "अपना संदेश" JE ख़ुद लिखते हैं — वह दोनों में वैसा ही
+function _phBuildSms(type,ctx){
+  var amt=ctx.amtN?" ₹"+ctx.amtN.toLocaleString("hi-IN"):"";
+  var acc=ctx.acc?" बिजली क्र. "+ctx.acc+" पर":" बिजली बिल पर";
+  if(type==="disconnect")
+    return "⚠️ "+ctx.name+" जी,"+acc+amt+" बकाया। 15 दिन में भुगतान न होने पर धारा 56 में कनेक्शन कट सकता है। –आदेगांव DC";
+  if(type==="custom") return _phBuildMsg(type,ctx);
+  return "नमस्ते "+ctx.name+" जी,"+acc+amt+" बकाया है। कृपया शीघ्र भुगतान करें। –आदेगांव DC";
+}
+// कितने SMS-टुकड़े लगेंगे: सिर्फ़ अंग्रेज़ी/अंक हों तो 160/153, हिंदी या emoji हो तो 70/67 (UTF-16 units)
+function _smsParts(txt){
+  var s=String(txt||""); if(!s) return 0;
+  var uni=false; for(var i=0;i<s.length;i++){ if(s.charCodeAt(i)>127){ uni=true; break; } }
+  var n=s.length; // JS length = UTF-16 units (emoji = 2) — फ़ोन भी ऐसे ही गिनता है
+  if(!uni) return n<=160?1:Math.ceil(n/153);
+  return n<=70?1:Math.ceil(n/67);
+}
 function _phApplyMsgType(type){
   if(!_phCtx) return;
   try{localStorage.setItem("dc_ph_msgtype",type);}catch(e){}
@@ -44,7 +65,15 @@ function _phApplyMsgType(type){
     b.classList.toggle("active",b.getAttribute("data-type")===type);
   });
   var msg=_phBuildMsg(type,_phCtx);
-  document.getElementById("ph-sms-btn").href="sms:"+_phCtx.clean+"?body="+encodeURIComponent(msg);
+  var sms=_phBuildSms(type,_phCtx);
+  document.getElementById("ph-sms-btn").href="sms:"+_phCtx.clean+"?body="+encodeURIComponent(sms);
+  var pv=document.getElementById("ph-sms-prev");
+  if(pv){
+    var parts=_smsParts(sms);
+    pv.style.display=sms?"block":"none";
+    document.getElementById("ph-sms-prev-h").textContent="💬 SMS में जाएगा ("+(type==="custom"?"":"छोटा — ")+parts+" SMS):";
+    document.getElementById("ph-sms-prev-t").textContent=sms; // textContent — कोई HTML नहीं चलता
+  }
   document.getElementById("ph-wa-btn").href="https://wa.me/91"+_phCtx.clean+"?text="+encodeURIComponent(msg);
 }
 function _phSelectMsgType(type){ _phApplyMsgType(type); }
