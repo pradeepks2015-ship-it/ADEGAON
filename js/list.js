@@ -42,14 +42,16 @@ function debounceSearch(){
 // बकाया के हिसाब से (बड़ी पहले) — सिर्फ़ दिखाने का क्रम, डेटा नहीं बदलता। गांव के अंदर चाहिए तो
 // खोज में गांव का नाम लिखें (पता भी खोजा जाता है), फिर यही क्रम। पसंद हर फ़ोन पर याद रहती है
 var LIST_SORT_KEY="dc_listsort";
-var listSort=(function(){ try{ return localStorage.getItem(LIST_SORT_KEY)==="amount"?"amount":"ledger"; }catch(e){ return "ledger"; } })();
+// JE का फ़ैसला (11/10, विकल्प "ख"): डिफ़ॉल्ट = बड़ी बकाया पहले; जिसे रास्ते/बुक वाला लेजर-क्रम चाहिए वह नाम
+// वाले मेनू में "📋 लेजर क्रम" चालू करे (पसंद फ़ोन पर याद रहती है)
+var listSort=(function(){ try{ return localStorage.getItem(LIST_SORT_KEY)==="ledger"?"ledger":"amount"; }catch(e){ return "amount"; } })();
 // चालू/बंद ऊपर नाम वाले मेनू ("₹ बड़ी बकाया पहले") से — JE (11/10) ने इसे सूची के ऊपर नहीं, मेनू में चाहा
 function toggleListSort(e){
   // मेनू नाम वाले बटन (user-pill) के अंदर है — क्लिक ऊपर तक जाता तो toggleUserMenu मेनू दोबारा खोल देता
   if(e&&e.stopPropagation) e.stopPropagation();
   setListSort(listSort==="amount"?"ledger":"amount");
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
-  if(typeof toast==="function") toast(listSort==="amount"?"₹ बड़ी बकाया पहले — चालू":"लेजर क्रम — बड़ी बकाया वाला क्रम बंद","inf");
+  if(typeof toast==="function") toast(listSort==="ledger"?"📋 लेजर क्रम — चालू":"₹ बड़ी बकाया पहले — लेजर क्रम बंद","inf");
 }
 function setListSort(v){
   listSort=(v==="amount")?"amount":"ledger";
@@ -63,9 +65,8 @@ function setListSort(v){
 var _PANCHAYAT_TARIFF_RE=/LV\s*-?\s*3\s*[.\-]\s*[12](?!\d)/i;
 function isPanchayatTariff(x){ return !!(x&&x.tariff&&_PANCHAYAT_TARIFF_RE.test(String(x.tariff))); }
 function _syncSortBtn(){
-  var on=(listSort==="amount");
+  var on=(listSort==="ledger"); // मेनू का विकल्प अब "📋 लेजर क्रम" है — वही चालू/बंद दिखता है
   var st=document.getElementById("sort-menu-state"); if(st){ st.textContent=on?"✓ चालू":"बंद"; st.className="sort-menu-state"+(on?" on":""); }
-  var h=document.getElementById("sort-hint"); if(h) h.style.display=on?"block":"none";
 }
 // वादा: रिमार्क के साथ वैकल्पिक तारीख़ (remarksArr की entry में due:"yyyy-mm-dd")। बाकी उपभोक्ता का
 // सबसे नया वादा ही गिना जाता है; वसूल होते ही वादा अपने-आप ख़त्म (status देखकर)। पुराने version वाले

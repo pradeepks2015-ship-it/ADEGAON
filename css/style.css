@@ -202,7 +202,6 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .filter-btn.active-paid{background:rgba(0,200,150,.15);color:var(--green);border-color:var(--green);}
 .filter-btn.active-pending{background:rgba(255,77,109,.12);color:var(--red);border-color:var(--red);}
 #fb-promise{flex:1.9;line-height:1.25;} /* लंबा नाम (JE का) — बाक़ी तीन छोटे बटनों से ज़्यादा जगह */
-.sort-hint{padding:0 14px 8px;font-size:10.5px;color:#1565c0;font-weight:600;}
 .sort-menu-state{float:right;font-size:10.5px;color:var(--muted);font-weight:700;}
 .sort-menu-state.on{color:var(--green);}
 .filter-btn.active-promise{background:rgba(255,152,0,.14);color:#e65100;border-color:#ff9800;}

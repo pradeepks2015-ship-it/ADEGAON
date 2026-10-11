@@ -1,6 +1,6 @@
 // @ts-check
 // वसूली ट्रैकर — टेस्ट: list-filter (साझा helpers: tests/helpers.js)
-const { test, expect, openApp, loginLineman, loginJE } = require('./helpers');
+const { test, lazyTest, expect, openApp, loginLineman, loginJE } = require('./helpers');
 
 test.describe('"बाकी/वसूल" filter चुनकर HQ बदलने पर सही रीसेट हो (bug: वसूल entry बाकी में दिखना)', () => {
   test('"बाकी" filter चुनकर दूसरे HQ पर जाने पर filter बटन भी वापस "सभी" दिखे, अंदर से भी activeFilter="all" हो', async ({ page }) => {
@@ -221,28 +221,25 @@ test.describe('सूची का क्रम और वादा-तारी
   };
   const names = (page) => page.$$eval('#con-list .con-card .cc-name', (els) => els.map((e) => e.textContent.trim()));
 
-  test('नाम वाले मेनू में "₹ बड़ी बकाया पहले" दबाने पर सबसे बड़ी बकाया ऊपर; दोबारा दबाने पर लेजर क्रम; पसंद याद रहे', async ({ page }) => {
-    await seed(page, [
+  test('नाम वाले मेनू में "📋 लेजर क्रम" — चालू पर लेजर-क्रम; बंद पर बड़ी बकाया पहले; पसंद याद रहे', async ({ page }) => {
+    await seed(page, [ // seed में लेजर-क्रम चुना है (पुराने टेस्टों जैसा)
       { acc: '1', name: 'छोटा', amount: 500, status: 'pending' },
       { acc: '2', name: 'बड़ा', amount: 52000, status: 'pending' },
       { acc: '3', name: 'मध्यम', amount: 3000, status: 'pending' },
     ]);
     expect(await names(page)).toEqual(['छोटा', 'बड़ा', 'मध्यम']);
-    await expect(page.locator('#sort-hint')).toBeHidden();
     await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
-    await expect(page.locator('#sort-menu-state')).toHaveText('बंद');
+    await expect(page.locator('#sort-menu-state')).toHaveText('✓ चालू');
     await page.click('#sort-menu-item');
     expect(await names(page)).toEqual(['बड़ा', 'मध्यम', 'छोटा']);
-    await expect(page.locator('#sort-hint')).toBeVisible(); // सूची के ऊपर एक पंक्ति — क्रम चालू है
-    await expect(page.locator('#sort-menu-state')).toHaveText('✓ चालू');
     await expect(page.locator('#logout-menu')).not.toHaveClass(/open/); // दबाते ही मेनू बंद
     expect(await page.evaluate(() => localStorage.getItem('dc_listsort'))).toBe('amount');
     // डेटा का क्रम नहीं बदला — सिर्फ़ दिखाने का
     expect(await page.evaluate(() => cGet(activeHQ, activeCat).map((x) => x.acc))).toEqual(['1', '2', '3']);
     await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await expect(page.locator('#sort-menu-state')).toHaveText('बंद');
     await page.click('#sort-menu-item');
     expect(await names(page)).toEqual(['छोटा', 'बड़ा', 'मध्यम']);
-    await expect(page.locator('#sort-hint')).toBeHidden();
   });
 
   test('रिमार्क में आज की वादा-तारीख़ → "📅 आज जमा का वादा (1)" बटन, card पर "(आज)", वसूल होते ही वादा ख़त्म', async ({ page }) => {
@@ -346,4 +343,29 @@ test.describe('"बड़ी बकाया पहले" — पंचाय�
     expect(r.amount).toBeLessThan(1000);
     console.log('render (ms) — लेजर क्रम: ' + r.ledger.toFixed(1) + ', बड़ी बकाया पहले: ' + r.amount.toFixed(1));
   });
+});
+
+// JE का फ़ैसला (11/10, "ख"): नया फ़ोन / पहली बार = बड़ी बकाया पहले, कोई अतिरिक्त पंक्ति नहीं
+lazyTest('डिफ़ॉल्ट क्रम = बड़ी बकाया पहले (पंचायत नीचे); मेनू में "📋 लेजर क्रम" बंद (v9.202)', async ({ page }) => {
+  await openApp(page);
+  expect(await page.evaluate(() => [localStorage.getItem('dc_listsort'), listSort])).toEqual([null, 'amount']);
+  await loginLineman(page);
+  await page.evaluate(() => {
+    cSet(activeHQ, activeCat, [
+      { acc: '1', name: 'छोटा', amount: 500, status: 'pending' },
+      { acc: '2', name: 'पंचायत', amount: 900000, status: 'pending', tariff: 'LV3.1' },
+      { acc: '3', name: 'बड़ा', amount: 52000, status: 'pending' },
+    ]);
+    _renderLimit = 100; renderList();
+  });
+  const n = await page.$$eval('#con-list .con-card .cc-name', (els) => els.map((e) => e.textContent.trim()));
+  expect(n).toEqual(['बड़ा', 'छोटा', 'पंचायत']);
+  await expect(page.locator('#sort-menu-state')).toHaveText('बंद');
+});
+
+test('सूची के ऊपर क्रम वाली कोई पंक्ति न हो — JE ने हटवाई (v9.202)', async () => {
+  const fs = require('fs'), path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  expect(html).not.toContain('sort-hint');
+  expect(html).not.toContain('क्रम चालू');
 });
