@@ -49,6 +49,11 @@ function toggleListSort(){
   _renderLimit=100;
   renderList();
 }
+// सरपंच/ग्राम पंचायत (टैरिफ़ LV3.1, LV3.2 — नल-जल/स्ट्रीट लाइट) की बकाया बहुत बड़ी होती है और वह लाइनमैन के
+// घर-घर वाले काम की नहीं — JE (11/10): "बड़ी बकाया पहले" में भी इन्हें सबसे नीचे रखना है। टैरिफ़ लेजर से
+// text में आता है ("LV3.1", "LV 3.2", "lv-3.1 (Rural)"…), इसलिए ढीला मिलान; LV3.10 जैसा कुछ न पकड़ा जाए
+var _PANCHAYAT_TARIFF_RE=/LV\s*-?\s*3\s*[.\-]\s*[12](?!\d)/i;
+function isPanchayatTariff(x){ return !!(x&&x.tariff&&_PANCHAYAT_TARIFF_RE.test(String(x.tariff))); }
 function _syncSortBtn(){
   var b=document.getElementById("sort-btn"); if(!b) return;
   b.className="sort-btn"+(listSort==="amount"?" on":"");
@@ -97,7 +102,11 @@ function renderListWith(data){
   });
   // वादे: सबसे पुराना (बीता) वादा सबसे ऊपर; बाक़ी में चुना हुआ क्रम
   if(activeFilter==="promise") filtered.sort(function(a,b){ var pa=promiseDue(a),pb=promiseDue(b); return pa<pb?-1:pa>pb?1:0; });
-  else if(listSort==="amount") filtered.sort(function(a,b){ return (Number(b.amount)||0)-(Number(a.amount)||0); });
+  else if(listSort==="amount") filtered.sort(function(a,b){
+    var ga=isPanchayatTariff(a)?1:0, gb=isPanchayatTariff(b)?1:0;
+    if(ga!==gb) return ga-gb; // पंचायत (LV3.1/LV3.2) हमेशा नीचे, आपस में बड़ी बकाया पहले
+    return (Number(b.amount)||0)-(Number(a.amount)||0);
+  });
   if(!filtered.length){
     var emptyMsg;
     if(activeFilter==="promise") emptyMsg="आज कोई वादा बाकी नहीं";

@@ -298,3 +298,45 @@ test.describe('सूची का क्रम और वादा-तारी
     expect(await page.evaluate(() => [_filteredForDownload().map((x) => x.acc), _FILTER_LABEL[activeFilter]])).toEqual([['1'], 'आज के वादे']);
   });
 });
+
+test.describe('"बड़ी बकाया पहले" — पंचायत नीचे, और ऐप धीमा न हो (v9.202)', () => {
+  test('सरपंच/ग्राम पंचायत (LV3.1, LV3.2) बड़ी बकाया के बावजूद सबसे नीचे, आपस में बड़ी पहले', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => {
+      cSet(activeHQ, activeCat, [
+        { acc: '1', name: 'घर छोटा', amount: 800, tariff: 'LV1.2', status: 'pending' },
+        { acc: '2', name: 'ग्राम पंचायत नल-जल', amount: 450000, tariff: 'LV3.1', status: 'pending' },
+        { acc: '3', name: 'दुकान', amount: 9000, tariff: 'LV2.1', status: 'pending' },
+        { acc: '4', name: 'स्ट्रीट लाइट', amount: 990000, tariff: 'LV 3.2', status: 'pending' },
+        { acc: '5', name: 'घर बड़ा', amount: 25000, tariff: 'LV1.2', status: 'pending' },
+      ]);
+      listSort = 'amount'; _renderLimit = 100; renderList();
+    });
+    const names = await page.$$eval('#con-list .con-card .cc-name', (els) => els.map((e) => e.textContent.trim()));
+    expect(names).toEqual(['घर बड़ा', 'दुकान', 'घर छोटा', 'स्ट्रीट लाइट', 'ग्राम पंचायत नल-जल']);
+  });
+
+  test('3500 records (रिमार्क और वादों समेत) — क्रम चालू होने से render में ख़ास फ़र्क़ न पड़े', async ({ page }) => {
+    test.setTimeout(90000);
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      const t0 = new Date(); const iso = t0.getFullYear() + '-' + String(t0.getMonth() + 1).padStart(2, '0') + '-' + String(t0.getDate()).padStart(2, '0');
+      const arr = [];
+      for (let i = 0; i < 3500; i++) {
+        arr.push({ acc: '9' + String(i).padStart(9, '0'), name: 'उपभोक्ता ' + i, addr: 'गांव ' + (i % 40), amount: (i * 7919) % 60000,
+          tariff: i % 50 === 0 ? 'LV3.1' : 'LV1.2', status: i % 3 === 0 ? 'paid' : 'pending',
+          remarksArr: [{ text: 'घर पर नहीं', by: 'क', at: '1' }, { text: 'देंगे', by: 'क', at: '2', due: i % 10 === 0 ? iso : '' }] });
+      }
+      cSet(CU.hq, 'कुल उपभोक्ता', arr); activeCat = 'कुल उपभोक्ता';
+      const time = (mode) => { listSort = mode; const s = performance.now(); for (let k = 0; k < 5; k++) renderListWith(cGet(CU.hq, 'कुल उपभोक्ता')); return (performance.now() - s) / 5; };
+      time('ledger'); // गरम करना
+      return { ledger: time('ledger'), amount: time('amount') };
+    });
+    // पहली 100 cards ही बनती हैं (बाक़ी "और दिखाएं" पर) — क्रम और वादों की गिनती सिर्फ़ गणना है, कोई नेट नहीं
+    expect(r.amount).toBeLessThan(r.ledger + 150);
+    expect(r.amount).toBeLessThan(1000);
+    console.log('render (ms) — लेजर क्रम: ' + r.ledger.toFixed(1) + ', बड़ी बकाया पहले: ' + r.amount.toFixed(1));
+  });
+});
