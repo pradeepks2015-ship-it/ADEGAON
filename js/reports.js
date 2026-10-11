@@ -319,7 +319,7 @@ function _filteredForDownload(){
   if(activeFilter==="promise"){ var t=_isoToday(); return data.filter(function(x){ return isPromiseDue(x,t); }); }
   return data.filter(function(x){return x.status===activeFilter;});
 }
-var _FILTER_LABEL={all:"सभी",pending:"बाकी",paid:"वसूल",promise:"आज के वादे"};
+var _FILTER_LABEL={all:"सभी",pending:"बाकी",paid:"वसूल",promise:"आज जमा का वादा"};
 
 function downloadExcel(){
   var data=_filteredForDownload();

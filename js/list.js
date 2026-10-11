@@ -70,7 +70,7 @@ function promiseDue(x){
   return "";
 }
 function _fmtDue(iso){ var p=String(iso||"").split("-"); return p.length===3?(Number(p[2])+"/"+Number(p[1])+"/"+p[0]):""; }
-// "📅 वादे" बटन में = आज या बीते दिनों के वादे (आगे के वादे card पर दिखते हैं, बटन में नहीं)
+// "📅 आज जमा का वादा" बटन (JE का दिया नाम, 11/10) में = आज या बीते दिनों के वादे (आगे के वादे card पर दिखते हैं, बटन में नहीं)
 function isPromiseDue(x,today){ var pd=promiseDue(x); return !!pd&&pd<=(today||_isoToday()); }
 function renderList(){var d=cGet(activeHQ,activeCat);renderListWith(d);}
 var _renderLimit=100;
@@ -79,7 +79,7 @@ function renderListWith(data){
   _syncSortBtn();
   var today=_isoToday();
   var fbP=document.getElementById("fb-promise");
-  if(fbP){ var nP=data.filter(function(x){ return isPromiseDue(x,today); }).length; fbP.textContent="📅 वादे"+(nP?" ("+nP+")":""); }
+  if(fbP){ var nP=data.filter(function(x){ return isPromiseDue(x,today); }).length; fbP.textContent="📅 आज जमा का वादा"+(nP?" ("+nP+")":""); }
   var q=(document.getElementById("search-inp").value||"").toLowerCase().trim();
   var c=document.getElementById("con-list");
   var filtered=data.filter(function(x){
@@ -589,7 +589,7 @@ function saveRmk(){
   closeRmkModal();
   renderSummaryWith(d); renderListWith(d);
   var total=(d[idx].remarksArr||[]).length;
-  toast(due?("✅ रिमार्क सेव — 📅 "+_fmtDue(due)+" को \"वादे\" बटन में दिखेगा"):("✅ रिमार्क सेव! (कुल "+total+")"),"ok");
+  toast(due?("✅ रिमार्क सेव — 📅 "+_fmtDue(due)+" को \"आज जमा का वादा\" बटन में दिखेगा"):("✅ रिमार्क सेव! (कुल "+total+")"),"ok");
   fbSet(activeHQ,activeCat,d,prevSnap,null);
   propagateStatus(d[idx].acc,activeCat,rmkStatus,d[idx].paydate||"",dtStr,d[idx].ts);
   // JE की शिकायत: किसी category में डाला कमेंट "कुल उपभोक्ता" में नहीं दिखता था — हर category उसी
