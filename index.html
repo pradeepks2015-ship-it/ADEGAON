@@ -168,6 +168,7 @@ try{
             <button type="button" class="logout-item" id="todaysc-menu-item" style="display:none;color:#ef6c00;" onclick="openTodayScorecard()">&#128979;&#65039; आज की वसूली</button>
             <button type="button" class="logout-item" id="voicesc-menu-item" style="display:none;color:#5e35b1;" onclick="openVoiceScorecard()">&#128203; मुख्यालय व टैरिफ रिपोर्ट</button>
             <button type="button" class="logout-item" id="sort-menu-item" style="color:#1565c0;" onclick="toggleListSort(event)">&#128203; लेजर क्रम <span class="sort-menu-state" id="sort-menu-state">बंद</span></button>
+            <button type="button" class="logout-item" id="vgbar-menu-item" style="color:#1565c0;" onclick="toggleVillageBar(event)">&#128205; गांव की पट्टी <span class="vgbar-menu-state" id="vgbar-menu-state">✓ दिखे</span></button>
             <button type="button" class="logout-item" id="village-menu-item" style="color:#a34d00;" onclick="openVillageModal()">&#127961; ग्राम-वार वसूली</button>
             <button type="button" class="logout-item" id="cash-menu-item" style="display:none;color:var(--green);" onclick="openCashModal()">&#128181; कैश लिस्ट</button>
             <button type="button" class="logout-item" id="backup-menu-item" style="display:none;color:var(--gold);" onclick="downloadFullBackup()">&#128190; पूरा बैकअप</button>
@@ -197,6 +198,8 @@ try{
         <input type="text" class="si" id="search-inp" placeholder="नाम, No., Mobile, पता, Tariff खोजें..." oninput="debounceSearch()">
       </div>
     </div>
+    <!-- v9.203: गांव की पट्टी — टैप करते ही उसी गांव की सूची (JE: अंग्रेज़ी नाम, सबसे ज़्यादा बाकी पहले) -->
+    <div class="vg-wrap" id="vg-wrap" style="display:none;"></div>
     <div class="filter-wrap">
       <button class="filter-btn active-all" data-f="all" onclick="setFilter(this)">सभी</button>
       <button class="filter-btn" data-f="pending" onclick="setFilter(this)">&#9203; बाकी</button>

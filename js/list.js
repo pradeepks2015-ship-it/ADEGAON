@@ -81,14 +81,72 @@ function promiseDue(x){
 function _fmtDue(iso){ var p=String(iso||"").split("-"); return p.length===3?(Number(p[2])+"/"+Number(p[1])+"/"+p[0]):""; }
 // वादे का निशान 🤝 — 📅 कई फ़ोनों पर "JUL 17" छपे कैलेंडर जैसा दिखता था (JE, 11/10)। "आज जमा का वादा" बटन (JE का दिया नाम) में = आज या बीते दिनों के वादे (आगे के वादे card पर दिखते हैं, बटन में नहीं)
 function isPromiseDue(x,today){ var pd=promiseDue(x); return !!pd&&pd<=(today||_isoToday()); }
+// ── v9.203: गांव की पट्टी — सूची के ऊपर गांवों के बटन, टैप करते ही उसी गांव की सूची ──
+// गांव = लेजर का "पता" खाना, js/village.js वाली ही कुंजी (_vgNormKey: बड़े अक्षर + VILLAGE_ALIASES के
+// स्पेलिंग-सुधार, जैसे JUMUA → JAMUA) — ताकि गांव-वार वसूली और यह पट्टी एक जैसा गिनें। JE (11/10): नाम
+// अंग्रेज़ी (जैसे लेजर में), सबसे ज़्यादा बाकी वाला गांव पहले। सब फ़ोन पर पड़ी सूची से — कोई नेट नहीं।
+// मुख्यालय/श्रेणी बदलते ही चुनाव "सभी" पर लौटता है (पिछला गांव भूल से न रह जाए)
+var activeVillage="", _vgListFor="";
+// पट्टी दिखे या नहीं — नाम वाले मेनू से (JE, 11/10: "पट्टी हटा लें या रख लें")। डिफ़ॉल्ट: दिखे।
+// छिपाते ही चुना गांव भी "सभी" पर — वरना सूची किसी अनदेखे गांव पर छंटी रह जाती
+var VG_BAR_KEY="dc_vgbar";
+var vgBarOn=(function(){ try{ return localStorage.getItem(VG_BAR_KEY)!=="off"; }catch(e){ return true; } })();
+function toggleVillageBar(e){
+  if(e&&e.stopPropagation) e.stopPropagation(); // मेनू नाम वाले बटन के अंदर है — दोबारा न खुले
+  vgBarOn=!vgBarOn;
+  try{ localStorage.setItem(VG_BAR_KEY,vgBarOn?"on":"off"); }catch(x){}
+  if(!vgBarOn) activeVillage="";
+  var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
+  if(typeof toast==="function") toast(vgBarOn?"📍 गांव की पट्टी — दिखेगी":"📍 गांव की पट्टी — छिपा दी","inf");
+  _renderLimit=100;
+  renderList();
+}
+function _syncVgBarMenu(){
+  var st=document.getElementById("vgbar-menu-state"); if(!st) return;
+  st.textContent=vgBarOn?"✓ दिखे":"छिपी";
+  st.className="vgbar-menu-state"+(vgBarOn?" on":"");
+}
+function _villageKey(x){ return _vgNormKey(activeHQ,(x&&x.addr)||""); }
+function setVillage(v){
+  activeVillage=String(v||"");
+  _renderLimit=100;
+  renderList(); // पन्ना अपने-आप नहीं खिसकता — पट्टी दिखती रहे ताकि अगला गांव तुरंत चुना जा सके
+}
+function _renderVillageBar(data){
+  var w=document.getElementById("vg-wrap"); if(!w) return;
+  _syncVgBarMenu();
+  if(!vgBarOn){ activeVillage=""; w.style.display="none"; w.innerHTML=""; return; }
+  var m={};
+  data.forEach(function(x){
+    if(!x) return;
+    var k=_villageKey(x);
+    if(!m[k]) m[k]={k:k,pend:0};
+    if(x.status!=="paid") m[k].pend++;
+  });
+  var rows=Object.keys(m).map(function(k){return m[k];});
+  if(activeVillage&&!m[activeVillage]) activeVillage=""; // यह गांव अब सूची में नहीं
+  if(rows.length<2){ w.style.display="none"; w.innerHTML=""; return; } // एक ही गांव — पट्टी बेकार
+  rows.sort(function(a,b){ return (b.pend-a.pend)||(a.k<b.k?-1:a.k>b.k?1:0); });
+  // audit-verified: गांव का नाम escHtml() से; onclick में कोई field नहीं (this.dataset.v)
+  // eslint-disable-next-line no-unsanitized/property
+  w.innerHTML="<span class='vg-lbl'>📍 गांव:</span>"+
+    "<button type='button' class='vg-chip"+(activeVillage?"":" on")+"' data-v='' onclick='setVillage(this.dataset.v)'>सभी</button>"+
+    rows.map(function(r){
+      return "<button type='button' class='vg-chip"+(activeVillage===r.k?" on":"")+"' data-v='"+escHtml(r.k)+"' onclick='setVillage(this.dataset.v)'>"+
+        escHtml(r.k||"(पता नहीं)")+"<b>"+r.pend+"</b></button>";
+    }).join("");
+  w.style.display="flex";
+}
 function renderList(){var d=cGet(activeHQ,activeCat);renderListWith(d);}
 var _renderLimit=100;
 function renderListWith(data){
   _syncFilterBtns(); // बटन और असली फ़िल्टर कभी अलग न दिखें (देखें ऊपर)
   _syncSortBtn();
+  if(_vgListFor!==activeHQ+"/"+activeCat){ _vgListFor=activeHQ+"/"+activeCat; activeVillage=""; }
+  _renderVillageBar(data);
   var today=_isoToday();
   var fbP=document.getElementById("fb-promise");
-  if(fbP){ var nP=data.filter(function(x){ return isPromiseDue(x,today); }).length; fbP.textContent="आज जमा का वादा"+(nP?" ("+nP+")":""); } // JE: बटन पर कैलेंडर का निशान नहीं
+  if(fbP){ var nP=data.filter(function(x){ return isPromiseDue(x,today)&&(!activeVillage||_villageKey(x)===activeVillage); }).length; fbP.textContent="आज जमा का वादा"+(nP?" ("+nP+")":""); } // JE: बटन पर कैलेंडर का निशान नहीं
   var q=(document.getElementById("search-inp").value||"").toLowerCase().trim();
   var c=document.getElementById("con-list");
   var filtered=data.filter(function(x){
@@ -107,6 +165,7 @@ function renderListWith(data){
     // "बाकी" में आता पर सूची में कहीं नहीं दिखता — दोनों सूचियां जोड़ने पर कुल से कम बैठतीं
     var st=(activeFilter==="promise")?isPromiseDue(x,today):
            (activeFilter==="paid")?(x.status==="paid"):(x.status!=="paid");
+    if(activeVillage&&_villageKey(x)!==activeVillage) return false;
     return matchQ&&(activeFilter==="all"||st);
   });
   // वादे: सबसे पुराना (बीता) वादा सबसे ऊपर; बाक़ी में चुना हुआ क्रम

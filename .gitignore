@@ -1,4 +1,5 @@
-node_modules/
+node_modules
+# ↑ "/" के बिना — worktree का node_modules symlink (फ़ाइल) भी छूटे, 11/10 को वह ग़लती से commit में आ गया था
 test-results/
 playwright-report/
 backup-output/
