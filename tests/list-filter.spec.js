@@ -433,3 +433,32 @@ test.describe('गांव की पट्टी (v9.203)', () => {
     expect(await page.locator('#vg-wrap img').count()).toBe(0);
   });
 });
+
+test.describe('गांव की पट्टी — नाम वाले मेनू से दिखाएं/छिपाएं (v9.203)', () => {
+  test('डिफ़ॉल्ट दिखे; मेनू से छिपाएं → पट्टी गायब + चुना गांव "सभी"; याद रहे; दोबारा दिखाएं', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.locator('#loader').waitFor({ state: 'hidden', timeout: 20000 });
+    await page.evaluate(() => {
+      cSet(activeHQ, activeCat, [
+        { acc: '1', name: 'अ', amount: 1, status: 'pending', addr: 'ADEGAON' },
+        { acc: '2', name: 'ब', amount: 2, status: 'pending', addr: 'DEVRI' },
+      ]);
+      renderList();
+    });
+    await expect(page.locator('#vg-wrap')).toBeVisible();
+    await page.click('#vg-wrap .vg-chip:has-text("DEVRI")');
+    expect(await page.$$eval('#con-list .con-card', (e) => e.length)).toBe(1);
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await expect(page.locator('#vgbar-menu-state')).toHaveText('✓ दिखे');
+    await page.click('#vgbar-menu-item');
+    await expect(page.locator('#vg-wrap')).toBeHidden();
+    await expect(page.locator('#logout-menu')).not.toHaveClass(/open/);
+    expect(await page.$$eval('#con-list .con-card', (e) => e.length)).toBe(2); // छिपे गांव पर छंटी न रहे
+    expect(await page.evaluate(() => localStorage.getItem('dc_vgbar'))).toBe('off');
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await expect(page.locator('#vgbar-menu-state')).toHaveText('छिपी');
+    await page.click('#vgbar-menu-item');
+    await expect(page.locator('#vg-wrap')).toBeVisible();
+  });
+});

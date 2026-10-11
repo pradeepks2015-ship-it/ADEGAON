@@ -87,6 +87,25 @@ function isPromiseDue(x,today){ var pd=promiseDue(x); return !!pd&&pd<=(today||_
 // अंग्रेज़ी (जैसे लेजर में), सबसे ज़्यादा बाकी वाला गांव पहले। सब फ़ोन पर पड़ी सूची से — कोई नेट नहीं।
 // मुख्यालय/श्रेणी बदलते ही चुनाव "सभी" पर लौटता है (पिछला गांव भूल से न रह जाए)
 var activeVillage="", _vgListFor="";
+// पट्टी दिखे या नहीं — नाम वाले मेनू से (JE, 11/10: "पट्टी हटा लें या रख लें")। डिफ़ॉल्ट: दिखे।
+// छिपाते ही चुना गांव भी "सभी" पर — वरना सूची किसी अनदेखे गांव पर छंटी रह जाती
+var VG_BAR_KEY="dc_vgbar";
+var vgBarOn=(function(){ try{ return localStorage.getItem(VG_BAR_KEY)!=="off"; }catch(e){ return true; } })();
+function toggleVillageBar(e){
+  if(e&&e.stopPropagation) e.stopPropagation(); // मेनू नाम वाले बटन के अंदर है — दोबारा न खुले
+  vgBarOn=!vgBarOn;
+  try{ localStorage.setItem(VG_BAR_KEY,vgBarOn?"on":"off"); }catch(x){}
+  if(!vgBarOn) activeVillage="";
+  var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
+  if(typeof toast==="function") toast(vgBarOn?"📍 गांव की पट्टी — दिखेगी":"📍 गांव की पट्टी — छिपा दी","inf");
+  _renderLimit=100;
+  renderList();
+}
+function _syncVgBarMenu(){
+  var st=document.getElementById("vgbar-menu-state"); if(!st) return;
+  st.textContent=vgBarOn?"✓ दिखे":"छिपी";
+  st.className="vgbar-menu-state"+(vgBarOn?" on":"");
+}
 function _villageKey(x){ return _vgNormKey(activeHQ,(x&&x.addr)||""); }
 function setVillage(v){
   activeVillage=String(v||"");
@@ -95,6 +114,8 @@ function setVillage(v){
 }
 function _renderVillageBar(data){
   var w=document.getElementById("vg-wrap"); if(!w) return;
+  _syncVgBarMenu();
+  if(!vgBarOn){ activeVillage=""; w.style.display="none"; w.innerHTML=""; return; }
   var m={};
   data.forEach(function(x){
     if(!x) return;

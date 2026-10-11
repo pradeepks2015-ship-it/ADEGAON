@@ -91,6 +91,7 @@
   "TOKEN_MARGIN_MS",
   "TOKEN_RECHECK_MS",
   "USAGE_DAY_QUOTA_MB",
+  "VG_BAR_KEY",
   "VG_DAILY_MAX",
   "VILLAGE_ALIASES",
   "_CASH_REFRESH_CONCURRENCY",
@@ -320,6 +321,7 @@
   "_syncSortBtn",
   "_syncSoundSwitch",
   "_syncThemeSwitch",
+  "_syncVgBarMenu",
   "_todayDateStr",
   "_todayScRender",
   "_todayScRow",
@@ -598,6 +600,7 @@
   "togglePw",
   "toggleTheme",
   "toggleUserMenu",
+  "toggleVillageBar",
   "trackUsageBytes",
   "trackUsageOf",
   "upMode",
@@ -605,5 +608,6 @@
   "updateUpCounter",
   "verifyJE",
   "vgActiveHQ",
+  "vgBarOn",
   "vgRows"
 ]
