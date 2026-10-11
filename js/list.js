@@ -97,11 +97,20 @@ function _dueSync(){
   var el=document.getElementById("rmk-due");
   document.querySelectorAll("#rmk-due-grp .due-chip").forEach(function(b){ b.className="due-chip"+(b.dataset.d===_duePick?" on":""); });
   var n=document.getElementById("rmk-due-note");
-  if(n) n.textContent=(el&&el.value)?("✓ वादा: "+_fmtDue(el.value)+" — उस दिन \"आज जमा का वादा\" में दिखेगा"):"";
+  if(n) n.textContent=(el&&el.value)?("✓ वादा: "+_fmtDue(el.value)+" — उस सप्ताह \"इस सप्ताह जमा का वादा\" में दिखेगा"):"";
 }
 function _fmtDue(iso){ var p=String(iso||"").split("-"); return p.length===3?(Number(p[2])+"/"+Number(p[1])+"/"+p[0]):""; }
-// वादे का निशान 🤝 — 📅 कई फ़ोनों पर "JUL 17" छपे कैलेंडर जैसा दिखता था (JE, 11/10)। "आज जमा का वादा" बटन (JE का दिया नाम) में = आज या बीते दिनों के वादे (आगे के वादे card पर दिखते हैं, बटन में नहीं)
-function isPromiseDue(x,today){ var pd=promiseDue(x); return !!pd&&pd<=(today||_isoToday()); }
+// वादे का निशान 🤝 — 📅 कई फ़ोनों पर "JUL 17" छपे कैलेंडर जैसा दिखता था (JE, 11/10)।
+// v9.207 (JE, 11/10): बटन "इस सप्ताह जमा का वादा" — जिनकी वादा-तारीख़ चालू सप्ताह (सोमवार से रविवार) में है।
+// (पहले "आज जमा का वादा" = आज या बीते दिनों के वादे।) सप्ताह फ़ोन की अपनी तारीख़ से
+function _isoOf(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function _weekRange(){
+  var t=new Date(); t.setHours(12,0,0,0); // दोपहर — घड़ी-बदलाव/आधी रात के किनारे से बचने को
+  var mon=new Date(t); mon.setDate(t.getDate()-((t.getDay()+6)%7)); // getDay: रविवार=0 → 6 दिन पीछे
+  var sun=new Date(mon); sun.setDate(mon.getDate()+6);
+  return [_isoOf(mon),_isoOf(sun)];
+}
+function isPromiseDue(x,wk){ var pd=promiseDue(x); if(!pd) return false; wk=wk||_weekRange(); return pd>=wk[0]&&pd<=wk[1]; }
 // ── v9.203: गांव की पट्टी — सूची के ऊपर गांवों के बटन, टैप करते ही उसी गांव की सूची ──
 // गांव = लेजर का "पता" खाना, js/village.js वाली ही कुंजी (_vgNormKey: बड़े अक्षर + VILLAGE_ALIASES के
 // स्पेलिंग-सुधार, जैसे JUMUA → JAMUA) — ताकि गांव-वार वसूली और यह पट्टी एक जैसा गिनें। JE (11/10): नाम
@@ -167,7 +176,8 @@ function renderListWith(data){
   _renderVillageBar(data);
   var today=_isoToday();
   var fbP=document.getElementById("fb-promise");
-  if(fbP){ var nP=data.filter(function(x){ return isPromiseDue(x,today)&&(!activeVillage||_villageKey(x)===activeVillage); }).length; fbP.textContent="आज जमा का वादा"+(nP?" ("+nP+")":""); } // JE: बटन पर कैलेंडर का निशान नहीं
+  var wk=_weekRange();
+  if(fbP){ var nP=data.filter(function(x){ return isPromiseDue(x,wk)&&(!activeVillage||_villageKey(x)===activeVillage); }).length; fbP.textContent="इस सप्ताह जमा का वादा"+(nP?" ("+nP+")":""); } // JE: बटन पर कैलेंडर का निशान नहीं
   var q=(document.getElementById("search-inp").value||"").toLowerCase().trim();
   var c=document.getElementById("con-list");
   var filtered=data.filter(function(x){
@@ -184,7 +194,7 @@ function renderListWith(data){
     // हर उस record को गिनती है जो paid नहीं — इसलिए सूची भी वैसी ही छंटे। पहले सूची ठीक "pending"
     // लिखा होने पर ही दिखाती थी, तो जिस पुराने record में status खाली/कुछ और होता वह गिनती में तो
     // "बाकी" में आता पर सूची में कहीं नहीं दिखता — दोनों सूचियां जोड़ने पर कुल से कम बैठतीं
-    var st=(activeFilter==="promise")?isPromiseDue(x,today):
+    var st=(activeFilter==="promise")?isPromiseDue(x,wk):
            (activeFilter==="paid")?(x.status==="paid"):(x.status!=="paid");
     if(activeVillage&&_villageKey(x)!==activeVillage) return false;
     return matchQ&&(activeFilter==="all"||st);
@@ -198,13 +208,13 @@ function renderListWith(data){
   });
   if(!filtered.length){
     var emptyMsg;
-    if(activeFilter==="promise") emptyMsg="आज कोई वादा बाकी नहीं";
+    if(activeFilter==="promise") emptyMsg="इस सप्ताह कोई वादा बाकी नहीं";
     else if(activeFilter==="paid") emptyMsg="अभी कोई वसूली दर्ज नहीं";
     else if(activeFilter==="pending") emptyMsg="सभी वसूली हो चुकी है!";
     else if(q) emptyMsg="कोई परिणाम नहीं";
     else emptyMsg="सूची खाली है";
     var emptyIco=activeFilter==="promise"?"🤝":activeFilter==="paid"?"✅":activeFilter==="pending"?"⏳":(q?"🔍":"📋");
-    var emptySub=activeFilter==="promise"?"✏️ रिमार्क में वादा-तारीख़ डालें — उस दिन उपभोक्ता यहां दिखेगा":
+    var emptySub=activeFilter==="promise"?"✏️ रिमार्क में 🤝 वादा डालें — उसी सप्ताह उपभोक्ता यहां दिखेगा":
                  (!q&&activeFilter==="all")?"📤 अपलोड बटन से लिस्ट डालें":"🔍 खोज या फ़िल्टर बदलें";
     // audit-verified: emptyMsg/emptyIco/emptySub सब hardcoded literals में से चुने जाते हैं (कभी भी
     // सीधे q/किसी field का value नहीं होते) — plugin ternary को समझ नहीं पाता
@@ -679,7 +689,7 @@ function saveRmk(){
   closeRmkModal();
   renderSummaryWith(d); renderListWith(d);
   var total=(d[idx].remarksArr||[]).length;
-  toast(due?("✅ रिमार्क सेव — 🤝 "+_fmtDue(due)+" को \"आज जमा का वादा\" बटन में दिखेगा"):("✅ रिमार्क सेव! (कुल "+total+")"),"ok");
+  toast(due?("✅ रिमार्क सेव — 🤝 "+_fmtDue(due)+" — उस सप्ताह \"इस सप्ताह जमा का वादा\" बटन में दिखेगा"):("✅ रिमार्क सेव! (कुल "+total+")"),"ok");
   fbSet(activeHQ,activeCat,d,prevSnap,null);
   propagateStatus(d[idx].acc,activeCat,rmkStatus,d[idx].paydate||"",dtStr,d[idx].ts);
   // JE की शिकायत: किसी category में डाला कमेंट "कुल उपभोक्ता" में नहीं दिखता था — हर category उसी

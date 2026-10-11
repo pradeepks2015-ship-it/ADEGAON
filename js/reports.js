@@ -347,10 +347,10 @@ function _filteredForDownload(){
   // v9.203: गांव चुना हो तो PDF/Excel भी उसी गांव का — जो स्क्रीन पर है वही काग़ज़ पर
   if(activeVillage) data=data.filter(function(x){ return _villageKey(x)===activeVillage; });
   if(activeFilter==="all") return data;
-  if(activeFilter==="promise"){ var t=_isoToday(); return data.filter(function(x){ return isPromiseDue(x,t); }); }
+  if(activeFilter==="promise"){ var wk=_weekRange(); return data.filter(function(x){ return isPromiseDue(x,wk); }); }
   return data.filter(function(x){return x.status===activeFilter;});
 }
-var _FILTER_LABEL={all:"सभी",pending:"बाकी",paid:"वसूल",promise:"आज जमा का वादा"};
+var _FILTER_LABEL={all:"सभी",pending:"बाकी",paid:"वसूल",promise:"इस सप्ताह जमा का वादा"};
 
 function downloadExcel(){
   var data=_filteredForDownload();
