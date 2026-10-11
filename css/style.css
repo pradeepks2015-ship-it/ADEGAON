@@ -204,6 +204,11 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 #fb-promise{flex:1.9;line-height:1.25;} /* लंबा नाम (JE का) — बाक़ी तीन छोटे बटनों से ज़्यादा जगह */
 .sort-menu-state{float:right;font-size:10.5px;color:var(--muted);font-weight:700;}
 .sort-menu-state.on{color:var(--green);}
+.due-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 4px;}
+.due-lbl{font-size:12px;font-weight:700;color:var(--muted);margin-right:2px;}
+.due-chip{padding:7px 12px;border-radius:16px;border:1px solid #ffb74d;background:rgba(255,152,0,.06);color:#e65100;font-size:12.5px;font-weight:700;cursor:pointer;font-family:"Noto Sans Devanagari",sans-serif;}
+.due-chip.on{background:#ef6c00;color:#fff;border-color:#ef6c00;}
+.due-note{font-size:11px;color:#e65100;font-weight:600;margin-top:4px;}
 .filter-btn.active-promise{background:rgba(255,152,0,.14);color:#e65100;border-color:#ff9800;}
 .vg-wrap{display:flex;gap:6px;overflow-x:auto;padding:0 12px 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .vg-wrap::-webkit-scrollbar{display:none;}

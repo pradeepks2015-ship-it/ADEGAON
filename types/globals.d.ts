@@ -14,6 +14,8 @@ interface HTMLElement {
   href: string;
   max: any;
   min: any;
+  /** <input type=date> का कैलेंडर खोलना (js/list.js pickDue) — पुराने browser में नहीं होता */
+  showPicker?: () => void;
   type: string;
   files: FileList | null;
   src: string;

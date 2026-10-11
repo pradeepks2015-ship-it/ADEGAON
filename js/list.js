@@ -78,6 +78,27 @@ function promiseDue(x){
   for(var i=a.length-1;i>=0;i--){ if(a[i]&&/^\d{4}-\d{2}-\d{2}$/.test(a[i].due||"")) return a[i].due; }
   return "";
 }
+function _isoPlus(n){ var t=new Date(); t.setDate(t.getDate()+n); return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0"); }
+// ── v9.204: वादा एक टैप में — "कल / 2 दिन में / हफ़्ते में / तारीख़…" (JE ने नमूना देखकर "ठीक है" कहा) ──
+// बटन छिपे #rmk-due में तारीख़ भरते हैं; दोबारा वही बटन = वादा हटाओ। "तारीख़…" पर ही कैलेंडर वाला खाना दिखता है
+var _duePick="";
+function pickDue(btn){
+  var k=(btn&&btn.dataset&&btn.dataset.d)||"", el=document.getElementById("rmk-due"); if(!el) return;
+  if(_duePick===k){ _duePick=""; el.value=""; }
+  else{
+    _duePick=k;
+    el.value=(k==="pick")?((el.value&&el.value>=_isoToday())?el.value:""):_isoPlus(Number(k));
+  }
+  el.style.display=(_duePick==="pick")?"block":"none";
+  if(_duePick==="pick"&&el.showPicker){ try{ el.showPicker(); }catch(e){} } // कुछ पुराने browser में नहीं — तब खाना दबाएं
+  _dueSync();
+}
+function _dueSync(){
+  var el=document.getElementById("rmk-due");
+  document.querySelectorAll("#rmk-due-grp .due-chip").forEach(function(b){ b.className="due-chip"+(b.dataset.d===_duePick?" on":""); });
+  var n=document.getElementById("rmk-due-note");
+  if(n) n.textContent=(el&&el.value)?("✓ वादा: "+_fmtDue(el.value)+" — उस दिन \"आज जमा का वादा\" में दिखेगा"):"";
+}
 function _fmtDue(iso){ var p=String(iso||"").split("-"); return p.length===3?(Number(p[2])+"/"+Number(p[1])+"/"+p[0]):""; }
 // वादे का निशान 🤝 — 📅 कई फ़ोनों पर "JUL 17" छपे कैलेंडर जैसा दिखता था (JE, 11/10)। "आज जमा का वादा" बटन (JE का दिया नाम) में = आज या बीते दिनों के वादे (आगे के वादे card पर दिखते हैं, बटन में नहीं)
 function isPromiseDue(x,today){ var pd=promiseDue(x); return !!pd&&pd<=(today||_isoToday()); }
@@ -557,7 +578,8 @@ function openRmkModal(idx,acc){
   // New remark textarea always empty
   document.getElementById("rmk-text").value="";
   var dueEl=document.getElementById("rmk-due");
-  if(dueEl){ dueEl.value=""; dueEl.min=_isoToday(); }
+  if(dueEl){ dueEl.value=""; dueEl.min=_isoToday(); dueEl.style.display="none"; }
+  _duePick=""; _dueSync();
   (function(){
     var t=new Date();
     var iso=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0");
