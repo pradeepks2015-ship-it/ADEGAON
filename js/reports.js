@@ -316,9 +316,10 @@ function downloadFullBackup(){
 function _filteredForDownload(){
   var data=cGet(activeHQ,activeCat);
   if(activeFilter==="all") return data;
+  if(activeFilter==="promise"){ var t=_isoToday(); return data.filter(function(x){ return isPromiseDue(x,t); }); }
   return data.filter(function(x){return x.status===activeFilter;});
 }
-var _FILTER_LABEL={all:"सभी",pending:"बाकी",paid:"वसूल"};
+var _FILTER_LABEL={all:"सभी",pending:"बाकी",paid:"वसूल",promise:"आज के वादे"};
 
 function downloadExcel(){
   var data=_filteredForDownload();

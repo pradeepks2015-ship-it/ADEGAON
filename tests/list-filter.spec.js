@@ -206,3 +206,95 @@ test.describe('वसूल + बाकी = कुल (सूची और ग�
     expect(r.list.paid).toBe(1);
   });
 });
+
+// ── v9.202: "बड़ी बकाया पहले" क्रम + वादा-तारीख़ (JE: उद्देश्य-अनुकूलता 9.0 → 9.5) ──
+test.describe('सूची का क्रम और वादा-तारीख़ (v9.202)', () => {
+  const iso = (offset) => {
+    const t = new Date(); t.setDate(t.getDate() + offset);
+    return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+  };
+  const seed = async (page, recs) => {
+    await openApp(page);
+    await page.evaluate(() => { try { localStorage.removeItem('dc_listsort'); } catch (e) {} listSort = 'ledger'; });
+    await loginLineman(page);
+    await page.evaluate((r) => { cSet(activeHQ, activeCat, r); _renderLimit = 100; renderList(); }, recs);
+  };
+  const names = (page) => page.$$eval('#con-list .con-card .cc-name', (els) => els.map((e) => e.textContent.trim()));
+
+  test('"₹ बड़ी बकाया पहले" दबाने पर सबसे बड़ी बकाया ऊपर; दोबारा दबाने पर लेजर क्रम; पसंद याद रहे', async ({ page }) => {
+    await seed(page, [
+      { acc: '1', name: 'छोटा', amount: 500, status: 'pending' },
+      { acc: '2', name: 'बड़ा', amount: 52000, status: 'pending' },
+      { acc: '3', name: 'मध्यम', amount: 3000, status: 'pending' },
+    ]);
+    expect(await names(page)).toEqual(['छोटा', 'बड़ा', 'मध्यम']);
+    await page.click('#sort-btn');
+    expect(await names(page)).toEqual(['बड़ा', 'मध्यम', 'छोटा']);
+    await expect(page.locator('#sort-btn')).toHaveClass(/on/);
+    expect(await page.evaluate(() => localStorage.getItem('dc_listsort'))).toBe('amount');
+    // डेटा का क्रम नहीं बदला — सिर्फ़ दिखाने का
+    expect(await page.evaluate(() => cGet(activeHQ, activeCat).map((x) => x.acc))).toEqual(['1', '2', '3']);
+    await page.click('#sort-btn');
+    expect(await names(page)).toEqual(['छोटा', 'बड़ा', 'मध्यम']);
+  });
+
+  test('रिमार्क में आज की वादा-तारीख़ → "📅 वादे (1)" बटन, card पर "(आज)", वसूल होते ही वादा ख़त्म', async ({ page }) => {
+    await seed(page, [
+      { acc: '1', name: 'वादा करने वाला', amount: 900, status: 'pending' },
+      { acc: '2', name: 'दूसरा', amount: 100, status: 'pending' },
+    ]);
+    await page.evaluate((d) => {
+      openRmkModal(0, '1');
+      document.getElementById('rmk-due').value = d;
+      document.getElementById('rmk-text').value = 'आज शाम देंगे';
+      saveRmk();
+    }, iso(0));
+    const last = await page.evaluate(() => { const a = cGet(activeHQ, activeCat)[0].remarksArr; return a[a.length - 1]; });
+    expect(last.due).toBe(iso(0));
+    expect(last.text).toBe('आज शाम देंगे');
+    await expect(page.locator('#fb-promise')).toHaveText('📅 वादे (1)');
+    await page.click('#fb-promise');
+    expect(await names(page)).toEqual(['वादा करने वाला']);
+    await expect(page.locator('.chip-due')).toContainText('(आज)');
+    await page.evaluate(() => markPaid(0, '1'));
+    await expect(page.locator('#fb-promise')).toHaveText('📅 वादे');
+    await expect(page.locator('#con-list')).toContainText('आज कोई वादा बाकी नहीं');
+  });
+
+  test('सिर्फ़ तारीख़ (बिना लिखे) — रिमार्क अपने-आप बने; आगे का वादा card पर दिखे पर "वादे" बटन में नहीं', async ({ page }) => {
+    await seed(page, [{ acc: '1', name: 'क', amount: 900, status: 'pending' }]);
+    await page.evaluate((d) => { openRmkModal(0, '1'); document.getElementById('rmk-due').value = d; saveRmk(); }, iso(3));
+    const last = await page.evaluate(() => { const a = cGet(activeHQ, activeCat)[0].remarksArr; return a[a.length - 1]; });
+    expect(last.text).toContain('को जमा करने का वादा');
+    expect(last.due).toBe(iso(3));
+    await expect(page.locator('.chip-due')).toBeVisible();
+    await expect(page.locator('#fb-promise')).toHaveText('📅 वादे');
+  });
+
+  test('बीता वादा लाल "(बीत गया)" और सबसे ऊपर; बीती तारीख़ नई डालने से रोके', async ({ page }) => {
+    await seed(page, [
+      { acc: '1', name: 'आज वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'x', by: 'a', at: '1', due: iso(0) }] },
+      { acc: '2', name: 'बीता वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'y', by: 'a', at: '2', due: iso(-2) }] },
+    ]);
+    await page.click('#fb-promise');
+    expect(await names(page)).toEqual(['बीता वाला', 'आज वाला']);
+    await expect(page.locator('.chip-due.over')).toContainText('(बीत गया)');
+    await page.evaluate((d) => { openRmkModal(0, '1'); document.getElementById('rmk-due').value = d; document.getElementById('rmk-text').value = 'z'; saveRmk(); }, iso(-1));
+    await expect(page.locator('#toast')).toContainText('वादा-तारीख़ आज या आगे की होनी चाहिए');
+    expect(await page.evaluate(() => cGet(activeHQ, activeCat)[0].remarksArr.length)).toBe(1);
+  });
+
+  test('"वसूल हुआ" चुनने पर वादा-तारीख़ वाला खाना छिपे; PDF/Excel में "आज के वादे" वाली सूची जाए', async ({ page }) => {
+    await seed(page, [
+      { acc: '1', name: 'क', amount: 1, status: 'pending', remarksArr: [{ text: 'x', by: 'a', at: '1', due: iso(0) }] },
+      { acc: '2', name: 'ख', amount: 1, status: 'pending' },
+    ]);
+    await page.evaluate(() => { openRmkModal(0, '1'); setRmkStatus('paid'); });
+    await expect(page.locator('#rmk-due-grp')).toBeHidden();
+    await page.evaluate(() => setRmkStatus('pending'));
+    await expect(page.locator('#rmk-due-grp')).toBeVisible();
+    await page.evaluate(() => closeRmkModal());
+    await page.click('#fb-promise');
+    expect(await page.evaluate(() => [_filteredForDownload().map((x) => x.acc), _FILTER_LABEL[activeFilter]])).toEqual([['1'], 'आज के वादे']);
+  });
+});

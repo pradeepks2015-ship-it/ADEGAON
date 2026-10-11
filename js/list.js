@@ -37,10 +37,44 @@ function debounceSearch(){
   clearTimeout(_searchTimer);
   _searchTimer=setTimeout(function(){renderList();},250);
 }
+// ── v9.202: "बड़ी बकाया पहले" क्रम + वादा-तारीख़ (JE की योजना: उद्देश्य-अनुकूलता 9.0 → 9.5) ──
+// क्रम: सूची लेजर के क्रम में आती थी, तो ₹50 हज़ार वाला ₹500 वालों के बीच छिपा रहता। बटन दबाने पर
+// बकाया के हिसाब से (बड़ी पहले) — सिर्फ़ दिखाने का क्रम, डेटा नहीं बदलता। गांव के अंदर चाहिए तो
+// खोज में गांव का नाम लिखें (पता भी खोजा जाता है), फिर यही क्रम। पसंद हर फ़ोन पर याद रहती है
+var LIST_SORT_KEY="dc_listsort";
+var listSort=(function(){ try{ return localStorage.getItem(LIST_SORT_KEY)==="amount"?"amount":"ledger"; }catch(e){ return "ledger"; } })();
+function toggleListSort(){
+  listSort=(listSort==="amount")?"ledger":"amount";
+  try{ localStorage.setItem(LIST_SORT_KEY,listSort); }catch(e){}
+  _renderLimit=100;
+  renderList();
+}
+function _syncSortBtn(){
+  var b=document.getElementById("sort-btn"); if(!b) return;
+  b.className="sort-btn"+(listSort==="amount"?" on":"");
+  b.textContent=(listSort==="amount"?"✓ ":"")+"₹ बड़ी बकाया पहले";
+}
+// वादा: रिमार्क के साथ वैकल्पिक तारीख़ (remarksArr की entry में due:"yyyy-mm-dd")। बाकी उपभोक्ता का
+// सबसे नया वादा ही गिना जाता है; वसूल होते ही वादा अपने-आप ख़त्म (status देखकर)। पुराने version वाले
+// फ़ोन due को बस अनदेखा करते हैं — रिमार्क text में भी तारीख़ लिखी रहती है
+function _isoToday(){ var t=new Date(); return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0"); }
+function promiseDue(x){
+  if(!x||x.status==="paid") return "";
+  var a=x.remarksArr||[];
+  for(var i=a.length-1;i>=0;i--){ if(a[i]&&/^\d{4}-\d{2}-\d{2}$/.test(a[i].due||"")) return a[i].due; }
+  return "";
+}
+function _fmtDue(iso){ var p=String(iso||"").split("-"); return p.length===3?(Number(p[2])+"/"+Number(p[1])+"/"+p[0]):""; }
+// "📅 वादे" बटन में = आज या बीते दिनों के वादे (आगे के वादे card पर दिखते हैं, बटन में नहीं)
+function isPromiseDue(x,today){ var pd=promiseDue(x); return !!pd&&pd<=(today||_isoToday()); }
 function renderList(){var d=cGet(activeHQ,activeCat);renderListWith(d);}
 var _renderLimit=100;
 function renderListWith(data){
   _syncFilterBtns(); // बटन और असली फ़िल्टर कभी अलग न दिखें (देखें ऊपर)
+  _syncSortBtn();
+  var today=_isoToday();
+  var fbP=document.getElementById("fb-promise");
+  if(fbP){ var nP=data.filter(function(x){ return isPromiseDue(x,today); }).length; fbP.textContent="📅 वादे"+(nP?" ("+nP+")":""); }
   var q=(document.getElementById("search-inp").value||"").toLowerCase().trim();
   var c=document.getElementById("con-list");
   var filtered=data.filter(function(x){
@@ -57,17 +91,23 @@ function renderListWith(data){
     // हर उस record को गिनती है जो paid नहीं — इसलिए सूची भी वैसी ही छंटे। पहले सूची ठीक "pending"
     // लिखा होने पर ही दिखाती थी, तो जिस पुराने record में status खाली/कुछ और होता वह गिनती में तो
     // "बाकी" में आता पर सूची में कहीं नहीं दिखता — दोनों सूचियां जोड़ने पर कुल से कम बैठतीं
-    var st=(activeFilter==="paid")?(x.status==="paid"):(x.status!=="paid");
+    var st=(activeFilter==="promise")?isPromiseDue(x,today):
+           (activeFilter==="paid")?(x.status==="paid"):(x.status!=="paid");
     return matchQ&&(activeFilter==="all"||st);
   });
+  // वादे: सबसे पुराना (बीता) वादा सबसे ऊपर; बाक़ी में चुना हुआ क्रम
+  if(activeFilter==="promise") filtered.sort(function(a,b){ var pa=promiseDue(a),pb=promiseDue(b); return pa<pb?-1:pa>pb?1:0; });
+  else if(listSort==="amount") filtered.sort(function(a,b){ return (Number(b.amount)||0)-(Number(a.amount)||0); });
   if(!filtered.length){
     var emptyMsg;
-    if(activeFilter==="paid") emptyMsg="अभी कोई वसूली दर्ज नहीं";
+    if(activeFilter==="promise") emptyMsg="आज कोई वादा बाकी नहीं";
+    else if(activeFilter==="paid") emptyMsg="अभी कोई वसूली दर्ज नहीं";
     else if(activeFilter==="pending") emptyMsg="सभी वसूली हो चुकी है!";
     else if(q) emptyMsg="कोई परिणाम नहीं";
     else emptyMsg="सूची खाली है";
-    var emptyIco=activeFilter==="paid"?"✅":activeFilter==="pending"?"⏳":(q?"🔍":"📋");
-    var emptySub=(!q&&activeFilter==="all")?"📤 अपलोड बटन से लिस्ट डालें":"🔍 खोज या फ़िल्टर बदलें";
+    var emptyIco=activeFilter==="promise"?"📅":activeFilter==="paid"?"✅":activeFilter==="pending"?"⏳":(q?"🔍":"📋");
+    var emptySub=activeFilter==="promise"?"✏️ रिमार्क में वादा-तारीख़ डालें — उस दिन उपभोक्ता यहां दिखेगा":
+                 (!q&&activeFilter==="all")?"📤 अपलोड बटन से लिस्ट डालें":"🔍 खोज या फ़िल्टर बदलें";
     // audit-verified: emptyMsg/emptyIco/emptySub सब hardcoded literals में से चुने जाते हैं (कभी भी
     // सीधे q/किसी field का value नहीं होते) — plugin ternary को समझ नहीं पाता
     // eslint-disable-next-line no-unsanitized/property
@@ -90,7 +130,7 @@ function renderListWith(data){
     if(remarksArr.length){
       rmkHtml="<div class='cc-rmk-list'>";
       remarksArr.slice().reverse().forEach(function(r){
-        rmkHtml+="<div class='cc-rmk-item'><span>💬 "+escHtml(r.text)+"</span><span class='cc-rmk-by'>— "+escHtml(r.by)+(r.at?" • "+r.at:"")+"</span></div>";
+        rmkHtml+="<div class='cc-rmk-item'><span>💬 "+escHtml(r.text)+(r.due?" <b>📅 "+escHtml(_fmtDue(r.due))+"</b>":"")+"</span><span class='cc-rmk-by'>— "+escHtml(r.by)+(r.at?" • "+r.at:"")+"</span></div>";
       });
       rmkHtml+="</div>";
     }
@@ -105,10 +145,13 @@ function renderListWith(data){
       prevPayInfo="<span style='color:#7986cb;'>📅 पिछला भुगतान तिथि: "+escHtml(x.lastPayDate)+"</span>";
     }
     var payDateInfo=x.paydate?"<span class='cc-paydate'>💰 वसूल: "+escHtml(x.paydate)+"</span>":"";
+    var pdue=promiseDue(x), dueChip="";
+    if(pdue) dueChip="<span class='chip chip-due"+(pdue<today?" over":pdue===today?" today":"")+"'>📅 वादा: "+escHtml(_fmtDue(pdue))+
+      (pdue<today?" (बीत गया)":pdue===today?" (आज)":"")+"</span>";
     return "<div class='con-card "+(isPaid?"paid":"pending")+"'>"+
       "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+(x.father?" / "+escHtml(x.father):"")+"</div><button class='cc-share' title='शेयर' aria-label='शेयर' onclick=\"shareCard("+oi+",'"+escJsAttr(x.acc||"")+"',this)\">"+CC_SHARE_ICON+"</button><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
       "<div class='cc-amt'>₹"+Number(x.amount).toLocaleString("hi-IN")+" <span>बकाया</span></div>"+
-      "<div class='cc-chips'>"+
+      "<div class='cc-chips'>"+dueChip+
         (x.acc?"<span class='chip chip-acc' onclick=\"openAccModal('"+escJsAttr(x.acc)+"')\">📄 "+escHtml(x.acc)+"</span>":"")+
                 (x.phone?"<span class='chip chip-ph' style='cursor:pointer;' onclick=\"openPhModal('"+escJsAttr(x.name)+"','"+escJsAttr(x.phone)+"','"+escJsAttr(x.acc||"")+"','"+(Number(x.amount)||0)+"')\">📞 "+escHtml(x.phone)+"</span>":"")+
         (x.addr?"<span class='chip chip-addr'>📍 "+escHtml(x.addr)+"</span>":"")+
@@ -436,6 +479,8 @@ function openRmkModal(idx,acc){
   document.getElementById("rmk-acc").textContent="Consumer No: "+x.acc+(x.father?" | पिता/पति: "+x.father:"");
   // New remark textarea always empty
   document.getElementById("rmk-text").value="";
+  var dueEl=document.getElementById("rmk-due");
+  if(dueEl){ dueEl.value=""; dueEl.min=_isoToday(); }
   (function(){
     var t=new Date();
     var iso=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0");
@@ -462,7 +507,7 @@ function openRmkModal(idx,acc){
       // सीधे डाला गया हो तो टैग बेकार/redundant है
       var catTag=(r.cat&&r.cat!==activeCat)?" <span class='prev-rmk-cat'>📁 "+escHtml(r.cat)+"</span>":"";
       return "<div class='prev-rmk-item'>"+
-        "<div class='prev-rmk-text'>💬 "+escHtml(r.text)+catTag+"</div>"+
+        "<div class='prev-rmk-text'>💬 "+escHtml(r.text)+(r.due?" <b>📅 "+escHtml(_fmtDue(r.due))+"</b>":"")+catTag+"</div>"+
         "<div class='prev-rmk-meta'>— "+escHtml(r.by)+(r.at?" • "+r.at:"")+"</div>"+
       "</div>";
     }).join("");
@@ -482,6 +527,7 @@ function setRmkStatus(s){
   document.getElementById("rs-pending").className="topt"+(s==="pending"?" sel-pending":"");
   document.getElementById("rs-paid").className="topt"+(s==="paid"?" sel-paid":"");
   document.getElementById("rmk-paydate-grp").style.display=s==="paid"?"block":"none";
+  var dg=document.getElementById("rmk-due-grp"); if(dg) dg.style.display=s==="paid"?"none":"block"; // वसूल हो गया तो वादा किस बात का
 }
 function saveRmk(){
   var idx=parseInt(document.getElementById("rmk-key").value);
@@ -492,6 +538,10 @@ function saveRmk(){
   // या पूरी तरह चुपचाप fail होने का खतरा था — असली bug यही था)
   idx=_findRecordIdx(d,idx,acc);
   if(idx<0){toast("⚠ यह रिकॉर्ड अब सूची में नहीं मिला — मोडल बंद करके दोबारा कोशिश करें","err");return;}
+  // वादा-तारीख़ — सिर्फ़ बाकी पर; आज या आगे की ही (बीती तारीख़ का वादा बेमानी)
+  var dueEl=document.getElementById("rmk-due");
+  var due=(rmkStatus==="pending"&&dueEl&&/^\d{4}-\d{2}-\d{2}$/.test(dueEl.value||""))?dueEl.value:"";
+  if(due&&due<_isoToday()){toast("⚠ वादा-तारीख़ आज या आगे की होनी चाहिए","err");return;}
   var prevSnap=JSON.parse(JSON.stringify(d));
   d[idx]=migrateRemarks(d[idx]);
   var now=new Date();
@@ -509,11 +559,16 @@ function saveRmk(){
     }
   }
   var newText=document.getElementById("rmk-text").value.trim();
+  // सिर्फ़ तारीख़ डाली, कुछ लिखा नहीं — तब भी रिमार्क बने (text में तारीख़, ताकि पुराने फ़ोन पर भी दिखे)
+  if(due&&!newText) newText="📅 "+_fmtDue(due)+" को जमा करने का वादा";
+  /** रिमार्क की एक entry — due (yyyy-mm-dd) v9.202 से, सिर्फ़ वादे वाले रिमार्क में
+   * @type {{text:string, by:string, at:string, cat:string, due?:string}|null} */
   var newEntry=null;
   if(newText){
     if(!d[idx].remarksArr) d[idx].remarksArr=[];
     // cat टैग — यही वजह से बाद में दूसरी category में यह रिमार्क दिखे तो पता चले असल में कहां डाला गया था
     newEntry={text:newText,by:CU.name,at:dtStr,cat:activeCat};
+    if(due) newEntry.due=due;
     d[idx].remarksArr.push(newEntry);
     // Keep backward-compat field as latest remark text
     d[idx].remarks=newText;
@@ -525,7 +580,7 @@ function saveRmk(){
   closeRmkModal();
   renderSummaryWith(d); renderListWith(d);
   var total=(d[idx].remarksArr||[]).length;
-  toast("✅ रिमार्क सेव! (कुल "+total+")","ok");
+  toast(due?("✅ रिमार्क सेव — 📅 "+_fmtDue(due)+" को \"वादे\" बटन में दिखेगा"):("✅ रिमार्क सेव! (कुल "+total+")"),"ok");
   fbSet(activeHQ,activeCat,d,prevSnap,null);
   propagateStatus(d[idx].acc,activeCat,rmkStatus,d[idx].paydate||"",dtStr,d[idx].ts);
   // JE की शिकायत: किसी category में डाला कमेंट "कुल उपभोक्ता" में नहीं दिखता था — हर category उसी
