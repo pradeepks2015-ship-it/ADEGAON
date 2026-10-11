@@ -197,6 +197,8 @@ try{
         <input type="text" class="si" id="search-inp" placeholder="नाम, No., Mobile, पता, Tariff खोजें..." oninput="debounceSearch()">
       </div>
     </div>
+    <!-- v9.203: गांव की पट्टी — टैप करते ही उसी गांव की सूची (JE: अंग्रेज़ी नाम, सबसे ज़्यादा बाकी पहले) -->
+    <div class="vg-wrap" id="vg-wrap" style="display:none;"></div>
     <div class="filter-wrap">
       <button class="filter-btn active-all" data-f="all" onclick="setFilter(this)">सभी</button>
       <button class="filter-btn" data-f="pending" onclick="setFilter(this)">&#9203; बाकी</button>

@@ -368,4 +368,68 @@ test('सूची के ऊपर क्रम वाली कोई पं�
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   expect(html).not.toContain('sort-hint');
   expect(html).not.toContain('क्रम चालू');
+// ── v9.203: गांव की पट्टी — टैप करते ही उसी गांव की सूची (JE: अंग्रेज़ी नाम, सबसे ज़्यादा बाकी पहले) ──
+test.describe('गांव की पट्टी (v9.203)', () => {
+  const recs = [
+    { acc: '1', name: 'अ', amount: 100, status: 'pending', addr: 'ADEGAON' },
+    { acc: '2', name: 'ब', amount: 900, status: 'pending', addr: 'HAMEERGARH' },
+    { acc: '3', name: 'स', amount: 500, status: 'pending', addr: 'HAMEERGAGH' }, // आदेगांव का स्पेलिंग-सुधार → HAMEERGARH
+    { acc: '4', name: 'द', amount: 50, status: 'pending', addr: 'hameergarh ' }, // केस/स्पेस → HAMEERGARH
+    { acc: '5', name: 'य', amount: 70, status: 'paid', addr: 'DEVRI' },
+    { acc: '6', name: 'र', amount: 20, status: 'pending', addr: 'ADEGAON' },
+  ];
+  const seed = async (page) => {
+    await openApp(page);
+    await loginLineman(page); // पहला HQ = आदेगांव (VILLAGE_ALIASES वाला)
+    await page.locator('#loader').waitFor({ state: 'hidden', timeout: 20000 }); // लोड-परत बटनों के ऊपर न रहे
+    await page.evaluate((r) => { listSort = 'ledger'; cSet(activeHQ, activeCat, r); _renderLimit = 100; renderList(); }, recs);
+  };
+  const chips = (page) => page.$$eval('#vg-wrap .vg-chip', (els) => els.map((e) => e.textContent.trim()));
+  const names = (page) => page.$$eval('#con-list .con-card .cc-name', (els) => els.map((e) => e.textContent.trim()));
+
+  test('गांव बाकी की गिनती के साथ, सबसे ज़्यादा बाकी पहले; स्पेलिंग-भेद एक ही बटन में', async ({ page }) => {
+    await seed(page);
+    expect(await chips(page)).toEqual(['सभी', 'HAMEERGARH3', 'ADEGAON2', 'DEVRI0']);
+    await expect(page.locator('#vg-wrap .vg-chip.on')).toHaveText('सभी');
+  });
+
+  test('गांव टैप → सिर्फ़ उसी के उपभोक्ता; "बड़ी बकाया पहले" उसी गांव में; "सभी" पर वापस', async ({ page }) => {
+    await seed(page);
+    await page.click('#vg-wrap .vg-chip:has-text("HAMEERGARH")');
+    expect(await names(page)).toEqual(['ब', 'स', 'द']);
+    await expect(page.locator('#vg-wrap .vg-chip.on')).toContainText('HAMEERGARH');
+    await page.evaluate(() => setListSort('amount'));
+    expect(await names(page)).toEqual(['ब', 'स', 'द']);
+    await page.click('[data-f="paid"]');
+    await expect(page.locator('#con-list')).toContainText('अभी कोई वसूली दर्ज नहीं');
+    await page.click('[data-f="all"]');
+    await page.click('#vg-wrap .vg-chip:has-text("सभी")');
+    expect((await names(page)).length).toBe(6);
+  });
+
+  test('PDF/Excel भी चुने गांव का ही; श्रेणी बदलते ही गांव "सभी" पर लौटे', async ({ page }) => {
+    await seed(page);
+    await page.click('#vg-wrap .vg-chip:has-text("ADEGAON")');
+    expect(await page.evaluate(() => _filteredForDownload().map((x) => x.acc))).toEqual(['1', '6']);
+    await page.evaluate(() => { cSet(activeHQ, CATS[1], [{ acc: '9', name: 'क', amount: 1, status: 'pending', addr: 'ADEGAON' }]); });
+    await page.locator('.cat-tab').nth(1).click();
+    await page.waitForFunction(() => activeVillage === '');
+    await expect(page.locator('#vg-wrap')).toBeHidden(); // एक ही गांव — पट्टी नहीं
+  });
+
+  test('गांव का नाम HTML बनकर न चले (escHtml) — पते में <img onerror> हो तो भी', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const fired = await page.evaluate(() => {
+      window.__x = 0;
+      cSet(activeHQ, activeCat, [
+        { acc: '1', name: 'क', amount: 1, status: 'pending', addr: '<img src=x onerror="window.__x=1">' },
+        { acc: '2', name: 'ख', amount: 1, status: 'pending', addr: 'ADEGAON' },
+      ]);
+      renderList();
+      return new Promise((r) => setTimeout(() => r(window.__x), 300));
+    });
+    expect(fired).toBe(0);
+    expect(await page.locator('#vg-wrap img').count()).toBe(0);
+  });
 });
