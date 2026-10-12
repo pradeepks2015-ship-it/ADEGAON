@@ -373,6 +373,51 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     expect(await page.evaluate(() => CU && CU.hq)).toBe('जोबा'); // session बना रहा, logout नहीं हुआ (doLogout होता तो CU null हो जाता)
   });
 
+  // v9.212 — JE (12/10): "फ़ोन का back बटन दबाकर ऐप दोबारा खोलो तो फिर PIN मांगता है"। पहले नेट के
+  // अलावा हर नाकामी पर logout होता था; App Check/reCAPTCHA token न मिलना या "बहुत ज़्यादा कोशिशें"
+  // PIN की ग़लती नहीं — तब लाइनमैन अंदर रहे, वजह लॉग हो, थोड़ी देर बाद फिर कोशिश
+  for (const code of ['auth/firebase-app-check-token-is-invalid', 'auth/too-many-requests', 'auth/internal-error']) {
+    test('_ensureCorrectHqAuth (v9.212) — ' + code + ' पर logout नहीं; लॉग में reauth-needed + reauth-fail; 1 मिनट बाद फिर कोशिश', async ({ page }) => {
+      await openApp(page);
+      const r = await page.evaluate((c) => new Promise((resolve) => {
+        localStorage.removeItem('dc_logs3');
+        CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा', pin: '1234' };
+        saveSession();
+        let tries = 0;
+        window.firebase = window.firebase || {};
+        window.firebase.auth = function () {
+          return { currentUser: { email: null, isAnonymous: true }, signInWithEmailAndPassword: function () { tries++; return Promise.reject({ code: c }); } };
+        };
+        _ensureCorrectHqAuth(function () {
+          setTimeout(() => resolve({ hq: CU && CU.hq, sess: !!localStorage.getItem('dc_cu'), retry: !!_authRetryT, tries, logs: getLogs().map((l) => l.c + '|' + l.x) }), 50);
+        });
+      }), code);
+      expect(r.hq).toBe('जोबा');
+      expect(r.sess).toBe(true);
+      expect(r.retry).toBe(true);
+      expect(r.tries).toBe(1);
+      expect(r.logs.some((l) => l.startsWith('reauth-needed|anonymous • PIN याद:हां'))).toBe(true);
+      expect(r.logs.some((l) => l === 'reauth-fail|जोबा • ' + code)).toBe(true);
+      expect(r.logs.some((l) => l.startsWith('auto-logout'))).toBe(false);
+    });
+  }
+
+  test('_ensureCorrectHqAuth (v9.212) — auth/invalid-credential (नया Firebase ग़लत-PIN code) पर logout + लॉग में auto-logout', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      localStorage.removeItem('dc_logs3');
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा', pin: '1234' };
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: { email: null }, signInWithEmailAndPassword: function () { return Promise.reject({ code: 'auth/invalid-credential' }); } };
+      };
+      _ensureCorrectHqAuth();
+    });
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => CU)).toBeNull();
+    expect(await page.evaluate(() => getLogs().some((l) => l.c === 'auto-logout' && l.x === 'जोबा • auth/invalid-credential'))).toBe(true);
+  });
+
   test('_ensureCorrectHqAuth — JE (supervisor) के लिए कुछ न करे (सिर्फ़ lineman पर लागू)', async ({ page }) => {
     await openApp(page);
     const called = await page.evaluate(() => {

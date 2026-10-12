@@ -206,6 +206,11 @@ var _authHealed={};
 // CU ही null हो जाता है तो ज़्यादातर यह अपने-आप एक बार ही चलेगा, पर _ensureCorrectHqAuth कई जगह से
 // लगभग एक साथ बुलाया जा सकता है — जैसे एक साथ कई श्रेणियों में save नाकाम होना — इसलिए अलग गार्ड)
 var _authWrongPin={};
+// v9.212: सिर्फ़ इन्हीं पर logout — Firebase का साफ़ कहना कि PIN (पासवर्ड) ग़लत है या खाता बंद/नहीं है
+var REAUTH_LOGOUT_CODES=["auth/wrong-password","auth/invalid-credential","auth/invalid-login-credentials","auth/user-disabled","auth/user-not-found"];
+var REAUTH_RETRY_MS=60000; // बाकी नाकामियों पर 1 मिनट बाद एक बार फिर कोशिश
+var _authRetryT=null;
+var _authReauthLogged={}; // "reauth-needed" हर HQ पर session में एक बार
 // cb (वैकल्पिक) — सही account असल में तय हो जाने पर ही चलता है, न कि सिर्फ़ sign-in *शुरू* होने पर।
 // पहले यह हमेशा fire-and-forget था (कोई callback नहीं) — caller (जैसे reconcileHQ) इसके फ़ौरन
 // बाद ही चल जाता, जबकि नीचे वाला signInWithEmailAndPassword अभी async चल ही रहा होता — असली
@@ -250,7 +255,16 @@ function _ensureCorrectHqAuth(cb){
   // जब AUTH_READY हो चुका हो (caller हमेशा _afterAuthReady से गुज़ारकर बुलाता है), इसलिए "ग़लत
   // account" का यह नतीजा भरोसेमंद है, कोई अस्थायी/अनिश्चित स्थिति नहीं
   var pin=CU.pin;
+  // v9.212: हर बार जब फ़ोन का Firebase खाता HQ वाला न निकले, वजह दर्ज करें (session में एक बार) —
+  // JE (12/10): "फ़ोन का back बटन दबाकर ऐप दोबारा खोलो तो फिर PIN मांगता है"। यह तभी होता है जब
+  // यहां से दोबारा sign-in नाकाम हो; पहले इसका कोई सुराग़ लॉग में नहीं था
+  if(!_authReauthLogged[hq]){
+    _authReauthLogged[hq]=true;
+    logErr("reauth-needed","फ़ोन का Firebase खाता HQ वाला नहीं — दोबारा जोड़ना पड़ा",
+      (u?(u.isAnonymous?"anonymous":(u.email||"बिना email")):"कोई खाता नहीं")+" • PIN याद:"+(pin?"हां":"नहीं")+" • App Check:"+((typeof AC_TOKEN!=="undefined"&&AC_TOKEN)?"है":"नहीं"));
+  }
   if(!pin){
+    logErr("auto-logout","PIN याद नहीं — दोबारा login मांगा",hq);
     doLogout(false);
     toast("🔐 सुरक्षा अपडेट — कृपया एक बार दोबारा PIN डालकर login करें","inf");
     return cb();
@@ -272,9 +286,22 @@ function _ensureCorrectHqAuth(cb){
       // ही "online" event पर फिर कोशिश होगी। बाक़ी हर वजह (ग़लत PIN यानी auth/wrong-password या
       // auth/invalid-credential) का मतलब है यह PIN अब काम का नहीं — !pin वाले रास्ते जैसा ही
       // साफ़ logout करके दोबारा सही PIN मांगना ही एकमात्र पक्का रास्ता है
-      if(e&&e.code==="auth/network-request-failed") return cb();
+      var code=(e&&e.code)||"";
+      if(code==="auth/network-request-failed") return cb();
+      // v9.212: logout सिर्फ़ तब, जब Firebase साफ़ कहे कि PIN (पासवर्ड) ग़लत है या खाता बंद है।
+      // पहले नेट के अलावा हर नाकामी पर logout होता था — जबकि App Check/reCAPTCHA का token न
+      // मिलना (धीमे नेट पर आम, 8–9/10 को Google वाली दिक़्क़त में भी), "बहुत ज़्यादा कोशिशें"
+      // (auth/too-many-requests) या Firebase की अंदरूनी गड़बड़ी PIN की ग़लती नहीं। तब लाइनमैन अंदर
+      // ही रहे — वसूली फ़ोन में सुरक्षित (pending), अगली बार नेट आने / ऐप खुलने पर फिर कोशिश, और
+      // थोड़ी देर बाद (token तैयार हो चुका हो) एक बार अपने-आप भी
+      if(REAUTH_LOGOUT_CODES.indexOf(code)<0){
+        logErr("reauth-fail","HQ खाते से दोबारा जुड़ना नाकाम — logout नहीं किया",hq+" • "+(code||((e&&e.message)||"?")));
+        if(!_authRetryT) _authRetryT=setTimeout(function(){ _authRetryT=null; _ensureCorrectHqAuth(); },REAUTH_RETRY_MS);
+        return cb();
+      }
       if(!_authWrongPin[hq]){
         _authWrongPin[hq]=true;
+        logErr("auto-logout","PIN ग़लत निकला — दोबारा login मांगा",hq+" • "+code);
         doLogout(false);
         toast("🔐 PIN बदल गया लगता है — कृपया सही PIN डालकर दोबारा login करें","inf");
       }
@@ -395,7 +422,8 @@ function doLogout(askConfirm){
   // लग चुका था (लगातार 3 बार 401 के बाद auto-retry रुक जाता है) वो उसी session में अटकी ही रह जातीं —
   // ऐप पूरी तरह बंद करके खोलने पर ही चलतीं (तब यह याददाश्त ख़ुद खाली हो जाती है)।
   // _authWrongPin भी इसी वजह से: वह रह जाए तो आगे कभी PIN सच में ग़लत हो तो न logout होगा न toast
-  _authHealed={}; _authWrongPin={};
+  _authHealed={}; _authWrongPin={}; _authReauthLogged={};
+  if(_authRetryT){clearTimeout(_authRetryT);_authRetryT=null;}
   CU=null; selectedRole="";
   document.getElementById("app-screen").classList.remove("active");
   document.getElementById("login-screen").classList.add("active");
