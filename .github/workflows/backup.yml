@@ -26,6 +26,18 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: node scripts/backup.js
+      # repo public है — artifact कोई भी logged-in GitHub user उतार सकता है। इसलिए Excel पर
+      # पासवर्ड (AES-256) लगाकर ही रखें; secret न हो तो job फेल, बिना ताले की फ़ाइल कभी नहीं
+      # (12/10/2026 — उससे पहले के सादे बैकअप मिटा दिए गए)। देखें scripts/encrypt-backup.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Lock backup with password
+        env:
+          BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+        run: |
+          pip install --quiet msoffcrypto-tool==5.4.2
+          python3 scripts/encrypt-backup.py backup-output
       # Firebase/Google Cloud storage में कुछ भी सेव नहीं होता — फ़ाइल सिर्फ़ यहीं (GitHub
       # Actions artifact) बनती है, और तय दिनों बाद अपने-आप मिट जाती है — storage कभी नहीं बढ़ता
       - name: Upload backup artifact
@@ -34,3 +46,4 @@ jobs:
           name: adegaon-backup-${{ github.run_id }}
           path: backup-output/*.xlsx
           retention-days: 30
+          if-no-files-found: error

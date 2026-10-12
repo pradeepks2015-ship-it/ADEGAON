@@ -96,7 +96,8 @@ Firebase प्रोजेक्ट में Owner, Netlify में member, 
    App Check (reCAPTCHA v3, site key नोट करें; reCAPTCHA admin में `<github-user>.github.io` जोड़ें) →
    Service accounts → नई private key (JSON — किसी को न भेजें) → Web app जोड़कर config लें
 2. **Authentication → Settings → Authorized domains** में `<github-user>.github.io` जोड़ें — छूटा तो login ही नहीं होगा
-3. **GitHub:** नया repo; Settings → Secrets → Actions में `FIREBASE_SERVICE_ACCOUNT` = ऊपर का JSON
+3. **GitHub:** नया repo; Settings → Secrets → Actions में `FIREBASE_SERVICE_ACCOUNT` = ऊपर का JSON; और `BACKUP_PASSWORD` = बैकअप
+   Excel का पासवर्ड (repo public है — इसके बिना साप्ताहिक बैकअप जान-बूझकर फेल होता है, देखें `scripts/encrypt-backup.py`)
 4. **GitHub Pages:** नए repo → Settings → Pages → Source: "Deploy from a branch", `main` / root।
    (Netlify का मुफ़्त plan बार-बार deploy पर क्रेडिट ख़त्म कर देता है — 22/9/2026 को यही हुआ)
 
