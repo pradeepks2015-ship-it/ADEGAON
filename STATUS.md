@@ -4,7 +4,7 @@
 > (`git log --oneline -30`) — यहां सिर्फ़ **अभी की स्थिति**, **हाल के फ़ैसले** और **जो सीखा** है।
 > काम पूरा होने पर इसे अपडेट करते चलें।
 
-**आख़िरी अपडेट:** 12 अक्टूबर 2026 · **Version:** 9.211 · **CACHE_NAME:** adegaon-dc-v228
+**आख़िरी अपडेट:** 12 अक्टूबर 2026 · **Version:** 9.212 · **CACHE_NAME:** adegaon-dc-v229
 
 ---
 
@@ -54,13 +54,29 @@
 | #246 | Dependabot महीने में एक बार, एक PR | 12 अक्टू ✅ |
 | #249 | v9.209 — बिना नेट की errors बाद में + अटकी वसूली की चेतावनी | 12 अक्टू ✅ |
 | #250 | v9.210 — TypeScript 7 + setup-python v7 (Dependabot #247 #248) | 12 अक्टू ✅ |
-| — | v9.211 — ऐप पहले फ़ोन से खुले + fonts ऐप के साथ | 12 अक्टू (JE की screenshot-हां बाकी) |
+| #251 | v9.211 — ऐप पहले फ़ोन से खुले + fonts ऐप के साथ | 12 अक्टू ✅ |
+| — | v9.212 — back बटन के बाद दोबारा PIN: logout सिर्फ़ ग़लत PIN पर + वजह लॉग में | 12 अक्टू |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
 कर लें (पिछले squash-merge से conflict बचाने के लिए)।
 
 ---
+
+## 1प. 12 अक्टूबर — "back बटन दबाकर दोबारा खोलो तो फिर PIN मांगता है"
+
+### v9.212
+JE ने बताया कि लाइनमैन बिना लॉगआउट किए बाहर हो जाते हैं: फ़ोन का back बटन दबाकर ऐप दोबारा खोलें, तो फिर PIN मांगता है।
+- session (`dc_cu`) सिर्फ़ `doLogout` मिटाता है, और लाइनमैन पर वह अपने-आप सिर्फ़ `_ensureCorrectHqAuth` से चलता है:
+  जब फ़ोन का Firebase खाता HQ वाला न हो और याद रखे PIN से दोबारा जुड़ना नाकाम हो
+- **कमी:** नेट (`auth/network-request-failed`) के अलावा **हर** नाकामी पर logout होता था — App Check/reCAPTCHA token
+  न मिलना, `auth/too-many-requests`, अंदरूनी गड़बड़ी भी। और इसकी वजह कहीं दर्ज नहीं होती थी
+- **अब:** logout सिर्फ़ `REAUTH_LOGOUT_CODES` (wrong-password, invalid-credential, invalid-login-credentials, user-disabled,
+  user-not-found) पर। बाकी पर लाइनमैन अंदर रहता है, लॉग में `reauth-fail` दर्ज होता है, और 1 मिनट बाद एक बार फिर कोशिश होती है
+- **लॉग:** `reauth-needed` (फ़ोन का खाता anonymous/कोई नहीं/दूसरा • PIN याद है? • App Check token है?) — हर HQ पर
+  session में एक बार। `auto-logout` में वजह और code
+- **अभी पक्का नहीं:** फ़ोन का Firebase खाता back बटन/दोबारा खोलने पर HQ वाला क्यों नहीं रहता। अगले दिनों का
+  `reauth-needed` / `reauth-fail` लॉग यही बताएगा
 
 ## 1न. 12 अक्टूबर — रफ़्तार 8.7 → 9.5 (कदम 1 और 2)
 
