@@ -49,13 +49,22 @@
 | #239 | v9.206 — SMS छोटा, WhatsApp पूरा | 11 अक्टू ✅ |
 | #242 | v9.207 — "इस सप्ताह जमा का वादा" (सोमवार–रविवार) | 11 अक्टू ✅ |
 | #243 | v9.208 — टूटे वादे भी उसी बटन में | 11 अक्टू ✅ |
-| — | बैकअप पर पासवर्ड (ऐप नहीं बदला) | 12 अक्टू |
+| #244 | बैकअप पर पासवर्ड (ऐप नहीं बदला) | 12 अक्टू ✅ |
+| — | Dependabot के 7 PR एक साथ (ऐप नहीं बदला) | 12 अक्टू |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
 कर लें (पिछले squash-merge से conflict बचाने के लिए)।
 
 ---
+
+## 1थ. 12 अक्टूबर — Dependabot के 7 PR एक साथ
+
+JE की हां से #172 #173 #174 #176 #219 #240 #241 (सब सिर्फ़ जांच/CI के औज़ार, ऐप की कोई फ़ाइल नहीं) एक ही PR में:
+- eslint 10.8 → 10.12, @playwright/test 1.61 → 1.64, globals 15 → 17, espree 10 → 11
+- actions/checkout और setup-node v5 → v7, upload-artifact v4 → v7
+- अलग-अलग merge करने पर हर npm PR का package-lock टकराता, इसलिए एक साथ। Dependabot अपने PR ख़ुद बंद कर देता है
+- merge के बाद बैकअप (ताले वाली फ़ाइल) और "Deploy Firebase Rules" हाथ से चलाकर जांचे गए। उस वक़्त rules बदले नहीं थे, तो deploy वही दोबारा लगाता है
 
 ## 1त. 12 अक्टूबर — साप्ताहिक बैकअप सबके लिए खुला था (ठीक किया)
 
@@ -67,7 +76,7 @@ artifact में 30 दिन रखता था। **repo public है**, �
 - अब `scripts/encrypt-backup.py` Excel पर उसका अपना पासवर्ड (AES-256, `msoffcrypto-tool` 5.4.2) लगाता है।
   पासवर्ड GitHub Secret **`BACKUP_PASSWORD`**, जो **JE का login वाला पासवर्ड** है (JE का फ़ैसला, 12/10), और जिसे JE ख़ुद डालते हैं।
   secret न हो या ताला न लगे तो सादी फ़ाइल मिटाकर job **फेल** होता है, और बिना ताले की फ़ाइल कभी upload नहीं होती
-- बैकअप Excel/WPS/फ़ोन के Excel में पासवर्ड डालकर सामान्य तरह खुलता है
+- बैकअप Excel/WPS/फ़ोन के Excel में पासवर्ड डालकर सामान्य तरह खुलता है — **JE ने 12/10 को डाउनलोड करके खोलकर पुष्टि की** ✅
 - **ध्यान:** JE login पासवर्ड बदलें तो `BACKUP_PASSWORD` secret भी बदलें, वरना नए बैकअप पुराने पासवर्ड से खुलेंगे
 - **repo को private करना हल नहीं है**, क्योंकि मुफ़्त plan पर private repo से GitHub Pages बंद हो जाता है
 - checklist के बाक़ी छोटे सुझाव (बाद में, 25/10 की समीक्षा के बाद): Firebase की 3 script पर `integrity`,

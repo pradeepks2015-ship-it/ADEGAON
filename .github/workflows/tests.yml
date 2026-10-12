@@ -12,8 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -32,8 +32,8 @@ jobs:
     # के बाद सीमा पर कटने लगा (टेस्ट फेल नहीं, "cancelled")। अटका टेस्ट फिर भी 60 सेकंड में ख़ुद फेल होता है
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
