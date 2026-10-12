@@ -114,9 +114,55 @@ test.describe('PWA installable — manifest + icons', () => {
       expect(coreBlock, src + ' CORE में होना चाहिए').toContain('./' + src);
     });
     // CORE वाले c.add() पर कोई per-file .catch न हो — नाकामी पूरे install (Promise.all) को reject करे
-    expect(installBlock).toMatch(/CORE\.map\(function\(u\)\{return c\.add\(u\);\}\)/);
+    expect(installBlock).toMatch(/CORE\.map\(function\(u\)\{return c\.add\(_fresh\(u\)\);\}\)/);
     // OPTIONAL वाले c.add() पर .catch(function(){}) हो — चुपचाप skip हों, install न रुके
-    expect(installBlock).toMatch(/OPTIONAL\.map\(function\(u\)\{return c\.add\(u\)\.catch\(function\(\)\{\}\);\}\)/);
+    expect(installBlock).toMatch(/OPTIONAL\.map\(function\(u\)\{return c\.add\(_fresh\(u\)\)\.catch\(function\(\)\{\}\);\}\)/);
+  });
+
+  // v9.211: गांव के धीमे नेट पर ऐप हर फ़ाइल के लिए नेट का इंतज़ार करता था (नेट-पहले, कोई समय-सीमा नहीं)।
+  // अब इसी साइट की फ़ाइलें पहले फ़ोन की कॉपी से — यहाँ असली fetch-handler नक़ली scope में चलाकर जांच
+  test('sw.js (v9.211) — अपनी फ़ाइलें पहले cache से (नेट को छुए बिना); cache में न हो तो नेट; दूसरी साइटें नेट-पहले; मुख्य पन्ना ?… वाले लिंक से भी cache से', async () => {
+    const swSrc = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+    function run(url, mode, cached, netRes) {
+      let handler = null, answered = null, netCalls = 0;
+      const scope = {
+        location: { origin: 'https://app.test' },
+        addEventListener: (t, fn) => { if (t === 'fetch') handler = fn; },
+        skipWaiting: () => Promise.resolve(),
+        clients: { claim: () => Promise.resolve() },
+      };
+      const cachesStub = {
+        open: () => Promise.resolve({ put: () => Promise.resolve(), add: () => Promise.resolve() }),
+        keys: () => Promise.resolve([]),
+        match: (req, opts) => {
+          let u = typeof req === 'string' ? req : req.url;
+          if (u === './') u = 'https://app.test/';
+          if (opts && opts.ignoreSearch) u = u.split('?')[0];
+          return Promise.resolve(cached[u]);
+        },
+      };
+      new Function('self', 'caches', 'fetch', swSrc)(scope, cachesStub, () => { netCalls++; return Promise.resolve(netRes); });
+      handler({ request: { url, method: 'GET', mode }, respondWith: (p) => { answered = p; } });
+      return answered.then((r) => ({ body: r && r.body, netCalls }));
+    }
+    const net = { ok: true, body: 'नेट वाली', clone: () => ({}) };
+    const copy = { ok: true, body: 'फ़ोन वाली' };
+    // 1. अपनी फ़ाइल cache में है — नेट को छुए बिना फ़ोन वाली
+    expect(await run('https://app.test/js/list.js', 'no-cors', { 'https://app.test/js/list.js': copy }, net)).toEqual({ body: 'फ़ोन वाली', netCalls: 0 });
+    // 2. cache में नहीं (जैसे lazy upload.js?v=…) — नेट से
+    expect(await run('https://app.test/js/upload.js?v=9.211', 'no-cors', {}, net)).toEqual({ body: 'नेट वाली', netCalls: 1 });
+    // 3. दूसरी साइट (Google/Firebase SDK) — पहले जैसा नेट-पहले
+    expect(await run('https://www.gstatic.com/x.js', 'cors', { 'https://www.gstatic.com/x.js': copy }, net)).toEqual({ body: 'नेट वाली', netCalls: 1 });
+    // 4. मुख्य पन्ना WhatsApp लिंक (?utm…) या index.html से — रखी हुई "./" कॉपी, बिना नेट
+    expect(await run('https://app.test/?utm=wa', 'navigate', { 'https://app.test/': copy }, net)).toEqual({ body: 'फ़ोन वाली', netCalls: 0 });
+    expect(await run('https://app.test/index.html', 'navigate', { 'https://app.test/': copy }, net)).toEqual({ body: 'फ़ोन वाली', netCalls: 0 });
+    // 5. दूसरा पन्ना (privacy.html) cache में नहीं — मुख्य पन्ना नहीं, नेट से असली पन्ना
+    expect(await run('https://app.test/privacy.html', 'navigate', { 'https://app.test/': copy }, net)).toEqual({ body: 'नेट वाली', netCalls: 1 });
+  });
+
+  test('sw.js (v9.211) — install हर फ़ाइल सर्वर से ताज़ा पूछे (cache:no-cache), browser की 10 मिनट पुरानी प्रति नहीं', () => {
+    const swContent = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+    expect(swContent).toMatch(/function _fresh\(u\)\{ return new Request\(u,\{cache:"no-cache"\}\); \}/);
   });
 
   test('index.html में manifest लिंक है और manifest.json सही/मान्य है', async ({ page }) => {
