@@ -50,7 +50,8 @@
 | #242 | v9.207 — "इस सप्ताह जमा का वादा" (सोमवार–रविवार) | 11 अक्टू ✅ |
 | #243 | v9.208 — टूटे वादे भी उसी बटन में | 11 अक्टू ✅ |
 | #244 | बैकअप पर पासवर्ड (ऐप नहीं बदला) | 12 अक्टू ✅ |
-| #245 | Dependabot के 7 PR एक साथ (ऐप नहीं बदला) | 12 अक्टू |
+| #245 | Dependabot के 7 PR एक साथ (ऐप नहीं बदला) | 12 अक्टू ✅ |
+| — | Dependabot महीने में एक बार, एक PR | 12 अक्टू |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
@@ -63,7 +64,8 @@ dev branch main के बराबर है। नया काम शुर�
 JE की हां से #172 #173 #174 #176 #219 #240 #241 (सब सिर्फ़ जांच/CI के औज़ार, ऐप की कोई फ़ाइल नहीं) एक ही PR में:
 - eslint 10.8 → 10.12, @playwright/test 1.61 → 1.64, globals 15 → 17, espree 10 → 11
 - actions/checkout और setup-node v5 → v7, upload-artifact v4 → v7
-- अलग-अलग merge करने पर हर npm PR का package-lock टकराता, इसलिए एक साथ। Dependabot अपने PR ख़ुद बंद कर देता है
+- अलग-अलग merge करने पर हर npm PR का package-lock टकराता, इसलिए एक साथ। पुराने 7 PR हाथ से बंद किए
+- **JE (12/10): Dependabot अब महीने में एक बार**, और npm व actions के सारे अपडेट अपने-अपने एक PR में (`groups`), यानी महीने में ज़्यादा से ज़्यादा 2 PR
 - merge के बाद बैकअप (ताले वाली फ़ाइल) और "Deploy Firebase Rules" हाथ से चलाकर जांचे गए। उस वक़्त rules बदले नहीं थे, तो deploy वही दोबारा लगाता है
 
 ## 1त. 12 अक्टूबर — साप्ताहिक बैकअप सबके लिए खुला था (ठीक किया)
