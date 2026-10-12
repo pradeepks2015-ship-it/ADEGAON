@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v227";
+var CACHE_NAME="adegaon-dc-v228";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -50,6 +50,9 @@ var OPTIONAL=[
   // ऐप install होते वक़्त browser ख़ुद नेट से लेता है; offline चलने के लिए इनकी ज़रूरत नहीं थी, फिर
   // भी हर नए फ़ोन पर ~510 KB उतरते थे। login पन्ने का logo अब यह छोटी फ़ाइल है (~14 KB)
   "./icons/login-logo.webp",
+  // v9.211: शीर्षक वाला font (Baloo 2) — अब Google से नहीं, यहीं से; offline में भी वही अक्षर
+  "./fonts/baloo2-devanagari.woff2",
+  "./fonts/baloo2-latin.woff2",
   "./icons/apple-touch-icon.png",
   "./icons/tower-decoration.svg",
   "./icons/scorecard-icon.svg",
@@ -61,12 +64,16 @@ var OPTIONAL=[
   "./sounds/wow1.mp3",
   "./sounds/wow2.mp3"
 ];
+// v9.211: install हमेशा सर्वर से ताज़ा पूछे (no-cache = ETag से जांच; बदली नहीं तो छोटा 304)। अब ऐप
+// की फ़ाइलें पहले फ़ोन की कॉपी से चलती हैं (नीचे fetch), इसलिए नए version की cache में browser की
+// पुरानी (GitHub Pages ~10 मिनट तक रखता है) प्रति आ गई तो वह अगले version तक अटकी रहती
+function _fresh(u){ return new Request(u,{cache:"no-cache"}); }
 self.addEventListener("install",function(e){
   e.waitUntil(
     caches.open(CACHE_NAME).then(function(c){
-      return Promise.all(CORE.map(function(u){return c.add(u);}))
+      return Promise.all(CORE.map(function(u){return c.add(_fresh(u));}))
         .then(function(){
-          return Promise.all(OPTIONAL.map(function(u){return c.add(u).catch(function(){});}));
+          return Promise.all(OPTIONAL.map(function(u){return c.add(_fresh(u)).catch(function(){});}));
         });
     }).then(function(){return self.skipWaiting();})
   );
@@ -78,11 +85,37 @@ self.addEventListener("activate",function(e){
     }).then(function(){return self.clients.claim();})
   );
 });
+// ── v9.211: ऐप की अपनी फ़ाइलें पहले फ़ोन की कॉपी से ──
+// पहले हर फ़ाइल पहले नेट से मांगी जाती थी, और फ़ोन वाली कॉपी तभी मिलती जब नेट पूरी तरह टूटा हो।
+// गांव में अक्सर नेट "है पर बहुत धीमा" होता है — तब ऐप हर फ़ाइल के लिए नेट का इंतज़ार करता (कोई
+// समय-सीमा नहीं), जबकि वही फ़ाइल फ़ोन में रखी थी। अब इसी साइट की फ़ाइलें (और मुख्य पन्ना) पहले cache
+// से — ऐप तुरंत खुलता है। नया version पहले की तरह आता है: नया sw.js (CACHE_NAME बदला) install होकर
+// सारी फ़ाइलें ताज़ा उतारता है, फिर "नया version आ गया" (js/reports.js)। एक version की सारी फ़ाइलें
+// एक साथ बदलती हैं, इसलिए पुरानी-नई फ़ाइलों का मेल ("X is not defined") भी नहीं होता।
+// दूसरी साइटों (Google/Firebase) की चीज़ें पहले जैसी नेट-पहले; Firebase डेटा SW छूता ही नहीं
+function _isOwnFile(url){
+  try{ return !!(self.location&&url.indexOf(self.location.origin+"/")===0); }catch(x){ return false; }
+}
+function _fromCache(req){
+  // मुख्य पन्ना WhatsApp लिंक (?…) या index.html से भी खुलता है — सबके लिए वही रखी हुई कॉपी
+  return caches.match(req,{ignoreSearch:req.mode==="navigate"}).then(function(m){
+    if(m||req.mode!=="navigate") return m;
+    try{ if(/\/(index\.html)?$/.test(new URL(req.url).pathname)) return caches.match("./"); }catch(x){}
+  });
+}
 self.addEventListener("fetch",function(e){
   var url=e.request.url;
   if(e.request.method!=="GET") return;
   if(url.indexOf("firebaseio.com")!==-1) return; /* data hamesha network se — app khud offline handle karta hai */
-  e.respondWith(
+  if(_isOwnFile(url)){
+    e.respondWith(_fromCache(e.request).then(function(m){ return m||_networkFirst(e); }));
+    return;
+  }
+  e.respondWith(_networkFirst(e));
+});
+// नेट पहले, नाकाम हो तो cache — दूसरी साइटों के लिए, और अपनी उन फ़ाइलों के लिए जो अभी cache में नहीं
+function _networkFirst(e){
+  return (
     fetch(e.request).then(function(res){
       if(res && res.ok){
         var copy=res.clone();
@@ -106,4 +139,4 @@ self.addEventListener("fetch",function(e){
       });
     })
   );
-});
+}

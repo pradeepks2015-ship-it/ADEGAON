@@ -4,7 +4,7 @@
 > (`git log --oneline -30`) — यहां सिर्फ़ **अभी की स्थिति**, **हाल के फ़ैसले** और **जो सीखा** है।
 > काम पूरा होने पर इसे अपडेट करते चलें।
 
-**आख़िरी अपडेट:** 12 अक्टूबर 2026 · **Version:** 9.210 · **CACHE_NAME:** adegaon-dc-v227
+**आख़िरी अपडेट:** 12 अक्टूबर 2026 · **Version:** 9.211 · **CACHE_NAME:** adegaon-dc-v228
 
 ---
 
@@ -53,13 +53,28 @@
 | #245 | Dependabot के 7 PR एक साथ (ऐप नहीं बदला) | 12 अक्टू ✅ |
 | #246 | Dependabot महीने में एक बार, एक PR | 12 अक्टू ✅ |
 | #249 | v9.209 — बिना नेट की errors बाद में + अटकी वसूली की चेतावनी | 12 अक्टू ✅ |
-| — | v9.210 — TypeScript 7 + setup-python v7 (Dependabot #247 #248) | 12 अक्टू |
+| #250 | v9.210 — TypeScript 7 + setup-python v7 (Dependabot #247 #248) | 12 अक्टू ✅ |
+| — | v9.211 — ऐप पहले फ़ोन से खुले + fonts ऐप के साथ | 12 अक्टू (JE की screenshot-हां बाकी) |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
 कर लें (पिछले squash-merge से conflict बचाने के लिए)।
 
 ---
+
+## 1न. 12 अक्टूबर — रफ़्तार 8.7 → 9.5 (कदम 1 और 2)
+
+### v9.211
+- **कदम 1, ऐप पहले फ़ोन से खुले (`sw.js`):** पहले हर फ़ाइल नेट-पहले थी (समय-सीमा नहीं), तो गांव के धीमे नेट पर ऐप
+  हर फ़ाइल के लिए रुकता था। अब इसी साइट की फ़ाइलें और मुख्य पन्ना (`?…`/`index.html` से भी) **cache-पहले**; cache में
+  न हो तो पुराना नेट-पहले रास्ता (404/5xx पर cache वाला बचाव वैसा ही)। दूसरी साइटें (Google/Firebase SDK) नेट-पहले;
+  Firebase डेटा SW नहीं छूता। install अब `cache:"no-cache"` से (`_fresh`) — browser की ~10 मिनट पुरानी प्रति नए version
+  की cache में न जाए। नया version पहले की तरह: नया sw.js → सारी फ़ाइलें एक साथ → "नया version आ गया"
+- **कदम 2, fonts ऐप के साथ:** Google Fonts का link हटाया। Baloo 2 की variable फ़ाइलें `fonts/` में (devanagari 115 KB +
+  latin 33 KB, OFL लाइसेंस `fonts/OFL.txt`), `css/style.css` की `@font-face` से, SW की OPTIONAL सूची में (offline भी)।
+  Noto Sans Devanagari अब नेट से नहीं — Android में पहले से है। **सुधार:** पहले "~1.1 MB/800 KB बचत" कहा था — ग़लत;
+  Google की फ़ाइलें variable हैं (सारी मोटाई एक फ़ाइल में), असली बचत ~146 KB प्रति नया फ़ोन + पेज font का इंतज़ार नहीं करता
+- screenshot (Android जैसी हालत): हिंदी/शीर्षक/रकम वैसे ही, सिर्फ़ अंग्रेज़ी अक्षर/अंक Android के Roboto में
 
 ## 1ध. 12 अक्टूबर — TypeScript 7 + setup-python v7
 
