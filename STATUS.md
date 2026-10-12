@@ -48,13 +48,30 @@
 | #238 | v9.205 — बड़े अक्षर (Profile में) | 11 अक्टू ✅ |
 | #239 | v9.206 — SMS छोटा, WhatsApp पूरा | 11 अक्टू ✅ |
 | #242 | v9.207 — "इस सप्ताह जमा का वादा" (सोमवार–रविवार) | 11 अक्टू ✅ |
-| — | v9.208 — टूटे वादे भी उसी बटन में | 11 अक्टू |
+| #243 | v9.208 — टूटे वादे भी उसी बटन में | 11 अक्टू ✅ |
+| — | बैकअप पर पासवर्ड (ऐप नहीं बदला) | 12 अक्टू |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
 कर लें (पिछले squash-merge से conflict बचाने के लिए)।
 
 ---
+
+## 1त. 12 अक्टूबर — साप्ताहिक बैकअप सबके लिए खुला था (ठीक किया)
+
+JE के साथ security-checklist (एक Instagram reel की सूची) को इस ऐप पर मिलाते समय पकड़ा गया:
+`backup.yml` हर रविवार पूरे database की **सादी** Excel (नाम, पिता/पति, Mobile, पता, बकाया, रिमार्क) GitHub
+artifact में 30 दिन रखता था। **repo public है**, इसलिए कोई भी logged-in GitHub user इसे उतार सकता था
+(बिना login के artifact की सूची API पर दिख रही थी)। GitHub यह नहीं बताता कि किसी ने उतारा या नहीं।
+- **12/10:** JE की हां के बाद सारे 7 `adegaon-backup-*` artifacts (13/9 से 12/10) मिटा दिए। `github-pages` वाले नहीं छुए
+- अब `scripts/encrypt-backup.py` Excel पर उसका अपना पासवर्ड (AES-256, `msoffcrypto-tool` 5.4.2) लगाता है।
+  पासवर्ड GitHub Secret **`BACKUP_PASSWORD`**, जो **JE का login वाला पासवर्ड** है (JE का फ़ैसला, 12/10), और जिसे JE ख़ुद डालते हैं।
+  secret न हो या ताला न लगे तो सादी फ़ाइल मिटाकर job **फेल** होता है, और बिना ताले की फ़ाइल कभी upload नहीं होती
+- बैकअप Excel/WPS/फ़ोन के Excel में पासवर्ड डालकर सामान्य तरह खुलता है
+- **ध्यान:** JE login पासवर्ड बदलें तो `BACKUP_PASSWORD` secret भी बदलें, वरना नए बैकअप पुराने पासवर्ड से खुलेंगे
+- **repo को private करना हल नहीं है**, क्योंकि मुफ़्त plan पर private repo से GitHub Pages बंद हो जाता है
+- checklist के बाक़ी छोटे सुझाव (बाद में, 25/10 की समीक्षा के बाद): Firebase की 3 script पर `integrity`,
+  Content-Security-Policy (meta tag से, क्योंकि GitHub Pages `_headers` नहीं मानता)। JE के Google/GitHub पर 2-Step Verification
 
 ## 1ण. 11 अक्टूबर (सातवां हिस्सा) — "इस सप्ताह जमा का वादा"
 
