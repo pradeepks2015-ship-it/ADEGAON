@@ -1,14 +1,24 @@
 # devDependencies (eslint, playwright वगैरह — कोई runtime dependency नहीं) और GitHub Actions
-# workflows में इस्तेमाल हुई actions (checkout, setup-node वगैरह) को हफ़्ते में एक बार जांचकर,
-# नया/सुरक्षित version मिलने पर अपने-आप एक PR बनाता है। हर PR सामान्य CI (lint+smoke) से ही
-# गुज़रता है, बिना पास हुए merge नहीं होता — कोई secret/key नहीं चाहिए, कुछ भी deploy नहीं होता
+# workflows में इस्तेमाल हुई actions (checkout, setup-node वगैरह) को जांचकर, नया version मिलने पर
+# अपने-आप PR बनाता है। हर PR सामान्य CI (lint+smoke) से ही गुज़रता है, बिना पास हुए merge नहीं
+# होता — कोई secret/key नहीं चाहिए, कुछ भी deploy नहीं होता।
+# 12/10/2026 (JE): हर हफ़्ते अलग-अलग PR की जगह **महीने में एक बार**, और हर हिस्से (npm / actions)
+# के सारे अपडेट **एक ही PR** में (groups) — यानी महीने में ज़्यादा से ज़्यादा 2 PR। अलग-अलग
+# npm PR आपस में package-lock पर टकराते भी थे। (सुरक्षा-ख़ामी वाले अपडेट इस schedule से नहीं
+# बंधे — Dependabot security updates चालू हों तो वे तुरंत अलग PR में आते हैं)
 version: 2
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      npm-sab:
+        patterns: ["*"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      actions-sab:
+        patterns: ["*"]
