@@ -370,6 +370,7 @@ function _finishLogin(name,silent){
     hideLoader(); if(!silent) toast("स्वागत है "+name+"!","ok");
     setTimeout(function(){prefetchAll();},1500); // सभी लिस्ट offline के लिए download (दिन में एक बार — देखें storage.js)
     startDevicePing(); // यह device किस app version पर है — Firebase पर दर्ज करें
+    scheduleOldPendingCheck(); // 24 घंटे से ज़्यादा अटकी वसूली हो तो बताएं (v9.209)
   });
 }
 

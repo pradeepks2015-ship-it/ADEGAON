@@ -63,6 +63,7 @@ function markPending(hq,cat,type,patch,err){
   var k=cKey(hq,cat);
   var entry=p[k]||{hq:hq,cat:cat,type:type||"put"};
   entry.type=type||entry.type;
+  if(!entry.since) entry.since=Date.now(); // कब से भेजना बाकी — checkOldPending (v9.209)
   if(patch){
     entry.patch=entry.patch||{};
     Object.keys(patch).forEach(function(pk){ entry.patch[pk]=patch[pk]; });
@@ -73,6 +74,53 @@ function markPending(hq,cat,type,patch,err){
   if(err!==undefined) _bumpAuthFail(k,err);
 }
 function clearPendingKey(k){var p=getPending();delete p[k];setPendingObj(p);}
+
+// ── v9.209: बहुत देर से अटकी वसूली की चेतावनी ──
+// पहले सिर्फ़ login/account वाली अटकन (लगातार 401/403) पकड़ी जाती थी। कोई लाइनमैन 2–3 दिन नेट पर
+// न आए, या फ़ोन में बदलाव किसी और वजह से न जा पाएं, तो वसूली फ़ोन में ही पड़ी रहती और JE को पता
+// नहीं चलता। अब हर पेंडिंग श्रेणी पर since (कब से) दर्ज है; PENDING_OLD_HRS से ज़्यादा हो तो
+// लाइनमैन को स्क्रीन पर संदेश, और JE के एरर लॉग में "pending-old" (नेट न हो तो flushLogs बाद में भेजता है)।
+// हर श्रेणी पर दिन में एक बार से ज़्यादा नहीं (oldWarnAt)। पुराने version की entry में since न हो तो
+// आज से गिनें — बिना जाने "कई दिन से अटकी" न कहें
+var PENDING_OLD_HRS=24;
+function checkOldPending(){
+  var p=getPending(), now=Date.now(), changed=false;
+  /** @type {{hrs:number,cat:string}|null} */ var worst=null;
+  Object.keys(p).forEach(function(k){
+    var e=p[k];
+    if(!e) return;
+    if(!e.since){ e.since=now; changed=true; return; }
+    var hrs=Math.floor((now-e.since)/3600000);
+    if(hrs<PENDING_OLD_HRS) return;
+    if(e.oldWarnAt&&now-e.oldWarnAt<PENDING_OLD_HRS*3600000) return;
+    e.oldWarnAt=now; changed=true;
+    var n=e.patch?Object.keys(e.patch).length:0;
+    logErr("pending-old",hrs+" घंटे से "+e.hq+"/"+e.cat+" के बदलाव भेजे नहीं गए",
+      (n?n+" उपभोक्ता":"पूरी सूची")+(e.authFailCount?" • 401/403 ×"+e.authFailCount:"")+(navigator.onLine?"":" • अभी नेट नहीं"));
+    if(!worst||hrs>worst.hrs) worst={hrs:hrs,cat:e.cat};
+  });
+  if(changed) setPendingObj(p);
+  if(worst&&typeof toast==="function"){
+    toast("⚠️ "+worst.hrs+" घंटे से "+worst.cat+" की वसूली/रिमार्क भेजे नहीं गए — नेट चालू करके ऐप खुला रखें, फिर भी न जाएं तो JE को बताएं","err");
+  }
+  return worst;
+}
+// नेट हो तो पहले flushPending को मौक़ा दें — वरना दो दिन बाद नेट पर आते ही "48 घंटे से नहीं गए"
+// दिखता, जबकि ठीक उसी पल भेजे जा रहे होते। नेट न हो तो तुरंत बताएं
+var PENDING_CHECK_DELAY_MS=60000;
+var _oldPendTimer=null;
+function scheduleOldPendingCheck(){
+  if(_oldPendTimer) return;
+  _oldPendTimer=setTimeout(function(){
+    _oldPendTimer=null;
+    if(typeof CU!=="undefined"&&CU) checkOldPending();
+  },navigator.onLine?PENDING_CHECK_DELAY_MS:0);
+}
+// ऐप पर लौटते ही भी जांच (लाइनमैन ऐप बंद नहीं करते, minimize करते हैं) — दिन में एक बार की
+// सीमा checkOldPending ख़ुद रखता है
+document.addEventListener("visibilitychange",function(){
+  if(document.visibilityState==="visible"&&typeof CU!=="undefined"&&CU) scheduleOldPendingCheck();
+});
 function pendingCount(){return Object.keys(getPending()).length;}
 function isPending(hq,cat){return !!getPending()[cKey(hq,cat)];}
 // किसी HQ के लिए सही Firebase account से sign-in वापस मिल जाए (देखें ui-core.js: _ensureCorrectHqAuth)

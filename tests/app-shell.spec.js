@@ -149,6 +149,113 @@ test.describe('PWA installable — manifest + icons', () => {
   });
 });
 
+// ── v9.209: बिना नेट वाली errors बाद में भेजना + बहुत देर से अटकी वसूली की चेतावनी ──
+test.describe('बिना नेट की errors बाद में JE तक (v9.209)', () => {
+  // /LOGS/ पर जाने वाले POST पकड़ें; ok=false से server का मना करना
+  const trapLogPosts = (page, ok) => page.evaluate((okv) => {
+    window.__posts = [];
+    const orig = window.__origFetch || window.fetch;
+    window.__origFetch = orig;
+    window.fetch = function (url, opts) {
+      if (typeof url === 'string' && url.indexOf('/LOGS/') > -1 && opts && opts.method === 'POST') {
+        window.__posts.push({ url, body: JSON.parse(opts.body) });
+        return Promise.resolve({ ok: okv, json: () => Promise.resolve({ name: 'x' }) });
+      }
+      return orig(url, opts);
+    };
+  }, ok);
+
+  test('नेट न हो तो error फ़ोन में "भेजना बाकी" रहे; नेट आते ही flushLogs भेजे — असली समय वही, r = भेजने का समय, s/a server पर नहीं', async ({ page, context }) => {
+    await openApp(page);
+    await page.evaluate(() => { localStorage.removeItem('dc_logs3'); _logPush = 0; });
+    await context.setOffline(true);
+    await page.evaluate(() => logErr('gaon-ctx', new Error('बिना नेट')));
+    const before = await page.evaluate(() => getLogs().find((l) => l.c === 'gaon-ctx'));
+    expect(before.s).toBe(1);
+    expect(before.i).toBeTruthy();
+    await trapLogPosts(page, true);
+    await context.setOffline(false); // "online" event अपने-आप flushLogs चलाता है (ui-core.js)
+    await expect.poll(() => page.evaluate(() => window.__posts.length)).toBe(1);
+    const posts = await page.evaluate(() => window.__posts);
+    expect(posts.length).toBe(1);
+    const b = posts[0].body;
+    expect(b.t).toBe(before.t);
+    expect(b.r).toBeTruthy();
+    expect(b.s).toBeUndefined();
+    expect(b.a).toBeUndefined();
+    expect(Object.values(b).every((v) => typeof v === 'string')).toBe(true); // rules: हर field string
+    expect(posts[0].url).toContain('/LOGS/' + b.r.slice(0, 10)); // आज के दिन में — viewer/बैज में दिखे
+    expect(await page.evaluate(() => getLogs().find((l) => l.c === 'gaon-ctx').s)).toBeUndefined();
+    // दोबारा flush पर वही entry फिर नहीं जाती
+    expect(await page.evaluate(() => flushLogs())).toBe(0);
+  });
+
+  test('नेट होते हुए logErr तुरंत भेजे और "भेज दी" निशान लगे; server मना करे तो 5 कोशिशों बाद छोड़ दे', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => { localStorage.removeItem('dc_logs3'); _logPush = 0; });
+    await trapLogPosts(page, true);
+    await page.evaluate(() => logErr('turant', 'x'));
+    await expect.poll(() => page.evaluate(() => getLogs().find((l) => l.c === 'turant').s)).toBeUndefined();
+    await trapLogPosts(page, false);
+    await page.evaluate(() => logErr('mana', 'y'));
+    for (let k = 0; k < 6; k++) await page.evaluate(() => flushLogs());
+    const e = await page.evaluate(() => getLogs().find((l) => l.c === 'mana'));
+    expect(e.s).toBeUndefined(); // अब और कोशिश नहीं
+    expect(await page.evaluate(() => window.__posts.filter((p) => p.body.c === 'mana').length)).toBe(5); // 1 तुरंत + 4 flush
+  });
+
+  test('देर से पहुंची error भी बैज गिने (r से), और लॉग में "📶 देर से पहुंची" दिखे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => { localStorage.setItem('dc_log_seen_ts', String(Date.now() - 60000)); });
+    const old = new Date(Date.now() - 2 * 86400000).toISOString();
+    await page.evaluate((oldT) => new Promise((resolve) => {
+      const orig = window.fetch;
+      window.fetch = function (url, opts) {
+        if (typeof url === 'string' && url.indexOf('/LOGS/') > -1 && (!opts || !opts.method)) {
+          const today = new Date().toISOString().slice(0, 10);
+          const data = url.indexOf('/LOGS/' + today) > -1 ? { a: { t: oldT, r: new Date().toISOString(), c: 'pending-old', m: 'गांव की पुरानी' } } : null;
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(data) });
+        }
+        return orig(url, opts);
+      };
+      refreshLogBadge();
+      setTimeout(() => { openLogModal(); setTimeout(() => { window.fetch = orig; resolve(); }, 300); }, 300);
+    }), old);
+    expect(await page.evaluate(() => document.getElementById('log-badge').textContent)).toBe('1');
+    await expect(page.locator('#log-srv')).toContainText('देर से पहुंची');
+  });
+});
+
+test.describe('बहुत देर से अटकी वसूली (v9.209)', () => {
+  test('24 घंटे से ज़्यादा पेंडिंग → लाइनमैन को संदेश + JE लॉग में pending-old; दिन में एक बार; पुरानी entry (since नहीं) को आज से गिनें', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => { localStorage.removeItem('dc_logs3'); setPendingObj({}); });
+    await page.evaluate(() => markPending('पाटन', 'घरेलू', 'patch', { a1: {}, a2: {} }));
+    const since1 = await page.evaluate(() => getPending()[cKey('पाटन', 'घरेलू')].since);
+    expect(since1).toBeGreaterThan(0);
+    // दोबारा बदलाव से "कब से" नहीं बदलता
+    await page.evaluate(() => markPending('पाटन', 'घरेलू', 'patch', { a3: {} }));
+    expect(await page.evaluate(() => getPending()[cKey('पाटन', 'घरेलू')].since)).toBe(since1);
+    // 23 घंटे — अभी चुप
+    await page.evaluate(() => { const p = getPending(); p[cKey('पाटन', 'घरेलू')].since = Date.now() - 23 * 3600000; setPendingObj(p); });
+    expect(await page.evaluate(() => checkOldPending())).toBeNull();
+    // 26 घंटे — संदेश + लॉग
+    await page.evaluate(() => { const p = getPending(); p[cKey('पाटन', 'घरेलू')].since = Date.now() - 26 * 3600000; setPendingObj(p); });
+    expect(await page.evaluate(() => checkOldPending())).toEqual({ hrs: 26, cat: 'घरेलू' });
+    await expect(page.locator('#toast')).toContainText('26 घंटे से घरेलू की वसूली/रिमार्क भेजे नहीं गए');
+    const log = await page.evaluate(() => getLogs().find((l) => l.c === 'pending-old'));
+    expect(log.m).toContain('26 घंटे से पाटन/घरेलू');
+    expect(log.x).toContain('3 उपभोक्ता');
+    // उसी दिन दोबारा — चुप
+    expect(await page.evaluate(() => checkOldPending())).toBeNull();
+    // पुराने version की entry (since नहीं) — आज से गिनती, कोई चेतावनी नहीं
+    await page.evaluate(() => { const p = getPending(); p.x = { hq: 'बीबी', cat: 'कृषि', type: 'put' }; setPendingObj(p); });
+    expect(await page.evaluate(() => checkOldPending())).toBeNull();
+    expect(await page.evaluate(() => getPending().x.since)).toBeGreaterThan(0);
+  });
+});
+
 test.describe('error logging', () => {
   test('logErr entry बनाता है और बिना पकड़ी error अपने आप log होती है', async ({ page }) => {
     await openApp(page);
