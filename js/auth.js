@@ -209,6 +209,7 @@ var _authWrongPin={};
 // v9.212: सिर्फ़ इन्हीं पर logout — Firebase का साफ़ कहना कि PIN (पासवर्ड) ग़लत है या खाता बंद/नहीं है
 var REAUTH_LOGOUT_CODES=["auth/wrong-password","auth/invalid-credential","auth/invalid-login-credentials","auth/user-disabled","auth/user-not-found"];
 var REAUTH_RETRY_MS=60000; // बाकी नाकामियों पर 1 मिनट बाद एक बार फिर कोशिश
+var AUTH_WAIT_MAX_MS=30000; // v9.213: Firebase के login बहाल करने का इतनी देर तक इंतज़ार, फिर बिना फ़ैसले आगे
 var _authRetryT=null;
 var _authReauthLogged={}; // "reauth-needed" हर HQ पर session में एक बार
 // cb (वैकल्पिक) — सही account असल में तय हो जाने पर ही चलता है, न कि सिर्फ़ sign-in *शुरू* होने पर।
@@ -231,6 +232,23 @@ function _ensureCorrectHqAuth(cb){
   var fbAuthOk=false;
   try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
   if(!fbAuthOk) return cb();
+  // v9.213 — असली जड़ (JE के लॉग, 12/10: चार लाइनमैन, सबमें "कोई खाता नहीं"): _afterAuthReady 5 सेकंड
+  // बाद वैसे भी चला देता है। ऐप दोबारा खुलने पर (back बटन से बंद, फिर खोलना) Firebase अपना सेव किया
+  // हुआ login बहाल करते हुए सर्वर से खाता जांचता है — App Check चालू होने से उसे पहले reCAPTCHA token
+  // चाहिए, जो धीमे नेट/फ़ोन पर 5 सेकंड से ज़्यादा ले लेता है। तब यहां currentUser अभी null दिखता और
+  // हम "खाता नहीं" मानकर दोबारा sign-in करते — वह भी token के बिना नाकाम होता, और v9.212 से पहले
+  // लाइनमैन लॉगआउट होकर PIN मांगा जाता। अब Firebase के सच में तैयार होने तक रुकें (अधिकतम AUTH_WAIT_MAX_MS)
+  if(!AUTH_READY&&typeof AUTH_LISTENING!=="undefined"&&AUTH_LISTENING){
+    var _fired=false;
+    var _go=function(){
+      if(_fired) return; _fired=true;
+      if(AUTH_READY) _ensureCorrectHqAuth(cb);
+      else cb(); // बहुत देर तक तैयार न हुआ — कोई फ़ैसला (sign-in/logout) नहीं, अगली बार फिर
+    };
+    _authWaiters.push(_go);
+    setTimeout(_go,AUTH_WAIT_MAX_MS);
+    return;
+  }
   var u=firebase.auth().currentUser;
   if(u&&u.email===hqEmail){
     // पहले से सही account से sign-in है — दोबारा sign-in की ज़रूरत नहीं (PIN जानने की भी नहीं)।
@@ -261,7 +279,8 @@ function _ensureCorrectHqAuth(cb){
   if(!_authReauthLogged[hq]){
     _authReauthLogged[hq]=true;
     logErr("reauth-needed","फ़ोन का Firebase खाता HQ वाला नहीं — दोबारा जोड़ना पड़ा",
-      (u?(u.isAnonymous?"anonymous":(u.email||"बिना email")):"कोई खाता नहीं")+" • PIN याद:"+(pin?"हां":"नहीं")+" • App Check:"+((typeof AC_TOKEN!=="undefined"&&AC_TOKEN)?"है":"नहीं"));
+      (u?(u.isAnonymous?"anonymous":(u.email||"बिना email")):"कोई खाता नहीं")+" • PIN याद:"+(pin?"हां":"नहीं")+" • App Check:"+((typeof AC_TOKEN!=="undefined"&&AC_TOKEN)?"है":"नहीं")
+      +" • खुलने के "+Math.round(((typeof performance!=="undefined"&&performance.now)?performance.now():0)/1000)+" सेकंड बाद");
   }
   if(!pin){
     logErr("auto-logout","PIN याद नहीं — दोबारा login मांगा",hq);

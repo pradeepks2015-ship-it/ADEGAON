@@ -402,6 +402,48 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     });
   }
 
+  // v9.213 — असली जड़: JE के लॉग (12/10) में चारों लाइनमैन पर "कोई खाता नहीं"। ऐप दोबारा खुलने पर
+  // Firebase सेव किया login बहाल करते हुए 5 सेकंड से ज़्यादा ले लेता (App Check/reCAPTCHA), और
+  // _afterAuthReady की 5 सेकंड वाली छूट से हम उससे पहले ही "खाता नहीं" मानकर दोबारा sign-in कर बैठते
+  test('_ensureCorrectHqAuth (v9.213) — Firebase अभी login बहाल कर रहा हो (AUTH_READY नहीं) तो रुके; तैयार होते ही सही खाता मिले तो दोबारा sign-in नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      localStorage.removeItem('dc_logs3');
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा', pin: '1234' };
+      let signIns = 0, cbAt = null, user = null;
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { get currentUser() { return user; }, signInWithEmailAndPassword: function () { signIns++; return Promise.resolve({}); } };
+      };
+      AUTH_LISTENING = true; AUTH_READY = false;
+      _ensureCorrectHqAuth(function () { cbAt = 'called'; });
+      const before = { signIns, cbAt };
+      // Firebase ने सेव किया HQ खाता बहाल कर लिया
+      setTimeout(() => {
+        user = { email: HQ_AUTH_EMAIL['जोबा'] };
+        AUTH_READY = true; _authWaiters.splice(0).forEach((f) => f());
+        setTimeout(() => resolve({ before, signIns, cbAt, logs: getLogs().map((l) => l.c) }), 50);
+      }, 300);
+    }));
+    expect(r.before).toEqual({ signIns: 0, cbAt: null }); // तैयार होने से पहले कोई फ़ैसला नहीं
+    expect(r.signIns).toBe(0);
+    expect(r.cbAt).toBe('called');
+    expect(r.logs).not.toContain('reauth-needed');
+  });
+
+  test('_ensureCorrectHqAuth (v9.213) — Firebase बहुत देर तक तैयार न हो तो बिना sign-in/logout के आगे (cb चले)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा', pin: '1234' };
+      let signIns = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () { return { currentUser: null, signInWithEmailAndPassword: function () { signIns++; return Promise.resolve({}); } }; };
+      AUTH_LISTENING = true; AUTH_READY = false; AUTH_WAIT_MAX_MS = 100;
+      _ensureCorrectHqAuth(function () { resolve({ signIns, cu: CU && CU.hq }); });
+    }));
+    expect(r).toEqual({ signIns: 0, cu: 'जोबा' });
+  });
+
   test('_ensureCorrectHqAuth (v9.212) — auth/invalid-credential (नया Firebase ग़लत-PIN code) पर logout + लॉग में auto-logout', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {

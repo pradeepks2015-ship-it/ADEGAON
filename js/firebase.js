@@ -118,6 +118,7 @@ var _tokenWaiters = []; // app खुलते ही token बनने से 
 // Firebase अपना सेव किया हुआ login बहाल कर चुका है (चाहे मिला हो या नहीं) — तब तक
 // firebase.auth().currentUser देखना भरोसेमंद नहीं
 var AUTH_READY = false;
+var AUTH_LISTENING = false; // v9.213: Firebase auth सच में शुरू हुआ (onIdTokenChanged लग गया) — तब AUTH_READY का इंतज़ार सार्थक
 var _authWaiters = [];
 // Firebase का auth तय हो जाने के बाद fn चलाओ। Firebase library ही लोड न हुई हो (offline पहली बार)
 // तो कभी न अटकें — 5 सेकंड बाद वैसे भी चला दो
@@ -158,6 +159,7 @@ try{
     _acRefresh();
     setInterval(_acRefresh, 30*60*1000);
   }catch(eAC){AC_READY=true;}
+  AUTH_LISTENING=true;
   firebase.auth().onIdTokenChanged(function(u){
     // पहली बार यह callback तभी चलता है जब Firebase अपना सेव किया हुआ (persisted) login
     // localStorage से बहाल कर चुका होता है — यानी अब currentUser पर भरोसा किया जा सकता है।
