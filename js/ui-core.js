@@ -42,6 +42,7 @@ window.addEventListener("online",function(){
   fetchPause(); // 🛑 स्विच का ताज़ा हाल — नेट बंद रहते हुए JE ने बदला हो सकता है
   _ensureCorrectHqAuth(); // पहले सही account पक्का करें, तभी flushPending() को असली मौक़ा मिलेगा
   flushPending();
+  flushLogs(); // बिना नेट के वक़्त की errors (v9.209)
   fetchCatNamesFromFB(false);
   fetchPhCustomMsgFromFB();
   hscFetch();

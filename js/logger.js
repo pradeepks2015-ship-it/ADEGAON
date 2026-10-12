@@ -44,6 +44,7 @@ document.addEventListener("visibilitychange",function(){
 });
 function pingDeviceVersion(){
   if(!navigator.onLine||!CU)return;
+  flushLogs(); // बिना नेट के वक़्त की errors भी अब भेज दें (v9.209)
   _lastPingAt=Date.now();
   var reqAt=Date.now();
   fetch(FB+"/DEVICE_VERSIONS/"+DEV_ID+".json",{
@@ -437,7 +438,7 @@ function refreshLogBadge(){
       if(!d||typeof d!=="object")return;
       Object.keys(d).forEach(function(k){
         var e=d[k];
-        if(e&&e.t&&new Date(e.t).getTime()>seen) count++;
+        if(e&&e.t&&new Date(e.r||e.t).getTime()>seen) count++; // r = देर से पहुंची का भेजने का समय
       });
     });
     if(count>0){el.textContent=count>99?"99+":String(count); el.style.display="inline-block";}
@@ -455,18 +456,72 @@ function logErr(ctx, err, extra){
       d:DEV_ID,
       c:ctx||"",
       m:String(m).slice(0,300),
-      x:extra?String(extra).slice(0,200):""
+      x:extra?String(extra).slice(0,200):"",
+      i:Date.now().toString(36)+Math.random().toString(36).slice(2,6), // पहचान — बाद में "भेज दी" निशान लगाने को
+      s:1 // 1 = अभी server पर नहीं गई (सिर्फ़ इसी फ़ोन में) — _logPost इसे server पर नहीं भेजता
     };
     var logs=getLogs(); logs.push(entry);
     if(logs.length>LOG_MAX) logs=logs.slice(logs.length-LOG_MAX);
     try{localStorage.setItem(LOG_KEY,JSON.stringify(logs));}catch(e2){}
-    // server push (fire & forget) — offline में skip; push fail होने पर दोबारा log नहीं (loop से बचाव)
+    // server push (fire & forget) — offline या नाकाम हो तो entry पर s:1 रहता है और flushLogs()
+    // नेट लौटने पर भेज देता है। push fail होने पर दोबारा logErr नहीं (loop से बचाव)
     if(navigator.onLine && _logPush<LOG_PUSH_MAX && typeof FB!=="undefined"){
       _logPush++;
-      var day=entry.t.slice(0,10);
-      fetch(FB+"/LOGS/"+day+".json",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(entry)}).catch(function(){});
+      _logPost(entry).then(function(ok){ _logMarkSent(entry.i,!ok); });
     }
   }catch(e3){}
+}
+
+// ── v9.209: बिना नेट वाली errors बाद में भेजना ──
+// पहले नेट न हो तो error सिर्फ़ उसी फ़ोन में रह जाती थी — गांव में ज़्यादातर काम बिना नेट होता है,
+// इसलिए फ़ील्ड की सबसे ज़्यादा errors JE तक कभी पहुंचती ही नहीं थीं। अब हर entry पर s:1 ("भेजना बाकी")
+// रहता है, और नेट लौटते / ऐप खुलते ही flushLogs() बाकी entries भेज देता है। देर से पहुंची entry में
+// r = भेजने का समय (t = असली समय वैसा ही) — JE के लॉग में वह "📶 देर से पहुंची" दिखती है, और
+// server पर आज के दिन में जाती है, ताकि "आज + कल" वाले viewer और बैज में दिखे।
+// Firebase rules हर field को string मांगते हैं — इसलिए s/a (सिर्फ़ फ़ोन के निशान) server पर नहीं जाते
+var LOG_FLUSH_MAX=20;      // एक बार में ज़्यादा से ज़्यादा इतनी — बाकी अगली बार
+var LOG_LATE_MAX_DAYS=14;  // इससे पुरानी बिना-भेजी errors नहीं भेजतीं (server वैसे भी 15 दिन बाद मिटा देता है)
+var LOG_SEND_TRIES=5;      // server बार-बार मना करे तो इतनी कोशिशों के बाद छोड़ दें
+function _logPost(entry){
+  var body={};
+  Object.keys(entry).forEach(function(k){ if(k!=="s"&&k!=="a") body[k]=entry[k]; });
+  var day=String(body.r||body.t||"").slice(0,10);
+  return fetch(FB+"/LOGS/"+day+".json",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(function(r){ return !!(r&&r.ok); })
+    .catch(function(){ return false; });
+}
+// id वाली entry का "भेजना बाकी" निशान हटाएं (ok=false हो तो सिर्फ़ कोशिश गिनें)
+function _logMarkSent(id,failed){
+  var logs=getLogs(), hit=false;
+  logs.forEach(function(e){
+    if(!e||e.i!==id) return;
+    hit=true;
+    if(!failed){ delete e.s; delete e.a; return; }
+    e.a=(e.a||0)+1;
+    if(e.a>=LOG_SEND_TRIES){ delete e.s; delete e.a; }
+  });
+  if(hit){ try{localStorage.setItem(LOG_KEY,JSON.stringify(logs));}catch(e2){} }
+}
+var _logFlushing=false;
+function flushLogs(){
+  if(_logFlushing||!navigator.onLine||typeof FB==="undefined") return Promise.resolve(0);
+  var cutoff=Date.now()-LOG_LATE_MAX_DAYS*86400000;
+  var todo=getLogs().filter(function(e){
+    return e&&e.s&&e.i&&new Date(e.t).getTime()>=cutoff;
+  }).slice(-LOG_FLUSH_MAX);
+  if(!todo.length) return Promise.resolve(0);
+  _logFlushing=true;
+  var sent=0, nowIso=new Date().toISOString();
+  // एक-एक करके — कमज़ोर नेट पर 20 request एक साथ न जाएं
+  return todo.reduce(function(chain,e){
+    return chain.then(function(){
+      if(_logPush>=LOG_PUSH_MAX) return;
+      _logPush++;
+      var late={}; Object.keys(e).forEach(function(k){ late[k]=e[k]; });
+      late.r=nowIso;
+      return _logPost(late).then(function(ok){ _logMarkSent(e.i,!ok); if(ok) sent++; });
+    });
+  },Promise.resolve()).then(function(){ _logFlushing=false; return sent; },function(){ _logFlushing=false; return sent; });
 }
 
 // बिना पकड़ी गई हर JS error अपने आप log हो — सिवाय ब्राउज़र के जान-बूझकर छुपाई गई cross-origin
@@ -513,8 +568,9 @@ function logRowsHtml(arr){
   arr.slice(0,100).forEach(function(e){
     if(!e)return;
     var when=(e.t||"").replace("T"," ").slice(0,19);
+    var tag=e.s?' <span class="log-x">⏳ अभी भेजी नहीं</span>':(e.r?' <span class="log-x">📶 देर से पहुंची</span>':'');
     h+='<div class="log-row"><div class="log-top"><span class="log-ctx">'+escHtml(e.c||"?")+'</span>'
-      +'<span class="log-when">'+escHtml(when)+' UTC</span></div>'
+      +'<span class="log-when">'+escHtml(when)+' UTC'+tag+'</span></div>'
       +'<div class="log-msg">'+escHtml(e.m||"")+(e.x?' <span class="log-x">['+escHtml(e.x)+']</span>':'')+'</div>'
       +'<div class="log-who">'+escHtml(e.u||"?")+' • v'+escHtml(e.v||"?")+' • '+escHtml(e.d||"")+'</div></div>';
   });
@@ -532,7 +588,8 @@ function fetchServerLogs(){
   })).then(function(res){
     var all=[];
     res.forEach(function(d){if(d&&typeof d==="object")Object.keys(d).forEach(function(k){all.push(d[k]);});});
-    all.sort(function(a,b){return String(b&&b.t||"").localeCompare(String(a&&a.t||""));});
+    // देर से पहुंची (r) अपने पहुंचने के समय से — वरना पुरानी तारीख़ के नीचे दब जाती
+    all.sort(function(a,b){return String(b&&(b.r||b.t)||"").localeCompare(String(a&&(a.r||a.t)||""));});
     // audit-verified: logRowsHtml() खुद हर field escHtml() से गुज़ारता है, बाक़ी branch hardcoded
     // eslint-disable-next-line no-unsanitized/property
     document.getElementById("log-srv").innerHTML=all.length?logRowsHtml(all):'<div class="log-empty">पिछले 2 दिन में किसी device पर कोई error नहीं ✅</div>';
