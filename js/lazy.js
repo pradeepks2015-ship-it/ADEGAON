@@ -31,7 +31,7 @@ function lazyLoad(file){
     var s=document.createElement("script"), done=false;
     function fin(ok,why){
       if(done) return; done=true; clearTimeout(t);
-      if(ok){ res(); return; }
+      if(ok){ res(undefined); return; } // undefined लिखना TypeScript 7 की जांच के लिए (v9.210)
       delete _lazyJobs[file]; // अगली बार दबाने पर फिर कोशिश हो
       try{ s.remove(); }catch(x){}
       rej(new Error(why+" • "+file));

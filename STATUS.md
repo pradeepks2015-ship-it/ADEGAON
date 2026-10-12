@@ -4,7 +4,7 @@
 > (`git log --oneline -30`) — यहां सिर्फ़ **अभी की स्थिति**, **हाल के फ़ैसले** और **जो सीखा** है।
 > काम पूरा होने पर इसे अपडेट करते चलें।
 
-**आख़िरी अपडेट:** 12 अक्टूबर 2026 · **Version:** 9.209 · **CACHE_NAME:** adegaon-dc-v226
+**आख़िरी अपडेट:** 12 अक्टूबर 2026 · **Version:** 9.210 · **CACHE_NAME:** adegaon-dc-v227
 
 ---
 
@@ -52,13 +52,23 @@
 | #244 | बैकअप पर पासवर्ड (ऐप नहीं बदला) | 12 अक्टू ✅ |
 | #245 | Dependabot के 7 PR एक साथ (ऐप नहीं बदला) | 12 अक्टू ✅ |
 | #246 | Dependabot महीने में एक बार, एक PR | 12 अक्टू ✅ |
-| #249 | v9.209 — बिना नेट की errors बाद में + अटकी वसूली की चेतावनी | 12 अक्टू |
+| #249 | v9.209 — बिना नेट की errors बाद में + अटकी वसूली की चेतावनी | 12 अक्टू ✅ |
+| — | v9.210 — TypeScript 7 + setup-python v7 (Dependabot #247 #248) | 12 अक्टू |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
 कर लें (पिछले squash-merge से conflict बचाने के लिए)।
 
 ---
+
+## 1ध. 12 अक्टूबर — TypeScript 7 + setup-python v7
+
+### v9.210
+Dependabot की नई (महीने में एक बार, group वाली) सेटिंग लगते ही दो PR आए: #247 (`actions/setup-python` 5 → 7, सिर्फ़ बैकअप में)
+और #248 (TypeScript 5.6.3 → 7.0.2)। TypeScript 7 नए सिरे से (Go में) लिखा गया है, इसलिए पहले अलग से आज़माया:
+पूरे कोड पर सिर्फ़ एक शिकायत आई — `js/lazy.js` में `res()` को `res(undefined)` लिखना पड़ा (व्यवहार वही)। जांच 0.2 सेकंड में।
+दोनों बदलाव और यह सुधार एक PR में; Dependabot के दोनों PR बंद किए। `typescript` पहले की तरह exact version पर पक्का।
+merge के बाद बैकअप हाथ से चलाकर setup-python v7 की जांच।
 
 ## 1द. 12 अक्टूबर — गड़बड़ी पकड़ना 9 → 9.5 (कदम 1 और 2)
 
