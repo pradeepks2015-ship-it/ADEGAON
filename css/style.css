@@ -234,6 +234,9 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .chip-oldpay{background:rgba(96,125,139,.12);color:var(--muted);font-weight:700;}
 .chip-oldpay.orange{background:rgba(255,152,0,.14);color:#e65100;}
 .chip-oldpay.red{background:rgba(255,77,109,.14);color:var(--red);}
+/* v9.216: 🚫 कभी भुगतान नहीं — फ़िल्टर चालू होने की पट्टी (मेनू में छिपा फ़िल्टर भूल न जाएं) */
+.np-strip{align-items:center;justify-content:space-between;gap:8px;margin:0 12px 10px;padding:8px 12px;border-radius:10px;background:rgba(255,77,109,.10);border:1px solid rgba(255,77,109,.35);color:var(--red);font-size:13px;}
+.np-strip .np-off{flex:0 0 auto;border:1px solid rgba(255,77,109,.45);background:var(--surface);color:var(--red);border-radius:8px;padding:4px 10px;font-weight:700;font-size:12px;cursor:pointer;}
 .con-list{padding:0 12px 96px;}
 .con-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:11px 13px;margin-bottom:9px;border-left:4px solid var(--border);box-shadow:var(--shadow-card);transition:transform .15s,box-shadow .15s;animation:fadeUp .35s ease-out;}
 .con-card:active{transform:scale(.985);}

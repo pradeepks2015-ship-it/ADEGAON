@@ -44,7 +44,7 @@ function debounceSearch(){
 var LIST_SORT_KEY="dc_listsort";
 // JE का फ़ैसला (11/10, विकल्प "ख"): डिफ़ॉल्ट = बड़ी बकाया पहले; जिसे रास्ते/बुक वाला लेजर-क्रम चाहिए वह नाम
 // वाले मेनू में "📋 लेजर क्रम" चालू करे (पसंद फ़ोन पर याद रहती है)
-// v9.215: तीसरा क्रम "oldpay" — 🕰️ पुराना भुगतान पहले
+// v9.215: तीसरा क्रम "oldpay" — ⏳ पुराने बकायादार पहले
 var listSort=(function(){ try{ var v=localStorage.getItem(LIST_SORT_KEY); return (v==="ledger"||v==="oldpay")?v:"amount"; }catch(e){ return "amount"; } })();
 // चालू/बंद ऊपर नाम वाले मेनू ("₹ बड़ी बकाया पहले") से — JE (11/10) ने इसे सूची के ऊपर नहीं, मेनू में चाहा
 function toggleListSort(e){
@@ -66,13 +66,49 @@ function setListSort(v){
 var _PANCHAYAT_TARIFF_RE=/LV\s*-?\s*3\s*[.\-]\s*[12](?!\d)/i;
 function isPanchayatTariff(x){ return !!(x&&x.tariff&&_PANCHAYAT_TARIFF_RE.test(String(x.tariff))); }
 function _syncSortBtn(){
-  // मेनू में दो विकल्प — "📋 लेजर क्रम" और "🕰️ पुराना भुगतान पहले"; दोनों बंद = बड़ी बकाया पहले
-  [["sort-menu-state","ledger"],["oldpay-menu-state","oldpay"]].forEach(function(p){
-    var on=(listSort===p[1]);
+  // मेनू में क्रम के दो विकल्प — "📋 लेजर क्रम" और "⏳ पुराने बकायादार पहले" (दोनों बंद = बड़ी बकाया पहले), साथ में "🚫 कभी भुगतान नहीं" फ़िल्टर
+  /** @type {Array<[string,boolean]>} */
+  var rows=[["sort-menu-state",listSort==="ledger"],["oldpay-menu-state",listSort==="oldpay"],["neverpaid-menu-state",neverPaidOnly]];
+  rows.forEach(function(p){
+    var on=p[1];
     var st=document.getElementById(p[0]); if(st){ st.textContent=on?"✓ चालू":"बंद"; st.className="sort-menu-state"+(on?" on":""); }
   });
 }
-// ── v9.215: 🕰️ पुराना भुगतान पहले (JE, 13/10) ──
+// ── v9.216: 🚫 कभी भुगतान नहीं (JE, 13/10) ──
+// लेजर में न "पिछला भुगतान तिथि" न "पिछला भुगतान राशि" (या राशि 0) — यानी कनेक्शन के बाद से कोई भुगतान दर्ज
+// नहीं — और अभी भी बाकी। नाम वाले मेनू से चालू; चालू हो तो सूची (और PDF/Excel) सिर्फ़ इन्हीं की, बाकी फ़िल्टर/
+// गांव/खोज के साथ। मेनू में छिपा फ़िल्टर भूल न जाएं, इसलिए सूची के ऊपर लाल पट्टी "… ✕ हटाएं"। जान-बूझकर
+// याद नहीं रखा जाता — ऐप दोबारा खुले तो पूरी सूची (वरना लाइनमैन सोचेगा कि बाकी उपभोक्ता ग़ायब हो गए)।
+// सिर्फ़ फ़ोन में रखी सूची से — कोई डेटा-ख़र्च नहीं
+var neverPaidOnly=false;
+function isNeverPaid(x){
+  if(!x||x.status==="paid") return false;
+  if(String(x.lastPayDate||"").trim()) return false;
+  var a=String(x.lastPaidAmt==null?"":x.lastPaidAmt).replace(/[,₹\s]/g,"");
+  return !a||Number(a)===0;
+}
+function toggleNeverPaid(e){
+  if(e&&e.stopPropagation) e.stopPropagation();
+  setNeverPaid(!neverPaidOnly);
+  var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
+}
+function setNeverPaid(on){
+  neverPaidOnly=!!on;
+  _renderLimit=100;
+  renderList();
+  if(typeof toast==="function") toast(neverPaidOnly?"🚫 सिर्फ़ कभी भुगतान न करने वाले":"पूरी सूची","inf");
+}
+function _renderNeverPaidStrip(data){
+  var el=document.getElementById("np-strip"); if(!el) return;
+  if(!neverPaidOnly){ el.style.display="none"; el.innerHTML=""; return; }
+  var n=(data||[]).filter(function(x){ return isNeverPaid(x)&&(!activeVillage||_villageKey(x)===activeVillage); }).length;
+  el.style.display="flex";
+  // audit-verified: n एक गिनती (number) है, बाक़ी सब hardcoded — कोई उपभोक्ता/बाहरी text नहीं
+  // eslint-disable-next-line no-unsanitized/property
+  el.innerHTML="<span>🚫 सिर्फ़ कभी भुगतान न करने वाले — <b>"+n+"</b> उपभोक्ता</span>"+
+    "<button type='button' class='np-off' onclick='setNeverPaid(false)'>✕ हटाएं</button>";
+}
+// ── v9.215: ⏳ पुराने बकायादार पहले (JE, 13/10; v9.216 में नाम "🕰️ पुराना भुगतान पहले" से बदला) ──
 // "जिसने लंबे समय से भुगतान नहीं किया वह सूची में कहीं नीचे खो जाता है" — लेजर का "पिछला भुगतान तिथि"
 // (lastPayDate, अपलोड के समय लेजर से) देखकर सबसे पुराना सबसे ऊपर। जिसकी तारीख़ ही नहीं (कभी भुगतान नहीं /
 // कॉलम ख़ाली) वह सबसे ऊपर। एक ही महीने वालों में बड़ी बकाया पहले; पंचायत (LV3.1/3.2) नीचे; वसूल हो चुके
@@ -82,7 +118,7 @@ function toggleOldPaySort(e){
   if(e&&e.stopPropagation) e.stopPropagation();
   setListSort(listSort==="oldpay"?"amount":"oldpay");
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
-  if(typeof toast==="function") toast(listSort==="oldpay"?"🕰️ पुराना भुगतान पहले — चालू":"₹ बड़ी बकाया पहले — पुराना भुगतान क्रम बंद","inf");
+  if(typeof toast==="function") toast(listSort==="oldpay"?"⏳ पुराने बकायादार पहले — चालू":"₹ बड़ी बकाया पहले — पुराने बकायादार क्रम बंद","inf");
 }
 var _MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
 // लेजर की तारीख़ कई रूपों में आती है (Excel का अपना format): 13/10/2025, 13-10-25, 13.10.2025, 2025-10-13,
@@ -229,6 +265,7 @@ function renderListWith(data){
   _syncSortBtn();
   if(_vgListFor!==activeHQ+"/"+activeCat){ _vgListFor=activeHQ+"/"+activeCat; activeVillage=""; }
   _renderVillageBar(data);
+  _renderNeverPaidStrip(data);
   var today=_isoToday();
   var fbP=document.getElementById("fb-promise");
   var wk=_weekRange();
@@ -252,6 +289,7 @@ function renderListWith(data){
     var st=(activeFilter==="promise")?isPromiseDue(x,wk):
            (activeFilter==="paid")?(x.status==="paid"):(x.status!=="paid");
     if(activeVillage&&_villageKey(x)!==activeVillage) return false;
+    if(neverPaidOnly&&!isNeverPaid(x)) return false; // v9.216
     return matchQ&&(activeFilter==="all"||st);
   });
   // वादे: सबसे पुराना (बीता) वादा सबसे ऊपर; बाक़ी में चुना हुआ क्रम
