@@ -1032,15 +1032,14 @@ test.describe('मिटने से पहले वसूली का backup
       try {
         ['घरेलू', 'व्यवसाय', 'कुल उपभोक्ता'].forEach((c) => {
           savePaidBackup('पाटन', c, { 9: paidBkEntry({}) });
-          cSet('पाटन', c, [{ acc: '9', name: 'x' }]);
+          lsSet('dc_cache3_पाटन_' + c, '[]', 'cache'); // IndexedDB न खुले तो cache का यही रास्ता (v9.220)
         });
       } finally { Storage.prototype.setItem = orig; }
       const logs = getLogs().filter((l) => l.c === 'storage-full' || l.c === 'paid-backup-fail');
-      return { kinds: logs.map((l) => l.x.split(' • ')[0]).sort(), note: logs[0] && logs[0].x, mem: cGet('पाटन', 'घरेलू').length };
+      return { kinds: logs.map((l) => l.x.split(' • ')[0]).sort(), note: logs[0] && logs[0].x };
     });
     expect(r.kinds).toEqual(['cache', 'paid-backup']); // हर तरह का एक — 6 नहीं
     expect(r.note).toMatch(/कुल \d+K • cache \d+K/);
-    expect(r.mem).toBe(1); // इस बार के लिए memory में सूची बनी रहे
   });
 
   test('offline queue save न हो तो लाइनमैन को स्क्रीन पर बताएं (चुपचाप नहीं)', async ({ page }) => {

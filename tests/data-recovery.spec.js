@@ -1099,3 +1099,64 @@ test.describe('SSE bandwidth बचत', () => {
     expect(r.badJson).toEqual({ ok: false });
   });
 });
+
+// ── v9.220: सूचियों का cache IndexedDB में ──
+// असली production (13/10, v9.219 के storage-full लॉग): लाइनमैन फ़ोन भी भरे — localStorage ~5M अक्षर,
+// "कुल उपभोक्ता" की एक सूची ~1M। cache न बचे तो बिना नेट अपनी सूची नहीं खुलती
+test.describe('सूचियों का cache IndexedDB में (v9.220)', () => {
+  const big = (n, tag) => Array.from({ length: n }, (_, i) => ({ acc: tag + i, name: 'उपभोक्ता नाम बहुत लंबा ' + i, addr: 'गांव का पता '.repeat(16), status: 'pending', amount: i }));
+
+  test('पुरानी localStorage सूचियां IndexedDB में जाएं, localStorage से हटें, और ऐप दोबारा खुलने पर भी मिलें', async ({ page }) => {
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('dc_cache3_आदेगांव_कुल उपभोक्ता', JSON.stringify([{ acc: '111', name: 'राम', status: 'paid', amount: 5 }]));
+    });
+    await openApp(page);
+    const a = await page.evaluate(() => ({ n: cGet('आदेगांव', 'कुल उपभोक्ता').length, ls: localStorage.getItem('dc_cache3_आदेगांव_कुल उपभोक्ता'), db: !!_cacheDb }));
+    expect(a).toEqual({ n: 1, ls: null, db: true });
+    await page.reload();
+    await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
+    expect(await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता')[0].name)).toBe('राम');
+  });
+
+  test('localStorage की सीमा से बड़ी सूचियां (~8M अक्षर) भी बचें — storage-full नहीं, दोबारा खुलने पर सब', async ({ page }) => {
+    await openApp(page);
+    const sizes = await page.evaluate((src) => {
+      const big = eval(src);
+      ['आदेगांव', 'पिंडरई', 'पाटन', 'बीबी', 'मढ़ी', 'जोबा'].forEach((hq) => cSet(hq, 'कुल उपभोक्ता', big(3500, hq)));
+      return JSON.stringify(CACHE).length;
+    }, big.toString());
+    expect(sizes).toBeGreaterThan(6000000); // localStorage में यह कभी नहीं समाता
+    await page.waitForTimeout(1500); // IndexedDB की लिखाई पूरी हो
+    await page.reload();
+    await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
+    const r = await page.evaluate(() => ({
+      n: ['आदेगांव', 'पिंडरई', 'पाटन', 'बीबी', 'मढ़ी', 'जोबा'].map((hq) => cGet(hq, 'कुल उपभोक्ता').length),
+      full: getLogs().filter((l) => /storage-full|cache-idb/.test(l.c)).length,
+    }));
+    expect(r).toEqual({ n: [3500, 3500, 3500, 3500, 3500, 3500], full: 0 });
+  });
+
+  test('वसूली दर्ज करते ही सूची IndexedDB में — बिना नेट ऐप बंद-खुलने पर भी "वसूल" बनी रहे', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '111222', name: 'राम कुमार', status: 'pending', amount: 500 }]));
+    await loginLineman(page);
+    await expect(page.locator('.con-card').first()).toContainText('राम कुमार', { timeout: 15000 });
+    await page.evaluate(() => markPaid(0));
+    await page.waitForTimeout(800);
+    await page.reload();
+    await page.waitForFunction(() => typeof _cacheReady !== 'undefined' && _cacheReady, null, { timeout: 15000 });
+    expect(await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता')[0].status)).toBe('paid');
+  });
+
+  test('IndexedDB न खुले — पहले जैसा localStorage से चले', async ({ page }) => {
+    await page.addInitScript(() => { Object.defineProperty(window, 'indexedDB', { value: undefined }); });
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      cSet('पाटन', 'घरेलू', [{ acc: '9', name: 'x' }]);
+      return { db: _cacheDb, ls: !!localStorage.getItem('dc_cache3_पाटन_घरेलू') };
+    });
+    expect(r).toEqual({ db: null, ls: true });
+  });
+});

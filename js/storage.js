@@ -4,6 +4,8 @@ function cKey(hq,cat){return hq+"_"+cat;}
 function cGet(hq,cat){
   var k=cKey(hq,cat);
   if(CACHE[k]===undefined){
+    // IndexedDB तैयार होने पर सब सूचियां पहले ही CACHE में आ चुकी होती हैं (cacheInit) — यहां सिर्फ़
+    // पुराना रास्ता: IndexedDB न खुला हो, या उसके तैयार होने से पहले कोई सूची मांगी गई
     try{var s=localStorage.getItem(LS_PREFIX+k);CACHE[k]=s?JSON.parse(s).map(migrateRemarks):[];}catch(e){CACHE[k]=[];}
   }
   return CACHE[k]||[];
@@ -11,7 +13,104 @@ function cGet(hq,cat){
 function cSet(hq,cat,d){
   var k=cKey(hq,cat);
   CACHE[k]=d;
+  if(!_cacheReady){ _cacheDirty[k]=true; return; } // cacheInit ख़ुद लिख देगा
+  if(_cacheDb){ _idbPut(k,d); return; }
   lsSet(LS_PREFIX+k,JSON.stringify(d),"cache");
+}
+
+// ── v9.220: सूचियों का cache IndexedDB में ──
+// v9.219 के "storage-full" लॉग (13/10): JE फ़ोन ही नहीं, लाइनमैन फ़ोन भी भरे — localStorage की सीमा
+// ~5M अक्षर, और "कुल उपभोक्ता" की एक सूची ही ~1M (आदेगांव 1050K, पाटन 808K)। cache न बचे तो बिना
+// नेट ऐप में अपनी ही सूची नहीं खुलती, और हर बार खुलने पर पूरी सूची दोबारा उतरती है।
+// IndexedDB की सीमा फ़ोन की खाली जगह के हिसाब से सैकड़ों MB है। ढांचा वही रखा: ऐप खुलते ही सारी
+// सूचियां memory (CACHE) में, cGet पहले जैसा तुरंत; cSet memory में + पीछे IndexedDB में लिखता है।
+// पहली बार localStorage वाली सारी सूचियां IndexedDB में जाती हैं और वहां से हटती हैं — localStorage
+// offline queue/लॉग जैसी छोटी पर ज़रूरी चीज़ों के लिए खाली हो जाता है।
+// IndexedDB न खुले (पुराना/अजीब browser, private mode) तो सब कुछ पहले जैसा localStorage में।
+var CACHE_DB_NAME="dc_lists", CACHE_DB_STORE="lists", CACHE_INIT_MAX_MS=4000;
+/** @type {IDBDatabase|null} */ var _cacheDb=null;
+var _cacheReady=false;
+/** @type {Object<string,boolean>} */ var _cacheDirty={}; // तैयार होने से पहले cSet हुई सूचियां
+/** @type {Array<Function>} */ var _cacheWaiters=[];
+var _cacheInitStarted=false;
+function _idbPut(k,d){
+  try{
+    var tx=_cacheDb.transaction(CACHE_DB_STORE,"readwrite");
+    tx.objectStore(CACHE_DB_STORE).put(d,k);
+    tx.oncomplete=function(){ try{ if(localStorage.getItem(LS_PREFIX+k)!==null) localStorage.removeItem(LS_PREFIX+k); }catch(e){} };
+    tx.onerror=tx.onabort=function(){ _idbFail(k,d,tx.error); };
+  }catch(e){ _idbFail(k,d,e); }
+}
+function _idbFail(k,d,err){
+  if(!_lsFullLogged.idb){ _lsFullLogged.idb=true; logErr("cache-idb-fail",err||"?",k.slice(0,40)); }
+  lsSet(LS_PREFIX+k,JSON.stringify(d),"cache"); // कम से कम पुराने रास्ते से बचाने की कोशिश
+}
+// ऐप खुलते ही एक बार — तैयार होने (या CACHE_INIT_MAX_MS) पर cb। दोबारा बुलाने पर बस इंतज़ार
+/** @param {Function} [cb] */
+function cacheInit(cb){
+  if(_cacheReady){ if(cb) cb(); return; }
+  if(cb) _cacheWaiters.push(cb);
+  if(_cacheInitStarted) return;
+  _cacheInitStarted=true;
+  var done=function(db){
+    if(_cacheReady) return;
+    _cacheReady=true; _cacheDb=db;
+    // तैयार होने से पहले बदली सूचियां अब सही जगह लिखें
+    Object.keys(_cacheDirty).forEach(function(k){
+      if(db) _idbPut(k,CACHE[k]); else lsSet(LS_PREFIX+k,JSON.stringify(CACHE[k]),"cache");
+    });
+    _cacheDirty={};
+    var w=_cacheWaiters; _cacheWaiters=[];
+    w.forEach(function(f){ try{ f(); }catch(e){ logErr("cache-init-cb",e); } });
+  };
+  var timer=setTimeout(function(){ logErr("cache-idb-slow","IndexedDB "+CACHE_INIT_MAX_MS/1000+" सेकंड में नहीं खुला — localStorage से"); done(null); },CACHE_INIT_MAX_MS);
+  var fin=function(db){ clearTimeout(timer); done(db); };
+  try{
+    if(typeof indexedDB==="undefined") return fin(null);
+    var rq=indexedDB.open(CACHE_DB_NAME,1);
+    rq.onupgradeneeded=function(){ rq.result.createObjectStore(CACHE_DB_STORE); };
+    rq.onerror=function(){ logErr("cache-idb-open",rq.error||"?"); fin(null); };
+    rq.onblocked=function(){ fin(null); };
+    rq.onsuccess=function(){
+      var db=rq.result;
+      if(_cacheReady){ return; } // देर से खुला — इस बार localStorage ही
+      _cacheLoadAll(db,function(ok){ fin(ok?db:null); });
+    };
+  }catch(e){ logErr("cache-idb-open",e); fin(null); }
+}
+// IndexedDB की सारी सूचियां CACHE में; फिर localStorage में बची पुरानी सूचियां IndexedDB में ले जाएं
+function _cacheLoadAll(db,cb){
+  try{
+    var tx=db.transaction(CACHE_DB_STORE,"readwrite"), st=tx.objectStore(CACHE_DB_STORE);
+    var cur=st.openCursor();
+    cur.onsuccess=function(){
+      var c=cur.result;
+      if(c){
+        var k=String(c.key);
+        // ऐप ने इस बीच इसे बदला हो तो memory वाली ही सही
+        if(!_cacheDirty[k]) CACHE[k]=Array.isArray(c.value)?c.value:[];
+        c.continue();
+        return;
+      }
+      // localStorage से migration — उसी transaction में, ताकि सब एक साथ हो
+      var lsKeys=[];
+      try{ for(var i=0;i<localStorage.length;i++){ var lk=localStorage.key(i)||""; if(lk.indexOf(LS_PREFIX)===0) lsKeys.push(lk); } }catch(e){}
+      lsKeys.forEach(function(lk){
+        var k=lk.slice(LS_PREFIX.length);
+        // localStorage में सूची तभी बचती है जब अभी migration हुआ ही न हो, या IndexedDB की लिखाई
+        // नाकाम होकर वहां गई हो (_idbFail) — दोनों में वही ताज़ा
+        if(!_cacheDirty[k]){
+          try{ CACHE[k]=JSON.parse(localStorage.getItem(lk)||"[]").map(migrateRemarks); }catch(e){ return; }
+        }
+        st.put(CACHE[k],k);
+      });
+      tx.oncomplete=function(){
+        lsKeys.forEach(function(lk){ try{ localStorage.removeItem(lk); }catch(e){} });
+        cb(true);
+      };
+    };
+    tx.onerror=tx.onabort=function(){ logErr("cache-idb-load",tx.error||"?"); cb(false); };
+  }catch(e){ logErr("cache-idb-load",e); cb(false); }
 }
 
 // ── v9.219: फ़ोन की जगह (localStorage) भर जाए तो ──

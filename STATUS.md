@@ -62,11 +62,30 @@
 | #256 | v9.216 — नाम "⏳ पुराने बकायादार पहले" + 🚫 कभी भुगतान नहीं | 13 अक्टू ✅ |
 | #257 | v9.217 — JE खाता Firebase से न जुड़े तो दोबारा कोशिश + चेतावनी | 13 अक्टू ✅ |
 | #258 | v9.218 — JE: कमज़ोर नेट पर बार-बार कोशिश + je-auth-recovered | 13 अक्टू ✅ |
-| — | v9.219 — फ़ोन की जगह भरना: पुराने backup मिटें, storage-full लॉग, queue न बचे तो संदेश | 13 अक्टू |
+| #259 | v9.219 — फ़ोन की जगह भरना: पुराने backup मिटें, storage-full लॉग, queue न बचे तो संदेश | 13 अक्टू ✅ |
+| — | v9.220 — सूचियों का cache IndexedDB में (localStorage की 5M सीमा से बाहर) | 13 अक्टू |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
 कर लें (पिछले squash-merge से conflict बचाने के लिए)।
+
+---
+
+## 1र. 13 अक्टूबर — सूचियों का cache IndexedDB में
+
+### v9.220
+v9.219 के `storage-full` लॉग ने नाप दिया: JE फ़ोन `कुल 5239K • cache 4356K (89 सूची)`, **लाइनमैन फ़ोन भी** —
+आनंद (आदेगांव) `cache 4326K (35 सूची)`, Vaibhav (पाटन) `3903K (24 सूची)`; "कुल उपभोक्ता" की एक सूची ~1M अक्षर
+(आदेगांव 1050K, पाटन 808K)। localStorage की सीमा ~5.24M अक्षर। backup 0K — यानी v9.219 की सफ़ाई काफ़ी नहीं, cache ही बड़ा है।
+असर: अपनी "कुल उपभोक्ता" फ़ोन में न बचे → बिना नेट सूची नहीं खुलती + हर बार खुलने पर ~1MB दोबारा उतरता।
+- `js/storage.js`: `cacheInit()` — IndexedDB `dc_lists`/`lists` खोलकर सारी सूचियां `CACHE` (memory) में; localStorage की
+  `dc_cache3_*` सूचियां उसी transaction में IndexedDB में और फिर localStorage से हटती हैं। `cGet` पहले जैसा तुरंत (memory);
+  `cSet` memory + IndexedDB (`_idbPut`), नाकाम हो तो `cache-idb-fail` लॉग + localStorage।
+  तैयार होने से पहले हुई `cSet` (`_cacheDirty`) तैयार होते ही लिखी जाती हैं
+- `js/main.js`: `startApp` अब `cacheInit` के बाद (`_startAppReady`); `cacheInit()` script लोड पर ही शुरू; अधिकतम 4 सेकंड
+  (`cache-idb-slow`), फिर localStorage से। `navigator.storage.persist()` — जगह कम होने पर browser ख़ुद न मिटाए
+- IndexedDB न हो (पुराना browser) → सब पहले जैसा localStorage
+- 4 नए टेस्ट (`data-recovery.spec.js`): migration + reload, ~8M अक्षर की 6 सूचियां reload के बाद भी, वसूल reload पर बनी रहे, IndexedDB न हो तो localStorage
 
 ---
 
