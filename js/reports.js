@@ -351,6 +351,7 @@ function _filteredForDownload(){
   var data=cGet(activeHQ,activeCat);
   // v9.203: गांव चुना हो तो PDF/Excel भी उसी गांव का — जो स्क्रीन पर है वही काग़ज़ पर
   if(activeVillage) data=data.filter(function(x){ return _villageKey(x)===activeVillage; });
+  if(neverPaidOnly) data=data.filter(isNeverPaid); // v9.216: 🚫 कभी भुगतान नहीं — जो स्क्रीन पर वही काग़ज़ पर
   if(activeFilter==="all") return data;
   if(activeFilter==="promise"){ var wk=_weekRange(); return data.filter(function(x){ return isPromiseDue(x,wk); }); }
   return data.filter(function(x){return x.status===activeFilter;});
@@ -373,7 +374,7 @@ function downloadExcel(){
     var ws=XLSX.utils.aoa_to_sheet(rows);
     ws["!cols"]=[{wch:4},{wch:20},{wch:18},{wch:14},{wch:10},{wch:8},{wch:8},{wch:6},{wch:13},{wch:18},{wch:8},{wch:13},{wch:12},{wch:13},{wch:35},{wch:14}];
     var wb=XLSX.utils.book_new();
-    var tag=activeHQ+"_"+activeCat+(activeVillage?"_"+activeVillage:"")+(activeFilter!=="all"?"_"+_FILTER_LABEL[activeFilter]:"");
+    var tag=activeHQ+"_"+activeCat+(activeVillage?"_"+activeVillage:"")+(neverPaidOnly?"_कभी_भुगतान_नहीं":"")+(activeFilter!=="all"?"_"+_FILTER_LABEL[activeFilter]:"");
     XLSX.utils.book_append_sheet(wb,ws,tag.slice(0,31)); // sheet-नाम 31 अक्षर से ज़्यादा नहीं हो सकता
     XLSX.writeFile(wb,tag+"_"+new Date().toLocaleDateString("en-IN").replace(/\//g,"-")+".xlsx");
     toast("📊 Excel download!","ok");
@@ -427,6 +428,7 @@ function downloadPDF(){
     "<h2>आदेगांव DC वसूली रिपोर्ट</h2>"+
     "<p>HQ: <b>"+escHtml(activeHQ)+"</b> | Category: <b>"+escHtml(activeCat)+"</b>"+
       (activeVillage?" | गांव: <b>"+escHtml(activeVillage)+"</b>":"")+
+      (neverPaidOnly?" | <b>कभी भुगतान नहीं</b>":"")+
       (activeFilter!=="all"?" | सूची: <b>"+_FILTER_LABEL[activeFilter]+"</b>":"")+
       " | दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | "+escHtml(CU.name)+"</p>"+
     "<div class='info'>"+

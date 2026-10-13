@@ -170,7 +170,8 @@ try{
             <button type="button" class="logout-item" id="todaysc-menu-item" style="display:none;color:#ef6c00;" onclick="openTodayScorecard()">&#128979;&#65039; आज की वसूली</button>
             <button type="button" class="logout-item" id="voicesc-menu-item" style="display:none;color:#5e35b1;" onclick="openVoiceScorecard()">&#128203; मुख्यालय व टैरिफ रिपोर्ट</button>
             <button type="button" class="logout-item" id="sort-menu-item" style="color:#1565c0;" onclick="toggleListSort(event)">&#128203; लेजर क्रम <span class="sort-menu-state" id="sort-menu-state">बंद</span></button>
-            <button type="button" class="logout-item" id="oldpay-menu-item" style="color:#1565c0;" onclick="toggleOldPaySort(event)">&#128368;&#65039; पुराना भुगतान पहले <span class="sort-menu-state" id="oldpay-menu-state">बंद</span></button>
+            <button type="button" class="logout-item" id="oldpay-menu-item" style="color:#1565c0;" onclick="toggleOldPaySort(event)">&#9203; पुराने बकायादार पहले <span class="sort-menu-state" id="oldpay-menu-state">बंद</span></button>
+            <button type="button" class="logout-item" id="neverpaid-menu-item" style="color:#c41f3d;" onclick="toggleNeverPaid(event)">&#128683; कभी भुगतान नहीं <span class="sort-menu-state" id="neverpaid-menu-state">बंद</span></button>
             <button type="button" class="logout-item" id="vgbar-menu-item" style="color:#1565c0;" onclick="toggleVillageBar(event)">&#128205; गांव की पट्टी <span class="vgbar-menu-state" id="vgbar-menu-state">✓ दिखे</span></button>
             <button type="button" class="logout-item" id="village-menu-item" style="color:#a34d00;" onclick="openVillageModal()">&#127961; ग्राम-वार वसूली</button>
             <button type="button" class="logout-item" id="cash-menu-item" style="display:none;color:var(--green);" onclick="openCashModal()">&#128181; कैश लिस्ट</button>
@@ -210,6 +211,7 @@ try{
       <!-- v9.202: आज/बीते दिन के वादे वाले बाकी उपभोक्ता (रिमार्क में डाली वादा-तारीख़ से) -->
       <button class="filter-btn" data-f="promise" id="fb-promise" onclick="setFilter(this)">इस सप्ताह जमा का वादा</button>
     </div>
+    <div class="np-strip" id="np-strip" style="display:none;"></div>
     <div class="con-list" id="con-list"></div>
   </div>
   <div class="bottom-nav">

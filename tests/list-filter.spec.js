@@ -1,6 +1,6 @@
 // @ts-check
 // वसूली ट्रैकर — टेस्ट: list-filter (साझा helpers: tests/helpers.js)
-const { test, lazyTest, expect, openApp, loginLineman, loginJE } = require('./helpers');
+const { test, lazyTest, expect, openApp, loginLineman, loginJE, reloadAndWaitForApp } = require('./helpers');
 
 test.describe('"बाकी/वसूल" filter चुनकर HQ बदलने पर सही रीसेट हो (bug: वसूल entry बाकी में दिखना)', () => {
   test('"बाकी" filter चुनकर दूसरे HQ पर जाने पर filter बटन भी वापस "सभी" दिखे, अंदर से भी activeFilter="all" हो', async ({ page }) => {
@@ -594,6 +594,50 @@ test.describe('पुराना भुगतान पहले (v9.215)', () 
       return [['13/10/2026'], ['12/04/2026'], ['13/04/2026'], ['14/10/2025'], ['13/10/2025']].map(([d]) => monthsSincePay({ lastPayDate: d }, now));
     });
     expect(r).toEqual([0, 6, 6, 11, 12]);
+  });
+});
+
+// ── v9.216: 🚫 कभी भुगतान नहीं (JE, 13/10) ──
+test.describe('कभी भुगतान नहीं (v9.216)', () => {
+  const recs = [
+    { acc: '1', name: 'कभी नहीं', amount: 700, status: 'pending' },
+    { acc: '2', name: 'राशि शून्य', amount: 300, status: 'pending', lastPaidAmt: '0' },
+    { acc: '3', name: 'भुगतान किया', amount: 900, status: 'pending', lastPaidAmt: '1200', lastPayDate: '01/01/2025' },
+    { acc: '4', name: 'सिर्फ़ तारीख़', amount: 100, status: 'pending', lastPayDate: '05/05/2025' },
+    { acc: '5', name: 'अभी वसूल', amount: 50, status: 'paid', paydate: '13/10/2026' },
+  ];
+  const names = (page) => page.$$eval('#con-list .con-card .cc-name', (els) => els.map((e) => e.textContent.trim()));
+
+  test('मेनू से चालू — सिर्फ़ बिना किसी पिछले भुगतान वाले बाकी; ऊपर लाल पट्टी गिनती के साथ; ✕ से पूरी सूची; PDF/Excel भी वही', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate((r) => { cSet(activeHQ, activeCat, r); _renderLimit = 100; renderList(); }, recs);
+    await expect(page.locator('#np-strip')).toBeHidden();
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await page.click('#neverpaid-menu-item');
+    expect((await names(page)).sort()).toEqual(['कभी नहीं', 'राशि शून्य'].sort());
+    await expect(page.locator('#np-strip')).toContainText('2');
+    expect(await page.evaluate(() => _filteredForDownload().map((x) => x.acc).sort())).toEqual(['1', '2']);
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await expect(page.locator('#neverpaid-menu-state')).toHaveText('✓ चालू');
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await page.click('#np-strip .np-off');
+    expect((await names(page)).length).toBe(5);
+    await expect(page.locator('#np-strip')).toBeHidden();
+  });
+
+  test('ऐप दोबारा खुले तो फ़िल्टर बंद (याद नहीं रखा जाता) — बाकी उपभोक्ता "ग़ायब" न लगें', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => setNeverPaid(true));
+    expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => /never/i.test(k)))).toEqual([]);
+    await reloadAndWaitForApp(page);
+    expect(await page.evaluate(() => neverPaidOnly)).toBe(false);
+  });
+
+  test('"पुराने बकायादार पहले" — मेनू में नया नाम', async ({ page }) => {
+    await openApp(page);
+    await expect(page.locator('#oldpay-menu-item')).toContainText('पुराने बकायादार पहले');
   });
 });
 
