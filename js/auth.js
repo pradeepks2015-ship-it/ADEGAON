@@ -78,17 +78,35 @@ function _jeAuthLater(pw,e){
   if(_jeRetryT) return;
   _jeRetryT=setTimeout(function(){ _jeRetryT=null; _jeRetryAuth(); },JE_RETRY_MS);
 }
+// v9.218 — JE का लॉग (13/10): v9.217 पर "je-auth-retry-fail • auth/network-request-failed" — कमज़ोर नेट पर
+// दोबारा कोशिश भी नाकाम, और उसके बाद सिर्फ़ "online" event का इंतज़ार था, जो नेट कटे बिना कमज़ोर रहने पर
+// आता ही नहीं। अब नेट वाली (non-fatal) नाकामी पर 2, 5, 10 मिनट बाद फिर कोशिश; लॉग में सिर्फ़ पहली
+// नाकामी, और जुड़ते ही "je-auth-recovered" (कितनी देर/कोशिशों बाद) — लॉग से ही पता चले कि मामला सुलझा
+var JE_RETRY_BACKOFF_MS=[120000,300000,600000];
+var _jeTries=0, _jeFirstFailAt=0, _jeFailLogged=false;
 function _jeRetryAuth(){
   if(!_jePendingPw||!CU||CU.role!=="supervisor"||!navigator.onLine) return;
   var pw=_jePendingPw;
+  _jeTries++;
   try{
     firebase.auth().signInWithEmailAndPassword(JE_EMAIL,pw)
-      .then(function(){ _jePendingPw=null; _saveJEHash(pw); _hideJEAuthStrip(); try{ flushPending(); }catch(x){} })
+      .then(function(){
+        _jePendingPw=null; _saveJEHash(pw); _hideJEAuthStrip();
+        if(_jeFirstFailAt){
+          logErr("je-auth-recovered","JE खाते से जुड़ गया",Math.round((Date.now()-_jeFirstFailAt)/60000)+" मिनट बाद • कोशिशें: "+_jeTries);
+        }
+        _jeTries=0; _jeFirstFailAt=0; _jeFailLogged=false;
+        if(_jeRetryT){clearTimeout(_jeRetryT);_jeRetryT=null;}
+        try{ flushPending(); }catch(x){}
+      })
       .catch(function(e){
-        logErr("je-auth-retry-fail","JE खाते से दोबारा जुड़ना नाकाम",(e&&e.code)||((e&&e.message)||"?"));
         var code=(e&&e.code)||"";
-        if(JE_AUTH_FATAL.indexOf(code)>=0){ _jePendingPw=null; }
+        if(!_jeFirstFailAt) _jeFirstFailAt=Date.now();
+        if(!_jeFailLogged){ _jeFailLogged=true; logErr("je-auth-retry-fail","JE खाते से दोबारा जुड़ना नाकाम",code||((e&&e.message)||"?")); }
         _showJEAuthStrip();
+        if(JE_AUTH_FATAL.indexOf(code)>=0){ _jePendingPw=null; return; }
+        var wait=JE_RETRY_BACKOFF_MS[_jeTries-1];
+        if(wait&&!_jeRetryT) _jeRetryT=setTimeout(function(){ _jeRetryT=null; _jeRetryAuth(); },wait);
       });
   }catch(x){}
 }
@@ -517,6 +535,7 @@ function doLogout(askConfirm){
   // _authWrongPin भी इसी वजह से: वह रह जाए तो आगे कभी PIN सच में ग़लत हो तो न logout होगा न toast
   _authHealed={}; _authWrongPin={}; _authReauthLogged={};
   _jePendingPw=null; _jeAuthLogged=false; if(_jeRetryT){clearTimeout(_jeRetryT);_jeRetryT=null;} _hideJEAuthStrip();
+  _jeTries=0; _jeFirstFailAt=0; _jeFailLogged=false;
   if(_authRetryT){clearTimeout(_authRetryT);_authRetryT=null;}
   CU=null; selectedRole="";
   document.getElementById("app-screen").classList.remove("active");
