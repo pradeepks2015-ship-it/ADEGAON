@@ -33,18 +33,86 @@ function verifyJE(pw,cb){
     firebase.auth().signInWithEmailAndPassword(JE_EMAIL,pw)
       .then(function(){
         _saveJEHash(pw); // भले cb timeout से जा चुका हो, hash फिर भी ताज़ा रख दो
+        _jePendingPw=null; _hideJEAuthStrip();
         if(settled)return; settled=true; clearTimeout(tm);
         hideLoader();cb(true,null);
       })
       .catch(function(e){
-        if(settled)return; settled=true; clearTimeout(tm);
+        // v9.217: 6 सेकंड वाले रास्ते (hash) से JE अंदर आ चुका और उसके बाद Firebase login नाकाम हुआ — पहले
+        // यहीं चुपचाप रुक जाते थे; फ़ोन anonymous रहता, ताज़ा डेटा/लाइव-sync नहीं (JE के लॉग, 13/10:
+        // sse-never-opened • खाता: anonymous)। अब थोड़ी देर बाद उसी पासवर्ड से फिर कोशिश (memory में, सहेजा नहीं)
+        if(settled){ _jeAuthLater(pw,e); return; }
+        settled=true; clearTimeout(tm);
         hideLoader();
-        if(e&&e.code==="auth/network-request-failed"){_checkJEHash(pw,cb);return;} // नेट बीच में टूटा — offline hash से
+        // v9.217: "गलत पासवर्ड!" सिर्फ़ तभी जब Firebase सच में पासवर्ड ग़लत कहे। पहले App Check/reCAPTCHA token न
+        // मिलना या "बहुत ज़्यादा कोशिशें" भी "गलत पासवर्ड!" दिखाता था। अब ऐसे में फ़ोन के hash से अंदर, और
+        // थोड़ी देर बाद Firebase से फिर जोड़ने की कोशिश (नेट टूटने जैसा ही)
+        if(JE_AUTH_FATAL.indexOf((e&&e.code)||"")<0){_jeAuthLater(pw,e);_checkJEHash(pw,cb);return;}
         cb(false,"गलत पासवर्ड!");
       });
   } else {
-    _checkJEHash(pw,cb); // offline — पिछले online login के hash से
+    _checkJEHash(pw,function(ok,msg){ if(ok) _jePendingPw=pw; cb(ok,msg); }); // offline — पिछले online login के hash से; नेट आते ही Firebase से जोड़ेंगे
   }
+}
+
+// ── v9.217: JE ऐप में है पर Firebase में JE खाता नहीं ──
+// JE (13/10) का लॉग: "sse-never-opened … खाता: anonymous" — JE अंदर था (फ़ोन के hash से) पर सर्वर के लिए
+// anonymous, तो दूसरे HQ की सूचियां/लाइव-sync मना (401) और JE को पुराना डेटा दिखता रहा, बिना किसी चेतावनी।
+// लाइनमैन वाला इलाज (याद रखे PIN से चुपचाप दोबारा जोड़ना, v9.212–213) JE पर नहीं चलता — JE का पासवर्ड फ़ोन
+// में सहेजा नहीं जाता (सिर्फ़ hash)। इसलिए: (1) इसी session में डाला पासवर्ड memory में (_jePendingPw) रहे
+// और नेट/token मिलते ही फिर कोशिश हो; (2) फिर भी न जुड़े तो साफ़ लाल पट्टी "लॉगआउट करके दोबारा login करें"
+var _jePendingPw=null;          // सिर्फ़ इस session की memory — localStorage में कभी नहीं
+var JE_RETRY_MS=60000;
+var _jeRetryT=null, _jeAuthLogged=false;
+var JE_AUTH_FATAL=["auth/wrong-password","auth/invalid-credential","auth/invalid-login-credentials","auth/user-disabled","auth/user-not-found"];
+function _jeAuthLater(pw,e){
+  var code=(e&&e.code)||"";
+  if(JE_AUTH_FATAL.indexOf(code)>=0){
+    // फ़ोन के hash ने पासवर्ड माना पर सर्वर ने मना किया — पासवर्ड बदल चुका है। दोबारा कोशिश बेकार
+    _jePendingPw=null;
+    logErr("je-auth-fail","JE पासवर्ड सर्वर ने नहीं माना (फ़ोन का hash पुराना?)",code);
+    _showJEAuthStrip();
+    return;
+  }
+  _jePendingPw=pw;
+  if(_jeRetryT) return;
+  _jeRetryT=setTimeout(function(){ _jeRetryT=null; _jeRetryAuth(); },JE_RETRY_MS);
+}
+function _jeRetryAuth(){
+  if(!_jePendingPw||!CU||CU.role!=="supervisor"||!navigator.onLine) return;
+  var pw=_jePendingPw;
+  try{
+    firebase.auth().signInWithEmailAndPassword(JE_EMAIL,pw)
+      .then(function(){ _jePendingPw=null; _saveJEHash(pw); _hideJEAuthStrip(); try{ flushPending(); }catch(x){} })
+      .catch(function(e){
+        logErr("je-auth-retry-fail","JE खाते से दोबारा जुड़ना नाकाम",(e&&e.code)||((e&&e.message)||"?"));
+        var code=(e&&e.code)||"";
+        if(JE_AUTH_FATAL.indexOf(code)>=0){ _jePendingPw=null; }
+        _showJEAuthStrip();
+      });
+  }catch(x){}
+}
+// app खुलने/login के बाद (Firebase के सच में तैयार होने पर): JE का खाता JE वाला है या नहीं
+function checkJEAuth(){
+  if(!CU||CU.role!=="supervisor"||!navigator.onLine) return;
+  var fbAuthOk=false;
+  try{fbAuthOk=typeof firebase!=="undefined"&&!!firebase.auth;}catch(e){}
+  if(!fbAuthOk) return;
+  var u=firebase.auth().currentUser;
+  if(u&&u.email===JE_EMAIL){ _hideJEAuthStrip(); return; }
+  if(!_jeAuthLogged){
+    _jeAuthLogged=true;
+    logErr("je-auth-missing","JE ऐप में है पर Firebase खाता JE वाला नहीं",
+      (u?(u.isAnonymous?"anonymous":(u.email||"बिना email")):"कोई खाता नहीं")+" • पासवर्ड memory में:"+(_jePendingPw?"हां":"नहीं"));
+  }
+  if(_jePendingPw) _jeRetryAuth(); else _showJEAuthStrip();
+}
+function _showJEAuthStrip(){
+  var el=document.getElementById("je-auth-strip"); if(!el) return;
+  el.style.display="flex";
+}
+function _hideJEAuthStrip(){
+  var el=document.getElementById("je-auth-strip"); if(el) el.style.display="none";
 }
 
 // ── Lineman PIN: हर HQ का एक साझा PIN (सामान्य सुरक्षा-मज़बूती — कोई भी नाम भरकर न घुस सके) ──
@@ -410,6 +478,12 @@ function _finishLogin(name,silent){
   // _ensureCorrectHqAuth() की अपनी completion callback से चलता है, ताकि सही account असल में तय
   // होने के बाद ही लिखे (supervisor/पहले-से-सही-account मामलों में callback तुरंत ही चलता है)
   _afterAuthReady(function(){ _ensureCorrectHqAuth(function(){ reconcileHQ(activeHQ); }); });
+  // v9.217: JE के लिए — Firebase के सच में तैयार होने पर (लाइनमैन वाली 30 सेकंड तक की प्रतीक्षा जैसी) खाता जांचें
+  _afterAuthReady(function(){
+    if(AUTH_READY||typeof AUTH_LISTENING==="undefined"||!AUTH_LISTENING){ checkJEAuth(); return; }
+    var fired=false, go=function(){ if(fired) return; fired=true; if(AUTH_READY) checkJEAuth(); };
+    _authWaiters.push(go); setTimeout(go,AUTH_WAIT_MAX_MS);
+  });
   fbGet(activeHQ,activeCat,function(data){
     renderSummaryWith(data); renderListWith(data);
     startListen(activeHQ,activeCat);
@@ -442,6 +516,7 @@ function doLogout(askConfirm){
   // ऐप पूरी तरह बंद करके खोलने पर ही चलतीं (तब यह याददाश्त ख़ुद खाली हो जाती है)।
   // _authWrongPin भी इसी वजह से: वह रह जाए तो आगे कभी PIN सच में ग़लत हो तो न logout होगा न toast
   _authHealed={}; _authWrongPin={}; _authReauthLogged={};
+  _jePendingPw=null; _jeAuthLogged=false; if(_jeRetryT){clearTimeout(_jeRetryT);_jeRetryT=null;} _hideJEAuthStrip();
   if(_authRetryT){clearTimeout(_authRetryT);_authRetryT=null;}
   CU=null; selectedRole="";
   document.getElementById("app-screen").classList.remove("active");
