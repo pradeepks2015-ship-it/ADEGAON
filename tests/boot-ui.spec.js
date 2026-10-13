@@ -572,3 +572,72 @@ test.describe('स्कोरकार्ड "दिनांक-वार व�
     expect(html).not.toContain('📍 आदेगांव');
   });
 });
+
+// ── छोटे फ़ोन (360px) पर कोई स्क्रीन दाएं-बाएं न खिसके ──
+// पहले यह सिर्फ़ screenshot देखकर पकड़ा जाता था (जैसे "इस सप्ताह जमा का वादा" जैसे लंबे बटन)। यहां
+// मुख्य स्क्रीनें 360px चौड़ाई पर, लंबे नाम/पते वाले उपभोक्ताओं के साथ खोलकर देखा जाता है कि पन्ना
+// स्क्रीन से चौड़ा न हो (horizontal scroll नहीं)
+test.describe('छोटा फ़ोन — 360px पर पन्ना स्क्रीन से चौड़ा न हो', () => {
+  test.use({ viewport: { width: 360, height: 640 } });
+  // body पर overflow-x:hidden है, तो पन्ना ख़ुद कभी चौड़ा नहीं "दिखता" — बाहर निकला हिस्सा बस कट जाता है।
+  // इसलिए हर दिखने वाली चीज़ देखें: स्क्रीन के दाएं किनारे से बाहर न जाए। छूट सिर्फ़ इनको:
+  //  - जान-बूझकर दाएं-बाएं सरकने वाली पट्टियां (श्रेणी/गांव) — वह डिब्बा ख़ुद स्क्रीन में हो, अंदर की चीज़ें सरकें
+  //    (मुख्य सूची का डिब्बा .main-scroll इसमें नहीं — उसमें चौड़ी चीज़ = पूरा पन्ना बगल में खिसकेगा)
+  //  - सजावट (aria-hidden — जैसे header का टावर, जो जान-बूझकर किनारे से कटा है)
+  const overflow = (page) => page.evaluate(() => {
+    const W = document.documentElement.clientWidth;
+    const main = document.querySelector('.main-scroll');
+    const bad = [];
+    if (main && main.scrollWidth > main.clientWidth + 1) bad.push('.main-scroll आड़ा सरकता है → ' + (main.scrollWidth - main.clientWidth) + 'px');
+    const inStrip = (el) => {
+      for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+        if (a === main || a.id === 'app-screen') continue;
+        if (/auto|scroll/.test(getComputedStyle(a).overflowX) && a.getBoundingClientRect().right <= W + 1) return true;
+      }
+      return false;
+    };
+    document.querySelectorAll('body *').forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height || r.right <= W + 1 || r.left >= W) return;
+      if (el.closest('[aria-hidden="true"]') || getComputedStyle(el).visibility === 'hidden') return;
+      if (inStrip(el)) return;
+      bad.push((el.id ? '#' + el.id : el.className ? '.' + String(el.className).split(' ')[0] : el.tagName) + ' → ' + Math.round(r.right - W) + 'px');
+    });
+    return bad;
+  });
+
+  test('login, सूची (लंबे नाम/पते, वादा, गिनती), रिमार्क खिड़की, नाम वाला मेनू, Profile', async ({ page }) => {
+    await openApp(page);
+    expect(await overflow(page)).toEqual([]);
+    await loginLineman(page);
+    const t = new Date(); const due = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    await page.evaluate((d) => {
+      cSet(activeHQ, activeCat, [
+        { acc: '4521098765432', name: 'श्रीमती रामकली बाई पटेल पति स्वर्गीय श्री रामप्रसाद पटेल', father: 'रामप्रसाद', amount: 1234567, status: 'pending', addr: 'ग्राम आदेगांव वार्ड क्रमांक बारह पुराने पंचायत भवन के पीछे वाली गली', phone: '9876543210', tariff: 'LV1.2', remarksArr: [{ text: 'अगले शुक्रवार को पूरी बकाया राशि जमा करने का वादा किया है', by: 'रामू', at: '10/10/2026, 4:00 pm', due: d }] },
+        { acc: '45211', name: 'सीता', amount: 10, status: 'paid', paydate: '11/10/2026' },
+      ]);
+      _renderLimit = 100; renderList(); renderSummaryWith(cGet(activeHQ, activeCat));
+    }, due);
+    await expect(page.locator('#fb-promise')).toContainText('(1)');
+    expect(await overflow(page)).toEqual([]);
+    await page.evaluate(() => openRmkModal(0, '4521098765432'));
+    expect(await overflow(page)).toEqual([]);
+    await page.evaluate(() => closeRmkModal());
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    expect(await overflow(page)).toEqual([]);
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await page.evaluate(() => openProfileModal());
+    expect(await overflow(page)).toEqual([]);
+  });
+
+  test('बड़े अक्षर (big-text) चालू होने पर भी', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate(() => { document.documentElement.classList.add('big-text'); });
+    await page.evaluate(() => {
+      cSet(activeHQ, activeCat, [{ acc: '777', name: 'बहुत लंबे नाम वाले उपभोक्ता श्री गोपाल प्रसाद विश्वकर्मा', amount: 98765, status: 'pending', addr: 'ग्राम पिपरिया खुर्द' }]);
+      _renderLimit = 100; renderList(); renderSummaryWith(cGet(activeHQ, activeCat));
+    });
+    expect(await overflow(page)).toEqual([]);
+  });
+});

@@ -243,9 +243,14 @@ function _swSetupAutoUpdate(reg){
     }
   });
 }
+// v9.214: पन्ना खुलते वक़्त कोई SW क़ब्ज़े में नहीं था (पहली बार ऐप खुला, या Chrome डेटा साफ़ हुआ) — तब
+// पहला controllerchange सिर्फ़ नए SW का क़ब्ज़ा लेना (clients.claim) है, नया version नहीं। पहले उस पर भी
+// "नया version आ गया" पट्टी आ जाती थी (या पीछे हो तो बेवजह reload)। असली SW वाले टेस्ट (tests/sw-real.spec.js) ने पकड़ा
+var _swHadController=!!("serviceWorker" in navigator&&navigator.serviceWorker.controller);
 if("serviceWorker" in navigator && location.protocol.indexOf("http")===0){
   navigator.serviceWorker.register("sw.js").then(_swSetupAutoUpdate).catch(function(){});
   navigator.serviceWorker.addEventListener("controllerchange",function(){
+    if(!_swHadController){ _swHadController=true; return; }
     // page hidden हो (user दूसरे app में) तो silently reload — कोई interrupt नहीं, पर पुराना bandwidth-भारी
     // code अपने आप बदल जाएगा (v9.92 वाले device जो banner click नहीं करते उनके लिए ज़रूरी)
     if(document.hidden){_reloadPage();}else{_showUpdateBanner();}

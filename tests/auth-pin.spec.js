@@ -444,6 +444,34 @@ test.describe('Lineman PIN — सामान्य सुरक्षा-म�
     expect(r).toEqual({ signIns: 0, cu: 'जोबा' });
   });
 
+  // पूरे रास्ते की नक़ल, असली घड़ी के बिना (page.clock): ऐप दोबारा खुला → _finishLogin वाला
+  // _afterAuthReady(_ensureCorrectHqAuth) → Firebase को सेव किया login बहाल करने में 8 सेकंड लगे।
+  // v9.213 से पहले 5 सेकंड पर "खाता नहीं" मानकर sign-in होता (और नाकाम होने पर PIN)
+  test('ऐप दोबारा खुला, Firebase 8 सेकंड में login बहाल करे — 5 सेकंड की छूट पर भी दोबारा sign-in/logout नहीं (v9.213)', async ({ page }) => {
+    await openApp(page);
+    await page.clock.install();
+    await page.evaluate(() => {
+      localStorage.removeItem('dc_logs3');
+      CU = { role: 'lineman', name: 'टेस्ट लाइनमैन', hq: 'जोबा', pin: '1234' };
+      window.__t = { signIns: 0, cb: 0, user: null };
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { get currentUser() { return window.__t.user; }, signInWithEmailAndPassword: function () { window.__t.signIns++; return Promise.reject({ code: 'auth/firebase-app-check-token-is-invalid' }); } };
+      };
+      AUTH_LISTENING = true; AUTH_READY = false; _authWaiters = [];
+      _afterAuthReady(function () { _ensureCorrectHqAuth(function () { window.__t.cb++; }); });
+      // Firebase 8 सेकंड बाद सेव किया HQ खाता बहाल करता है
+      setTimeout(function () {
+        window.__t.user = { email: HQ_AUTH_EMAIL['जोबा'] };
+        AUTH_READY = true; _authWaiters.splice(0).forEach(function (f) { f(); });
+      }, 8000);
+    });
+    await page.clock.runFor(6000); // 5 सेकंड वाली छूट निकल चुकी
+    expect(await page.evaluate(() => [window.__t.signIns, window.__t.cb, CU && CU.hq])).toEqual([0, 0, 'जोबा']);
+    await page.clock.runFor(3000); // Firebase तैयार
+    expect(await page.evaluate(() => [window.__t.signIns, window.__t.cb, CU && CU.hq, getLogs().some((l) => l.c === 'reauth-needed')])).toEqual([0, 1, 'जोबा', false]);
+  });
+
   test('_ensureCorrectHqAuth (v9.212) — auth/invalid-credential (नया Firebase ग़लत-PIN code) पर logout + लॉग में auto-logout', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {

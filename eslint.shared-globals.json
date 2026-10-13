@@ -336,6 +336,7 @@
   "_sseFullPutData",
   "_sseLogNeverOpened",
   "_sseNeverOpenedLogged",
+  "_swHadController",
   "_swSetupAutoUpdate",
   "_syncBigTextSwitch",
   "_syncFilterBtns",

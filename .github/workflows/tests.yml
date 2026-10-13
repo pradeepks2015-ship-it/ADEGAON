@@ -40,3 +40,35 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
+
+  # Firebase Security Rules की असली जांच — Firebase के नक़ली सर्वर (emulator) पर, असली Firebase को नहीं छूता।
+  # database.rules.json main पर merge होते ही असली Firebase पर लग जाते हैं (deploy-rules.yml), इसलिए
+  # यहां हर खाते (हर HQ का लाइनमैन, JE, anonymous, बिना login) से सचमुच पढ़/लिखकर देखा जाता है
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm run test:rules
+
+  # साप्ताहिक बैकअप का पासवर्ड-ताला (scripts/encrypt-backup.py) — टूटे तो रविवार से पहले पता चले
+  backup-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet msoffcrypto-tool==5.4.2
+      - run: npm run test:backup
