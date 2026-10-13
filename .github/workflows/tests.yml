@@ -41,6 +41,26 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
 
+  # पूरा ऐप Firebase के नक़ली सर्वर (emulator) पर — असली login (Auth) + database + rules (13/10/2026)।
+  # smoke में Firebase बंद रहता है; यहां "सही PIN → वसूली सर्वर पर", "ग़लत PIN पर मना", "JE अपलोड सर्वर पर"
+  # सचमुच चलते हैं। असली Firebase को नहीं छूता (project demo-…), देखें tests/e2e-firebase.spec.js
+  e2e-firebase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
   # Firebase Security Rules की असली जांच — Firebase के नक़ली सर्वर (emulator) पर, असली Firebase को नहीं छूता।
   # database.rules.json main पर merge होते ही असली Firebase पर लग जाते हैं (deploy-rules.yml), इसलिए
   # यहां हर खाते (हर HQ का लाइनमैन, JE, anonymous, बिना login) से सचमुच पढ़/लिखकर देखा जाता है

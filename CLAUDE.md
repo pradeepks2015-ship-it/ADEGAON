@@ -43,6 +43,12 @@
 - `index.html`, `css/style.css`
 - `sw.js` — service worker + CACHE_NAME
 - `tests/*.spec.js` — पूरा टेस्ट suite, विषय-वार 12 फ़ाइलें (boot-ui, data-recovery, migration, auth-pin, upload-ledger, network-bandwidth…); साझा helpers (`openApp`, `loginLineman`, `loginJE`, lazy-फ़ाइल fixture) `tests/helpers.js` में। नया टेस्ट उसी विषय वाली फ़ाइल में जोड़ें
+  - `tests/field-conditions.spec.js` — असली मैदान जैसी हालत: असली आकार का डेटा (6 HQ × 8 श्रेणी, ~9M अक्षर), सस्ता फ़ोन
+    (CPU 4× धीमा), ऐप दो टैब में एक साथ, पुराने version वाले फ़ोन की हालत पर नया version। डेटा/भंडारण/खुलने से जुड़ा
+    बदलाव करें तो ये ज़रूर देखें
+  - `tests/e2e-firebase.spec.js` — पूरा ऐप Firebase emulator पर (असली login + database + rules)। सामान्य suite में skip;
+    चलाना `npm run test:e2e` (Java + firebase-tools; यहां sandbox में proxy env हटाकर: `env -u HTTPS_PROXY -u HTTP_PROXY …`),
+    CI में "e2e-firebase" job। `firebase` devDependency का version `index.html` वाले SDK जैसा ही रहे (टेस्ट जांचता है)
 - `database.rules.json` — Firebase Realtime Database की Security Rules (source of truth — `main` पर push होते ही `.github/workflows/deploy-rules.yml` अपने-आप असली Firebase पर deploy कर देता है, देखें `scripts/deploy-rules.js`)
 - `eslint.config.js` / `eslint.shared-globals.json` — CI लिंट सेटअप; कोई नई top-level global var/function (जो दूसरी js/*.js फाइल में इस्तेमाल हो) जोड़ें तो `node scripts/gen-eslint-globals.js` चलाकर globals list दोबारा बनाएं। दो फ़ाइलों में ग़लती से एक ही नाम declare न हो जाए (global scope share होने से चुपचाप overwrite का ख़तरा) — यह `npm run check-globals` (CI में भी) से अपने-आप जांचा जाता है, देखें `scripts/check-duplicate-globals.js`
 
@@ -64,6 +70,8 @@
    npm run check-globals  # एक ही global नाम दो फ़ाइलों में declare न हो
    npm run typecheck      # type-जांच (tsc) — 0 errors; DOM/बाहरी library की जानकारी types/globals.d.ts में
    ```
+   CI में इनके अलावा `rules` (`npm run test:rules`), `backup-lock` (`npm run test:backup`) और `e2e-firebase`
+   (`npm run test:e2e`) jobs भी चलते हैं — sandbox में Java/emulator हो तो इन्हें भी चला लें
    नया top-level global (जो दूसरी js/*.js फाइल में इस्तेमाल हो) जोड़ें तो पहले `node scripts/gen-eslint-globals.js` चलाएं, वरना lint फेल होगी।
 3. Commit → `git fetch origin main` करके rebase करें (पिछले squash-merge से conflict बचाने के लिए) → push → PR बनाएं → PR की "smoke" **और** "lint" दोनों CI checks पास होने का इंतज़ार करें → तभी merge करें (squash) → PR activity से unsubscribe करें।
    merge के बाद **"लाइव" तभी कहें** जब GitHub Pages का deploy सफल दिखे —

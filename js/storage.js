@@ -13,10 +13,30 @@ function cGet(hq,cat){
 function cSet(hq,cat,d){
   var k=cKey(hq,cat);
   CACHE[k]=d;
+  _listsBcPost(k,d);
   if(!_cacheReady){ _cacheDirty[k]=true; return; } // cacheInit ख़ुद लिख देगा
   if(_cacheDb){ _idbPut(k,d); return; }
   lsSet(LS_PREFIX+k,JSON.stringify(d),"cache");
 }
+
+// ── v9.221: ऐप दो जगह एक साथ खुला (Chrome टैब + इंस्टॉल ऐप) ──
+// हर टैब की सूचियां उसकी अपनी memory (CACHE) में रहती हैं। पहले: टैब-1 में वसूली दर्ज हुई, फिर टैब-2 ने
+// अपनी (पुरानी) memory वाली सूची में दूसरी वसूली दर्ज करके पूरी सूची फ़ोन में लिख दी — टैब-1 वाली वसूली
+// फ़ोन की copy से मिट गई (नए "field-conditions" टेस्ट ने पकड़ा; 13/10 को Vikas के फ़ोन पर ऐप दो जगह
+// खुला मिला था)। अब हर बदली सूची बाक़ी खुले टैबों को भी भेजी जाती है (सिर्फ़ इसी फ़ोन के अंदर — नेट नहीं),
+// और वे अपनी memory उसी से बदल लेते हैं; दिख रही सूची हो तो दोबारा बनाते हैं
+/** @type {BroadcastChannel|null} */ var _listsBc=null;
+try{ if(typeof BroadcastChannel!=="undefined") _listsBc=new BroadcastChannel("dc_lists"); }catch(e){}
+function _listsBcPost(k,d){ try{ if(_listsBc) _listsBc.postMessage({k:k,d:d}); }catch(e){} }
+if(_listsBc) _listsBc.onmessage=function(ev){
+  var m=ev&&ev.data;
+  if(!m||typeof m.k!=="string"||!Array.isArray(m.d)) return;
+  CACHE[m.k]=m.d; // लिखाई भेजने वाला टैब कर चुका — यहां सिर्फ़ memory
+  try{
+    if(typeof CU!=="undefined"&&CU&&typeof activeHQ!=="undefined"&&cKey(activeHQ,activeCat)===m.k
+      &&document.getElementById("app-screen").classList.contains("active")) renderList();
+  }catch(e){}
+};
 
 // ── v9.220: सूचियों का cache IndexedDB में ──
 // v9.219 के "storage-full" लॉग (13/10): JE फ़ोन ही नहीं, लाइनमैन फ़ोन भी भरे — localStorage की सीमा
