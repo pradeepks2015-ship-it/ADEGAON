@@ -823,6 +823,27 @@ test.describe('लॉगिन और डेटा-लोड — कमज़ो
     expect(r.stored).toEqual([]); // पासवर्ड कभी localStorage में नहीं
   });
 
+  test('_jeRetryAuth (v9.218) — कमज़ोर नेट पर बार-बार कोशिश (2/5/10 मिनट), लॉग में सिर्फ़ पहली नाकामी, जुड़ते ही je-auth-recovered', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      localStorage.removeItem('dc_logs3');
+      CU = { role: 'supervisor', name: 'JE', hq: 'आदेगांव' };
+      JE_RETRY_BACKOFF_MS = [50, 50, 50];
+      _jeTries = 0; _jeFirstFailAt = 0; _jeFailLogged = false; _jeRetryT = null;
+      let n = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () { return { signInWithEmailAndPassword: function () { n++; return n <= 2 ? Promise.reject({ code: 'auth/network-request-failed' }) : Promise.resolve({}); } }; };
+      _jePendingPw = 'Test#123';
+      _jeRetryAuth();
+      setTimeout(() => resolve({ n, pending: _jePendingPw, logs: getLogs().map((l) => l.c + '|' + l.x), strip: getComputedStyle(document.getElementById('je-auth-strip')).display }), 600);
+    }));
+    expect(r.n).toBe(3);
+    expect(r.pending).toBeNull();
+    expect(r.logs.filter((l) => l.startsWith('je-auth-retry-fail')).length).toBe(1);
+    expect(r.logs.some((l) => /^je-auth-recovered\|\d+ मिनट बाद • कोशिशें: 3$/.test(l))).toBe(true);
+    expect(r.strip).toBe('none');
+  });
+
   test('verifyJE (v9.217) — सच में ग़लत पासवर्ड (auth/invalid-credential) पर "गलत पासवर्ड!" पहले जैसा', async ({ page }) => {
     await openApp(page);
     await seedHash(page);
