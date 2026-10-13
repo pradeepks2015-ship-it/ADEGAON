@@ -11,7 +11,57 @@ function cGet(hq,cat){
 function cSet(hq,cat,d){
   var k=cKey(hq,cat);
   CACHE[k]=d;
-  try{localStorage.setItem(LS_PREFIX+k,JSON.stringify(d));}catch(e){}
+  lsSet(LS_PREFIX+k,JSON.stringify(d),"cache");
+}
+
+// ── v9.219: फ़ोन की जगह (localStorage) भर जाए तो ──
+// असली production (13/10, JE फ़ोन, नए लेजर अपलोड के वक़्त): "vt_paidbk_… exceeded the quota" — 15 बार।
+// जांच में दो बातें निकलीं: (1) vt_paidbk_/vt_rmkbk_ backup सिर्फ़ 7 दिन काम आते हैं (upload.js,
+// RMK_BK_MAX_AGE_MS), पर कभी मिटते नहीं थे — हर अपलोड पर ढेर बढ़ता गया; (2) cSet और offline queue
+// (setPendingObj) quota भरने पर चुपचाप नाकाम होते थे — न log, न संदेश। cache न बचे तो हर बार ऐप
+// खुलने पर वही सूची पूरी दोबारा उतरती है (ETag तभी चलता है जब cache हो — database.js), और queue न बचे
+// तो बिना नेट दर्ज वसूली ऐप बंद होते ही खो सकती है।
+// अब: हर लिखाई lsSet से — भरने पर पहले 7 दिन से पुराने backup मिटाकर दोबारा कोशिश; फिर भी न हो तो
+// "storage-full" log (हर तरह का एक बार प्रति खुलना) जिसमें जगह का हिसाब हो, ताकि अगला कदम नाप पर तय हो
+var LS_BK_PREFIXES=["vt_paidbk_","vt_rmkbk_"], LS_BK_MAX_AGE_MS=7*24*60*60*1000;
+/** @type {Object<string,boolean>} */ var _lsFullLogged={};
+// 7 दिन से पुराने (या टूटे) backup हटाएं — लौटाता है कितने हटे
+function lsPurgeOldBackups(){
+  var gone=0, now=Date.now(), keys=[];
+  try{ for(var i=0;i<localStorage.length;i++) keys.push(localStorage.key(i)); }catch(e){ return 0; }
+  keys.forEach(function(k){
+    if(!k||!LS_BK_PREFIXES.some(function(p){return k.indexOf(p)===0;})) return;
+    var t=0;
+    try{ t=(JSON.parse(localStorage.getItem(k)||"{}")||{}).t||0; }catch(e){}
+    if(now-t>=LS_BK_MAX_AGE_MS){ try{ localStorage.removeItem(k); gone++; }catch(e){} }
+  });
+  return gone;
+}
+// जगह का हिसाब (हज़ार अक्षरों में): कुल / सूचियों का cache / backup / सबसे बड़ी key
+function lsUsageNote(){
+  var tot=0, cache=0, bk=0, nCache=0, big="", bigN=0;
+  try{
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i)||"", n=k.length+(localStorage.getItem(k)||"").length;
+      tot+=n;
+      if(k.indexOf(LS_PREFIX)===0){ cache+=n; nCache++; }
+      else if(LS_BK_PREFIXES.some(function(p){return k.indexOf(p)===0;})) bk+=n;
+      if(n>bigN){ bigN=n; big=k; }
+    }
+  }catch(e){}
+  var K=function(n){return Math.round(n/1000)+"K";};
+  return "कुल "+K(tot)+" • cache "+K(cache)+" ("+nCache+" सूची) • backup "+K(bk)+" • सबसे बड़ी "+big+" "+K(bigN);
+}
+// localStorage.setItem — भरने पर पुराने backup हटाकर एक बार दोबारा। लौटाता है सफल हुआ या नहीं
+function lsSet(key,val,kind){
+  try{ localStorage.setItem(key,val); return true; }catch(e){
+    if(lsPurgeOldBackups()>0){ try{ localStorage.setItem(key,val); return true; }catch(e2){} }
+    if(!_lsFullLogged[kind]){
+      _lsFullLogged[kind]=true;
+      logErr("storage-full",e,kind+" • "+key.slice(0,40)+" • "+Math.round(val.length/1000)+"K • "+lsUsageNote());
+    }
+    return false;
+  }
 }
 
 // ── OFFLINE SYNC QUEUE: offline बदलाव queue में, नेट आते ही अपने आप Firebase sync ──
@@ -23,7 +73,14 @@ var PENDING_KEY="dc_pending3";
 // डेटा device पर सुरक्षित रहता है, बस चुपचाप हैमर करना बंद — और एक बार साफ़ चेतावनी दिखा दो।
 var STUCK_AUTH_MAX=3;
 function getPending(){try{return JSON.parse(localStorage.getItem(PENDING_KEY))||{};}catch(e){return {};}}
-function setPendingObj(p){try{localStorage.setItem(PENDING_KEY,JSON.stringify(p));}catch(e){}}
+var _pendFullToastAt=0;
+function setPendingObj(p){
+  // queue न बचे तो बिना नेट दर्ज वसूली ऐप बंद होने पर खो सकती है — इसलिए यहां स्क्रीन पर भी बताएं
+  if(lsSet(PENDING_KEY,JSON.stringify(p),"pending")||typeof toast!=="function") return;
+  if(Date.now()-_pendFullToastAt<60000) return; // हर लिखाई पर नहीं — मिनट में एक बार
+  _pendFullToastAt=Date.now();
+  toast("⚠️ फ़ोन की जगह भर गई — नेट चालू करके ऐप खुला रखें ताकि वसूली सर्वर पर चली जाए","err");
+}
 function _bumpAuthFail(k,err){
   var p=getPending();
   var entry=p[k];

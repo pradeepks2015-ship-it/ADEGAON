@@ -19,6 +19,9 @@ function startApp(){
   // रखने वाले device पर एक बाइट भी नहीं जाती (देखें list.js: _sndWarm)
   if(navigator.onLine){ensureLibs();flushPending();fetchPause();hscFetch();try{_sndWarm();}catch(e){}}
   startPausePoll();
+  // 7 दिन से पुराने वसूली/रिमार्क backup हटाएं — वे अब किसी काम के नहीं, बस जगह घेरते हैं (v9.219,
+  // देखें storage.js: lsSet)। खुलने की रफ़्तार पर असर न पड़े, इसलिए थोड़ा रुककर
+  setTimeout(function(){ try{ lsPurgeOldBackups(); }catch(e){} },5000);
   // Pull-to-refresh जैसा असली page reload, और मोबाइल पर ऐप minimize होने के बाद OS का tab मार
   // देना — दोनों CU (JS memory) मिटा देते हैं। सेव किया हुआ session मिले तो login screen दिखाए
   // बिना चुपचाप वापस अंदर ले जाएं (Firebase का अपना auth session वैसे भी बना रहता है — यह सिर्फ़
