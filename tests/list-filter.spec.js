@@ -532,3 +532,68 @@ test.describe('वादा एक टैप में (v9.204)', () => {
     expect(await page.inputValue('#rmk-due')).toBe('');
   });
 });
+
+// ── v9.215: 🕰️ पुराना भुगतान पहले (JE, 13/10) ──
+test.describe('पुराना भुगतान पहले (v9.215)', () => {
+  const seed = async (page, recs) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.evaluate((r) => { cSet(activeHQ, activeCat, r); _renderLimit = 100; renderList(); }, recs);
+  };
+  const names = (page) => page.$$eval('#con-list .con-card .cc-name', (els) => els.map((e) => e.textContent.trim()));
+
+  test('लेजर की तारीख़ के सारे रूप पहचाने (भारतीय दिन/महीना, Excel का अमेरिकी, 2-अंकीय साल, महीने का नाम, समय सहित); बेकार पर null', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const iso = (v) => { const t = lastPayTs({ lastPayDate: v }); if (t === null) return null; const d = new Date(t); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+      return ['13/10/2025', '13-10-25', '13.10.2025', '2025-10-13', '2025-10-13 00:00:00', '13-Oct-2025', '13 Oct 2025', '10/13/25', '05/04/2024', '', 'कभी नहीं', '31/31/2025'].map(iso);
+    });
+    expect(r).toEqual(['2025-10-13', '2025-10-13', '2025-10-13', '2025-10-13', '2025-10-13', '2025-10-13', '2025-10-13', '2025-10-13', '2024-4-5', null, null, null]);
+  });
+
+  test('क्रम: तारीख़ नहीं → सबसे पुराना → नया; एक ही महीने में बड़ी बकाया पहले; पंचायत नीचे; वसूल सबसे नीचे', async ({ page }) => {
+    await seed(page, [
+      { acc: '1', name: 'नया', amount: 500, status: 'pending', lastPayDate: '01/09/2026' },
+      { acc: '2', name: 'पुराना छोटा', amount: 100, status: 'pending', lastPayDate: '10/01/2024' },
+      { acc: '3', name: 'पुराना बड़ा', amount: 900, status: 'pending', lastPayDate: '25/01/2024' },
+      { acc: '4', name: 'बिना तारीख़', amount: 50, status: 'pending' },
+      { acc: '5', name: 'पंचायत', amount: 99999, status: 'pending', tariff: 'LV3.1', lastPayDate: '01/01/2020' },
+      { acc: '6', name: 'वसूल', amount: 10, status: 'paid', paydate: '12/10/2026', lastPayDate: '01/01/2019' },
+    ]);
+    await page.evaluate(() => toggleOldPaySort({ stopPropagation() {} }));
+    expect(await names(page)).toEqual(['बिना तारीख़', 'पुराना बड़ा', 'पुराना छोटा', 'नया', 'पंचायत', 'वसूल']);
+    expect(await page.evaluate(() => localStorage.getItem('dc_listsort'))).toBe('oldpay');
+    // निशान सिर्फ़ बाकी पर, रंग महीनों से
+    await expect(page.locator('.con-card', { hasText: 'बिना तारीख़' }).locator('.chip-oldpay.red')).toContainText('भुगतान तारीख़ नहीं');
+    await expect(page.locator('.con-card', { hasText: 'पुराना बड़ा' }).locator('.chip-oldpay.red')).toContainText('महीने से भुगतान नहीं');
+    await expect(page.locator('.con-card', { hasText: 'वसूल' }).locator('.chip-oldpay')).toHaveCount(0);
+  });
+
+  test('निशान सिर्फ़ इसी क्रम में (JE का फ़ैसला); मेनू के दोनों विकल्प आपस में अदल-बदल', async ({ page }) => {
+    await seed(page, [{ acc: '1', name: 'क', amount: 5, status: 'pending', lastPayDate: '01/01/2024' }]);
+    await page.evaluate(() => setListSort('amount'));
+    await expect(page.locator('.chip-oldpay')).toHaveCount(0);
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await page.click('#oldpay-menu-item');
+    await expect(page.locator('.chip-oldpay')).toHaveCount(1);
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await expect(page.locator('#oldpay-menu-state')).toHaveText('✓ चालू');
+    await expect(page.locator('#sort-menu-state')).toHaveText('बंद');
+    await page.click('#sort-menu-item'); // लेजर क्रम दबाया — पुराना-भुगतान बंद, लेजर चालू
+    expect(await page.evaluate(() => listSort)).toBe('ledger');
+    await expect(page.locator('.chip-oldpay')).toHaveCount(0);
+    await page.evaluate(() => toggleUserMenu({ stopPropagation() {} }));
+    await expect(page.locator('#oldpay-menu-state')).toHaveText('बंद');
+    await expect(page.locator('#sort-menu-state')).toHaveText('✓ चालू');
+  });
+
+  test('6 महीने से कम — सादा, 6–11 नारंगी, 12+ लाल (महीनों की गिनती)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const now = new Date(2026, 9, 13);
+      return [['13/10/2026'], ['12/04/2026'], ['13/04/2026'], ['14/10/2025'], ['13/10/2025']].map(([d]) => monthsSincePay({ lastPayDate: d }, now));
+    });
+    expect(r).toEqual([0, 6, 6, 11, 12]);
+  });
+});
+
