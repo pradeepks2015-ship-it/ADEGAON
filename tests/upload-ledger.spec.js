@@ -991,6 +991,75 @@ test.describe('मिटने से पहले वसूली का backup
     expect(r.threw).toBe(false);      // सफ़ाई फिर भी चली
     expect(r.status).toBe('pending'); // और अपना काम कर गई
   });
+
+  // v9.219 — असली production (13/10, JE फ़ोन): एक अपलोड पर 15 "paid-backup-fail"; पुराने backup कभी मिटते नहीं थे
+  test('जगह भरे तो 7 दिन पुराने backup मिटाकर दोबारा save; ताज़ा backup बचे', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const old = Date.now() - 8 * 24 * 3600 * 1000;
+      localStorage.setItem('vt_paidbk_पुराना_x', JSON.stringify({ t: old, m: { a: 1 } }));
+      localStorage.setItem('vt_rmkbk_पुराना_y', JSON.stringify({ t: old, m: { a: [] } }));
+      localStorage.setItem('vt_paidbk_ताज़ा_z', JSON.stringify({ t: Date.now(), m: { a: 1 } }));
+      // जगह भरी है — जब तक पुराना backup मौजूद है, नई लिखाई नाकाम
+      const orig = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) {
+        if (localStorage.getItem('vt_paidbk_पुराना_x') !== null) throw new Error('QuotaExceededError');
+        return orig.call(this, k, v);
+      };
+      let saved;
+      try { saved = savePaidBackup('आदेगांव', 'घरेलू', { 1: paidBkEntry({ paydate: '1/10/2026' }) }); } finally { Storage.prototype.setItem = orig; }
+      return {
+        saved,
+        oldGone: localStorage.getItem('vt_paidbk_पुराना_x') === null && localStorage.getItem('vt_rmkbk_पुराना_y') === null,
+        freshKept: localStorage.getItem('vt_paidbk_ताज़ा_z') !== null,
+        newBk: localStorage.getItem('vt_paidbk_' + cKey('आदेगांव', 'घरेलू')) !== null,
+        failLogs: getLogs().filter((l) => l.c === 'paid-backup-fail' || l.c === 'storage-full').length,
+      };
+    });
+    expect(r).toEqual({ saved: 1, oldGone: true, freshKept: true, newBk: true, failLogs: 0 });
+  });
+
+  test('जगह पूरी भरी — कई श्रेणियों पर भी "storage-full" एक ही log, जगह के हिसाब के साथ', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const orig = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) {
+        if (/^(vt_paidbk_|dc_cache3_)/.test(String(k))) throw new Error('QuotaExceededError');
+        return orig.call(this, k, v);
+      };
+      try {
+        ['घरेलू', 'व्यवसाय', 'कुल उपभोक्ता'].forEach((c) => {
+          savePaidBackup('पाटन', c, { 9: paidBkEntry({}) });
+          cSet('पाटन', c, [{ acc: '9', name: 'x' }]);
+        });
+      } finally { Storage.prototype.setItem = orig; }
+      const logs = getLogs().filter((l) => l.c === 'storage-full' || l.c === 'paid-backup-fail');
+      return { kinds: logs.map((l) => l.x.split(' • ')[0]).sort(), note: logs[0] && logs[0].x, mem: cGet('पाटन', 'घरेलू').length };
+    });
+    expect(r.kinds).toEqual(['cache', 'paid-backup']); // हर तरह का एक — 6 नहीं
+    expect(r.note).toMatch(/कुल \d+K • cache \d+K/);
+    expect(r.mem).toBe(1); // इस बार के लिए memory में सूची बनी रहे
+  });
+
+  test('offline queue save न हो तो लाइनमैन को स्क्रीन पर बताएं (चुपचाप नहीं)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const orig = Storage.prototype.setItem;
+      const shown = [];
+      const t = window.toast;
+      window.toast = (m) => shown.push(m);
+      Storage.prototype.setItem = function (k, v) {
+        if (k === PENDING_KEY) throw new Error('QuotaExceededError');
+        return orig.call(this, k, v);
+      };
+      try { markPending('आदेगांव', 'घरेलू', 'put'); markPending('आदेगांव', 'व्यवसाय', 'put'); } finally { Storage.prototype.setItem = orig; window.toast = t; }
+      return { warn: shown.filter((m) => /जगह भर गई/.test(m)).length, log: getLogs().filter((l) => l.c === 'storage-full').length };
+    });
+    expect(r).toEqual({ warn: 1, log: 1 });
+  });
 });
 
 // ── v9.200: Merge में "पुरानी वसूली सुरक्षित रखें" भ्रम न बने + सीमा की सही संख्या ──

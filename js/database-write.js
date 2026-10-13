@@ -307,7 +307,9 @@ function paidBkEntry(e){
 function savePaidBackup(hq,cat,map){
   try{
     if(!map||!Object.keys(map).length) return 0;
-    localStorage.setItem("vt_paidbk_"+cKey(hq,cat),JSON.stringify({t:Date.now(),m:map}));
+    // भर जाए तो lsSet ख़ुद पुराने backup हटाकर दोबारा कोशिश करता है और "storage-full" log एक ही बार
+    // (पहले यहां हर श्रेणी पर अलग "paid-backup-fail" — 13/10 को एक अपलोड पर 15 पंक्तियां)
+    if(!lsSet("vt_paidbk_"+cKey(hq,cat),JSON.stringify({t:Date.now(),m:map}),"paid-backup")) return 0;
     return Object.keys(map).length;
   }catch(e){ logErr("paid-backup-fail",e,hq+"/"+cat); return 0; }
 }
@@ -326,7 +328,7 @@ function fbDel(hq,cat,cb){
     (cGet(hq,cat)||[]).forEach(function(e){
       if(e&&e.acc&&e.remarksArr&&e.remarksArr.length) rbk[String(e.acc).trim()]=e.remarksArr;
     });
-    if(Object.keys(rbk).length)localStorage.setItem("vt_rmkbk_"+cKey(hq,cat),JSON.stringify({t:Date.now(),m:rbk}));
+    if(Object.keys(rbk).length)lsSet("vt_rmkbk_"+cKey(hq,cat),JSON.stringify({t:Date.now(),m:rbk}),"rmk-backup");
   }catch(e){}
   cSet(hq,cat,[]);
   fetch(FB+"/"+fbPath(hq,cat)+".json",{method:"DELETE"})

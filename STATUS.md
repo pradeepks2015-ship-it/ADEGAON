@@ -61,11 +61,38 @@
 | #255 | v9.215 — 🕰️ पुराना भुगतान पहले | 13 अक्टू ✅ |
 | #256 | v9.216 — नाम "⏳ पुराने बकायादार पहले" + 🚫 कभी भुगतान नहीं | 13 अक्टू ✅ |
 | #257 | v9.217 — JE खाता Firebase से न जुड़े तो दोबारा कोशिश + चेतावनी | 13 अक्टू ✅ |
-| — | v9.218 — JE: कमज़ोर नेट पर बार-बार कोशिश + je-auth-recovered | 13 अक्टू |
+| #258 | v9.218 — JE: कमज़ोर नेट पर बार-बार कोशिश + je-auth-recovered | 13 अक्टू ✅ |
+| — | v9.219 — फ़ोन की जगह भरना: पुराने backup मिटें, storage-full लॉग, queue न बचे तो संदेश | 13 अक्टू |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
 कर लें (पिछले squash-merge से conflict बचाने के लिए)।
+
+---
+
+## 1य. 13 अक्टूबर — फ़ोन की जगह (localStorage) भरना
+
+### v9.219
+JE का लॉग (JE फ़ोन, PRADEEP, v9.218, पाटन/बीबी/मढ़ी के नए लेजर अपलोड पर): 15 × `paid-backup-fail … exceeded the quota`।
+जांच में निकला:
+- `vt_paidbk_`/`vt_rmkbk_` backup सिर्फ़ 7 दिन काम आते हैं (`RMK_BK_MAX_AGE_MS`), पर **कभी मिटते नहीं थे** — हर अपलोड पर ढेर
+- `cSet` (सूचियों का cache) और `setPendingObj` (offline queue) quota भरने पर **चुपचाप** नाकाम थे — न लॉग, न संदेश।
+  cache न बचे तो हर बार खुलने पर वह सूची पूरी दोबारा उतरती है (ETag cache होने पर ही चलता है — छुपा डेटा-ख़र्च);
+  queue न बचे तो बिना नेट दर्ज वसूली ऐप बंद होने पर खो सकती है
+
+सुधार (`js/storage.js`):
+- `lsSet(key,val,kind)` — भरने पर `lsPurgeOldBackups()` (7 दिन से पुराने backup) फिर दोबारा कोशिश; फिर भी नाकाम तो
+  `storage-full` लॉग (हर तरह का session में एक बार) जिसमें `lsUsageNote()`: कुल / cache (कितनी सूची) / backup / सबसे बड़ी key
+- `cSet`, `savePaidBackup`, rmk-backup, `setPendingObj` अब `lsSet` से; queue न बचे तो स्क्रीन पर संदेश (मिनट में एक बार)
+- ऐप खुलने के 5 सेकंड बाद `lsPurgeOldBackups()`
+- 3 नए टेस्ट (`upload-ledger.spec.js`)
+
+**अगला कदम नाप पर:** JE फ़ोन पर 6 HQ × 8 श्रेणी का cache localStorage (~5M अक्षर) से बड़ा हो सकता है। `storage-full`
+के आंकड़े आएं तो तय करें — cache को IndexedDB में ले जाना (बड़ा बदलाव) या JE फ़ोन पर दूसरे HQ का cache न रखना।
+
+**साथ में देखा (कोड नहीं बदला):** `reauth-needed` Vikas (आदेगांव लाइनमैन, एक ही फ़ोन msvw98…) — फ़ोन पर Firebase खाता
+`hq-pindrai` का था; उसी पल v9.213 और v9.218 दोनों से लॉग = ऐप एक साथ दो जगह खुला (Chrome टैब + इंस्टॉल ऐप)।
+दोबारा जुड़ना सफल रहा (reauth-fail/auto-logout नहीं)। JE से पूछा: क्या Vikas पिंडरई से भी login करते हैं?
 
 ---
 
