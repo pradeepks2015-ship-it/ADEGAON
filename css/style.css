@@ -230,6 +230,10 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .chip-due{background:rgba(255,152,0,.12);color:#e65100;font-weight:700;}
 .chip-due.today{background:rgba(255,152,0,.22);}
 .chip-due.over{background:rgba(255,77,109,.14);color:var(--red);}
+/* v9.215: 🕰️ पुराना भुगतान पहले — "⏰ N महीने से भुगतान नहीं" (6+ नारंगी, 12+ लाल) */
+.chip-oldpay{background:rgba(96,125,139,.12);color:var(--muted);font-weight:700;}
+.chip-oldpay.orange{background:rgba(255,152,0,.14);color:#e65100;}
+.chip-oldpay.red{background:rgba(255,77,109,.14);color:var(--red);}
 .con-list{padding:0 12px 96px;}
 .con-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:11px 13px;margin-bottom:9px;border-left:4px solid var(--border);box-shadow:var(--shadow-card);transition:transform .15s,box-shadow .15s;animation:fadeUp .35s ease-out;}
 .con-card:active{transform:scale(.985);}

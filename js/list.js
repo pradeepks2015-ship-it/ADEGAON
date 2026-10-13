@@ -44,17 +44,18 @@ function debounceSearch(){
 var LIST_SORT_KEY="dc_listsort";
 // JE का फ़ैसला (11/10, विकल्प "ख"): डिफ़ॉल्ट = बड़ी बकाया पहले; जिसे रास्ते/बुक वाला लेजर-क्रम चाहिए वह नाम
 // वाले मेनू में "📋 लेजर क्रम" चालू करे (पसंद फ़ोन पर याद रहती है)
-var listSort=(function(){ try{ return localStorage.getItem(LIST_SORT_KEY)==="ledger"?"ledger":"amount"; }catch(e){ return "amount"; } })();
+// v9.215: तीसरा क्रम "oldpay" — 🕰️ पुराना भुगतान पहले
+var listSort=(function(){ try{ var v=localStorage.getItem(LIST_SORT_KEY); return (v==="ledger"||v==="oldpay")?v:"amount"; }catch(e){ return "amount"; } })();
 // चालू/बंद ऊपर नाम वाले मेनू ("₹ बड़ी बकाया पहले") से — JE (11/10) ने इसे सूची के ऊपर नहीं, मेनू में चाहा
 function toggleListSort(e){
   // मेनू नाम वाले बटन (user-pill) के अंदर है — क्लिक ऊपर तक जाता तो toggleUserMenu मेनू दोबारा खोल देता
   if(e&&e.stopPropagation) e.stopPropagation();
-  setListSort(listSort==="amount"?"ledger":"amount");
+  setListSort(listSort==="ledger"?"amount":"ledger"); // पुराना-भुगतान क्रम चालू हो तब भी दबाने पर लेजर क्रम
   var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
   if(typeof toast==="function") toast(listSort==="ledger"?"📋 लेजर क्रम — चालू":"₹ बड़ी बकाया पहले — लेजर क्रम बंद","inf");
 }
 function setListSort(v){
-  listSort=(v==="amount")?"amount":"ledger";
+  listSort=(v==="ledger"||v==="oldpay")?v:"amount";
   try{ localStorage.setItem(LIST_SORT_KEY,listSort); }catch(e){}
   _renderLimit=100;
   renderList();
@@ -65,8 +66,60 @@ function setListSort(v){
 var _PANCHAYAT_TARIFF_RE=/LV\s*-?\s*3\s*[.\-]\s*[12](?!\d)/i;
 function isPanchayatTariff(x){ return !!(x&&x.tariff&&_PANCHAYAT_TARIFF_RE.test(String(x.tariff))); }
 function _syncSortBtn(){
-  var on=(listSort==="ledger"); // मेनू का विकल्प अब "📋 लेजर क्रम" है — वही चालू/बंद दिखता है
-  var st=document.getElementById("sort-menu-state"); if(st){ st.textContent=on?"✓ चालू":"बंद"; st.className="sort-menu-state"+(on?" on":""); }
+  // मेनू में दो विकल्प — "📋 लेजर क्रम" और "🕰️ पुराना भुगतान पहले"; दोनों बंद = बड़ी बकाया पहले
+  [["sort-menu-state","ledger"],["oldpay-menu-state","oldpay"]].forEach(function(p){
+    var on=(listSort===p[1]);
+    var st=document.getElementById(p[0]); if(st){ st.textContent=on?"✓ चालू":"बंद"; st.className="sort-menu-state"+(on?" on":""); }
+  });
+}
+// ── v9.215: 🕰️ पुराना भुगतान पहले (JE, 13/10) ──
+// "जिसने लंबे समय से भुगतान नहीं किया वह सूची में कहीं नीचे खो जाता है" — लेजर का "पिछला भुगतान तिथि"
+// (lastPayDate, अपलोड के समय लेजर से) देखकर सबसे पुराना सबसे ऊपर। जिसकी तारीख़ ही नहीं (कभी भुगतान नहीं /
+// कॉलम ख़ाली) वह सबसे ऊपर। एक ही महीने वालों में बड़ी बकाया पहले; पंचायत (LV3.1/3.2) नीचे; वसूल हो चुके
+// सबसे नीचे। card पर "⏰ N महीने से भुगतान नहीं" सिर्फ़ इसी क्रम में (JE का फ़ैसला)। सिर्फ़ फ़ोन में रखी
+// सूची से — कोई नया डेटा/नेट नहीं
+function toggleOldPaySort(e){
+  if(e&&e.stopPropagation) e.stopPropagation();
+  setListSort(listSort==="oldpay"?"amount":"oldpay");
+  var mn=document.getElementById("logout-menu"); if(mn) mn.classList.remove("open");
+  if(typeof toast==="function") toast(listSort==="oldpay"?"🕰️ पुराना भुगतान पहले — चालू":"₹ बड़ी बकाया पहले — पुराना भुगतान क्रम बंद","inf");
+}
+var _MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+// लेजर की तारीख़ कई रूपों में आती है (Excel का अपना format): 13/10/2025, 13-10-25, 13.10.2025, 2025-10-13,
+// 13-Oct-2025, "2025-10-13 00:00:00", और Excel का अमेरिकी 10/13/25। दोनों हिस्से 12 तक हों तो दिन/महीना
+// (भारतीय) मानें; दूसरा 12 से बड़ा हो तो महीना/दिन। पहचान न हो तो null
+function lastPayTs(x){
+  var v=String((x&&x.lastPayDate)||"").trim();
+  if(/^\d{4}-\d{1,2}-\d{1,2}[ T]/.test(v)) v=v.split(/[ T]/)[0]; // "2025-10-13 00:00:00" — समय हटाएं
+  if(!v) return null;
+  var y,mo,d,m;
+  if((m=v.match(/^(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})$/))){ y=+m[1]; mo=+m[2]; d=+m[3]; }
+  else if((m=v.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})$/))){
+    d=+m[1]; mo=+m[2]; y=+m[3];
+    if(mo>12&&d<=12){ var t=d; d=mo; mo=t; }
+  }
+  else if((m=v.match(/^(\d{1,2})[\/.\- ]([A-Za-z]{3})[A-Za-z]*[\/.\- ,]*(\d{2}|\d{4})$/))){ d=+m[1]; mo=_MON[m[2].toLowerCase()]; y=+m[3]; }
+  else return null;
+  if(y<100) y+=2000;
+  if(!mo||mo>12||!d||d>31||y<1990) return null;
+  var dt=new Date(y,mo-1,d);
+  if(isNaN(dt.getTime())) return null;
+  var now=Date.now();
+  return Math.min(dt.getTime(),now);
+}
+// आख़िरी भुगतान से पूरे कितने महीने (तारीख़ न हो तो null)
+function monthsSincePay(x,nowD){
+  var ts=lastPayTs(x); if(ts===null) return null;
+  var a=new Date(ts), n=nowD||new Date();
+  var mm=(n.getFullYear()-a.getFullYear())*12+(n.getMonth()-a.getMonth())-(n.getDate()<a.getDate()?1:0);
+  return Math.max(0,mm);
+}
+function _oldPayChip(x){
+  var mm=monthsSincePay(x);
+  if(mm===null) return "<span class='chip chip-oldpay red'>⏰ भुगतान तारीख़ नहीं</span>";
+  var cls=mm>=12?" red":mm>=6?" orange":"";
+  var txt=mm<1?"इसी महीने भुगतान":mm+" महीने से भुगतान नहीं";
+  return "<span class='chip chip-oldpay"+cls+"'>⏰ "+txt+"</span>";
 }
 // वादा: रिमार्क के साथ वैकल्पिक तारीख़ (remarksArr की entry में due:"yyyy-mm-dd")। बाकी उपभोक्ता का
 // सबसे नया वादा ही गिना जाता है; वसूल होते ही वादा अपने-आप ख़त्म (status देखकर)। पुराने version वाले
@@ -203,6 +256,17 @@ function renderListWith(data){
   });
   // वादे: सबसे पुराना (बीता) वादा सबसे ऊपर; बाक़ी में चुना हुआ क्रम
   if(activeFilter==="promise") filtered.sort(function(a,b){ var pa=promiseDue(a),pb=promiseDue(b); return pa<pb?-1:pa>pb?1:0; });
+  else if(listSort==="oldpay") filtered.sort(function(a,b){
+    var pa=a.status==="paid"?1:0, pb=b.status==="paid"?1:0;
+    if(pa!==pb) return pa-pb; // वसूल हो चुके सबसे नीचे
+    var ga=isPanchayatTariff(a)?1:0, gb=isPanchayatTariff(b)?1:0;
+    if(ga!==gb) return ga-gb; // पंचायत नीचे
+    var ta=lastPayTs(a), tb=lastPayTs(b);
+    var ka=ta===null?-Infinity:new Date(ta).getFullYear()*12+new Date(ta).getMonth(); // महीने तक — एक ही महीने वालों में बड़ी बकाया पहले
+    var kb=tb===null?-Infinity:new Date(tb).getFullYear()*12+new Date(tb).getMonth();
+    if(ka!==kb) return ka<kb?-1:1;
+    return (Number(b.amount)||0)-(Number(a.amount)||0);
+  });
   else if(listSort==="amount") filtered.sort(function(a,b){
     var ga=isPanchayatTariff(a)?1:0, gb=isPanchayatTariff(b)?1:0;
     if(ga!==gb) return ga-gb; // पंचायत (LV3.1/LV3.2) हमेशा नीचे, आपस में बड़ी बकाया पहले
@@ -261,7 +325,7 @@ function renderListWith(data){
     return "<div class='con-card "+(isPaid?"paid":"pending")+"'>"+
       "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+(x.father?" / "+escHtml(x.father):"")+"</div><button class='cc-share' title='शेयर' aria-label='शेयर' onclick=\"shareCard("+oi+",'"+escJsAttr(x.acc||"")+"',this)\">"+CC_SHARE_ICON+"</button><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
       "<div class='cc-amt'>₹"+Number(x.amount).toLocaleString("hi-IN")+" <span>बकाया</span></div>"+
-      "<div class='cc-chips'>"+dueChip+
+      "<div class='cc-chips'>"+dueChip+(listSort==="oldpay"&&!isPaid?_oldPayChip(x):"")+
         (x.acc?"<span class='chip chip-acc' onclick=\"openAccModal('"+escJsAttr(x.acc)+"')\">📄 "+escHtml(x.acc)+"</span>":"")+
                 (x.phone?"<span class='chip chip-ph' style='cursor:pointer;' onclick=\"openPhModal('"+escJsAttr(x.name)+"','"+escJsAttr(x.phone)+"','"+escJsAttr(x.acc||"")+"','"+(Number(x.amount)||0)+"')\">📞 "+escHtml(x.phone)+"</span>":"")+
         (x.addr?"<span class='chip chip-addr'>📍 "+escHtml(x.addr)+"</span>":"")+
