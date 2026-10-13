@@ -794,6 +794,67 @@ test.describe('लॉगिन और डेटा-लोड — कमज़ो
     expect(r.ms).toBeLessThan(2000);
   });
 
+  // v9.217 — JE का लॉग (13/10): "sse-never-opened … खाता: anonymous"। JE फ़ोन के hash से अंदर आ गया, पर Firebase
+  // login बाद में नाकाम हुआ और फ़ोन anonymous रह गया — बिना चेतावनी, बिना दोबारा कोशिश
+  const seedHash = (page) => page.evaluate((p) => new Promise((res) => {
+    _sha256('dcje|' + p).then((h) => { try { localStorage.setItem('dc_jeh', h); } catch (e) {} res(); });
+  }), 'Test#123');
+
+  test('verifyJE (v9.217) — App Check token न मिले तो "गलत पासवर्ड!" नहीं: hash से अंदर, और थोड़ी देर बाद उसी पासवर्ड से फिर Firebase login', async ({ page }) => {
+    await openApp(page);
+    await seedHash(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      JE_RETRY_MS = 100;
+      const calls = [];
+      let n = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: null, signInWithEmailAndPassword: function (em, pw) { calls.push(pw); n++; return n === 1 ? Promise.reject({ code: 'auth/firebase-app-check-token-is-invalid' }) : Promise.resolve({}); } };
+      };
+      verifyJE('Test#123', function (ok, msg) {
+        CU = { role: 'supervisor', name: 'JE', hq: 'आदेगांव' };
+        setTimeout(() => resolve({ ok, msg, calls, pending: _jePendingPw, stored: Object.keys(localStorage).filter((k) => localStorage.getItem(k) === 'Test#123') }), 400);
+      });
+    }));
+    expect(r.ok).toBe(true);
+    expect(r.msg).toBeNull();
+    expect(r.calls).toEqual(['Test#123', 'Test#123']); // दूसरी कोशिश अपने-आप
+    expect(r.pending).toBeNull(); // जुड़ते ही memory से हटा
+    expect(r.stored).toEqual([]); // पासवर्ड कभी localStorage में नहीं
+  });
+
+  test('verifyJE (v9.217) — सच में ग़लत पासवर्ड (auth/invalid-credential) पर "गलत पासवर्ड!" पहले जैसा', async ({ page }) => {
+    await openApp(page);
+    await seedHash(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () { return { signInWithEmailAndPassword: function () { return Promise.reject({ code: 'auth/invalid-credential' }); } }; };
+      verifyJE('Galat#1', function (ok, msg) { resolve({ ok, msg }); });
+    }));
+    expect(r).toEqual({ ok: false, msg: 'गलत पासवर्ड!' });
+  });
+
+  test('checkJEAuth (v9.217) — JE ऐप में पर Firebase खाता anonymous: लाल पट्टी + लॉग "je-auth-missing"; JE खाता हो तो पट्टी नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      localStorage.removeItem('dc_logs3');
+      _jePendingPw = null; _jeAuthLogged = false;
+      let user = { isAnonymous: true, email: null };
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () { return { get currentUser() { return user; }, signInWithEmailAndPassword: function () { return Promise.resolve({}); } }; };
+      checkJEAuth();
+      const shown = getComputedStyle(document.getElementById('je-auth-strip')).display;
+      const log = getLogs().find((l) => l.c === 'je-auth-missing');
+      user = { email: JE_EMAIL };
+      checkJEAuth();
+      return { shown, x: log && log.x, after: getComputedStyle(document.getElementById('je-auth-strip')).display };
+    });
+    expect(r.shown).toBe('flex');
+    expect(r.x).toContain('anonymous');
+    expect(r.after).toBe('none');
+  });
+
   test('fbGet — cache खाली हो और नेटवर्क धीमा हो तो timeout के बाद खाली लिस्ट के साथ आगे बढ़ता है', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => new Promise((resolve) => {

@@ -43,6 +43,7 @@ window.addEventListener("online",function(){
   _ensureCorrectHqAuth(); // पहले सही account पक्का करें, तभी flushPending() को असली मौक़ा मिलेगा
   flushPending();
   flushLogs(); // बिना नेट के वक़्त की errors (v9.209)
+  if(typeof _jePendingPw!=="undefined"&&_jePendingPw) _jeRetryAuth(); // v9.217: बिना नेट login हुए JE को नेट आते ही Firebase से जोड़ें
   fetchCatNamesFromFB(false);
   fetchPhCustomMsgFromFB();
   hscFetch();
