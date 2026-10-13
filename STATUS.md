@@ -4,7 +4,7 @@
 > (`git log --oneline -30`) — यहां सिर्फ़ **अभी की स्थिति**, **हाल के फ़ैसले** और **जो सीखा** है।
 > काम पूरा होने पर इसे अपडेट करते चलें।
 
-**आख़िरी अपडेट:** 12 अक्टूबर 2026 · **Version:** 9.213 · **CACHE_NAME:** adegaon-dc-v230
+**आख़िरी अपडेट:** 13 अक्टूबर 2026 · **Version:** 9.214 · **CACHE_NAME:** adegaon-dc-v231
 
 ---
 
@@ -56,13 +56,37 @@
 | #250 | v9.210 — TypeScript 7 + setup-python v7 (Dependabot #247 #248) | 12 अक्टू ✅ |
 | #251 | v9.211 — ऐप पहले फ़ोन से खुले + fonts ऐप के साथ | 12 अक्टू ✅ |
 | #252 | v9.212 — back बटन के बाद दोबारा PIN: logout सिर्फ़ ग़लत PIN पर + वजह लॉग में | 12 अक्टू ✅ |
-| — | v9.213 — असली जड़: Firebase के तैयार होने का इंतज़ार | 12 अक्टू |
+| #253 | v9.213 — असली जड़: Firebase के तैयार होने का इंतज़ार | 12 अक्टू ✅ |
+| — | v9.214 — टेस्ट-सुरक्षा: नियमों के असली टेस्ट, असली SW, बैकअप ताला, 360px, Firebase देरी | 13 अक्टू |
 
 dev branch main के बराबर है। नया काम शुरू करते वक़्त पहले
 `git fetch origin main && git checkout claude/recovery-tractor-cloud-file-cx3d5z && git reset --hard origin/main`
 कर लें (पिछले squash-merge से conflict बचाने के लिए)।
 
 ---
+
+## 1फ. 13 अक्टूबर — टेस्ट-सुरक्षा 9.3 → ~9.7
+
+### v9.214
+JE ने टेस्ट-सुरक्षा के रोडमैप के सारे कदम चुने (ऐप पर असर लगभग शून्य — एक छोटा UX सुधार नीचे)।
+- **नियमों के असली टेस्ट** (`tests/rules/rules-check.js`, `npm run test:rules`, CI job `rules`): Firebase database
+  emulator (project `demo-…`, असली Firebase नहीं) पर `database.rules.json` लगाकर हर HQ के लाइनमैन, JE, anonymous और
+  बिना login से सचमुच पढ़/लिखकर 11 जांचें: अपना HQ हां/दूसरा नहीं (6×5), JE सब, acc ज़रूरी, HQ_PIN सिर्फ़ JE, CAT_NAMES
+  वगैरह सिर्फ़ JE बदले, LOGS (string ≤400, पुरानी न बदले, न पढ़े), DEVICE_VERSIONS, PROFILE_PHOTOS, `$other`।
+  HQ के UID और JE email rules से ही निकलते हैं। **जांची गई "दांत":** नियम में जान-बूझकर ग़लती डाली तो 3 टेस्ट लाल।
+  ध्यान: emulator `Authorization: Bearer <कुछ भी>` को admin मान लेता है — आम खाते का token `?auth=` में भेजना पड़ता है।
+  यहां (cloud) proxy की वजह से `env -u HTTPS_PROXY -u HTTP_PROXY … npm run test:rules` चलाना पड़ता है
+- **असली service worker** (`tests/sw-real.spec.js`, सिर्फ़ इसी फ़ाइल में SW चालू): install के बाद बिना नेट खुलना,
+  अपनी फ़ाइलें SW की cache से (v9.211), नया version (अपना छोटा सर्वर — sw.js बीच में बदला) → पट्टी + नई cache।
+  **इसी ने एक असली कमी पकड़ी:** पहली बार ऐप खुलने पर SW का क़ब्ज़ा (clients.claim) भी "नया version आ गया" पट्टी
+  दिखा देता था (या पीछे हो तो बेवजह reload)। ठीक किया: `_swHadController` (`js/reports.js`)
+- **बैकअप ताला** (`tests/backup/encrypt-check.js`, `npm run test:backup`, CI job `backup-lock`): असली जैसी Excel पर
+  बिना पासवर्ड नाकाम + सादी फ़ाइल मिटे; पासवर्ड के साथ Office-ताला, मोबाइल सादा नहीं, सही पासवर्ड से वही डेटा, ग़लत से नहीं
+- **360px** (`tests/boot-ui.spec.js`): login, सूची (लंबे नाम/पते, वादे की गिनती), रिमार्क, मेनू, Profile, बड़े अक्षर —
+  कोई चीज़ दाएं किनारे से बाहर न जाए (body का overflow-x:hidden असली गड़बड़ी छुपा देता, इसलिए हर चीज़ की जगह जांची
+  जाती है; सिर्फ़ आड़ी पट्टियां और aria-hidden सजावट छूट)। **दांत जांचे:** बटन चौड़ा किया तो लाल
+- **Firebase देरी** (`tests/auth-pin.spec.js`, `page.clock`): दोबारा खुलने पर Firebase 8 सेकंड में login बहाल करे —
+  5 सेकंड की छूट पर भी sign-in/logout नहीं (v9.213 वाले bug की पूरी नक़ल, असली घड़ी के बिना)
 
 ## 1प. 12 अक्टूबर — "back बटन दबाकर दोबारा खोलो तो फिर PIN मांगता है"
 

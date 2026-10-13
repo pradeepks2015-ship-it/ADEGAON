@@ -695,6 +695,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
       var existing = document.getElementById('update-banner');
       if (existing) existing.remove();
       _pendingUpdate = false;
+      _swHadController = true; // v9.214: पहले से SW था — यह असली नया version है
       var reloadCalled = false;
       window._reloadPage = function () { reloadCalled = true; };
       Object.defineProperty(document, 'hidden', { value: true, configurable: true });
@@ -706,12 +707,30 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     expect(r.hasBanner).toBe(false);    // banner नहीं — user की screen पर nothing shown
   });
 
+  test('SW पहली बार क़ब्ज़ा ले (पन्ना खुलते वक़्त कोई SW नहीं था) — "नया version" पट्टी या reload नहीं (v9.214)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var existing = document.getElementById('update-banner');
+      if (existing) existing.remove();
+      _pendingUpdate = false; _swHadController = false;
+      var reloadCalled = false;
+      window._reloadPage = function () { reloadCalled = true; };
+      navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+      var first = { reloadCalled: reloadCalled, hasBanner: !!document.getElementById('update-banner'), had: _swHadController };
+      navigator.serviceWorker.dispatchEvent(new Event('controllerchange')); // इसके बाद वाला असली नया version
+      return { first: first, secondBanner: !!document.getElementById('update-banner') };
+    });
+    expect(r.first).toEqual({ reloadCalled: false, hasBanner: false, had: true });
+    expect(r.secondBanner).toBe(true);
+  });
+
   test('SW update visible — banner दिखे और _pendingUpdate set हो', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => {
       var existing = document.getElementById('update-banner');
       if (existing) existing.remove();
       _pendingUpdate = false;
+      _swHadController = true; // v9.214: पहले से SW था — यह असली नया version है
       Object.defineProperty(document, 'hidden', { value: false, configurable: true });
       navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
       return {
@@ -1074,6 +1093,7 @@ test.describe('Firebase bandwidth — एक ही list बेवजह बा�
     await page.waitForFunction(() => !!liveSource || !!pollTimer, null, { timeout: 15000 });
     const r = await page.evaluate(() => new Promise((resolve) => {
       _pendingUpdate = false;
+      _swHadController = true; // v9.214: पहले से SW था — यह असली नया version है
       var before = liveSource;
       var restarted = 0;
       var origStart = window.startListen;
