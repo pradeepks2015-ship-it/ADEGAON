@@ -2,6 +2,10 @@
 var _appStarted=false;
 function startApp(){
   if(_appStarted)return; _appStarted=true;
+  // v9.220: सूचियां IndexedDB से memory में आ जाएं, तभी आगे (देखें storage.js: cacheInit)
+  cacheInit(_startAppReady);
+}
+function _startAppReady(){
   loadCatNames();
   loadPhCustomMsg();
   loadMigratedFlags();
@@ -36,6 +40,9 @@ function startApp(){
     homeBgOnLoginShown(); // बोर्ड बंद हो तो पीछे की फ़ोटो — अभी पन्ना सामने आया, अब उतारना ठीक
   }
 }
+cacheInit(); // सूचियां अभी से उठानी शुरू — startApp तक ज़्यादातर तैयार
+// फ़ोन की जगह कम होने पर browser ऐप का डेटा ख़ुद न मिटाए (इंस्टॉल ऐप पर Chrome आम तौर पर मान लेता है)
+try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(function(){}); }catch(e){}
 setTimeout(startApp,2000); // network धीमा/बंद हो तो भी app खुल जाए
 fetch(FB+"/.json?shallow=true&t="+Date.now())
   .then(function(){setSyncStatus(true);startApp();})
