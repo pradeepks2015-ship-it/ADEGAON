@@ -564,6 +564,10 @@ function confirmUpload(){
     // "किसी एक में वसूल = सब में वसूल" नियम से नए लेजर में लौट आती (देखें list.js: sweepStalePaid)।
     // checkbox हटाया गया हो तो कट-ऑफ़ नहीं, सारी वसूली हटती है — JE ऊपर पुष्टि दे चुके हैं
     var _swept=sweepStalePaid(hq,(keepEl&&!keepEl.checked)?SWEEP_ALL_CUT:_cut);
+    // v9.223: यही कट-ऑफ़ सर्वर पर — बाक़ी फ़ोन भी इससे पुरानी वसूली न फैलाएं/चढ़ाएं (config.js: LEDGER_CUT)।
+    // checkbox हटा हो (कोई पुरानी वसूली नहीं) तो आज की तारीख़
+    if(keepEl&&!keepEl.checked) saveLedgerCut(hq,_todayVal());
+    else if(_cut) saveLedgerCut(hq,_cut);
     // असली bug (JE की रिपोर्ट): एक category में लेजर अपलोड होने से उसकी "वसूल" स्थिति बहाल होती है
     // (ऊपर वाला backup-restore), पर वह सिर्फ़ उसी category तक सीमित थी — किसी और category के अपने
     // लेजर में (जैसे "कुल उपभोक्ता") वही उपभोक्ता अब भी पुराना (बाकी) दिखता रहता, भले ही असल में

@@ -4,6 +4,13 @@
       ".read": "auth != null",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com'"
     },
+    "LEDGER_CUT": {
+      ".read": "auth != null",
+      ".write": "auth.token.email === 'pradeepks2015@gmail.com'",
+      "$hq": {
+        ".validate": "newData.isNumber() && newData.val() >= 20200101 && newData.val() <= 21001231"
+      }
+    },
     "PH_CUSTOM_MSG": {
       ".read": "auth != null",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com'"

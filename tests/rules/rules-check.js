@@ -136,6 +136,15 @@ test("LOGS — लाइनमैन नई error जोड़ सके (हर
   assert.ok(!(await canWrite("LOGS/" + day + "/fixed", me, Object.assign({}, entry, { m: "बदला" }))), "पुरानी entry बदल दी गई");
 });
 
+test("LEDGER_CUT (v9.223) — सब login वाले पढ़ें, सिर्फ़ JE लिखे, सिर्फ़ yyyymmdd संख्या", async () => {
+  assert.ok(await canWrite("LEDGER_CUT/" + HQS[0], JE, 20261001), "JE कट-ऑफ़ नहीं लिख पाया");
+  assert.ok(await canRead("LEDGER_CUT", lineman(HQS[1])), "लाइनमैन कट-ऑफ़ नहीं पढ़ पाया");
+  assert.ok(!(await canRead("LEDGER_CUT", null)), "बिना login कट-ऑफ़ पढ़ लिया");
+  assert.ok(!(await canWrite("LEDGER_CUT/" + HQS[0], lineman(HQS[0]), 20261001)), "लाइनमैन ने कट-ऑफ़ बदल दिया");
+  assert.ok(!(await canWrite("LEDGER_CUT/" + HQS[0], JE, "2026-10-01")), "string कट-ऑफ़ गई");
+  assert.ok(!(await canWrite("LEDGER_CUT/" + HQS[0], JE, 1)), "बेतुकी कट-ऑफ़ गई");
+});
+
 test("DEVICE_VERSIONS — असली खाता अपनी हाज़िरी लिखे; anonymous नहीं; अनजाना field नहीं", async () => {
   const ping = { v: "9.213", hq: HQS[3], role: "lineman", name: "जांच", t: Date.now() };
   assert.ok(await canWrite("DEVICE_VERSIONS/dev1", lineman(HQS[3]), ping));

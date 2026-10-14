@@ -14,7 +14,7 @@ var HQ_AUTH_EMAIL = {
   "बीबी":"hq-bibi@adegaondc.internal",
   "मढ़ी":"hq-madhi@adegaondc.internal"
 };
-var APP_VER = "9.222"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "9.223"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
@@ -128,6 +128,44 @@ function fetchCatNamesFromFB(showToast){
         }
       }
     }).catch(function(){});
+}
+
+// ── v9.223: हर मुख्यालय की लेजर कट-ऑफ़ तारीख़ — सर्वर पर, ताकि हर फ़ोन जाने ──
+// JE नया लेजर Replace से डालते वक़्त "पुरानी वसूली सुरक्षित रखें" की तारीख़ चुनते हैं (डिफ़ॉल्ट: माह की 1)। पहले यह
+// तारीख़ सिर्फ़ उसी अपलोड में काम आती थी — 14/10 को किसी फ़ोन की बासी सूची ने पिछले माह की वसूली नए लेजर में चढ़ा
+// दी, और बाक़ी फ़ोनों को पता ही नहीं था कि वह "पुरानी" है। अब अपलोड पर तारीख़ /LEDGER_CUT/<HQ> (yyyymmdd) में
+// जाती है (सिर्फ़ JE लिख सकें — database.rules.json), और हर फ़ोन: (1) reconcileHQ में उससे पुरानी वसूली नहीं
+// फैलाता, (2) सर्वर से आई सूची में उससे पुरानी "वसूल" को "बाकी" करके वापस भेजता है (list.js: overlayOps)
+var LEDGER_CUT = {}; // {hqKey: yyyymmdd}
+function _todayVal(){ var d=new Date(); return d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate(); }
+// मान्य कट-ऑफ़ ही — भविष्य की तारीख़ (ग़लती से) पर कुछ न करें, वरना आज की असली वसूली भी "पुरानी" बन जाती
+function ledgerCut(hq){
+  var v=Number(LEDGER_CUT[hqKey(hq)])||0;
+  return (v>=20200101&&v<=_todayVal())?v:0;
+}
+function loadLedgerCuts(){
+  try{var s=localStorage.getItem("dc_ledgercut1");if(s)LEDGER_CUT=JSON.parse(s)||{};}catch(e){}
+  fetchLedgerCuts();
+}
+function fetchLedgerCuts(){
+  fetch(FB+"/LEDGER_CUT.json?t="+Date.now())
+    .then(_fbJson)
+    .then(function(d){
+      trackUsageOf(d);
+      if(d&&typeof d==="object"){
+        LEDGER_CUT=d;
+        try{localStorage.setItem("dc_ledgercut1",JSON.stringify(d));}catch(e){}
+      }
+    }).catch(function(){});
+}
+// JE के अपलोड से (upload.js) — नेट न हो तो फ़ोन में तुरंत, सर्वर पर अगली बार अपलोड/फिर कोशिश में
+function saveLedgerCut(hq,cut){
+  if(!(cut>=20200101&&cut<=_todayVal())) return;
+  LEDGER_CUT[hqKey(hq)]=cut;
+  try{localStorage.setItem("dc_ledgercut1",JSON.stringify(LEDGER_CUT));}catch(e){}
+  fetch(FB+"/LEDGER_CUT/"+encodeURIComponent(hqKey(hq))+".json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(cut)})
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); })
+    .catch(function(e){ logErr("ledger-cut-save",e,hq+" • "+cut); });
 }
 
 // ── फोन-मॉडल का "अपना संदेश" — सिर्फ़ JE बदल सके, बदलते ही हर मुख्यालय के हर लाइनमैन को दिखे ──

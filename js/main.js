@@ -7,6 +7,7 @@ function startApp(){
 }
 function _startAppReady(){
   loadCatNames();
+  loadLedgerCuts(); // v9.223
   loadPhCustomMsg();
   loadMigratedFlags();
   loadHQPins();
@@ -25,7 +26,9 @@ function _startAppReady(){
   startPausePoll();
   // 7 दिन से पुराने वसूली/रिमार्क backup हटाएं — वे अब किसी काम के नहीं, बस जगह घेरते हैं (v9.219,
   // देखें storage.js: lsSet)। खुलने की रफ़्तार पर असर न पड़े, इसलिए थोड़ा रुककर
-  setTimeout(function(){ try{ lsPurgeOldBackups(); }catch(e){} },5000);
+  setTimeout(function(){ try{ lsPurgeOldBackups(); }catch(e){} try{ cachePruneUnused(); }catch(e){} },5000);
+  // v9.223: कट-ऑफ़ से पुरानी वसूली सर्वर वाली सूचियों में मिली और "बाकी" की गई हो तो JE को पता चले (list.js: overlayOps)
+  setTimeout(function(){ if(_cutCleaned) logErr("cut-clean","कट-ऑफ़ से पुरानी "+_cutCleaned+" वसूली सर्वर वाली सूची में मिली — बाकी की गई",""); },90000);
   // Pull-to-refresh जैसा असली page reload, और मोबाइल पर ऐप minimize होने के बाद OS का tab मार
   // देना — दोनों CU (JS memory) मिटा देते हैं। सेव किया हुआ session मिले तो login screen दिखाए
   // बिना चुपचाप वापस अंदर ले जाएं (Firebase का अपना auth session वैसे भी बना रहता है — यह सिर्फ़

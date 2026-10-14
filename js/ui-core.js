@@ -45,6 +45,7 @@ window.addEventListener("online",function(){
   flushLogs(); // बिना नेट के वक़्त की errors (v9.209)
   if(typeof _jePendingPw!=="undefined"&&_jePendingPw) _jeRetryAuth(); // v9.217: बिना नेट login हुए JE को नेट आते ही Firebase से जोड़ें
   fetchCatNamesFromFB(false);
+  fetchLedgerCuts();
   fetchPhCustomMsgFromFB();
   hscFetch();
   if(CU&&activeHQ&&activeCat&&!isPending(activeHQ,activeCat)){

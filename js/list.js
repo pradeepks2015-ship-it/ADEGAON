@@ -427,6 +427,7 @@ var _opPushT={};
 // बकाया ≤0 auto-fix से बदले records — debounce window में जमा होकर migrated HQ/श्रेणी पर सिर्फ
 // इन्हीं का PATCH भेजा जाता है (पूरी array दोबारा नहीं) — हर hq|cat की अपनी अलग जमा-सूची
 var _autoFixPatch={}, _autoFixUnsafe={};
+var _cutCleaned=0; // इस बार ऐप खुलने से कट-ऑफ़ के कारण "बाकी" हुईं — लॉग के लिए (main.js)
 function overlayOps(hq,cat,data){
   var o=_getOps(),applied=0;
   data.forEach(function(x){
@@ -455,6 +456,21 @@ function overlayOps(hq,cat,data){
       if(x.acc){ _autoFixPatch[key]=_autoFixPatch[key]||{}; _autoFixPatch[key][String(x.acc)]=x; }
       else _autoFixUnsafe[key]=true; // acc नहीं — patch-key नहीं बन सकता, सुरक्षित array-PUT पर वापस
     }
+  });
+  // v9.223: मुख्यालय की लेजर कट-ऑफ़ (सर्वर पर, देखें config.js: LEDGER_CUT) से पुरानी "वसूल" सर्वर से आई हो —
+  // 14/10 की घटना: किसी फ़ोन की बासी सूची से पिछले माह की वसूली नए लेजर में चढ़ गई थी। अब हर फ़ोन (v9.223+)
+  // सर्वर से आई सूची में ऐसी वसूली को "बाकी" करके वापस सर्वर पर भेज देता है — कोई पुराना फ़ोन फिर चढ़ाए तो भी
+  // अगली बार साफ़। सिर्फ़ वही जिनकी भुगतान तारीख़ पढ़ी जा सके (तारीख़ ख़ाली/अजीब हो तो छेड़ते नहीं)
+  var cut=ledgerCut(hq);
+  if(cut) data.forEach(function(x){
+    if(!x||x.status!=="paid"||!x.acc) return;
+    var pv=latestPayVal(x);
+    if(!pv||pv>=cut) return;
+    x.status="pending"; x.paydate="";
+    x.updatedBy="System (कट-ऑफ़ से पुरानी वसूली हटी)"; x.updatedAt=new Date().toLocaleString("hi-IN");
+    x.ts=serverNow();
+    applied++; _cutCleaned++;
+    _autoFixPatch[key]=_autoFixPatch[key]||{}; _autoFixPatch[key][String(x.acc)]=x;
   });
   if(applied){
     clearTimeout(_opPushT[key]);
@@ -542,9 +558,12 @@ function reconcileHQ(hq){
   var cats=[];
   for(var i=0;i<CATS_DEFAULT.length;i++) cats.push(isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i]);
   var paidMap={};
+  // v9.223: कट-ऑफ़ से पुरानी वसूली किसी और बटन में पड़ी हो (जैसे बासी सूची) तो उसे नए लेजर में न फैलाएं
+  var cut=ledgerCut(hq);
   cats.forEach(function(cat){
     cGet(hq,cat).forEach(function(x){
       if(x&&x.acc&&x.status==="paid"){
+        if(cut){ var pv=latestPayVal(x); if(pv&&pv<cut) return; }
         var key=String(x.acc).trim();
         if(!paidMap[key]||((x.ts||0)>(paidMap[key].ts||0)))
           paidMap[key]={paydate:x.paydate||"",by:x.updatedBy||"",at:x.updatedAt||"",ts:x.ts||0};
