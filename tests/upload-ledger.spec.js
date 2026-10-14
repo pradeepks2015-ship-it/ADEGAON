@@ -1251,3 +1251,63 @@ test.describe('अपलोड — बाक़ी सूचियों मे�
     expect(r.v1).toBe('480');
   });
 });
+
+// ── v9.227: अपलोड से पहले फ़ोन से हटाई गई सूचियां सर्वर से — JE (14/10): दोबारा Replace पर पुराने रिमार्क चले गए ──
+test.describe('अपलोड — पहले सूचियां सर्वर से, फिर अपलोड (v9.227)', () => {
+  const prep = (page) => page.evaluate(() => {
+    openUpModal();
+    document.getElementById('up-hq').value = 'आदेगांव';
+    document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+    setUpMode('replace');
+    parsedRows = [{ acc: '1', name: 'राम', amount: '900', status: 'pending', remarksArr: [] }];
+    parsedAmtGiven = { 1: true };
+    window.confirm = () => true;
+    _listNeedMark(['आदेगांव_कुल उपभोक्ता', 'आदेगांव_घरेलू']); // जैसे v9.222 की सफ़ाई में हटीं
+  });
+
+  test('सूचियां लानी बाक़ी हों: पहले सर्वर से (उनके रिमार्क नई सूची में आएं), फिर अपलोड', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await prep(page);
+    const r = await page.evaluate(() => {
+      const orig = _cashRefreshAll;
+      let asked = null;
+      window._cashRefreshAll = (hqs, cb, force) => {
+        asked = hqs.join(',') + (force ? ':force' : '');
+        // सर्वर पर पुरानी सूचियां रिमार्क के साथ
+        cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', amount: '500', status: 'pending', remarksArr: [{ text: 'कल देगा', by: 'लाइनमैन', at: '10/10/2026' }] }]);
+        cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', amount: '500', status: 'pending', remarksArr: [{ text: 'घर बंद', by: 'लाइनमैन', at: '11/10/2026' }] }]);
+        cb(0);
+      };
+      try { confirmUpload(); } finally { window._cashRefreshAll = orig; }
+      const x = cGet('आदेगांव', 'कुल उपभोक्ता')[0];
+      return { asked, amount: x.amount, rmk: (x.remarksArr || []).map((m) => m.text).sort(), left: listsNeedFetch('आदेगांव') };
+    });
+    expect(r).toEqual({ asked: 'आदेगांव:force', amount: '900', rmk: ['कल देगा', 'घर बंद'], left: [] });
+  });
+
+  test('बिना नेट — अपलोड रुके, सूची जस की तस', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await prep(page);
+    const r = await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { get: () => false, configurable: true });
+      try { confirmUpload(); } finally { delete navigator.onLine; }
+      return cGet('आदेगांव', 'कुल उपभोक्ता').length;
+    });
+    expect(r).toBe(0);
+  });
+
+  test('सर्वर से न आ पाएं — अपलोड रुके और लॉग में दर्ज', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await prep(page);
+    const r = await page.evaluate(() => {
+      const orig = _cashRefreshAll;
+      window._cashRefreshAll = (hqs, cb) => cb(2); // timeout/नेट टूटा — कुछ नहीं आया
+      try { confirmUpload(); } finally { window._cashRefreshAll = orig; }
+      return { n: cGet('आदेगांव', 'कुल उपभोक्ता').length, log: getLogs().filter((l) => l.c === 'upload-lists-missing').length };
+    });
+    expect(r).toEqual({ n: 0, log: 1 });
+  });
+});

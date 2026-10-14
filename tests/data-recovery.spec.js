@@ -1292,3 +1292,35 @@ test.describe('पुरानी अनछुई सूचियां हट�
     expect(r).toEqual([true, true]);
   });
 });
+
+// ── v9.227: फ़ोन से हटाई गई सूचियां "सर्वर से लानी बाक़ी" (अपलोड इसी से पहले उन्हें लाता है) ──
+test.describe('हटाई गई सूचियां — लानी बाक़ी (v9.227)', () => {
+  test('v9.222 वाली सफ़ाई इसी बार हो — हटाई सूचियां "बाक़ी"; सर्वर से आते ही (cSet) निशान हटे', async ({ page }) => {
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('dc_cache3_पाटन_घरेलू', JSON.stringify([{ acc: '1', name: 'x' }]));
+    });
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const before = listsNeedFetch('पाटन');
+      cSet('पाटन', 'घरेलू', [{ acc: '1', name: 'x' }]);
+      return { before, after: listsNeedFetch('पाटन'), other: listsNeedFetch('बीबी') };
+    });
+    expect(r).toEqual({ before: ['घरेलू'], after: [], other: [] });
+  });
+
+  test('सफ़ाई पहले ही हो चुकी फ़ोन (JE फ़ोन) — एक बार: जो सूचियां फ़ोन में नहीं वे "बाक़ी", जो हैं वे नहीं', async ({ page }) => {
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('dc_cachefix1', '1');
+      localStorage.setItem('dc_cache3_पाटन_घरेलू', JSON.stringify([{ acc: '1', name: 'x' }]));
+    });
+    await openApp(page);
+    const r = await page.evaluate(() => listsNeedFetch('पाटन'));
+    expect(r).not.toContain('घरेलू');
+    expect(r).toContain('कुल उपभोक्ता');
+    expect(r.length).toBe(7);
+  });
+});

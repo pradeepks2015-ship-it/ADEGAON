@@ -15,6 +15,7 @@ function cSet(hq,cat,d){
   var k=cKey(hq,cat);
   CACHE[k]=d;
   _noteListUse(k);
+  _listNeedDone(k);
   _listsBcPost(k,d);
   if(!_cacheReady){ _cacheDirty[k]=true; return; } // cacheInit ख़ुद लिख देगा
   if(_cacheDb){ _idbPut(k,d,hq+"/"+cat); return; }
@@ -32,6 +33,54 @@ function _etagDrop(ek){
     delete a[ek];
     localStorage.setItem("dc_etag3",JSON.stringify(a));
   }catch(e){}
+}
+
+// ── v9.227: फ़ोन से हटाई गई सूचियां "सर्वर से लानी बाक़ी" ──
+// JE (14/10): v9.222 की एक-बार सफ़ाई के बाद Replace अपलोड किया तो बकायादारों के पुराने रिमार्क चले गए — अपलोड
+// पुराने रिमार्क (और वसूली) फ़ोन में रखी सूचियों से उठाता है (upload.js: _upCollectOldRemarks), और वे सूचियां
+// फ़ोन से हट चुकी थीं। अब जो सूची फ़ोन से हटाई जाए (_cacheStaleReset, cachePruneUnused) उसे यहां "बाक़ी" लिखते हैं;
+// सर्वर से आते ही (cSet) निशान हटता है। अपलोड इसे देखकर पहले उस HQ की सूचियां ताज़ा करता है (confirmUpload)
+var LIST_NEED_KEY="dc_listneed1";
+function _listNeedAll(){ try{ return JSON.parse(localStorage.getItem(LIST_NEED_KEY)||"{}")||{}; }catch(e){ return {}; } }
+function _listNeedMark(keys){
+  if(!keys.length) return;
+  var a=_listNeedAll();
+  keys.forEach(function(k){ a[k]=1; });
+  try{ localStorage.setItem(LIST_NEED_KEY,JSON.stringify(a)); }catch(e){}
+}
+function _listNeedDone(k){
+  var a=_listNeedAll();
+  if(!a[k]) return;
+  delete a[k];
+  try{ localStorage.setItem(LIST_NEED_KEY,JSON.stringify(a)); }catch(e){}
+}
+// जिन फ़ोनों पर v9.222 की सफ़ाई v9.227 से पहले हो चुकी (जैसे JE फ़ोन) — उनके लिए एक बार (main.js, श्रेणी-नाम
+// लोड होने के बाद — वरना बदले नाम वाली श्रेणियों की key ग़लत बनती): फ़ोन में जो सूची
+// अभी नहीं है (या ख़ाली है) उसे "लानी बाक़ी" मानें। सर्वर पर सचमुच ख़ाली हो तो पहली ताज़गी पर निशान हट जाता है
+function _listNeedInit(){
+  try{
+    if(localStorage.getItem("dc_listneed_init")) return;
+    if(!_cacheResetThisBoot&&localStorage.getItem(CACHE_RESET_FLAG)){
+      var miss=[];
+      HQS.forEach(function(hq){
+        for(var i=0;i<CATS_DEFAULT.length;i++){
+          var k=cKey(hq,isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i]);
+          if(!(CACHE[k]&&CACHE[k].length)) miss.push(k);
+        }
+      });
+      _listNeedMark(miss);
+    }
+    localStorage.setItem("dc_listneed_init","1");
+  }catch(e){}
+}
+// इस HQ की कौन-सी श्रेणियां सर्वर से लानी बाक़ी हैं (नाम)
+function listsNeedFetch(hq){
+  var a=_listNeedAll(), out=[];
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var c=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
+    if(a[cKey(hq,c)]) out.push(c);
+  }
+  return out;
 }
 
 // ── v9.223: 30 दिन से न खोली/न बदली सूचियां फ़ोन से हटें ──
@@ -61,6 +110,7 @@ function cachePruneUnused(){
     if(u[k]===undefined){ u[k]=today; return; } // पहली बार दिखी — आज से गिनती (बिना जाने न हटाएं)
     if(today-u[k]>LIST_UNUSED_DAYS) gone.push(k);
   });
+  _listNeedMark(gone);
   gone.forEach(function(k){
     delete CACHE[k]; delete u[k];
     try{ localStorage.removeItem(LS_PREFIX+k); }catch(e){}
@@ -165,12 +215,15 @@ function cacheInit(cb){
 // डेटा: लाइनमैन ~1–2 MB, JE ~9 MB)। जिस सूची में बिना-भेजी वसूली (offline queue) हो वह नहीं हटती — वह वसूली न खोए
 var CACHE_RESET_FLAG="dc_cachefix1";
 /** @param {IDBDatabase|null} db */
+var _cacheResetThisBoot=false;
 function _cacheStaleReset(db){
   try{ if(localStorage.getItem(CACHE_RESET_FLAG)) return; }catch(e){ return; }
+  _cacheResetThisBoot=true; // इसी बार हुई — हटाई सूचियां नीचे ख़ुद "लानी बाक़ी" लिखी जाती हैं (_listNeedInit की ज़रूरत नहीं)
   var pend=getPending(), n=0, keys={};
   Object.keys(CACHE).forEach(function(k){ keys[k]=1; });
   try{ for(var i=0;i<localStorage.length;i++){ var lk=localStorage.key(i)||""; if(lk.indexOf(LS_PREFIX)===0) keys[lk.slice(LS_PREFIX.length)]=1; } }catch(e){}
   var gone=Object.keys(keys).filter(function(k){ return !pend[k]&&!_cacheDirty[k]; });
+  _listNeedMark(gone);
   gone.forEach(function(k){
     if(CACHE[k]&&CACHE[k].length) n++;
     delete CACHE[k];
