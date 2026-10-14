@@ -1199,3 +1199,55 @@ test.describe('अपलोड — कट-ऑफ़ सर्वर पर (v9.2
     expect(r).toEqual({ a: 20261001, p: true, saved: 20261001 });
   });
 });
+
+// ── v9.224: नया लेजर Replace होने पर वही Consumer No बाक़ी सूचियों में भी नई राशि ले (JE, 14/10) ──
+test.describe('अपलोड — बाक़ी सूचियों में राशि नई (v9.224)', () => {
+  const run = (page, withAmt) => page.evaluate((amtGiven) => {
+    const today = new Date().toLocaleDateString('hi-IN');
+    cSet('आदेगांव', 'घरेलू', [
+      { acc: '1', name: 'राम', amount: '500', status: 'paid', paydate: today, remarksArr: [{ text: 'कल देगा', by: 'x', at: 'y' }], lastPayDate: '1/8/2026' },
+      { acc: '2', name: 'श्याम', amount: '300', status: 'pending' },
+      { acc: '3', name: 'मोहन', amount: '700', status: 'pending' },
+    ]);
+    cSet('आदेगांव', 'व्यवसाय', [{ acc: '1', name: 'राम', amount: '480', status: 'pending' }]);
+    openUpModal();
+    document.getElementById('up-hq').value = 'आदेगांव';
+    document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+    setUpMode('replace');
+    parsedRows = [
+      { acc: '1', name: 'राम', amount: '1200', status: 'pending', remarksArr: [], lastPayDate: '2/10/2026' },
+      { acc: '2', name: 'श्याम', amount: '0', status: 'paid', paydate: today, remarksArr: [] },
+      { acc: '3', name: 'मोहन', amount: '0', status: 'pending', remarksArr: [] }, // राशि फ़ाइल में थी ही नहीं
+    ];
+    parsedAmtGiven = amtGiven ? { 1: true, 2: true } : {};
+    window.confirm = () => true;
+    confirmUpload();
+    const pick = (cat, a) => cGet('आदेगांव', cat).find((x) => x.acc === a);
+    const g1 = pick('घरेलू', '1'), g2 = pick('घरेलू', '2'), g3 = pick('घरेलू', '3');
+    return {
+      g1: [g1.amount, g1.status, g1.lastPayDate, g1.name, (g1.remarksArr || []).length],
+      g2: [g2.amount, g2.status], g3: [g3.amount, g3.status], v1: pick('व्यवसाय', '1').amount,
+    };
+  }, withAmt);
+
+  test('Replace के बाद: राशि (और पिछला भुगतान) नई; नाम/रिमार्क/वसूली अछूते; राशि 0 हुई तो अपने-आप वसूल; फ़ाइल में राशि न थी तो नहीं छूता', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await run(page, true);
+    expect(r).toEqual({
+      g1: ['1200', 'paid', '2/10/2026', 'राम', 1],
+      g2: ['0', 'paid'],
+      g3: ['700', 'pending'], // "कुल उपभोक्ता" में राशि वैकल्पिक — भरा "0" नहीं फैलता
+      v1: '1200',
+    });
+  });
+
+  test('फ़ाइल में राशि का कॉलम ही न हो — बाक़ी सूचियों की राशि जस की तस', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await run(page, false);
+    expect(r.g1[0]).toBe('500');
+    expect(r.g2[0]).toBe('300'); // राशि नहीं बदली (वसूल होना reconcileHQ का पुराना नियम है — फ़ाइल में वह वसूल था)
+    expect(r.v1).toBe('480');
+  });
+});

@@ -268,8 +268,12 @@ function fuzzyFind(k, patterns){
   return "";
 }
 
+// v9.224: फ़ाइल में किस Consumer No की राशि सचमुच दी गई थी — "कुल उपभोक्ता" में राशि वैकल्पिक है (न हो तो "0"
+// भरता है), और उस "0" को दूसरी सूचियों में फैलाना ग़लत होगा (देखें _upSyncAmounts)
+/** @type {Object<string,boolean>} */ var parsedAmtGiven={};
 function processRows(rows){
   var valid=[],errors=[];
+  parsedAmtGiven={};
   var now=new Date();
   var dtStr=now.toLocaleString("hi-IN");
   rows.forEach(function(r,i){
@@ -315,6 +319,7 @@ function processRows(rows){
         entry.updatedAt=dtStr;
       }
       if(rem) entry.remarksArr.push({text:rem,by:CU.name,at:dtStr});
+      if(cleanAmt!==""&&!isNaN(Number(cleanAmt))) parsedAmtGiven[String(acc).trim()]=true;
       valid.push(entry);
     }
   });
@@ -573,14 +578,56 @@ function confirmUpload(){
     // लेजर में (जैसे "कुल उपभोक्ता") वही उपभोक्ता अब भी पुराना (बाकी) दिखता रहता, भले ही असल में
     // वसूल हो चुका हो। कैश-लिस्ट अपलोड में reconcileHQ() पहले से यही ठीक करता था — अब सामान्य
     // लेजर अपलोड के बाद भी यही चले, ताकि "किसी भी category में वसूल = हर category में वसूल" हमेशा सच रहे
+    // v9.224: वही Consumer No इस HQ की दूसरी सूचियों में भी हो तो उसकी राशि (और पिछला भुगतान) नए लेजर वाली
+    var _amtSync=_upSyncAmounts(hq,cat,arr);
     var _rec2=reconcileHQ(hq);
-    toast("✅ "+arr.length+" records अपलोड!"+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+(_swept?" 🧹 "+_swept+" पुरानी अन्य बटनों से हटाई":"")+(rmkKept?" 💬 "+rmkKept+" के रिमार्क सुरक्षित":"")+(dupSkip?" | "+dupSkip+" duplicate Consumer No skip":"")+(_rec2?" 🔁 "+_rec2+" अन्य categories में मिलाया":"")+" 🔥","ok");
+    toast("✅ "+arr.length+" records अपलोड!"+(_amtSync?" 💱 "+_amtSync+" की राशि बाक़ी सूचियों में नई":"")+(kept?" 🛡 "+kept+" वसूली सुरक्षित":"")+(dropped?" 🧹 "+dropped+" पुरानी हटाई":"")+(_swept?" 🧹 "+_swept+" पुरानी अन्य बटनों से हटाई":"")+(rmkKept?" 💬 "+rmkKept+" के रिमार्क सुरक्षित":"")+(dupSkip?" | "+dupSkip+" duplicate Consumer No skip":"")+(_rec2?" 🔁 "+_rec2+" अन्य categories में मिलाया":"")+" 🔥","ok");
 
   }catch(err){
     logErr("upload-confirm",err,activeHQ+"/"+(document.getElementById("up-cat")?document.getElementById("up-cat").value:""));
     toast("Error: "+err.message,"err");
     console.error("confirmUpload error:",err);
   }
+}
+
+// ── v9.224: नया लेजर आने पर बाक़ी सूचियों में राशि भी नई (JE का सवाल, 14/10) ──
+// नया लेजर आम तौर पर "कुल उपभोक्ता" में Replace होता है; वही उपभोक्ता लाइनमैन-वार/टैरिफ़-वार/"3 month nonpayee"
+// जैसी दूसरी सूचियों में भी होता है, और वहां पिछले माह की राशि पड़ी रहती थी — एक ही Consumer No की दो सूचियों में
+// दो अलग राशि। अब Replace अपलोड के बाद, इस HQ की हर दूसरी सूची में उसी Consumer No की राशि (और फ़ाइल में हो तो
+// पिछला भुगतान दिनांक/राशि) फ़ाइल वाली हो जाती है। बाक़ी कुछ (नाम, फ़ोन, पता, रिमार्क, वसूली की स्थिति) नहीं छूता।
+// सिर्फ़ वही Consumer No जिनकी राशि फ़ाइल में सचमुच दी गई थी (parsedAmtGiven)। लौटाता है कितने records बदले
+var AMT_SYNC_FIELDS=["lastPayDate","lastPaidAmt"];
+function _upSyncAmounts(hq,cat,rows){
+  var byAcc={};
+  (rows||[]).forEach(function(r){
+    var k=r&&r.acc?String(r.acc).trim():"";
+    if(k&&parsedAmtGiven[k]) byAcc[k]=r;
+  });
+  if(!Object.keys(byAcc).length) return 0;
+  var total=0, now=new Date();
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var c=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
+    if(c===cat) continue;
+    var d=cGet(hq,c);
+    if(!d||!d.length) continue;
+    var prev=JSON.parse(JSON.stringify(d)), n=0;
+    d.forEach(function(x){
+      var nw=x&&x.acc?byAcc[String(x.acc).trim()]:null;
+      if(!nw) return;
+      var upd=false;
+      if(String(x.amount)!==String(nw.amount)){ x.amount=nw.amount; upd=true; }
+      AMT_SYNC_FIELDS.forEach(function(f){ if(nw[f]&&x[f]!==nw[f]){ x[f]=nw[f]; upd=true; } });
+      if(!upd) return;
+      // अपलोड वाला ही नियम: बकाया 0 या minus हो गया तो अपने-आप वसूल
+      if(Number(x.amount)<=0&&x.status!=="paid"){
+        x.status="paid"; x.paydate=now.toLocaleDateString("hi-IN");
+        x.updatedBy=CU.name+" (बकाया ≤0 auto)"; x.updatedAt=now.toLocaleString("hi-IN"); x.ts=serverNow();
+      }
+      n++;
+    });
+    if(n){ cSet(hq,c,d); fbSet(hq,c,d,prev,null); total+=n; }
+  }
+  return total;
 }
 
 function _doSave(hq,cat,arr){
