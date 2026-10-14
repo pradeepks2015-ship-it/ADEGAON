@@ -1110,6 +1110,7 @@ test.describe('सूचियों का cache IndexedDB में (v9.220)',
     await page.addInitScript(() => {
       if (sessionStorage.getItem('seeded')) return;
       sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('dc_cachefix1', '1'); // v9.222 की एक-बार वाली सफ़ाई हो चुकी — यहां सिर्फ़ migration जांचना है
       localStorage.setItem('dc_cache3_आदेगांव_कुल उपभोक्ता', JSON.stringify([{ acc: '111', name: 'राम', status: 'paid', amount: 5 }]));
     });
     await openApp(page);
@@ -1158,5 +1159,54 @@ test.describe('सूचियों का cache IndexedDB में (v9.220)',
       return { db: _cacheDb, ls: !!localStorage.getItem('dc_cache3_पाटन_घरेलू') };
     });
     expect(r).toEqual({ db: null, ls: true });
+  });
+});
+
+// ── v9.222: बासी सूची + नया ETag = पुरानी वसूली सर्वर पर लौटना (असली production, 13–14/10) ──
+// जगह भरी होने से नया लेजर फ़ोन में save नहीं हुआ, पर नया ETag save हो गया → सर्वर का 304 → पुरानी सूची "ताज़ा" →
+// reconcileHQ ने पिछले लेजर की वसूली नए लेजर में चढ़ाकर भेज दी (आदेगांव 275 → 1912 वसूल, रातों-रात)
+test.describe('बासी सूची से पुरानी वसूली लौटना (v9.222)', () => {
+  test('v9.222 पहली बार खुले: बासी सूचियां और ETag हटें (बिना-भेजी वसूली वाली बचे) — reconcileHQ के पास पुरानी वसूली न रहे', async ({ page }) => {
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      // नया लेजर सर्वर पर है, पर फ़ोन में पिछले माह की "घरेलू" पड़ी है (वसूल, पुरानी तारीख़) और उसका ETag नया
+      localStorage.setItem('dc_cache3_आदेगांव_घरेलू', JSON.stringify([{ acc: '1', name: 'राम', status: 'paid', paydate: '5/9/2026', amount: 100 }]));
+      localStorage.setItem('dc_cache3_आदेगांव_कुल उपभोक्ता', JSON.stringify([{ acc: '1', name: 'राम', status: 'pending', amount: 120 }]));
+      localStorage.setItem('dc_cache3_आदेगांव_व्यवसाय', JSON.stringify([{ acc: '9', name: 'बिना-भेजी', status: 'paid', paydate: '14/10/2026', amount: 50 }]));
+      localStorage.setItem('dc_pending3', JSON.stringify({ 'आदेगांव_व्यवसाय': { hq: 'आदेगांव', cat: 'व्यवसाय', type: 'put', since: Date.now() } }));
+      localStorage.setItem('dc_etag3', JSON.stringify({ 'आदेगांव/घरेलू': 'नया-etag', 'आदेगांव/कुल उपभोक्ता': 'नया-etag-2' }));
+    });
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      ghar: cGet('आदेगांव', 'घरेलू').length,
+      kul: cGet('आदेगांव', 'कुल उपभोक्ता').length,
+      pendingList: cGet('आदेगांव', 'व्यवसाय').map((x) => x.status).join(','),
+      etag: localStorage.getItem('dc_etag3'),
+      fixed: reconcileHQ('आदेगांव'),
+      flag: !!localStorage.getItem('dc_cachefix1'),
+      log: getLogs().filter((l) => l.c === 'cache-reset').length,
+    }));
+    expect(r).toEqual({ ghar: 0, kul: 0, pendingList: 'paid', etag: null, fixed: 0, flag: true, log: 1 });
+    // दूसरी बार खुलने पर दोबारा नहीं हटता
+    await page.evaluate(() => cSet('आदेगांव', 'घरेलू', [{ acc: '2', name: 'नई', status: 'pending' }]));
+    await page.reload();
+    await page.waitForFunction(() => document.getElementById('login-screen').classList.contains('active'), null, { timeout: 15000 });
+    expect(await page.evaluate(() => cGet('आदेगांव', 'घरेलू').length)).toBe(1);
+  });
+
+  test('सूची फ़ोन में save न हो पाए तो उसका ETag भी हटे — अगली बार पूरी सूची सर्वर से आए, 304 पर पुरानी न चले', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      localStorage.setItem('dc_etag3', JSON.stringify({ 'पाटन/घरेलू': 'e1', 'पाटन/व्यवसाय': 'e2' }));
+      const orig = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) {
+        if (String(k).indexOf('dc_cache3_') === 0) throw new Error('QuotaExceededError');
+        return orig.call(this, k, v);
+      };
+      try { _idbFail('पाटन_घरेलू', [{ acc: '1' }], new Error('idb'), 'पाटन/घरेलू'); } finally { Storage.prototype.setItem = orig; }
+      return JSON.parse(localStorage.getItem('dc_etag3'));
+    });
+    expect(r).toEqual({ 'पाटन/व्यवसाय': 'e2' });
   });
 });

@@ -183,7 +183,7 @@ test.describe('ऐप दो जगह एक साथ खुला (Chrome ट
 });
 
 test.describe('पुराने version वाला फ़ोन नए version पर (v9.218 जैसी हालत)', () => {
-  test('सूचियां, अटकी वसूली, लॉगिन, बिना-भेजे लॉग — सब बचे; बेकार पुराना backup हटे, ताज़ा बचे', async ({ page }) => {
+  test('अटकी वसूली (और उसकी सूची), लॉगिन, बिना-भेजे लॉग — सब बचे; बासी हो सकने वाली बाक़ी सूचियां/ETag एक बार हटें; बेकार backup हटे, ताज़ा बचे', async ({ page }) => {
     test.setTimeout(120000);
     const old = Date.now() - 9 * 24 * 3600 * 1000;
     const snapshot = {
@@ -198,6 +198,7 @@ test.describe('पुराने version वाला फ़ोन नए versi
       'vt_paidbk_आदेगांव_व्यवसाय': JSON.stringify({ t: Date.now() - 86400000, m: { 2: {} } }),
       'dc_logs3': JSON.stringify([{ t: new Date().toISOString(), v: '9.218', u: 'x', d: 'd', c: 'पुराना-लॉग', m: 'बिना नेट', x: '', i: 'old1', s: 1 }]),
       'dc_listsort': 'ledger',
+      'dc_etag3': JSON.stringify({ 'आदेगांव/घरेलू': 'पुराना-etag' }),
     };
     await page.addInitScript((snap) => {
       if (sessionStorage.getItem('old-seeded')) return;
@@ -215,6 +216,7 @@ test.describe('पुराने version वाला फ़ोन नए versi
       list: cGet('आदेगांव', 'कुल उपभोक्ता').map((x) => x.acc + ':' + x.status).join(','),
       rmk: (cGet('आदेगांव', 'कुल उपभोक्ता')[0].remarksArr || []).length,
       ghar: cGet('आदेगांव', 'घरेलू').length,
+      etag: localStorage.getItem('dc_etag3'),
       lsLists: Object.keys(localStorage).filter((k) => k.indexOf('dc_cache3_') === 0).length,
       pending: Object.keys(getPending()),
       log: getLogs().some((l) => l.i === 'old1'),
@@ -222,7 +224,9 @@ test.describe('पुराने version वाला फ़ोन नए versi
       freshBk: localStorage.getItem('vt_paidbk_आदेगांव_व्यवसाय') !== null,
     }));
     expect(r).toEqual({
-      user: 'पुराना लाइनमैन/आदेगांव', list: '501:paid,502:pending', rmk: 1, ghar: 1,
+      // v9.222: पुराने फ़ोन की बिना-भेजी वसूली वाली सूची बचे; बाक़ी सूचियां (हो सकता है बासी) एक बार हटें और ETag भी —
+      // नेट आते ही सर्वर से ताज़ा (देखें storage.js: _cacheStaleReset)
+      user: 'पुराना लाइनमैन/आदेगांव', list: '501:paid,502:pending', rmk: 1, ghar: 0, etag: null,
       lsLists: 0, // सूचियां नए डेटाबेस में चली गईं
       pending: ['आदेगांव_कुल उपभोक्ता'], log: true, oldBk: true, freshBk: true,
     });
