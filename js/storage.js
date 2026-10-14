@@ -183,6 +183,9 @@ function _cacheStaleReset(db){
     }catch(e){}
   }
   try{ localStorage.removeItem("dc_etag3"); localStorage.setItem(CACHE_RESET_FLAG,String(Date.now())); }catch(e){}
+  // v9.225: login वाला prefetch दिन में एक बार चलता है — सूचियां हटाने के बाद उसका "आज हो चुका" निशान भी हटे, वरना
+  // अगले 24 घंटे वे सूचियां फ़ोन में आती ही नहीं (JE फ़ोन पर "कर्मचारी सक्रियता" में सबका काम "—", 14/10)
+  try{ Object.keys(localStorage).forEach(function(lk){ if(lk.indexOf("dc_prefetch_")===0) localStorage.removeItem(lk); }); }catch(e){}
   if(n) logErr("cache-reset","फ़ोन की पुरानी सूचियां हटाईं — अब सर्वर से ताज़ा आएंगी (v9.222, एक बार)",n+" सूची • बिना-भेजी वसूली वाली रखीं: "+Object.keys(pend).length);
 }
 

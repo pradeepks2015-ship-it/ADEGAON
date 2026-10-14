@@ -525,3 +525,35 @@ test.describe('कर्मचारी सक्रियता सूची �
     expect(r.afterSecond).toBe(1);
   });
 });
+
+// ── v9.225: "ताज़ा करें" सूचियां भी ताज़ा करे — JE (14/10): v9.222 की सफ़ाई के बाद सबका "आज का काम" "—" ──
+test.describe('कर्मचारी सक्रियता — ताज़ा करें (v9.225)', () => {
+  test('"🔄 ताज़ा करें" पहले सभी HQ की सूचियां ताज़ा करे, फिर हाज़िरी', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const calls = [];
+      const origCash = _cashRefreshAll, origRender = _dvRender;
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      window._cashRefreshAll = (hqs, cb) => { calls.push('lists:' + hqs.length); cb(0); };
+      window._dvRender = () => { calls.push('render'); };
+      try { _dvRefreshAll(); } finally { window._cashRefreshAll = origCash; window._dvRender = origRender; }
+      return { calls, btn: document.querySelector('#mig-devices') ? !!document.querySelector('[onclick="_dvRefreshAll()"]') : 'no-el' };
+    });
+    expect(r.calls).toEqual(['lists:6', 'render']);
+    expect(r.btn).toBe(true);
+  });
+
+  test('v9.222 वाली एक-बार सफ़ाई login-prefetch का "आज हो चुका" निशान भी हटाए — सूचियां फिर उतरें', async ({ page }) => {
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('dc_prefetch_je', String(Date.now()));
+      localStorage.setItem('dc_prefetch_पाटन', String(Date.now()));
+      localStorage.setItem('dc_cache3_पाटन_घरेलू', JSON.stringify([{ acc: '1', name: 'x' }]));
+    });
+    await openApp(page);
+    const r = await page.evaluate(() => [localStorage.getItem('dc_prefetch_je'), localStorage.getItem('dc_prefetch_पाटन')]);
+    expect(r).toEqual([null, null]);
+  });
+});

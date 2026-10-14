@@ -197,6 +197,7 @@
   "_dvNameKey",
   "_dvNameKeySafe",
   "_dvPaint",
+  "_dvRefreshAll",
   "_dvRender",
   "_dvRmkTs",
   "_dvSetWindow",
