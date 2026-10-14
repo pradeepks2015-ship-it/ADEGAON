@@ -48,7 +48,7 @@
     बदलाव करें तो ये ज़रूर देखें
   - `tests/e2e-firebase.spec.js` — पूरा ऐप Firebase emulator पर (असली login + database + rules)। सामान्य suite में skip;
     चलाना `npm run test:e2e` (Java + firebase-tools; यहां sandbox में proxy env हटाकर: `env -u HTTPS_PROXY -u HTTP_PROXY …`),
-    CI में "e2e-firebase" job। `firebase` devDependency का version `index.html` वाले SDK जैसा ही रहे (टेस्ट जांचता है)
+    CI में "e2e-firebase" job। Firebase library `scripts/fetch-firebase-sdk.js` `index.html` वाले version की npm से `.e2e-sdk/` में उतारता है (package devDependency नहीं — उसके node हिस्सों पर npm audit high देता है)
 - `database.rules.json` — Firebase Realtime Database की Security Rules (source of truth — `main` पर push होते ही `.github/workflows/deploy-rules.yml` अपने-आप असली Firebase पर deploy कर देता है, देखें `scripts/deploy-rules.js`)
 - `eslint.config.js` / `eslint.shared-globals.json` — CI लिंट सेटअप; कोई नई top-level global var/function (जो दूसरी js/*.js फाइल में इस्तेमाल हो) जोड़ें तो `node scripts/gen-eslint-globals.js` चलाकर globals list दोबारा बनाएं। दो फ़ाइलों में ग़लती से एक ही नाम declare न हो जाए (global scope share होने से चुपचाप overwrite का ख़तरा) — यह `npm run check-globals` (CI में भी) से अपने-आप जांचा जाता है, देखें `scripts/check-duplicate-globals.js`
 

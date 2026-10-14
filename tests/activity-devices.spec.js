@@ -2,6 +2,16 @@
 // वसूली ट्रैकर — टेस्ट: activity-devices (साझा helpers: tests/helpers.js)
 const { test, expect, openApp, loginLineman, loginJE } = require('./helpers');
 
+// इस फ़ाइल के कई टेस्ट "आज" की हाज़िरी/वसूली "अभी से 1 घंटा पहले" जैसे समय से बनाते हैं — रात 12 के बाद के पहले
+// 1–2 घंटे में वह समय "कल" में चला जाता था और टेस्ट फेल होते थे (14/10, CI सुबह 06:22 IST = 00:52 UTC पर 4 फेल)।
+// ऐप की ग़लती नहीं, टेस्ट की। अब ब्राउज़र की घड़ी हर टेस्ट में आज दोपहर 12 बजे से शुरू होकर सामान्य चलती है
+test.beforeEach(async ({ page }) => {
+  const noon = new Date();
+  noon.setHours(12, 0, 0, 0);
+  await page.clock.install({ time: noon });
+  await page.clock.resume();
+});
+
 test.describe('डिवाइस Version ट्रैकिंग', () => {
   test('login होते ही pingDeviceVersion सही payload के साथ PUT करता है', async ({ page }) => {
     await openApp(page);

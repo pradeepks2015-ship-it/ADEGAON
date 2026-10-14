@@ -90,7 +90,7 @@ JE: "टेस्ट-सुरक्षा 9.7 — क्या कमी है
      एक-पंक्ति रिमार्क — सब बचे; 9 दिन पुराना backup हटे, 1 दिन वाला बचे
 - **`tests/e2e-firebase.spec.js`** (4 टेस्ट, `npm run test:e2e`, CI job `e2e-firebase`): Auth + Database emulator पर असली ऐप —
   सही PIN से HQ खाते में login और वसूली सर्वर पर; ग़लत PIN पर मना; HQ खाता दूसरे HQ की सूची न पढ़े (401/403); JE login और
-  अपलोड सर्वर पर। Firebase SDK `node_modules/firebase` (devDependency, `index.html` वाला 10.14.1 — Dependabot से बाहर रखा),
+  अपलोड सर्वर पर। Firebase SDK `scripts/fetch-firebase-sdk.js` से `.e2e-sdk/` में (`index.html` वाला 10.14.1; पहले devDependency बनाया था पर उसके node हिस्सों पर CI का `npm audit` high देता था — हटाया),
   `js/firebase.js` टेस्ट में route से बदलती है (project demo, `useEmulator`, App Check बंद), firebaseio की REST मांगें emulator पर
 - `firebase.json` में auth emulator (9099)
 

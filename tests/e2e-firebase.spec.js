@@ -3,7 +3,7 @@
 // वसूली ट्रैकर — पूरा ऐप Firebase के नक़ली सर्वर (emulator) पर: असली login (Firebase Auth) + असली database + असली rules
 // बाक़ी सारे टेस्ट में Firebase बंद रहता है (ताकि असली डेटा कभी न छुए) — इसलिए "सही PIN से login → वसूली सर्वर पर
 // पहुंची", "ग़लत PIN पर मना", "JE का अपलोड सर्वर पर" जैसा पूरा रास्ता कभी नहीं जांचा जाता था। यहां वही ऐप, वही
-// Firebase SDK (node_modules/firebase — index.html वाला ही version), बस सर्वर emulator है। असली Firebase कभी नहीं
+// Firebase SDK (.e2e-sdk/ — index.html वाला ही version, scripts/fetch-firebase-sdk.js), बस सर्वर emulator है। असली Firebase कभी नहीं
 // छूता: project "demo-…" है और हर बाहरी request बंद। App Check emulator में नहीं होता — वह यहां बंद रहता है।
 // चलाना: npm run test:e2e   (Java + firebase-tools; CI में "e2e-firebase" job)। सामान्य suite में यह फ़ाइल skip होती है
 const { test, expect } = require('@playwright/test');
@@ -41,7 +41,7 @@ async function makeUser(localId, email, password) {
 }
 
 test.beforeAll(async () => {
-  expect(require(path.join(ROOT, 'node_modules', 'firebase', 'package.json')).version).toBe(SDK_VER); // वही SDK जो ऐप चलाता है
+  expect(fs.readFileSync(path.join(ROOT, '.e2e-sdk', 'VERSION'), 'utf8')).toBe(SDK_VER); // वही SDK जो ऐप चलाता है (scripts/fetch-firebase-sdk.js)
   await fetch(AUTH + '/emulator/v1/projects/' + PROJECT + '/accounts', { method: 'DELETE' });
   await makeUser(HQ_UID, HQ_EMAIL, 'vasuli-' + PIN);
   await makeUser('je-uid', JE_EMAIL, JE_PW);
@@ -59,10 +59,10 @@ test.beforeEach(async () => {
 async function openOnEmulator(page) {
   // बाक़ी सब बाहर बंद — पहले लगाना ज़रूरी: Playwright में बाद में लगा route पहले चलता है, यानी नीचे वाले इससे ऊपर
   await page.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (r) => r.abort());
-  // index.html वाली Firebase library → node_modules की वही फ़ाइलें (बाहर से कुछ नहीं)
+  // index.html वाली Firebase library → .e2e-sdk/ की वही फ़ाइलें (बाहर से कुछ नहीं)
   await page.route(/gstatic\.com\/firebasejs\/[\d.]+\/(firebase-[a-z-]+-compat\.js)$/, (r) => {
     const f = /\/(firebase-[a-z-]+-compat\.js)$/.exec(r.request().url())[1];
-    return r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(path.join(ROOT, 'node_modules', 'firebase', f), 'utf8') });
+    return r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(path.join(ROOT, '.e2e-sdk', f), 'utf8') });
   });
   // ऐप का Firebase सेटअप: project demo वाला, login emulator पर, App Check बंद (emulator में नहीं होता)
   await page.route(/\/js\/firebase\.js(\?|$)/, async (r) => {

@@ -15,10 +15,6 @@ updates:
     groups:
       npm-sab:
         patterns: ["*"]
-    # firebase सिर्फ़ e2e टेस्ट के लिए है और उसका version index.html वाले (gstatic) SDK जैसा ही रहना चाहिए
-    # (tests/e2e-firebase.spec.js जांचता है) — ऐप का SDK बदलें तभी इसे भी हाथ से साथ बदलें
-    ignore:
-      - dependency-name: "firebase"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
