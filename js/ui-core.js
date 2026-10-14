@@ -200,11 +200,17 @@ function _pauseRender(){
   // eslint-disable-next-line no-unsanitized/property
   el.innerHTML=h;
 }
+// v9.226: JE लॉग (14/10, 10:47–10:48): नेट न रहते यह बटन ~16 बार दबा और हर बार "pause-save-fail • Failed to fetch"।
+// अब एक बार में एक ही कोशिश (जवाब आने तक दोबारा नहीं), बिना नेट साफ़ संदेश, और लॉग में session में एक ही बार
+var _pauseBusy=false, _pauseFailLogged=false;
 function _pauseToggle(){
   if(!CU||CU.role!=="supervisor"){toast("सिर्फ JE यह कर सकते हैं","err");return;}
+  if(_pauseBusy){toast("⏳ पिछली कोशिश का जवाब आ रहा है…","inf");return;}
+  if(!navigator.onLine){toast("📴 नेट नहीं है — यह स्विच सर्वर पर बदलता है, नेट आने पर दबाएं","err");return;}
   var next=!isDataPaused();
   if(next&&!confirm("डाउनलोड रोक दें?\n\nसभी devices पर दूसरों का ताज़ा डेटा आना बंद हो जाएगा। वसूली दर्ज करना चलता रहेगा।")) return;
   var body={on:next,by:CU.name,at:{".sv":"timestamp"}};
+  _pauseBusy=true;
   fetch(FB+"/PAUSE.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
     .then(function(r){
       if(!r.ok) throw new Error("HTTP "+r.status);
@@ -215,7 +221,11 @@ function _pauseToggle(){
       _pauseRender();
       toast(next?"🛑 डाउनलोड रोक दिया — बाक़ी devices तक ~5 मिनट में":"✅ वापस सामान्य — live sync फिर चालू","ok");
     })
-    .catch(function(e){logErr("pause-save-fail",e);toast("⚠️ बदल नहीं पाया — दोबारा कोशिश करें","err");});
+    .catch(function(e){
+      if(!_pauseFailLogged){ _pauseFailLogged=true; logErr("pause-save-fail",e); }
+      toast("⚠️ बदल नहीं पाया (नेट कमज़ोर?) — थोड़ी देर बाद दोबारा कोशिश करें","err");
+    })
+    .then(function(){ _pauseBusy=false; });
 }
 
 // नाम से तय रंग — बिना किसी फ़ोटो/स्टोरेज के हर व्यक्ति का अपना अलग एवतार रंग

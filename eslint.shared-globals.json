@@ -311,6 +311,8 @@
   "_opPushT",
   "_openLive",
   "_paidMarkCountToday",
+  "_pauseBusy",
+  "_pauseFailLogged",
   "_pauseRender",
   "_pauseStillValid",
   "_pauseTimer",
