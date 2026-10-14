@@ -10,7 +10,8 @@
     "check-globals": "node scripts/check-duplicate-globals.js",
     "typecheck": "tsc -p .",
     "test:rules": "npx -y firebase-tools@15.33.0 emulators:exec --only database --project demo-adegaon-rules \"node --test tests/rules/rules-check.js\"",
-    "test:backup": "node --test tests/backup/encrypt-check.js"
+    "test:backup": "node --test tests/backup/encrypt-check.js",
+    "test:e2e": "node scripts/fetch-firebase-sdk.js && npx -y firebase-tools@15.33.0 emulators:exec --only database,auth --project demo-adegaon-e2e \"FIREBASE_E2E=1 npx playwright test tests/e2e-firebase.spec.js\""
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

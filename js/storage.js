@@ -13,10 +13,43 @@ function cGet(hq,cat){
 function cSet(hq,cat,d){
   var k=cKey(hq,cat);
   CACHE[k]=d;
+  _listsBcPost(k,d);
   if(!_cacheReady){ _cacheDirty[k]=true; return; } // cacheInit ख़ुद लिख देगा
-  if(_cacheDb){ _idbPut(k,d); return; }
-  lsSet(LS_PREFIX+k,JSON.stringify(d),"cache");
+  if(_cacheDb){ _idbPut(k,d,hq+"/"+cat); return; }
+  if(!lsSet(LS_PREFIX+k,JSON.stringify(d),"cache")) _etagDrop(hq+"/"+cat);
 }
+// v9.222: सूची फ़ोन में save न हो पाए तो उसका ETag ("सर्वर पर कौन-सा version") भी हटाएं। असली production
+// (13–14/10): जगह भरी होने से नया लेजर फ़ोन में save नहीं हुआ (पुरानी सूची पड़ी रही), पर नया ETag save हो
+// गया — अगली बार सर्वर ने "कुछ नहीं बदला" (304) कहा और ऐप पुरानी सूची को ही ताज़ा मानता रहा। फिर
+// reconcileHQ ("किसी एक में वसूल = सब में वसूल") ने पिछले लेजर की वसूली नए लेजर में चढ़ाकर सर्वर पर भेज दी —
+// आदेगांव/जोबा/पाटन/बीबी में रातों-रात सैकड़ों पुरानी "वसूल"। ETag न हो तो अगली बार पूरी सूची सर्वर से आती है
+function _etagDrop(ek){
+  try{
+    var a=JSON.parse(localStorage.getItem("dc_etag3")||"{}")||{};
+    if(a[ek]===undefined) return;
+    delete a[ek];
+    localStorage.setItem("dc_etag3",JSON.stringify(a));
+  }catch(e){}
+}
+
+// ── v9.221: ऐप दो जगह एक साथ खुला (Chrome टैब + इंस्टॉल ऐप) ──
+// हर टैब की सूचियां उसकी अपनी memory (CACHE) में रहती हैं। पहले: टैब-1 में वसूली दर्ज हुई, फिर टैब-2 ने
+// अपनी (पुरानी) memory वाली सूची में दूसरी वसूली दर्ज करके पूरी सूची फ़ोन में लिख दी — टैब-1 वाली वसूली
+// फ़ोन की copy से मिट गई (नए "field-conditions" टेस्ट ने पकड़ा; 13/10 को Vikas के फ़ोन पर ऐप दो जगह
+// खुला मिला था)। अब हर बदली सूची बाक़ी खुले टैबों को भी भेजी जाती है (सिर्फ़ इसी फ़ोन के अंदर — नेट नहीं),
+// और वे अपनी memory उसी से बदल लेते हैं; दिख रही सूची हो तो दोबारा बनाते हैं
+/** @type {BroadcastChannel|null} */ var _listsBc=null;
+try{ if(typeof BroadcastChannel!=="undefined") _listsBc=new BroadcastChannel("dc_lists"); }catch(e){}
+function _listsBcPost(k,d){ try{ if(_listsBc) _listsBc.postMessage({k:k,d:d}); }catch(e){} }
+if(_listsBc) _listsBc.onmessage=function(ev){
+  var m=ev&&ev.data;
+  if(!m||typeof m.k!=="string"||!Array.isArray(m.d)) return;
+  CACHE[m.k]=m.d; // लिखाई भेजने वाला टैब कर चुका — यहां सिर्फ़ memory
+  try{
+    if(typeof CU!=="undefined"&&CU&&typeof activeHQ!=="undefined"&&cKey(activeHQ,activeCat)===m.k
+      &&document.getElementById("app-screen").classList.contains("active")) renderList();
+  }catch(e){}
+};
 
 // ── v9.220: सूचियों का cache IndexedDB में ──
 // v9.219 के "storage-full" लॉग (13/10): JE फ़ोन ही नहीं, लाइनमैन फ़ोन भी भरे — localStorage की सीमा
@@ -33,17 +66,20 @@ var _cacheReady=false;
 /** @type {Object<string,boolean>} */ var _cacheDirty={}; // तैयार होने से पहले cSet हुई सूचियां
 /** @type {Array<Function>} */ var _cacheWaiters=[];
 var _cacheInitStarted=false;
-function _idbPut(k,d){
+/** @param {string} k @param {any} d @param {string} [ek] ETag की key (hq/cat) */
+function _idbPut(k,d,ek){
   try{
     var tx=_cacheDb.transaction(CACHE_DB_STORE,"readwrite");
     tx.objectStore(CACHE_DB_STORE).put(d,k);
     tx.oncomplete=function(){ try{ if(localStorage.getItem(LS_PREFIX+k)!==null) localStorage.removeItem(LS_PREFIX+k); }catch(e){} };
-    tx.onerror=tx.onabort=function(){ _idbFail(k,d,tx.error); };
-  }catch(e){ _idbFail(k,d,e); }
+    tx.onerror=tx.onabort=function(){ _idbFail(k,d,tx.error,ek); };
+  }catch(e){ _idbFail(k,d,e,ek); }
 }
-function _idbFail(k,d,err){
+/** @param {string} k @param {any} d @param {any} err @param {string} [ek] */
+function _idbFail(k,d,err,ek){
   if(!_lsFullLogged.idb){ _lsFullLogged.idb=true; logErr("cache-idb-fail",err||"?",k.slice(0,40)); }
-  lsSet(LS_PREFIX+k,JSON.stringify(d),"cache"); // कम से कम पुराने रास्ते से बचाने की कोशिश
+  // कम से कम पुराने रास्ते से बचाने की कोशिश — वह भी न हो तो ETag हटाएं (ऊपर _etagDrop वाली वजह)
+  if(!lsSet(LS_PREFIX+k,JSON.stringify(d),"cache")&&ek) _etagDrop(ek);
 }
 // ऐप खुलते ही एक बार — तैयार होने (या CACHE_INIT_MAX_MS) पर cb। दोबारा बुलाने पर बस इंतज़ार
 /** @param {Function} [cb] */
@@ -55,6 +91,7 @@ function cacheInit(cb){
   var done=function(db){
     if(_cacheReady) return;
     _cacheReady=true; _cacheDb=db;
+    _cacheStaleReset(db);
     // तैयार होने से पहले बदली सूचियां अब सही जगह लिखें
     Object.keys(_cacheDirty).forEach(function(k){
       if(db) _idbPut(k,CACHE[k]); else lsSet(LS_PREFIX+k,JSON.stringify(CACHE[k]),"cache");
@@ -78,6 +115,34 @@ function cacheInit(cb){
     };
   }catch(e){ logErr("cache-idb-open",e); fin(null); }
 }
+// ── v9.222: फ़ोन में पड़ी बासी सूचियां एक बार हटाएं (ऊपर _etagDrop वाली घटना) ──
+// जिस फ़ोन की जगह कभी भरी थी, उसमें पिछले लेजर की सूची "ताज़ा" बनकर पड़ी हो सकती है, और उसका reconcileHQ
+// वही पुरानी वसूली फिर सर्वर पर भेज देगा। कौन-सी सूची बासी है यह फ़ोन ख़ुद नहीं जान सकता, इसलिए v9.222 के
+// पहली बार खुलने पर सारी सूचियां और सारे ETag एक बार हटते हैं — सूचियां सर्वर से पूरी ताज़ा आती हैं (एक बार का
+// डेटा: लाइनमैन ~1–2 MB, JE ~9 MB)। जिस सूची में बिना-भेजी वसूली (offline queue) हो वह नहीं हटती — वह वसूली न खोए
+var CACHE_RESET_FLAG="dc_cachefix1";
+/** @param {IDBDatabase|null} db */
+function _cacheStaleReset(db){
+  try{ if(localStorage.getItem(CACHE_RESET_FLAG)) return; }catch(e){ return; }
+  var pend=getPending(), n=0, keys={};
+  Object.keys(CACHE).forEach(function(k){ keys[k]=1; });
+  try{ for(var i=0;i<localStorage.length;i++){ var lk=localStorage.key(i)||""; if(lk.indexOf(LS_PREFIX)===0) keys[lk.slice(LS_PREFIX.length)]=1; } }catch(e){}
+  var gone=Object.keys(keys).filter(function(k){ return !pend[k]&&!_cacheDirty[k]; });
+  gone.forEach(function(k){
+    if(CACHE[k]&&CACHE[k].length) n++;
+    delete CACHE[k];
+    try{ localStorage.removeItem(LS_PREFIX+k); }catch(e){}
+  });
+  if(db&&gone.length){
+    try{
+      var st=db.transaction(CACHE_DB_STORE,"readwrite").objectStore(CACHE_DB_STORE);
+      gone.forEach(function(k){ st.delete(k); });
+    }catch(e){}
+  }
+  try{ localStorage.removeItem("dc_etag3"); localStorage.setItem(CACHE_RESET_FLAG,String(Date.now())); }catch(e){}
+  if(n) logErr("cache-reset","फ़ोन की पुरानी सूचियां हटाईं — अब सर्वर से ताज़ा आएंगी (v9.222, एक बार)",n+" सूची • बिना-भेजी वसूली वाली रखीं: "+Object.keys(pend).length);
+}
+
 // IndexedDB की सारी सूचियां CACHE में; फिर localStorage में बची पुरानी सूचियां IndexedDB में ले जाएं
 function _cacheLoadAll(db,cb){
   try{

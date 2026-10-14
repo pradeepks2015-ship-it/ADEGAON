@@ -6,3 +6,5 @@ backup-output/
 # Firebase emulator (npm run test:rules) के लॉग
 database-debug.log
 firebase-debug.log
+# e2e टेस्ट की Firebase library (scripts/fetch-firebase-sdk.js)
+.e2e-sdk/
