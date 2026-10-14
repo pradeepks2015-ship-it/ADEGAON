@@ -8,6 +8,7 @@ function startApp(){
 function _startAppReady(){
   loadCatNames();
   loadLedgerCuts(); // v9.223
+  _listNeedInit(); // v9.227 — श्रेणी-नाम के बाद (storage.js)
   loadPhCustomMsg();
   loadMigratedFlags();
   loadHQPins();

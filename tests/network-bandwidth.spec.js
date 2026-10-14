@@ -1472,6 +1472,29 @@ test.describe('🛑 डेटा बचाओ मोड — Firebase download �
     expect(r.opened).toBe(false);
   });
 
+  // v9.226 — JE लॉग (14/10): नेट न रहते बटन ~16 बार दबा, हर बार नई request और नया "pause-save-fail"
+  test('स्विच: जवाब आने तक दोबारा दबाने पर नई request नहीं; नाकामी का लॉग session में एक ही बार', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(async () => {
+      let puts = 0;
+      const orig = window.fetch;
+      window.confirm = () => true;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/PAUSE.json') > -1 && o && o.method === 'PUT') { puts++; return new Promise((res, rej) => setTimeout(() => rej(new TypeError('Failed to fetch')), 200)); }
+        return orig(u, o);
+      };
+      try {
+        _pauseToggle(); _pauseToggle(); _pauseToggle(); // जल्दी-जल्दी तीन बार
+        await new Promise((res) => setTimeout(res, 400));
+        _pauseToggle(); // पहली नाकाम होने के बाद फिर
+        await new Promise((res) => setTimeout(res, 400));
+      } finally { window.fetch = orig; }
+      return { puts, logs: getLogs().filter((l) => l.c === 'pause-save-fail').length };
+    });
+    expect(r).toEqual({ puts: 2, logs: 1 });
+  });
+
   // सबसे संभावित गड़बड़ी यही है कि JE शाम को स्विच दबाकर भूल जाएँ और पूरी टीम कई दिन पुराने डेटा
   // पर चलती रहे। Firebase का quota वैसे भी रोज़ रीसेट होता है, तो कल इसे चालू रखने का मतलब ही नहीं
   test('स्विच आज रात अपने आप हट जाए — कल का दबाया हुआ आज लागू न हो', async ({ page }) => {

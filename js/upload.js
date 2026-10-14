@@ -416,7 +416,30 @@ function _upApplyOldRemarks(recs,byAcc){
   return n;
 }
 
+// v9.227: अपलोड से पहले — जो सूचियां फ़ोन से हटाई गई थीं (listsNeedFetch) वे सर्वर से आ जाएं, वरना उनके पुराने
+// रिमार्क/वसूली नई सूची में नहीं जुड़ते और सर्वर पर हमेशा के लिए चले जाते (JE, 14/10)। बिना नेट या ताज़ा न हो पाएं
+// तो अपलोड रुकता है — कुछ नहीं बदलता
 function confirmUpload(){
+  var hq=document.getElementById("up-hq").value;
+  var need=hq?listsNeedFetch(hq):[];
+  if(!need.length) return _confirmUploadNow();
+  if(!navigator.onLine){
+    toast("📴 नेट चाहिए — इस फ़ोन में "+hq+" की "+need.length+" सूचियां सर्वर से आनी बाक़ी हैं; उनके बिना पुराने रिमार्क/वसूली छूट जाते। अपलोड रोका","err");
+    return;
+  }
+  showLoader("पहले "+hq+" की सूचियां सर्वर से ला रहे हैं (रिमार्क/वसूली बचाने के लिए)…");
+  _cashRefreshAll([hq],function(){
+    hideLoader();
+    var left=listsNeedFetch(hq);
+    if(left.length){
+      logErr("upload-lists-missing","अपलोड रोका — सूचियां सर्वर से नहीं आ पाईं",hq+" • "+left.join(", "));
+      toast("⚠️ "+hq+" की "+left.length+" सूचियां सर्वर से नहीं आ पाईं ("+left.join(", ")+") — रिमार्क बचाने के लिए अपलोड रोका। नेट ठीक होने पर दोबारा दबाएं","err");
+      return;
+    }
+    _confirmUploadNow();
+  },true);
+}
+function _confirmUploadNow(){
   try{
     var hq=document.getElementById("up-hq").value;
     var cat=document.getElementById("up-cat").value;
