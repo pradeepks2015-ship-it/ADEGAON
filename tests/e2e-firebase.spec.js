@@ -157,4 +157,6 @@ test('JE: असली login → लेजर अपलोड सर्वर �
     const list = Array.isArray(d) ? d : Object.values(d || {});
     return list.map((x) => x && x.acc).filter(Boolean).join(',');
   }, { timeout: 20000 }).toBe('9001');
+  // v9.223: अपलोड की कट-ऑफ़ सर्वर पर (JE लिख सके — असली rules से)
+  await expect.poll(async () => admin('GET', 'LEDGER_CUT/जोबा'), { timeout: 20000 }).toBeGreaterThan(20200101);
 });

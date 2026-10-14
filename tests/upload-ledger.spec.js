@@ -1174,3 +1174,28 @@ test.describe('अपलोड — Replace डिफ़ॉल्ट और क�
     expect(msgs).toEqual([]);
   });
 });
+
+// ── v9.223: अपलोड की कट-ऑफ़ सर्वर पर जाए (बाक़ी फ़ोन भी जानें — config.js: LEDGER_CUT) ──
+test.describe('अपलोड — कट-ऑफ़ सर्वर पर (v9.223)', () => {
+  test('Replace + "पुरानी वसूली सुरक्षित रखें" → चुनी तारीख़; checkbox हटा → आज की तारीख़', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const up = (hq, keep) => {
+        openUpModal();
+        document.getElementById('up-hq').value = hq;
+        document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+        setUpMode('replace');
+        document.getElementById('up-keeppaid').checked = keep;
+        document.getElementById('up-keepfrom').value = '2026-10-01';
+        parsedRows = [{ acc: '1', name: 'क', amount: 10, status: 'pending', remarksArr: [] }];
+        window.confirm = () => true;
+        confirmUpload();
+      };
+      up('आदेगांव', true);
+      up('पाटन', false);
+      return { a: LEDGER_CUT['आदेगांव'], p: LEDGER_CUT['पाटन'] === _todayVal(), saved: JSON.parse(localStorage.getItem('dc_ledgercut1'))['आदेगांव'] };
+    });
+    expect(r).toEqual({ a: 20261001, p: true, saved: 20261001 });
+  });
+});

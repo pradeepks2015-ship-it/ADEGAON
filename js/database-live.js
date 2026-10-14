@@ -421,6 +421,7 @@ function _openLive(hq,cat){
   if(catNamesTimer) clearInterval(catNamesTimer);
   catNamesTimer=setInterval(function(){
     fetchCatNamesFromFB(true);
+    fetchLedgerCuts();
     fetchPhCustomMsgFromFB();
     loadMigratedFlags();
   },12*60*60*1000);

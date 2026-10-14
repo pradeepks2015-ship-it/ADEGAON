@@ -1210,3 +1210,85 @@ test.describe('बासी सूची से पुरानी वसूल�
     expect(r).toEqual({ 'पाटन/व्यवसाय': 'e2' });
   });
 });
+
+// ── v9.223: लेजर कट-ऑफ़ सर्वर पर — कोई भी फ़ोन (बासी सूची वाला भी) पिछले माह की वसूली नए लेजर में न चढ़ा सके ──
+test.describe('लेजर कट-ऑफ़ सर्वर पर (v9.223)', () => {
+  test('ledgerCut — मान्य तारीख़ ही; भविष्य की (ग़लती से) तारीख़ पर कुछ नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      LEDGER_CUT = { 'आदेगांव': 20261001, 'पाटन': _todayVal() + 10000, 'जोबा': 'x' };
+      return [ledgerCut('आदेगांव'), ledgerCut('पाटन'), ledgerCut('जोबा'), ledgerCut('बीबी')];
+    });
+    expect(r).toEqual([20261001, 0, 0, 0]);
+  });
+
+  test('सर्वर से आई सूची में कट-ऑफ़ से पुरानी "वसूल" → बाकी, और सर्वर पर वापस भेजी जाए; नई और बिना-तारीख़ वाली अछूती', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      LEDGER_CUT = { 'आदेगांव': 20261001 };
+      const data = [
+        { acc: '1', name: 'पुरानी', status: 'paid', paydate: '5/9/2026', amount: 100, ts: 1 },
+        { acc: '2', name: 'इसी माह', status: 'paid', paydate: '3/10/2026', amount: 100, ts: 1 },
+        { acc: '3', name: 'तारीख़ नहीं', status: 'paid', paydate: '', amount: 100, ts: 1 },
+        { acc: '4', name: 'बाकी', status: 'pending', amount: 100, ts: 1 },
+      ];
+      overlayOps('आदेगांव', 'कुल उपभोक्ता', data); // सर्वर से आई हर सूची यहीं से गुज़रती है
+      cSet('आदेगांव', 'कुल उपभोक्ता', data);
+      return { st: data.map((x) => x.status).join(','), by: data[0].updatedBy, cleaned: _cutCleaned };
+    });
+    expect(r).toEqual({ st: 'pending,paid,paid,pending', by: 'System (कट-ऑफ़ से पुरानी वसूली हटी)', cleaned: 1 });
+    // 1.5 सेकंड बाद सर्वर पर भेजना — यहां नेट बंद है, इसलिए बदलाव भेजने की कतार में पहुंचे
+    await page.waitForFunction(() => isPending('आदेगांव', 'कुल उपभोक्ता'), null, { timeout: 15000 });
+  });
+
+  test('reconcileHQ — दूसरे बटन में पड़ी कट-ऑफ़ से पुरानी वसूली नए लेजर में न फैले (14/10 की घटना)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const seed = () => {
+        cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'राम', status: 'paid', paydate: '5/9/2026', ts: 5 }, { acc: '2', name: 'श्याम', status: 'paid', paydate: '4/10/2026', ts: 5 }]);
+        cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', name: 'राम', status: 'pending' }, { acc: '2', name: 'श्याम', status: 'pending' }]);
+      };
+      LEDGER_CUT = {}; seed();
+      const without = reconcileHQ('आदेगांव');
+      LEDGER_CUT = { 'आदेगांव': 20261001 }; seed();
+      const withCut = reconcileHQ('आदेगांव');
+      return { without, withCut, kul: cGet('आदेगांव', 'कुल उपभोक्ता').map((x) => x.status).join(',') };
+    });
+    expect(r).toEqual({ without: 2, withCut: 1, kul: 'pending,paid' }); // सिर्फ़ इसी माह वाली फैली
+  });
+});
+
+// ── v9.223: 30 दिन से न खुली/न बदली सूचियां फ़ोन से हटें ──
+test.describe('पुरानी अनछुई सूचियां हटना (v9.223)', () => {
+  test('30 दिन से अनछुई हटे (ETag भी); हाल की, बिना-भेजी वसूली वाली, और पहली बार दिखी बचे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const today = Math.floor(Date.now() / 86400000);
+      ['पाटन_घरेलू', 'पाटन_व्यवसाय', 'पाटन_कृषि', 'पाटन_सूची-2'].forEach((k) => { CACHE[k] = [{ acc: k }]; });
+      localStorage.setItem('dc_listused1', JSON.stringify({ 'पाटन_घरेलू': today - 31, 'पाटन_व्यवसाय': today - 31, 'पाटन_कृषि': today - 3 }));
+      _listUsed = null;
+      localStorage.setItem('dc_pending3', JSON.stringify({ 'पाटन_व्यवसाय': { hq: 'पाटन', cat: 'व्यवसाय', type: 'put', since: Date.now() } }));
+      localStorage.setItem('dc_etag3', JSON.stringify({ 'पाटन/घरेलू': 'e1', 'पाटन/कृषि': 'e3' }));
+      const n = cachePruneUnused();
+      return {
+        n, left: ['पाटन_घरेलू', 'पाटन_व्यवसाय', 'पाटन_कृषि', 'पाटन_सूची-2'].filter((k) => CACHE[k]).join(','),
+        etag: JSON.parse(localStorage.getItem('dc_etag3')),
+        firstSeen: JSON.parse(localStorage.getItem('dc_listused1'))['पाटन_सूची-2'] === today,
+        log: getLogs().filter((l) => l.c === 'cache-prune').length,
+      };
+    });
+    expect(r).toEqual({ n: 1, left: 'पाटन_व्यवसाय,पाटन_कृषि,पाटन_सूची-2', etag: { 'पाटन/कृषि': 'e3' }, firstSeen: true, log: 1 });
+  });
+
+  test('सूची खोलना/बदलना "इस्तेमाल" गिना जाए', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      cSet('बीबी', 'घरेलू', [{ acc: '1' }]);
+      cGet('मढ़ी', 'कृषि');
+      const u = JSON.parse(localStorage.getItem('dc_listused1'));
+      const today = Math.floor(Date.now() / 86400000);
+      return [u['बीबी_घरेलू'] === today, u['मढ़ी_कृषि'] === today];
+    });
+    expect(r).toEqual([true, true]);
+  });
+});

@@ -3,6 +3,7 @@ var LS_PREFIX="dc_cache3_";
 function cKey(hq,cat){return hq+"_"+cat;}
 function cGet(hq,cat){
   var k=cKey(hq,cat);
+  _noteListUse(k);
   if(CACHE[k]===undefined){
     // IndexedDB तैयार होने पर सब सूचियां पहले ही CACHE में आ चुकी होती हैं (cacheInit) — यहां सिर्फ़
     // पुराना रास्ता: IndexedDB न खुला हो, या उसके तैयार होने से पहले कोई सूची मांगी गई
@@ -13,6 +14,7 @@ function cGet(hq,cat){
 function cSet(hq,cat,d){
   var k=cKey(hq,cat);
   CACHE[k]=d;
+  _noteListUse(k);
   _listsBcPost(k,d);
   if(!_cacheReady){ _cacheDirty[k]=true; return; } // cacheInit ख़ुद लिख देगा
   if(_cacheDb){ _idbPut(k,d,hq+"/"+cat); return; }
@@ -30,6 +32,47 @@ function _etagDrop(ek){
     delete a[ek];
     localStorage.setItem("dc_etag3",JSON.stringify(a));
   }catch(e){}
+}
+
+// ── v9.223: 30 दिन से न खोली/न बदली सूचियां फ़ोन से हटें ──
+// लाइनमैन फ़ोन में कभी दूसरे HQ से login हुआ हो तो उसकी पूरी सूचियां (~1 MB) हमेशा पड़ी रहती थीं (13/10 के लॉग:
+// SOHAN/बीबी और Vaibhav/पाटन के फ़ोन में आदेगांव की "कुल उपभोक्ता"), और नाम बदली श्रेणियों की पुरानी सूचियां भी
+// (JE फ़ोन: 89 सूचियां, असली 48)। हर सूची का "आख़िरी इस्तेमाल का दिन" याद रखते हैं (दिन में एक बार लिखा जाता
+// है); 30 दिन बीतें और बिना-भेजी वसूली न हो तो हटती है। ज़रूरत पड़े तो खोलते ही सर्वर से फिर आ जाती है
+var LIST_USED_KEY="dc_listused1", LIST_UNUSED_DAYS=30;
+/** @type {Object<string,number>|null} */ var _listUsed=null;
+function _listUsedLoad(){
+  if(_listUsed) return _listUsed;
+  try{ _listUsed=JSON.parse(localStorage.getItem(LIST_USED_KEY)||"{}")||{}; }catch(e){ _listUsed={}; }
+  return _listUsed;
+}
+function _noteListUse(k){
+  var u=_listUsedLoad(), day=Math.floor(Date.now()/86400000);
+  if(u[k]===day) return;
+  u[k]=day;
+  try{ localStorage.setItem(LIST_USED_KEY,JSON.stringify(u)); }catch(e){}
+}
+// ऐप खुलने के कुछ सेकंड बाद एक बार (main.js) — लौटाता है कितनी हटीं
+function cachePruneUnused(){
+  if(!_cacheReady) return 0;
+  var u=_listUsedLoad(), today=Math.floor(Date.now()/86400000), pend=getPending(), gone=[];
+  Object.keys(CACHE).forEach(function(k){
+    if(pend[k]) return;
+    if(u[k]===undefined){ u[k]=today; return; } // पहली बार दिखी — आज से गिनती (बिना जाने न हटाएं)
+    if(today-u[k]>LIST_UNUSED_DAYS) gone.push(k);
+  });
+  gone.forEach(function(k){
+    delete CACHE[k]; delete u[k];
+    try{ localStorage.removeItem(LS_PREFIX+k); }catch(e){}
+    var hq=(typeof HQS!=="undefined"?HQS:[]).filter(function(h){ return k.indexOf(h+"_")===0; })[0];
+    if(hq) _etagDrop(hq+"/"+k.slice(hq.length+1));
+  });
+  if(_cacheDb&&gone.length){
+    try{ var st=_cacheDb.transaction(CACHE_DB_STORE,"readwrite").objectStore(CACHE_DB_STORE); gone.forEach(function(k){ st.delete(k); }); }catch(e){}
+  }
+  try{ localStorage.setItem(LIST_USED_KEY,JSON.stringify(u)); }catch(e){}
+  if(gone.length) logErr("cache-prune",LIST_UNUSED_DAYS+" दिन से न खुली "+gone.length+" सूचियां फ़ोन से हटीं",gone.slice(0,6).join(", ").slice(0,190));
+  return gone.length;
 }
 
 // ── v9.221: ऐप दो जगह एक साथ खुला (Chrome टैब + इंस्टॉल ऐप) ──
