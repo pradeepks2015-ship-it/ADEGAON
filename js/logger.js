@@ -287,6 +287,17 @@ function _dvRender(){
     .catch(function(){ el.innerHTML="<div class='log-empty'>लोड नहीं हो पाया — दोबारा कोशिश करें</div>"; });
 }
 
+// v9.225: "🔄 ताज़ा करें" — पहले सिर्फ़ हाज़िरी (DEVICE_VERSIONS) ताज़ा होती थी, जबकि "आज का काम" फ़ोन में रखी
+// सूचियों से गिना जाता है। JE (14/10): v9.222 की एक-बार सफ़ाई के बाद सूचियां फ़ोन से हट गईं, तो सबका काम "—" दिखा।
+// अब पहले सभी HQ की सूचियां सर्वर से ताज़ा (ETag से — न बदली हो तो लगभग मुफ़्त; 5 मिनट की रोक _cashRefreshAll में),
+// फिर हाज़िरी। नेट न हो तो सीधे हाज़िरी वाला पुराना रास्ता
+function _dvRefreshAll(){
+  var el=document.getElementById("mig-devices");
+  if(el) el.innerHTML="<div class='log-empty'>⏳ सभी मुख्यालयों की सूचियां ताज़ा हो रही हैं...</div>";
+  if(!navigator.onLine||typeof _cashRefreshAll!=="function"){ _dvRender(); return; }
+  _cashRefreshAll(HQS,function(){ _dvRender(); });
+}
+
 function _dvPaint(){
   var el=document.getElementById("mig-devices");
   if(!el)return;
@@ -340,7 +351,7 @@ function _dvPaint(){
   // वरना JE ग़लती से समझ लेगा कि वहां किसी ने काम ही नहीं किया
   var noData=HQS.filter(function(hq){ return !((cGet(hq,CATS_DEFAULT[0])||[]).length); });
   if(noData.length){
-    html+="<div style='background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.3);border-radius:10px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--gold2);'>ℹ️ इन मुख्यालयों का data इस डिवाइस पर नहीं है, इसलिए इनका \"काम\" शून्य दिख सकता है: <b>"+escHtml(noData.join(", "))+"</b> — \"आज की वसूली\" या \"ग्राम-वार वसूली\" में रिफ्रेश दबाकर ताज़ा करें</div>";
+    html+="<div style='background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.3);border-radius:10px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:var(--gold2);'>ℹ️ इन मुख्यालयों का data इस डिवाइस पर नहीं है, इसलिए इनका \"काम\" शून्य दिख सकता है: <b>"+escHtml(noData.join(", "))+"</b> — नीचे \"🔄 ताज़ा करें\" दबाएं</div>";
   }
   html+="<table class='wasc-table'><thead><tr><th class='wasc-th-left'>कर्मचारी</th><th>HQ</th><th>"+(_DV_WINDOW===1?"आज का काम":(_DV_WINDOW?(_DV_WINDOW+" दिन का काम"):"काम"))+"</th><th>आख़िरी बार लॉगिन</th><th>Version</th></tr></thead><tbody>";
   rows.forEach(function(r){
