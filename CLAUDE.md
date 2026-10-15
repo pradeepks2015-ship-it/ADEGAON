@@ -2,6 +2,13 @@
 
 आदेगांव Distribution Centre / लखनादौन डिवीजन सिवनी सर्कल (मध्य प्रदेश बिजली विभाग) के लिए एक ऑफ़लाइन-फर्स्ट PWA — vanilla JavaScript, कोई framework नहीं।
 
+## 🔝 सबसे ऊपर की प्राथमिकता (JE, 15/10/2026)
+**ऐप मुफ़्त रहे, बिना नेट के भी चले, और तेज़ रहे** — हर बदलाव इसी कसौटी पर:
+- **मुफ़्त:** Firebase की पढ़ाई/लिखाई न बढ़े (बिल ₹0 के आसपास), कोई paid सेवा नहीं; GitHub Actions public repo में मुफ़्त
+- **बिना नेट:** हर ज़रूरी काम (सूची, वसूल, रिमार्क, PDF) बिना नेट; नेट आने पर अपने-आप भेजना
+- **तेज़:** खुलना फ़ोन की copy से, सस्ते फ़ोन/धीमे नेट पर भी (field-conditions टेस्ट)
+इनमें से किसी पर असर डालने वाला बदलाव हो तो पहले JE को साफ़ बताएं
+
 ## Tech Stack
 - Vanilla JavaScript (कोई build step नहीं)
 - Firebase Realtime Database + Firebase Auth + Firebase App Check
@@ -80,6 +87,8 @@
 - **"पहले JE, फिर सब" (canary, v9.231):** नया `sw.js` JE-login वाले फ़ोन (Cache `dc-role`/`je-device`) पर तुरंत, बाक़ी फ़ोनों
   पर `rollout.json` के `waitMin` (10) मिनट बाद। JE "रोको" कहें तो `rollout.json` में `"hold": true` + बदलाव वापस; "सबको भेजो"
   पर `"hold": false`/`waitMin: 0`। सिर्फ़ ऐप-कोड पर — rules/workflows merge पर सब पर तुरंत। `sw.js` activate `dc-role` नहीं मिटाता
+- **बैकअप से रिमार्क वापसी (15/10):** Actions → "Restore Remarks From Backup" (सिर्फ़ हाथ से; `scripts/restore-remarks.js`)।
+  पहले "गिनती", JE की Ok पर "लिखो"। सिर्फ़ जोड़ता है (text-मिलान, `restored: "backup-<दिन>"` निशान), लॉग में कोई नाम नहीं
 - इस sandbox से github.io तक पहुंच नहीं (proxy 403) — "लाइव" सिर्फ़ deployments API के `success` से पक्का करें
 
 ## काम शुरू करने से पहले
@@ -99,6 +108,7 @@
    npm run check-xss      # onclick में escHtml() का सही इस्तेमाल
    npm run check-globals  # एक ही global नाम दो फ़ाइलों में declare न हो
    npm run typecheck      # type-जांच (tsc) — 0 errors; DOM/बाहरी library की जानकारी types/globals.d.ts में
+   npm run test:restore   # बैकअप से रिमार्क वापसी: सिर्फ़ जोड़े, आज का न मिटे
    npm run test:alerts    # alert script: क्या alert बने/न बने, हर logErr नाम वर्गीकृत
    npm run check-sri      # Firebase की 3 बाहरी script पर integrity hash (CI में `-- --online` असली gstatic से मिलाता है)
    ```
