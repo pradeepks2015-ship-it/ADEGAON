@@ -547,6 +547,18 @@ window.addEventListener("error",function(ev){
   if(ev.message==="Script error."&&!ev.filename&&!ev.lineno&&!ev.error) return;
   if(ev.error||ev.message) logErr("js-error",ev.error||ev.message,(ev.filename||"").split("/").pop()+":"+(ev.lineno||""));
 });
+// v9.230: CSP (index.html का meta) ने कुछ रोका — ऐप के किसी असली काम का पता सूची से छूटा हो तो यहीं दिखे।
+// हर (नियम + साइट) एक session में एक ही बार, वरना एक रुकी चीज़ बार-बार लॉग भर देती
+var _cspLogged={};
+document.addEventListener("securitypolicyviolation",function(ev){
+  if(!ev) return;
+  var host=String(ev.blockedURI||"");
+  try{ if(/^https?:/.test(host)) host=new URL(host).host; }catch(x){}
+  var k=(ev.effectiveDirective||ev.violatedDirective||"?")+" "+host;
+  if(_cspLogged[k]) return;
+  _cspLogged[k]=1;
+  logErr("csp-block",k,(String(ev.sourceFile||"").split("/").pop())+":"+(ev.lineNumber||""));
+});
 // Firebase App Check का reCAPTCHA v3 verification कमज़ोर नेटवर्क पर कभी-कभी समय पर पूरा नहीं होता।
 // यह SDK के अपने अंदर (हमारे किसी .then()/.catch() chain के बाहर) होता है, इसलिए हम इसे पकड़ ही
 // नहीं सकते — और App Check अभी सिर्फ़ "monitor mode" में है (enforce नहीं), इसका असर किसी भी

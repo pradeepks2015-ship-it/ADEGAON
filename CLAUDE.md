@@ -71,6 +71,9 @@
 - टेस्ट: पुराने sync अपलोड-टेस्ट के लिए `tests/helpers.js` `window.__TEST_UPLOAD_NO_REFRESH` लगाता है (असली ऐप में नहीं);
   असली रास्ता `tests/field-conditions.spec.js` "मासिक अपलोड" जांचता है। समय-निर्भर टेस्ट में `page.clock` (रात 12 के बाद फेल होते थे)
 - GitHub Pages पर JE के **सारे repo एक ही origin** (`pradeepks2015-ship-it.github.io`) — localStorage/IndexedDB की जगह उनमें बंटती है
+- **CSP + SRI (v9.230):** `index.html` के ऊपर `Content-Security-Policy` meta — कोई नया बाहरी पता (script/fetch/iframe)
+  जोड़ें तो उसकी सूची में भी, वरना browser चुपचाप रोकेगा (लॉग `csp-block`)। Firebase version बदलें तो तीनों `integrity`
+  hash भी (`scripts/check-sri.js` में तरीक़ा) — ग़लत hash = पूरे ऐप में Firebase बंद; CI lint job असली gstatic से मिलाता है
 - इस sandbox से github.io तक पहुंच नहीं (proxy 403) — "लाइव" सिर्फ़ deployments API के `success` से पक्का करें
 
 ## काम शुरू करने से पहले
@@ -90,6 +93,7 @@
    npm run check-xss      # onclick में escHtml() का सही इस्तेमाल
    npm run check-globals  # एक ही global नाम दो फ़ाइलों में declare न हो
    npm run typecheck      # type-जांच (tsc) — 0 errors; DOM/बाहरी library की जानकारी types/globals.d.ts में
+   npm run check-sri      # Firebase की 3 बाहरी script पर integrity hash (CI में `-- --online` असली gstatic से मिलाता है)
    ```
    CI में इनके अलावा `rules` (`npm run test:rules`), `backup-lock` (`npm run test:backup`) और `e2e-firebase`
    (`npm run test:e2e`) jobs भी चलते हैं — sandbox में Java/emulator हो तो इन्हें भी चला लें
