@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v247";
+var CACHE_NAME="adegaon-dc-v248";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -68,9 +68,45 @@ var OPTIONAL=[
 // की फ़ाइलें पहले फ़ोन की कॉपी से चलती हैं (नीचे fetch), इसलिए नए version की cache में browser की
 // पुरानी (GitHub Pages ~10 मिनट तक रखता है) प्रति आ गई तो वह अगले version तक अटकी रहती
 function _fresh(u){ return new Request(u,{cache:"no-cache"}); }
+// ── v9.231: "पहले JE, फिर सब" (canary — JE का फ़ैसला 15/10) ──
+// पहले हर नया version merge होते ही ~10 मिनट में हर फ़ोन पर पहुंचता था — कोई ग़लती सबको एक साथ लगती।
+// अब नया sw.js उतरने से पहले यह देखता है: JE का फ़ोन (dc-role में "je-device", js/reports.js का
+// markJeDevice — JE login पर) हो तो तुरंत; बाक़ी फ़ोन पर पहली बार दिखते ही समय नोट करके मना, और
+// rollout.json के waitMin (अभी 10) मिनट बाद अगली जांच (ऐप हर 5 मिनट/खुलते ही जांचता है) पर उतरे।
+// मना करने पर पुराना SW वैसे ही चलता रहता है — पुराना version फ़ोन की कॉपी से, लाइनमैन को कोई रुकावट नहीं।
+// rollout.json में "hold": true = लाइनमैनों तक बिल्कुल नहीं (Claude "रोको" पर)। rollout.json न मिले/बिगड़ी
+// हो तो रुकता नहीं (डिफ़ॉल्ट 10 मिनट)। पहली बार ऐप खुलने (कोई पुराना SW नहीं) पर रोक नहीं — पन्ना
+// तो पहले ही नया है, रोकने से बस बिना-नेट वाली copy देर से बनती।
+var ROLE_CACHE="dc-role";        // activate में मिटती नहीं — JE-फ़ोन का निशान और "पहली बार कब दिखा"
+var CANARY_WAIT_MIN=10;          // rollout.json में waitMin न हो तो
+function _canaryGate(){
+  if(!self.registration||!self.registration.active) return Promise.resolve(); // पहली बार
+  return caches.open(ROLE_CACHE).then(function(rc){
+    return rc.match("je-device").then(function(je){
+      if(je) return; // JE का फ़ोन — हमेशा सबसे पहले
+      return fetch(new Request("./rollout.json",{cache:"no-store"}))
+        .then(function(r){ return r.ok?r.json():{}; })
+        .catch(function(){ return {}; })
+        .then(function(cfg){
+          cfg=cfg||{};
+          if(cfg.hold===true) throw new Error("canary-hold");
+          var wait=Number(cfg.waitMin);
+          if(!(wait>=0)) wait=CANARY_WAIT_MIN;
+          var key="seen-"+CACHE_NAME, now=Date.now();
+          return rc.match(key).then(function(m){ return m?m.text():null; }).then(function(t){
+            var seen=Number(t);
+            if(!t||!(seen>0)){
+              return rc.put(key,new Response(String(now))).then(function(){ if(wait>0) throw new Error("canary-wait"); });
+            }
+            if(seen<=now&&now-seen<wait*60000) throw new Error("canary-wait"); // घड़ी पीछे गई (seen>now) तो रोकें नहीं
+          });
+        });
+    });
+  }).catch(function(err){ if(err&&/^canary-/.test(err.message)) throw err; }); // cache API की कोई और गड़बड़ — रोकें नहीं
+}
 self.addEventListener("install",function(e){
   e.waitUntil(
-    caches.open(CACHE_NAME).then(function(c){
+    _canaryGate().then(function(){ return caches.open(CACHE_NAME); }).then(function(c){
       return Promise.all(CORE.map(function(u){return c.add(_fresh(u));}))
         .then(function(){
           return Promise.all(OPTIONAL.map(function(u){return c.add(_fresh(u)).catch(function(){});}));
@@ -81,7 +117,14 @@ self.addEventListener("install",function(e){
 self.addEventListener("activate",function(e){
   e.waitUntil(
     caches.keys().then(function(keys){
-      return Promise.all(keys.filter(function(k){return k!==CACHE_NAME;}).map(function(k){return caches.delete(k);}));
+      return Promise.all(keys.filter(function(k){return k!==CACHE_NAME&&k!==ROLE_CACHE;}).map(function(k){return caches.delete(k);}));
+    }).then(function(){
+      // पुराने versions के "पहली बार कब दिखा" नोट हटाओ (JE का निशान रहे)
+      return caches.open(ROLE_CACHE).then(function(rc){
+        return rc.keys().then(function(ks){
+          return Promise.all(ks.filter(function(q){ return /\/seen-/.test(q.url)&&q.url.indexOf("seen-"+CACHE_NAME)===-1; }).map(function(q){ return rc.delete(q); }));
+        });
+      }).catch(function(){});
     }).then(function(){return self.clients.claim();})
   );
 });

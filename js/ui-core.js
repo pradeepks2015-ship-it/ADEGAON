@@ -266,6 +266,7 @@ function buildUI(){
   // JE की स्क्रीनें (अपलोड, माइग्रेशन…) अब ज़रूरत पड़ने पर उतरती हैं (js/lazy.js) — JE के फ़ोन पर
   // पहले से उतार लो ताकि गांव में बिना नेट के भी खुलें; ऐप खुलने की रफ़्तार न घटे, इसलिए कुछ देर बाद
   if(CU.role==="supervisor"&&typeof lazyPreloadAll==="function") setTimeout(lazyPreloadAll,4000);
+  if(CU.role==="supervisor"&&typeof markJeDevice==="function") markJeDevice(); // v9.231: नया version पहले इस फ़ोन पर
 }
 
 function buildHQTabs(){

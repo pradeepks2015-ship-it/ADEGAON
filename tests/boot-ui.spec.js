@@ -689,6 +689,8 @@ test.describe('CSP और integrity', () => {
     expect(pol).toContain("object-src 'none'");
     expect(pol).toContain("base-uri 'self'");
     expect(pol).toMatch(/connect-src [^;]*https:\/\/\*\.firebaseio\.com/);
+    // v9.231: Firebase login की gapi script अपने पते से डेटा भी मांगती है (असली फ़ोन का csp-block, 15/10)
+    for (const h of ['https://apis.google.com', 'https://www.google.com', 'https://*.googleapis.com']) expect(pol).toMatch(new RegExp('connect-src [^;]*' + h.replace(/[.*]/g, (c) => '\\' + c)));
   });
 
   test('ऐप खुलने और लाइनमैन login/सूची में CSP कुछ नहीं रोकता', async ({ page }) => {
@@ -724,5 +726,21 @@ test.describe('CSP और integrity', () => {
       document.head.appendChild(s);
     }));
     expect(ok).toBe('blocked');
+  });
+});
+
+// v9.231: "पहले JE, फिर सब" — JE login वाला फ़ोन ही निशान पाए (sw.js का _canaryGate इसे पढ़ता है)
+test.describe('canary निशान', () => {
+  const mark = (page) => page.evaluate(() => caches.open('dc-role').then((c) => c.match('je-device')).then((m) => !!m));
+  test('लाइनमैन login पर "je-device" निशान नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForTimeout(500);
+    expect(await mark(page)).toBe(false);
+  });
+  test('JE login पर फ़ोन पर "je-device" निशान', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await expect.poll(() => mark(page)).toBe(true);
   });
 });
