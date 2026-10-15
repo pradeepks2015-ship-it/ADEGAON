@@ -22,7 +22,7 @@
 const DB_URL = "https://adegaon-dc-top-50-default-rtdb.firebaseio.com";
 
 // js/config.js के HQ_AUTH_EMAIL की नक़ल — दोनों एक साथ बदलने पड़ते हैं (नया DC बनाते वक़्त भी,
-// देखें CLAUDE.md का आख़िरी हिस्सा)
+// देखें docs/NEW-DC-SETUP.md)
 const HQ_AUTH_EMAIL = {
   "आदेगांव": "hq-adegaon@adegaondc.internal",
   "पिंडरई": "hq-pindrai@adegaondc.internal",
