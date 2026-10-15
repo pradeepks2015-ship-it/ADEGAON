@@ -235,3 +235,130 @@ test.describe('पुराने version वाला फ़ोन नए versi
     expect(await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता').length)).toBe(2);
   });
 });
+
+// ── v9.228: मासिक अपलोड की पूरी जांच — रिमार्क/वसूली/राशि हर फ़ोन-हालत में बचें ──
+// JE (14/10): दोबारा Replace पर बकायादारों के पुराने रिमार्क चले गए — पुराने टेस्टों में फ़ोन के अंदर सारी सूचियां
+// हमेशा ताज़ा रहती थीं, "फ़ोन में सूची नहीं / पुरानी है" वाली असली हालत कभी नहीं बनी। यहां नक़ली "सर्वर" (_cashRefreshAll
+// की जगह) और चारों हालतें: फ़ोन ताज़ा · फ़ोन में सूचियां नहीं · फ़ोन की copy पुरानी · बिना नेट/सर्वर न मिले
+test.describe('मासिक अपलोड — रिमार्क/वसूली हर फ़ोन-हालत में बचें (v9.228)', () => {
+  const R = (text, at) => ({ text, by: 'लाइनमैन', at });
+  // सर्वर पर आज की असली हालत
+  const SERVER = () => ({
+    'कुल उपभोक्ता': [
+      { acc: '1', name: 'रामलाल', amount: '900', status: 'paid', paydate: '5/9/2026', remarksArr: [R('कुल-पुराना', '1/9/2026'), R('कुल-आज-लाइनमैन', '14/10/2026')] },
+      { acc: '2', name: 'श्याम', amount: '700', status: 'paid', paydate: '3/10/2026', remarksArr: [] },
+      { acc: '3', name: 'मोहन', amount: '500', status: 'pending', remarksArr: [] },
+    ],
+    'घरेलू': [
+      { acc: '1', name: 'रामलाल', amount: '900', status: 'paid', paydate: '5/9/2026', remarksArr: [R('घरेलू-रिमार्क', '2/9/2026')] },
+      { acc: '3', name: 'मोहन', amount: '500', status: 'pending', remarksArr: [R('घरेलू-आज', '14/10/2026')] },
+    ],
+    'व्यवसाय': [{ acc: '2', name: 'श्याम', amount: '700', status: 'paid', paydate: '3/10/2026', remarksArr: [] }],
+  });
+  // फ़ोन की हालत तैयार करें, फिर JE का Replace अपलोड (नया लेजर: नई राशि)
+  async function run(page, phone, opts) {
+    await openApp(page);
+    await loginJE(page);
+    return page.evaluate(async ([server, phoneState, o]) => {
+      delete window.__TEST_UPLOAD_NO_REFRESH; // असली ऐप वाला रास्ता — पहले सूचियां सर्वर से
+      if (o.noRefresh) window.__TEST_UPLOAD_NO_REFRESH = 1; // सिर्फ़ "दांत" जांच: ताज़ा किए बिना पुराना व्यवहार
+      const clone = (x) => JSON.parse(JSON.stringify(x));
+      const cats = ['कुल उपभोक्ता', 'घरेलू', 'व्यवसाय'];
+      if (phoneState === 'fresh') cats.forEach((c) => cSet('आदेगांव', c, clone(server[c])));
+      if (phoneState === 'stale') { // फ़ोन की copy कल की — आज के दोनों रिमार्क इसमें नहीं
+        const old = clone(server);
+        old['कुल उपभोक्ता'][0].remarksArr = [old['कुल उपभोक्ता'][0].remarksArr[0]];
+        old['घरेलू'][1].remarksArr = [];
+        cats.forEach((c) => cSet('आदेगांव', c, old[c]));
+      }
+      if (phoneState === 'missing') _listNeedMark(cats.map((c) => cKey('आदेगांव', c))); // फ़ोन से हटीं (सफ़ाई/30 दिन)
+      let refreshed = 0;
+      const origRefresh = _cashRefreshAll;
+      window._cashRefreshAll = (hqs, cb) => { // नक़ली सर्वर — असली की तरह हर श्रेणी फ़ोन में लिखता है
+        refreshed++;
+        if (o.serverDown) return cb(3);
+        cats.forEach((c) => { if (!isPending('आदेगांव', c)) cSet('आदेगांव', c, clone(server[c])); });
+        cb(0);
+      };
+      if (o.offline) Object.defineProperty(navigator, 'onLine', { get: () => false, configurable: true });
+      const before = JSON.stringify(cats.map((c) => cGet('आदेगांव', c)));
+      try {
+        openUpModal();
+        document.getElementById('up-hq').value = 'आदेगांव';
+        document.getElementById('up-cat').value = 'कुल उपभोक्ता';
+        setUpMode('replace');
+        document.getElementById('up-keeppaid').checked = true;
+        document.getElementById('up-keepfrom').value = '2026-10-01';
+        parsedRows = [
+          { acc: '1', name: 'रामलाल', amount: '1200', status: 'pending', remarksArr: [] },
+          { acc: '2', name: 'श्याम', amount: '800', status: 'pending', remarksArr: [] },
+          { acc: '3', name: 'मोहन', amount: '300', status: 'pending', remarksArr: [] },
+        ];
+        parsedAmtGiven = { 1: true, 2: true, 3: true };
+        window.confirm = () => true;
+        confirmUpload();
+      } finally {
+        window._cashRefreshAll = origRefresh;
+        if (o.offline) delete navigator.onLine;
+      }
+      const pick = (c, a) => cGet('आदेगांव', c).find((x) => x.acc === a) || {};
+      const rmk = (x) => (x.remarksArr || []).map((m) => m.text).sort();
+      return {
+        refreshed,
+        unchanged: JSON.stringify(cats.map((c) => cGet('आदेगांव', c))) === before,
+        kul: {
+          a: [pick('कुल उपभोक्ता', '1').amount, pick('कुल उपभोक्ता', '1').status, rmk(pick('कुल उपभोक्ता', '1'))],
+          b: [pick('कुल उपभोक्ता', '2').amount, pick('कुल उपभोक्ता', '2').status],
+          c: rmk(pick('कुल उपभोक्ता', '3')),
+        },
+        ghar: { a: [pick('घरेलू', '1').amount, pick('घरेलू', '1').status, rmk(pick('घरेलू', '1'))], c: rmk(pick('घरेलू', '3')) },
+        vyav: pick('व्यवसाय', '2').amount,
+      };
+    }, [SERVER(), phone, opts || {}]);
+  }
+  // हर सफल हालत में यही नतीजा चाहिए
+  const GOOD = {
+    a: ['1200', 'pending', ['कुल-आज-लाइनमैन', 'कुल-पुराना', 'घरेलू-रिमार्क']], // सारे रिमार्क; सितंबर की वसूली हटी; नई राशि
+    b: ['800', 'paid'], // अक्टूबर की वसूली बची
+    c: ['घरेलू-आज'], // दूसरी सूची का आज का रिमार्क भी
+  };
+  const expectGood = (r) => {
+    expect(r.kul).toEqual(GOOD);
+    expect(r.ghar).toEqual({ a: ['1200', 'pending', ['घरेलू-रिमार्क']], c: ['घरेलू-आज'] }); // दूसरी सूची के रिमार्क अछूते, राशि नई
+    expect(r.vyav).toBe('800');
+  };
+
+  test('आम दिन — फ़ोन में सब ताज़ा', async ({ page }) => {
+    const r = await run(page, 'fresh');
+    expect(r.refreshed).toBe(1);
+    expectGood(r);
+  });
+
+  test('फ़ोन से सूचियां हटी हुईं (सफ़ाई/30 दिन/नया फ़ोन) — 14/10 की घटना', async ({ page }) => {
+    const r = await run(page, 'missing');
+    expectGood(r);
+  });
+
+  test('फ़ोन की copy पुरानी — इस बीच लाइनमैन ने नया रिमार्क लिखा था', async ({ page }) => {
+    const r = await run(page, 'stale');
+    expectGood(r);
+  });
+
+  test('"दांत" जांच: ताज़ा किए बिना (v9.227 तक का व्यवहार) पुरानी copy से आज का रिमार्क छूटता — यही ऊपर वाला टेस्ट पकड़ता है', async ({ page }) => {
+    const r = await run(page, 'stale', { noRefresh: true });
+    expect(r.refreshed).toBe(0);
+    expect(r.kul.a[2]).not.toContain('कुल-आज-लाइनमैन');
+  });
+
+  test('बिना नेट — अपलोड रुके, फ़ोन में कुछ न बदले', async ({ page }) => {
+    const r = await run(page, 'fresh', { offline: true });
+    expect(r.unchanged).toBe(true);
+    expect(r.refreshed).toBe(0);
+  });
+
+  test('सर्वर से सूचियां न आ पाएं — अपलोड रुके, कुछ न बदले, लॉग में दर्ज', async ({ page }) => {
+    const r = await run(page, 'fresh', { serverDown: true });
+    expect(r.unchanged).toBe(true);
+    expect(await page.evaluate(() => getLogs().filter((l) => l.c === 'upload-lists-missing').length)).toBe(1);
+  });
+});

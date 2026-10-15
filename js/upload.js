@@ -416,24 +416,31 @@ function _upApplyOldRemarks(recs,byAcc){
   return n;
 }
 
-// v9.227: अपलोड से पहले — जो सूचियां फ़ोन से हटाई गई थीं (listsNeedFetch) वे सर्वर से आ जाएं, वरना उनके पुराने
-// रिमार्क/वसूली नई सूची में नहीं जुड़ते और सर्वर पर हमेशा के लिए चले जाते (JE, 14/10)। बिना नेट या ताज़ा न हो पाएं
-// तो अपलोड रुकता है — कुछ नहीं बदलता
+// v9.227/v9.228: अपलोड से पहले उस HQ की सारी सूचियां सर्वर से ताज़ा। अपलोड पुराने रिमार्क/वसूली फ़ोन की
+// copy से उठाता है, और थोक लिखाई (>REMARK_MERGE_MAX records) में सर्वर के रिमार्क नहीं मिलाए जाते
+// (database-write.js: _mergeServerRemarks) — तो फ़ोन की copy न हो (v9.227: JE, 14/10 — v9.222 की सफ़ाई के बाद
+// रिमार्क गए) या पुरानी हो (v9.228: इस बीच लाइनमैन का लिखा ताज़ा रिमार्क — नया "मासिक अपलोड" टेस्ट), दोनों में
+// रिमार्क सर्वर से भी चले जाते। ताज़ा करना ETag से है — न बदली सूची लगभग मुफ़्त। बिना नेट, या कोई सूची सर्वर से
+// न आ पाए, तो अपलोड रुकता है — कुछ नहीं बदलता।
+// __TEST_UPLOAD_NO_REFRESH: पुराने सैकड़ों टेस्ट अपलोड को उसी पल (sync) जांचते हैं — उनके लिए tests/helpers.js
+// यह लगाता है (असली ऐप में कभी नहीं); "हटाई गई सूची" (listsNeedFetch) वाली जांच तब भी चलती है
 function confirmUpload(){
   var hq=document.getElementById("up-hq").value;
-  var need=hq?listsNeedFetch(hq):[];
-  if(!need.length) return _confirmUploadNow();
+  if(!hq) return _confirmUploadNow(); // HQ नहीं चुना — वहीं साफ़ संदेश
+  var need=listsNeedFetch(hq);
+  var skipFresh=!!(/** @type {any} */(window).__TEST_UPLOAD_NO_REFRESH);
+  if(!need.length&&skipFresh) return _confirmUploadNow();
   if(!navigator.onLine){
-    toast("📴 नेट चाहिए — इस फ़ोन में "+hq+" की "+need.length+" सूचियां सर्वर से आनी बाक़ी हैं; उनके बिना पुराने रिमार्क/वसूली छूट जाते। अपलोड रोका","err");
+    toast("📴 नेट चाहिए — अपलोड से पहले "+hq+" की सूचियां सर्वर से ताज़ा होती हैं, ताकि हाल के रिमार्क/वसूली न छूटें। अपलोड रोका","err");
     return;
   }
-  showLoader("पहले "+hq+" की सूचियां सर्वर से ला रहे हैं (रिमार्क/वसूली बचाने के लिए)…");
-  _cashRefreshAll([hq],function(){
+  showLoader("पहले "+hq+" की सूचियां सर्वर से ताज़ा हो रही हैं (रिमार्क/वसूली बचाने के लिए)…");
+  _cashRefreshAll([hq],function(failed){
     hideLoader();
     var left=listsNeedFetch(hq);
-    if(left.length){
-      logErr("upload-lists-missing","अपलोड रोका — सूचियां सर्वर से नहीं आ पाईं",hq+" • "+left.join(", "));
-      toast("⚠️ "+hq+" की "+left.length+" सूचियां सर्वर से नहीं आ पाईं ("+left.join(", ")+") — रिमार्क बचाने के लिए अपलोड रोका। नेट ठीक होने पर दोबारा दबाएं","err");
+    if(left.length||(!skipFresh&&failed)){
+      logErr("upload-lists-missing","अपलोड रोका — सूचियां सर्वर से ताज़ा नहीं हो पाईं",hq+" • "+(left.length?left.join(", "):(failed+" सूची")));
+      toast("⚠️ "+hq+" की "+(left.length||failed)+" सूचियां सर्वर से ताज़ा नहीं हो पाईं — रिमार्क बचाने के लिए अपलोड रोका। नेट ठीक होने पर दोबारा दबाएं","err");
       return;
     }
     _confirmUploadNow();
