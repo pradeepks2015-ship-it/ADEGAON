@@ -454,6 +454,9 @@ function refreshLogBadge(){
     });
     if(count>0){el.textContent=count>99?"99+":String(count); el.style.display="inline-block";}
     else el.style.display="none";
+    // v9.229: एरर लॉग अब "JE सेटिंग व जांच" के अंदर है — बंद हिस्से पर भी गिनती दिखे
+    var mb=document.getElementById("mn-admin-badge");
+    if(mb){ mb.textContent=el.textContent; mb.style.display=el.style.display; }
   }).catch(function(){});
 }
 

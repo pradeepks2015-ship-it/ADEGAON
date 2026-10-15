@@ -253,6 +253,30 @@ test.describe('रोल-आधारित UI', () => {
     expect(linHidden).toBe(true);
   });
 
+  // v9.229 (JE, 15/10): मेनू विषय-वार — रिपोर्ट टाइल, चालू/बंद स्विच, JE सेटिंग खुलने-बंद वाले हिस्से में
+  test('मेनू विषय-वार: JE सेटिंग बंद हिस्से में (JE को ही), खोलने पर सब दिखें; एरर-गिनती बंद हिस्से पर भी', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.click('.user-pill');
+    const adm = page.locator('#mn-admin');
+    await expect(adm).toBeVisible();
+    await expect(page.locator('#pin-menu-item')).toBeHidden(); // बंद हिस्सा — छोटा मेनू
+    await expect(page.locator('#todaysc-menu-item')).toBeVisible(); // रिपोर्ट टाइल सीधे
+    await page.click('#mn-admin summary');
+    for (const id of ['dv-menu-item', 'log-menu-item', 'usage-menu-item', 'pause-menu-item', 'pin-menu-item', 'backup-menu-item', 'mig-menu-item', 'clearcats-menu-item']) {
+      await expect(page.locator('#' + id)).toBeVisible();
+    }
+    // एरर-गिनती की नक़ल summary पर
+    await page.evaluate(() => {
+      const b = document.getElementById('log-badge'); const m = document.getElementById('mn-admin-badge');
+      b.textContent = '4'; b.style.display = 'inline-block'; m.textContent = b.textContent; m.style.display = b.style.display;
+    });
+    await expect(page.locator('#mn-admin-badge')).toHaveText('4');
+    await page.evaluate(() => doLogout(false));
+    await loginLineman(page);
+    expect(await page.evaluate(() => getComputedStyle(document.getElementById('mn-admin')).display)).toBe('none');
+  });
+
   test('profile-मेनू के आइटम असली <button> हैं — कीबोर्ड/स्क्रीन-रीडर से भी इस्तेमाल हो सकें (accessibility)', async ({ page }) => {
     await openApp(page);
     await loginJE(page);
