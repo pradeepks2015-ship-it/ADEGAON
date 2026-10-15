@@ -2,6 +2,13 @@
 
 आदेगांव Distribution Centre / लखनादौन डिवीजन सिवनी सर्कल (मध्य प्रदेश बिजली विभाग) के लिए एक ऑफ़लाइन-फर्स्ट PWA — vanilla JavaScript, कोई framework नहीं।
 
+## 🔝 सबसे ऊपर की प्राथमिकता (JE, 15/10/2026)
+**ऐप मुफ़्त रहे, बिना नेट के भी चले, और तेज़ रहे** — हर बदलाव इसी कसौटी पर:
+- **मुफ़्त:** Firebase की पढ़ाई/लिखाई न बढ़े (बिल ₹0 के आसपास), कोई paid सेवा नहीं; GitHub Actions public repo में मुफ़्त
+- **बिना नेट:** हर ज़रूरी काम (सूची, वसूल, रिमार्क, PDF) बिना नेट; नेट आने पर अपने-आप भेजना
+- **तेज़:** खुलना फ़ोन की copy से, सस्ते फ़ोन/धीमे नेट पर भी (field-conditions टेस्ट)
+इनमें से किसी पर असर डालने वाला बदलाव हो तो पहले JE को साफ़ बताएं
+
 ## Tech Stack
 - Vanilla JavaScript (कोई build step नहीं)
 - Firebase Realtime Database + Firebase Auth + Firebase App Check
