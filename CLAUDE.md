@@ -74,6 +74,9 @@
 - **CSP + SRI (v9.230):** `index.html` के ऊपर `Content-Security-Policy` meta — कोई नया बाहरी पता (script/fetch/iframe)
   जोड़ें तो उसकी सूची में भी, वरना browser चुपचाप रोकेगा (लॉग `csp-block`)। Firebase version बदलें तो तीनों `integrity`
   hash भी (`scripts/check-sri.js` में तरीक़ा) — ग़लत hash = पूरे ऐप में Firebase बंद; CI lint job असली gstatic से मिलाता है
+- **अपने-आप alert (15/10):** `.github/workflows/alert.yml` हर 4 घंटे (6–22 IST) `scripts/check-alerts.js` चलाता है —
+  सर्वर-लॉग में गंभीर गड़बड़ी पर "🚨 ऐप alert" GitHub issue (JE को Gmail/GitHub ऐप)। **नया `logErr("नाम")` जोड़ें तो उसे
+  वहां CRITICAL/MULTI/IGNORE में से एक में डालें** (`npm run test:alerts` फेल होगा)। issue public — उसमें नाम/संदेश नहीं
 - इस sandbox से github.io तक पहुंच नहीं (proxy 403) — "लाइव" सिर्फ़ deployments API के `success` से पक्का करें
 
 ## काम शुरू करने से पहले
@@ -93,6 +96,7 @@
    npm run check-xss      # onclick में escHtml() का सही इस्तेमाल
    npm run check-globals  # एक ही global नाम दो फ़ाइलों में declare न हो
    npm run typecheck      # type-जांच (tsc) — 0 errors; DOM/बाहरी library की जानकारी types/globals.d.ts में
+   npm run test:alerts    # alert script: क्या alert बने/न बने, हर logErr नाम वर्गीकृत
    npm run check-sri      # Firebase की 3 बाहरी script पर integrity hash (CI में `-- --online` असली gstatic से मिलाता है)
    ```
    CI में इनके अलावा `rules` (`npm run test:rules`), `backup-lock` (`npm run test:backup`) और `e2e-firebase`
