@@ -165,24 +165,34 @@ try{
           <span style="font-size:10px;color:var(--muted);margin-left:2px;">&#9660;</span>
           <div class="logout-menu" id="logout-menu">
             <div class="user-info-item" id="user-info-menu">---</div>
-            <button type="button" class="logout-item" id="hsc-menu-item" style="display:none;color:#7b3fd1;" onclick="openHscModal()">&#128421; होम पेज डिस्प्ले बोर्ड</button>
-            <button type="button" class="logout-item" id="wasc-menu-item" style="display:none;color:#00695c;" onclick="openWaScorecard()">&#128202; स्कोरकार्ड डिस्प्ले</button>
-            <button type="button" class="logout-item" id="todaysc-menu-item" style="display:none;color:#ef6c00;" onclick="openTodayScorecard()">&#128979;&#65039; आज की वसूली</button>
-            <button type="button" class="logout-item" id="voicesc-menu-item" style="display:none;color:#5e35b1;" onclick="openVoiceScorecard()">&#128203; मुख्यालय व टैरिफ रिपोर्ट</button>
-            <button type="button" class="logout-item" id="sort-menu-item" style="color:#1565c0;" onclick="toggleListSort(event)">&#128203; लेजर क्रम <span class="sort-menu-state" id="sort-menu-state">बंद</span></button>
-            <button type="button" class="logout-item" id="oldpay-menu-item" style="color:#1565c0;" onclick="toggleOldPaySort(event)">&#9203; पुराने बकायादार पहले <span class="sort-menu-state" id="oldpay-menu-state">बंद</span></button>
-            <button type="button" class="logout-item" id="neverpaid-menu-item" style="color:#c41f3d;" onclick="toggleNeverPaid(event)">&#128683; कभी भुगतान नहीं <span class="sort-menu-state" id="neverpaid-menu-state">बंद</span></button>
-            <button type="button" class="logout-item" id="vgbar-menu-item" style="color:#1565c0;" onclick="toggleVillageBar(event)">&#128205; गांव की पट्टी <span class="vgbar-menu-state" id="vgbar-menu-state">✓ दिखे</span></button>
-            <button type="button" class="logout-item" id="village-menu-item" style="color:#a34d00;" onclick="openVillageModal()">&#127961; ग्राम-वार वसूली</button>
-            <button type="button" class="logout-item" id="cash-menu-item" style="display:none;color:var(--green);" onclick="openCashModal()">&#128181; कैश लिस्ट</button>
-            <button type="button" class="logout-item" id="backup-menu-item" style="display:none;color:var(--gold);" onclick="downloadFullBackup()">&#128190; पूरा बैकअप</button>
-            <button type="button" class="logout-item" id="log-menu-item" style="display:none;color:var(--gold2);" onclick="openLogModal()">&#129534; एरर लॉग<span id="log-badge" class="log-badge" style="display:none;"></span></button>
-            <button type="button" class="logout-item" id="usage-menu-item" style="display:none;color:#0288d1;" onclick="openUsageModal()">&#128246; डेटा उपयोग</button>
-            <button type="button" class="logout-item" id="pause-menu-item" style="display:none;color:#c62828;" onclick="openPauseModal()">&#128721; डेटा बचाओ मोड</button>
-            <button type="button" class="logout-item" id="dv-menu-item" style="display:none;color:#1565c0;" onclick="openDvModal()">&#128101; कर्मचारी सक्रियता</button>
-            <button type="button" class="logout-item" id="mig-menu-item" style="display:none;color:#455a64;" onclick="openMigModal()">&#128736;&#65039; चरण 3 जांच</button>
-            <button type="button" class="logout-item" id="pin-menu-item" style="display:none;color:#c41f3d;" onclick="openPinModal()">&#128274; Lineman PIN</button>
-            <button type="button" class="logout-item" id="clearcats-menu-item" style="display:none;color:var(--red);" onclick="clearOldCategoriesData()">&#128465;&#65039; पुरानी categories मिटाएं</button>
+            <!-- v9.229 (JE, 15/10): मेनू विषय-वार — रिपोर्ट (टाइल), सूची के चालू/बंद स्विच, रोज़ के काम, और कम काम आने वाली
+                 JE सेटिंग्स एक खुलने-बंद होने वाले हिस्से में। हर बटन का id/onclick वही — सिर्फ़ जगह और रूप बदला -->
+            <div class="mn-head">&#128202; रिपोर्ट</div>
+            <div class="mn-grid">
+              <button type="button" class="logout-item" id="todaysc-menu-item" style="display:none;color:#ef6c00;" onclick="openTodayScorecard()"><span class="mn-ico">&#128197;</span>आज की वसूली</button>
+              <button type="button" class="logout-item" id="village-menu-item" style="color:#a34d00;" onclick="openVillageModal()"><span class="mn-ico">&#127961;</span>ग्राम-वार वसूली</button>
+              <button type="button" class="logout-item" id="voicesc-menu-item" style="display:none;color:#5e35b1;" onclick="openVoiceScorecard()"><span class="mn-ico">&#128203;</span>मुख्यालय व टैरिफ रिपोर्ट</button>
+              <button type="button" class="logout-item" id="wasc-menu-item" style="display:none;color:#00695c;" onclick="openWaScorecard()"><span class="mn-ico">&#128202;</span>स्कोरकार्ड डिस्प्ले</button>
+              <button type="button" class="logout-item" id="hsc-menu-item" style="display:none;color:#7b3fd1;" onclick="openHscModal()"><span class="mn-ico">&#128421;</span>होम पेज डिस्प्ले बोर्ड</button>
+              <button type="button" class="logout-item" id="cash-menu-item" style="display:none;color:var(--green);" onclick="openCashModal()"><span class="mn-ico">&#128181;</span>कैश लिस्ट</button>
+            </div>
+            <div class="mn-head">&#128064; सूची कैसे दिखे</div>
+            <button type="button" class="logout-item mn-sw" id="sort-menu-item" style="color:#1565c0;" onclick="toggleListSort(event)">&#128203; लेजर क्रम <span class="sort-menu-state" id="sort-menu-state">बंद</span></button>
+            <button type="button" class="logout-item mn-sw" id="oldpay-menu-item" style="color:#1565c0;" onclick="toggleOldPaySort(event)">&#9203; पुराने बकायादार पहले <span class="sort-menu-state" id="oldpay-menu-state">बंद</span></button>
+            <button type="button" class="logout-item mn-sw" id="neverpaid-menu-item" style="color:#c41f3d;" onclick="toggleNeverPaid(event)">&#128683; कभी भुगतान नहीं <span class="sort-menu-state" id="neverpaid-menu-state">बंद</span></button>
+            <button type="button" class="logout-item mn-sw" id="vgbar-menu-item" style="color:#1565c0;" onclick="toggleVillageBar(event)">&#128205; गांव की पट्टी <span class="vgbar-menu-state" id="vgbar-menu-state">✓ दिखे</span></button>
+            <details class="mn-more" id="mn-admin" style="display:none;">
+              <summary class="mn-head mn-sum" onclick="event.stopPropagation()">&#9881;&#65039; JE सेटिंग व जांच <span id="mn-admin-badge" class="log-badge" style="display:none;"></span></summary>
+              <button type="button" class="logout-item" id="dv-menu-item" style="display:none;color:#1565c0;" onclick="openDvModal()">&#128101; कर्मचारी सक्रियता</button>
+              <button type="button" class="logout-item" id="log-menu-item" style="display:none;color:var(--gold2);" onclick="openLogModal()">&#129534; एरर लॉग<span id="log-badge" class="log-badge" style="display:none;"></span></button>
+              <button type="button" class="logout-item" id="usage-menu-item" style="display:none;color:#0288d1;" onclick="openUsageModal()">&#128246; डेटा उपयोग</button>
+              <button type="button" class="logout-item" id="pause-menu-item" style="display:none;color:#c62828;" onclick="openPauseModal()">&#128721; डेटा बचाओ मोड</button>
+              <button type="button" class="logout-item" id="pin-menu-item" style="display:none;color:#c41f3d;" onclick="openPinModal()">&#128274; Lineman PIN</button>
+              <button type="button" class="logout-item" id="backup-menu-item" style="display:none;color:var(--gold);" onclick="downloadFullBackup()">&#128190; पूरा बैकअप</button>
+              <button type="button" class="logout-item" id="mig-menu-item" style="display:none;color:#455a64;" onclick="openMigModal()">&#128736;&#65039; चरण 3 जांच</button>
+              <button type="button" class="logout-item mn-danger" id="clearcats-menu-item" style="display:none;color:var(--red);" onclick="clearOldCategoriesData()">&#128465;&#65039; पुरानी categories मिटाएं</button>
+            </details>
+            <div class="mn-sep"></div>
             <button type="button" class="logout-item" onclick="doLogout(true)">&#128682; लॉगआउट करें</button>
           </div>
         </div>

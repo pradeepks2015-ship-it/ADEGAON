@@ -52,6 +52,27 @@
 - `database.rules.json` — Firebase Realtime Database की Security Rules (source of truth — `main` पर push होते ही `.github/workflows/deploy-rules.yml` अपने-आप असली Firebase पर deploy कर देता है, देखें `scripts/deploy-rules.js`)
 - `eslint.config.js` / `eslint.shared-globals.json` — CI लिंट सेटअप; कोई नई top-level global var/function (जो दूसरी js/*.js फाइल में इस्तेमाल हो) जोड़ें तो `node scripts/gen-eslint-globals.js` चलाकर globals list दोबारा बनाएं। दो फ़ाइलों में ग़लती से एक ही नाम declare न हो जाए (global scope share होने से चुपचाप overwrite का ख़तरा) — यह `npm run check-globals` (CI में भी) से अपने-आप जांचा जाता है, देखें `scripts/check-duplicate-globals.js`
 
+## टोकन बचत (JE, 15/10/2026)
+- यह फ़ाइल और `STATUS.md` (छोटी, ~10 KB) ही हर बार पढ़ें। पुराना पूरा इतिहास `docs/STATUS-history.md` (~150 KB) —
+  **पूरा कभी न पढ़ें**, ज़रूरत हो तो `grep -n` से एक हिस्सा। बड़ी फ़ाइलें (`index.html`, `js/list.js`, टेस्ट) भी पूरी न पढ़ें — `grep`/offset
+- पूरा suite (~20 मिनट) background में चलाएं, आउटपुट से सिर्फ़ `passed/failed` लाइनें लें
+- JE "." भेजें तो मतलब "आगे बढ़ो/क्या हाल" — छोटा जवाब दें
+
+## ज़रूरी तकनीकी तथ्य (v9.229 तक — कोड बदलें तो इन्हें ध्यान में रखें)
+- **सूचियों का cache IndexedDB में** (`dc_lists`, v9.220): `cacheInit` खुलते ही सब memory (`CACHE`) में; `cGet` sync,
+  `cSet` = memory + IndexedDB + दूसरे टैब को `BroadcastChannel("dc_lists")`। localStorage सिर्फ़ छोटी चीज़ें (queue, लॉग, ETag)
+- **ETag** (`dc_etag3`) तभी भरोसेमंद जब उसी सूची का cache सचमुच save हुआ — save नाकाम हो तो `_etagDrop` (v9.222 की घटना)
+- **फ़ोन से हटी सूची = "लानी बाक़ी"** (`dc_listneed1`, `listsNeedFetch`); **हर Replace अपलोड से पहले** उस HQ की सूचियां
+  सर्वर से ताज़ा (`confirmUpload` → `_cashRefreshAll`), बिना नेट अपलोड रुके। वजह: थोक लिखाई सर्वर के रिमार्क नहीं मिलाती
+  (`REMARK_MERGE_MAX`), अपलोड फ़ोन की copy से रिमार्क/वसूली उठाता है (14/10 को रिमार्क गए थे)
+- **लेजर कट-ऑफ़ सर्वर पर** (`/LEDGER_CUT/<HQ>` yyyymmdd, सिर्फ़ JE लिखे): `reconcileHQ` उससे पुरानी वसूली नहीं फैलाता,
+  `overlayOps` सर्वर से आई पुरानी "वसूल" को बाकी करके लौटाता है (लॉग `cut-clean`)
+- Replace अपलोड बाक़ी सूचियों में उसी Consumer No की `amount`/`lastPayDate`/`lastPaidAmt` भी नई करता है (`_upSyncAmounts`)
+- टेस्ट: पुराने sync अपलोड-टेस्ट के लिए `tests/helpers.js` `window.__TEST_UPLOAD_NO_REFRESH` लगाता है (असली ऐप में नहीं);
+  असली रास्ता `tests/field-conditions.spec.js` "मासिक अपलोड" जांचता है। समय-निर्भर टेस्ट में `page.clock` (रात 12 के बाद फेल होते थे)
+- GitHub Pages पर JE के **सारे repo एक ही origin** (`pradeepks2015-ship-it.github.io`) — localStorage/IndexedDB की जगह उनमें बंटती है
+- इस sandbox से github.io तक पहुंच नहीं (proxy 403) — "लाइव" सिर्फ़ deployments API के `success` से पक्का करें
+
 ## काम शुरू करने से पहले
 1. **`STATUS.md` पढ़ें** — अभी की स्थिति, हाल के फ़ैसले, खुले काम, और वे सुझाव जो जांच के बाद रद्द हो चुके हैं (ताकि दोबारा न उठें)। काम पूरा होने पर उसे अपडेट करते चलें।
 2. `git log --oneline -20` और हाल के merged PRs देख लें — पूरा इतिहास (फ़ैसले, bug root-causes, fixes) commit messages और PR descriptions में दर्ज है।
@@ -87,57 +108,8 @@
 ## भाषा
 उपयोगकर्ता (JE) से हमेशा हिंदी में बात करें — कोड कमेंट भी हिंदी में लिखे जाते हैं (established convention)।
 
-## किसी अन्य Distribution Centre के लिए यह ऐप दोबारा बनानी हो तो
-कोई feature/logic नहीं बदलता — सिर्फ़ नीचे की चीज़ें। सूची 1/10/2026 को पूरे repo में
-`adegaon-dc-top-50`, `adegaondc`, JE email, App Check key, हर HQ नाम, "आदेगांव/Adegaon/ADEGAON",
-"सिवनी", "लखनादौन" खोजकर बनाई गई है (टिप्पणियों वाली जगहें छोड़कर)। बदलाव के बाद यही खोज
-दोबारा चलाकर पक्का करें कि कुछ छूटा नहीं:
-`grep -rniI --exclude-dir={node_modules,.git,test-results} -e adegaon -e आदेगांव -e पिंडरई -e सिवनी -e लखनादौन -e pradeepks2015 .`
-
-**ट्रांसफ़र हो तो पहले आदेगांव सौंपें** (वरना यह ऐप JE के निजी खातों पर टिका रहेगा): नए JE को
-Firebase प्रोजेक्ट में Owner, Netlify में member, GitHub में collaborator बनाएं; `JE_EMAIL`
-(`js/config.js`) और `database.rules.json` के हर `auth.token.email === '...'` में नए JE का email।
-
-### क. JE के करने के काम (वेबसाइटों पर)
-1. **Firebase:** नया प्रोजेक्ट → Realtime Database → Authentication में Email/Password चालू →
-   Users → Add user: हर HQ का `hq-<नाम>@<dc>.internal`, password `vasuli-<6 अंक PIN>` (हर UID नोट करें) →
-   App Check (reCAPTCHA v3, site key नोट करें; reCAPTCHA admin में `<github-user>.github.io` जोड़ें) →
-   Service accounts → नई private key (JSON — किसी को न भेजें) → Web app जोड़कर config लें
-2. **Authentication → Settings → Authorized domains** में `<github-user>.github.io` जोड़ें — छूटा तो login ही नहीं होगा
-3. **GitHub:** नया repo; Settings → Secrets → Actions में `FIREBASE_SERVICE_ACCOUNT` = ऊपर का JSON; और `BACKUP_PASSWORD` = बैकअप
-   Excel का पासवर्ड (repo public है — इसके बिना साप्ताहिक बैकअप जान-बूझकर फेल होता है, देखें `scripts/encrypt-backup.py`)
-4. **GitHub Pages:** नए repo → Settings → Pages → Source: "Deploy from a branch", `main` / root।
-   (Netlify का मुफ़्त plan बार-बार deploy पर क्रेडिट ख़त्म कर देता है — 22/9/2026 को यही हुआ)
-
-### ख. कोड में बदलाव
-| फ़ाइल | क्या बदलना है |
-|---|---|
-| `js/config.js` | `HQS`, `HQ_AUTH_EMAIL` (नया `.internal` domain), `JE_EMAIL` |
-| `js/firebase.js` | `FB` (पहली पंक्ति), पूरा `firebaseConfig`, `appCheck().activate("<site key>")` |
-| `.firebaserc` | project-id |
-| `database.rules.json` | हर HQ की कुंजी + उसका नया UID, हर जगह JE email — फिर `main` पर merge से अपने-आप deploy |
-| `scripts/backup.js` | `DB_URL`, अपनी `HQS` सूची |
-| `scripts/deploy-rules.js` | `DB_URL` |
-| `scripts/set-hq-pin.js` | `DB_URL`, `HQ_AUTH_EMAIL` की नक़ल |
-| `.github/workflows/set-hq-pin.yml` | `options:` में HQ नाम |
-| `.github/workflows/backup.yml` | artifact नाम `adegaon-backup-…` (सिर्फ़ नाम) |
-| `index.html` | `<title>`, `meta description` और `og:*` (WhatsApp झलक — `og:url`/`og:image` में नया GitHub Pages पता, `/<repo>/` समेत; टेस्ट भी यही पता जांचता है), org-banner, login-title, `login-sub` (डिवीजन/सर्कल), `.sb-org`, `#hdr-sub`, `#hq-sel` के options (`value` के साथ, `translate="no"` बना रहे), बिलिंग popup का डिवीजन/सर्कल पाठ |
-| `icons/*` | सभी logo पर **"ADEGAON DC" छपा है** — नए DC का logo बनाकर `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` बदलें, और `login-logo.webp` (276×276 WebP, ~14 KB — बड़ी फ़ाइल न लगाएं, टेस्ट 30 KB से ऊपर पर फेल होगा) |
-| `manifest.json` | `name`, `description` (install के वक़्त फ़ोन पर यही दिखता है; `short_name` पहले से सामान्य "वसूली ट्रैकर") |
-| `privacy.html` | DC/डिवीजन/सर्कल का नाम, संपर्क email |
-| `js/reports.js` | PDF रिपोर्ट का शीर्षक (v9.195 से यहां), SMS/WhatsApp संदेशों में DC/सर्कल का नाम, नमूना CSV की गांव वाली पंक्ति, बैकअप फ़ाइल-नाम `ADEGAON_backup_`, **बिलिंग साइट `billing.mpez.co.in`** (दूसरी discom — पश्चिम/मध्य क्षेत्र — हो तो उसकी साइट) |
-| `js/share.js` | फ़ोटो-शेयर कार्ड की ऊपरी पंक्ति ("आदेगांव बिजली वितरण केंद्र") |
-| `js/scorecards.js` | WhatsApp स्कोरकार्ड का शीर्षक |
-| `js/home-scorecard.js` | डिस्प्ले बोर्ड पर "ADEGAON DC" |
-| `js/village.js` | `VILLAGE_ALIASES` ख़ाली करें (आदेगांव के गांवों के स्पेलिंग-सुधार हैं), Excel फ़ाइल-नाम `ADEGAON_गांव_वार_` |
-| `js/migration-tool.js` | dry-run फ़ाइल-नाम (सिर्फ़ नाम) |
-| `package.json` | `name`, `description` (सिर्फ़ पहचान) |
-| `sw.js` | `CACHE_NAME` का `adegaon-dc-` हिस्सा (वैकल्पिक, पर नई साइट पर साफ़ शुरुआत) |
-| `.well-known/assetlinks.json` | Android ऐप (TWA) की पहचान — नया APK न बनाना हो तो फ़ाइल हटा दें |
-| `google1f9a33c82033cc77.html` | Google Search Console की आदेगांव वाली पुष्टि — नई कॉपी में हटा दें |
-| `tests/*.spec.js` | बहुत से टेस्ट HQ नाम ("आदेगांव", "पाटन"…) सीधे इस्तेमाल करते हैं — नए नामों पर बदलें, फिर पूरा suite |
-| `CLAUDE.md`, `STATUS.md` | नया DC/डिवीजन/सर्कल, repo और Netlify साइट का नाम; `STATUS.md` नए सिरे से |
-
-### ग. शुरू करना (JE)
-JE login → 🔒 Lineman PIN में हर HQ का वही PIN भरें जो ऊपर Firebase में डाला → श्रेणियों के नाम →
-हर HQ का लेजर अपलोड → लाइनमैनों को नया लिंक और PIN।
+## किसी अन्य Distribution Centre के लिए दोबारा बनाना / JE का ट्रांसफ़र
+पूरी सूची (JE के काम, हर फ़ाइल में क्या बदले, `grep` से जांच) **`docs/NEW-DC-SETUP.md`** में — सिर्फ़ तभी पढ़ें।
+**JE का निर्देश (15/10):** नया DC ऐप = आदेगांव के **ताज़ा `main`** की हूबहू copy — हर सुविधा, नियम, सुरक्षा, शर्तें, टेस्ट, CI सब; बदले
+सिर्फ़ पहचान (नाम/HQ/Firebase/email/logo/repo)। कोई feature अपने मन से न हटाएं। नई बड़ी सुविधा जोड़ें तो
+`docs/NEW-DC-SETUP.md` की "क्या-क्या है" सूची में भी एक पंक्ति जोड़ें

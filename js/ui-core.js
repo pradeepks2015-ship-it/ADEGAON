@@ -253,6 +253,9 @@ function buildUI(){
     var el=document.getElementById(id);
     if(el) el.style.display=CU.role==="supervisor"?"flex":"none";
   });
+  // v9.229: JE सेटिंग वाला खुलने-बंद होने वाला हिस्सा — सिर्फ़ JE को, और हर login पर बंद (छोटा मेनू)
+  var adm=/** @type {HTMLDetailsElement|null} */(document.getElementById("mn-admin"));
+  if(adm){ adm.style.display=CU.role==="supervisor"?"block":"none"; adm.open=false; }
   // स्कोरकार्ड (दिनांक-वार विश्लेषण) सिर्फ़ JE का काम है, lineman को फ़ील्ड-वेरिफ़िकेशन से मतलब —
   // हर खुलने पर कई categories का data मंगाता है, lineman devices पर बेवजह Firebase bandwidth खर्च होता था
   var scHdr=document.getElementById("sc-hdr-btn"); if(scHdr) scHdr.style.display=CU.role==="supervisor"?"":"none";
