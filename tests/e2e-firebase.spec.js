@@ -11,6 +11,9 @@ const fs = require('fs');
 const path = require('path');
 
 const E2E = !!process.env.FIREBASE_E2E;
+// v9.230: index.html की CSP में login emulator (http://127.0.0.1:9099) नहीं — असली ऐप उसे कभी नहीं छूता। CSP की
+// अपनी जांच tests/boot-ui.spec.js "CSP और integrity" में; यहां सिर्फ़ Firebase के असली रास्ते (integrity वाली library समेत)
+test.use({ bypassCSP: true });
 const PROJECT = 'demo-adegaon-e2e';
 const NS = PROJECT + '-default-rtdb';
 const DB = 'http://127.0.0.1:9000';
