@@ -230,6 +230,14 @@ function fallbackCopy(txt){
 // ब्राउज़र खुद कभी-कभी घंटों बाद ही नया sw.js जांचता है (tab लंबे समय खुला/background में पड़ा रहे
 // तो) — इसलिए खुद भी बार-बार जांचते रहें, ताकि नया version deploy होते ही (browser के अपने-आप
 // जांचने का इंतज़ार किए बिना) कुछ ही मिनट में "नया version आ गया है" बैनर दिख जाए
+// v9.231: "पहले JE, फिर सब" — JE login वाले फ़ोन पर निशान, ताकि नया version (sw.js का _canaryGate) यहां
+// तुरंत उतरे और लाइनमैनों तक कुछ मिनट बाद। Cache Storage में — service worker वहीं से पढ़ता है
+function markJeDevice(){
+  try{
+    if(typeof caches==="undefined") return;
+    caches.open("dc-role").then(function(c){ return c.put("je-device",new Response("1")); }).catch(function(){});
+  }catch(e){}
+}
 var _pendingUpdate=false; // नया SW version आया — अगली बार focus मिलते ही reload करना है
 function _reloadPage(){ location.reload(); } // tests में override हो सके
 function _swSetupAutoUpdate(reg){

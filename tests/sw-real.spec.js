@@ -60,6 +60,7 @@ function startServer(state) {
       let f = decodeURIComponent(q.url.split('?')[0]);
       if (f.endsWith('/')) f += 'index.html';
       if (f === '/sw.js') { r.writeHead(200, { 'Content-Type': 'application/javascript', 'Cache-Control': 'no-cache' }); r.end(state.sw); return; }
+      if (f === '/rollout.json' && state.rollout !== undefined) { if (state.rollout === null) { r.writeHead(404); r.end(); } else { r.writeHead(200, { 'Content-Type': 'application/json' }); r.end(JSON.stringify(state.rollout)); } return; }
       const fp = path.join(ROOT, f);
       if (!fp.startsWith(ROOT)) { r.writeHead(403); r.end(); return; }
       fs.readFile(fp, (e, d) => {
@@ -72,7 +73,7 @@ function startServer(state) {
 
 test('असली SW: नया version (sw.js बदला) — install होकर "नया version आ गया" पट्टी आए, नई cache में सारी फ़ाइलें', async ({ page, context }) => {
   const src = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
-  const state = { sw: src };
+  const state = { sw: src, rollout: { waitMin: 0 } }; // v9.231: बिना इंतज़ार (canary की जांच नीचे अलग)
   const srv = await startServer(state);
   try {
     await stubExternal(context);
@@ -95,4 +96,80 @@ test('असली SW: नया version (sw.js बदला) — install हो
   } finally {
     srv.close();
   }
+});
+
+// ── v9.231: "पहले JE, फिर सब" (sw.js का _canaryGate) ──
+// लाइनमैन फ़ोन: नया sw.js पहली बार दिखे तो मना (पुराना चलता रहे), waitMin बाद उतरे; JE फ़ोन: तुरंत;
+// hold: कभी नहीं; पहली बार ऐप खुलना: रोक नहीं। "समय बीता" = dc-role में "पहली बार दिखा" को पीछे करना
+async function canaryOpen(page, context, state) {
+  const srv = await startServer(state);
+  await stubExternal(context);
+  const base = 'http://127.0.0.1:' + srv.address().port + '/';
+  await page.goto(base);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller), { timeout: 20000 }).toBe(true);
+  return srv;
+}
+const nextSw = (src) => src.replace(/var CACHE_NAME="([^"]+)";/, 'var CACHE_NAME="$1-next";');
+const hasNext = (page) => page.evaluate(() => caches.keys().then((ks) => ks.some((k) => /-next$/.test(k))));
+const seenKeys = (page) => page.evaluate(() => caches.open('dc-role').then((c) => c.keys()).then((ks) => ks.map((q) => q.url.split('/').pop())));
+const tryUpdate = (page) => page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r.update()).then(() => 'ok', (e) => 'मना: ' + e.message));
+
+test('canary: लाइनमैन फ़ोन — नया version पहले मना (पुराना चले), 10 मिनट बाद उतरे', async ({ page, context }) => {
+  const src = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  const state = { sw: src, rollout: { waitMin: 10 } };
+  const srv = await canaryOpen(page, context, state); // पहली बार — रोक नहीं (controller बन गया)
+  try {
+    state.sw = nextSw(src);
+    await tryUpdate(page);
+    await expect.poll(() => seenKeys(page), { timeout: 15000 }).toContainEqual(expect.stringMatching(/^seen-.*-next$/));
+    await page.waitForTimeout(1500);
+    expect(await hasNext(page)).toBe(false);
+    await expect(page.locator('#update-banner')).toHaveCount(0);
+    // पुराना version बिना रुकावट
+    await page.reload();
+    await expect(page.locator('#login-screen')).toBeAttached();
+    // 11 मिनट बीते
+    await page.evaluate(() => caches.open('dc-role').then((c) => c.keys().then((ks) => Promise.all(ks.filter((q) => /seen-/.test(q.url)).map((q) => c.put(q, new Response(String(Date.now() - 11 * 60000))))))));
+    await tryUpdate(page);
+    await expect(page.locator('#update-banner')).toBeVisible({ timeout: 20000 });
+    expect(await hasNext(page)).toBe(true);
+  } finally { srv.close(); }
+});
+
+test('canary: JE फ़ोन (JE login का निशान) — नया version तुरंत; hold पर भी', async ({ page, context }) => {
+  const src = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  const state = { sw: src, rollout: { waitMin: 10, hold: true } };
+  const srv = await canaryOpen(page, context, state);
+  try {
+    await page.evaluate(() => markJeDevice()); // वही function जो JE login पर चलता है (js/reports.js)
+    await expect.poll(() => seenKeys(page)).toContain('je-device');
+    state.sw = nextSw(src);
+    await tryUpdate(page);
+    await expect(page.locator('#update-banner')).toBeVisible({ timeout: 20000 });
+    expect(await hasNext(page)).toBe(true);
+    expect(await seenKeys(page)).toContain('je-device'); // नए SW के activate ने JE का निशान नहीं मिटाया
+  } finally { srv.close(); }
+});
+
+test('canary: hold — लाइनमैन फ़ोन पर समय बीतने पर भी नहीं; rollout.json न मिले तो डिफ़ॉल्ट 10 मिनट (अटके नहीं)', async ({ page, context }) => {
+  const src = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  const state = { sw: src, rollout: { waitMin: 0, hold: true } };
+  const srv = await canaryOpen(page, context, state);
+  try {
+    state.sw = nextSw(src);
+    await tryUpdate(page);
+    await page.waitForTimeout(2500);
+    expect(await hasNext(page)).toBe(false);
+    await expect(page.locator('#update-banner')).toHaveCount(0);
+    // rollout.json ग़ायब: पहली बार मना + समय नोट, 11 मिनट बाद उतरे
+    state.rollout = null;
+    await tryUpdate(page);
+    await expect.poll(() => seenKeys(page), { timeout: 15000 }).toContainEqual(expect.stringMatching(/^seen-.*-next$/));
+    await page.waitForTimeout(1500);
+    expect(await hasNext(page)).toBe(false);
+    await page.evaluate(() => caches.open('dc-role').then((c) => c.keys().then((ks) => Promise.all(ks.filter((q) => /seen-/.test(q.url)).map((q) => c.put(q, new Response(String(Date.now() - 11 * 60000))))))));
+    await tryUpdate(page);
+    await expect(page.locator('#update-banner')).toBeVisible({ timeout: 20000 });
+  } finally { srv.close(); }
 });

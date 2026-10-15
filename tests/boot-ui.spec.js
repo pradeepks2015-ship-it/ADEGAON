@@ -726,3 +726,19 @@ test.describe('CSP और integrity', () => {
     expect(ok).toBe('blocked');
   });
 });
+
+// v9.231: "पहले JE, फिर सब" — JE login वाला फ़ोन ही निशान पाए (sw.js का _canaryGate इसे पढ़ता है)
+test.describe('canary निशान', () => {
+  const mark = (page) => page.evaluate(() => caches.open('dc-role').then((c) => c.match('je-device')).then((m) => !!m));
+  test('लाइनमैन login पर "je-device" निशान नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    await page.waitForTimeout(500);
+    expect(await mark(page)).toBe(false);
+  });
+  test('JE login पर फ़ोन पर "je-device" निशान', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await expect.poll(() => mark(page)).toBe(true);
+  });
+});
