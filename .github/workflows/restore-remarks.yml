@@ -1,0 +1,49 @@
+name: Restore Remarks From Backup
+
+# बैकअप से छूटे रिमार्क वापस (JE, 15/10/2026) — सिर्फ़ हाथ से: Actions → यह workflow → Run workflow।
+# पहले "गिनती" (कुछ नहीं लिखता, सिर्फ़ कितने लौटेंगे), JE की Ok के बाद "लिखो"। सिर्फ़ जोड़ता है — आज का कोई
+# रिमार्क नहीं मिटता/बदलता, वसूली/राशि नहीं छूता। लॉग में कोई नाम/Consumer No/रिमार्क नहीं (repo public)।
+# पूरा ब्योरा: scripts/restore-remarks.js
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'गिनती = सिर्फ़ देखो (कुछ नहीं लिखता) • लिखो = सचमुच लौटाओ'
+        type: choice
+        options: ['गिनती', 'लिखो']
+        default: 'गिनती'
+      before:
+        description: 'इस तारीख़ (UTC, yyyy-mm-dd) से पहले का सबसे नया बैकअप'
+        type: string
+        default: '2026-10-14'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: restore-remarks
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      # backup.yml वाले ही pinned versions
+      - run: npm install --no-save firebase-admin@14.4.0 xlsx@0.18.5 && pip install --quiet msoffcrypto-tool==5.4.2
+      - name: Restore remarks
+        env:
+          MODE: ${{ inputs.mode }}
+          BEFORE: ${{ inputs.before }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          BACKUP_PASSWORD: ${{ secrets.BACKUP_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/restore-remarks.js

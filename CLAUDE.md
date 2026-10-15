@@ -80,6 +80,8 @@
 - **"पहले JE, फिर सब" (canary, v9.231):** नया `sw.js` JE-login वाले फ़ोन (Cache `dc-role`/`je-device`) पर तुरंत, बाक़ी फ़ोनों
   पर `rollout.json` के `waitMin` (10) मिनट बाद। JE "रोको" कहें तो `rollout.json` में `"hold": true` + बदलाव वापस; "सबको भेजो"
   पर `"hold": false`/`waitMin: 0`। सिर्फ़ ऐप-कोड पर — rules/workflows merge पर सब पर तुरंत। `sw.js` activate `dc-role` नहीं मिटाता
+- **बैकअप से रिमार्क वापसी (15/10):** Actions → "Restore Remarks From Backup" (सिर्फ़ हाथ से; `scripts/restore-remarks.js`)।
+  पहले "गिनती", JE की Ok पर "लिखो"। सिर्फ़ जोड़ता है (text-मिलान, `restored: "backup-<दिन>"` निशान), लॉग में कोई नाम नहीं
 - इस sandbox से github.io तक पहुंच नहीं (proxy 403) — "लाइव" सिर्फ़ deployments API के `success` से पक्का करें
 
 ## काम शुरू करने से पहले
@@ -99,6 +101,7 @@
    npm run check-xss      # onclick में escHtml() का सही इस्तेमाल
    npm run check-globals  # एक ही global नाम दो फ़ाइलों में declare न हो
    npm run typecheck      # type-जांच (tsc) — 0 errors; DOM/बाहरी library की जानकारी types/globals.d.ts में
+   npm run test:restore   # बैकअप से रिमार्क वापसी: सिर्फ़ जोड़े, आज का न मिटे
    npm run test:alerts    # alert script: क्या alert बने/न बने, हर logErr नाम वर्गीकृत
    npm run check-sri      # Firebase की 3 बाहरी script पर integrity hash (CI में `-- --online` असली gstatic से मिलाता है)
    ```

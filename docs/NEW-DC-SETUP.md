@@ -27,7 +27,7 @@
   पूरा बैकअप, चरण 3, श्रेणी-नाम, विषय-वार मेनू
 - **सुरक्षा/भरोसा:** Firebase Security Rules (हर HQ अलग, JE-only हिस्से, `LEDGER_CUT`), App Check (Enforced), JE पासवर्ड memory में ही,
   कट-ऑफ़ से पुरानी वसूली अपने-आप साफ़, बासी cache/ETag बचाव, एरर लॉग (बिना नेट वाली बाद में), "पहले JE, फिर सब" (नया version JE फ़ोन पर पहले, `rollout.json`), अपने-आप alert (हर 4 घंटे सर्वर-लॉग → GitHub issue, `alert.yml`), साप्ताहिक बैकअप **पासवर्ड-ताले** के साथ
-  (`BACKUP_PASSWORD` secret), Dependabot (महीने में एक), privacy.html (अंग्रेज़ी), Google Search से छिपाव, Firebase scripts पर integrity (SRI) + CSP meta (index.html — नए DC का
+  (`BACKUP_PASSWORD` secret) और बैकअप से रिमार्क वापसी (`restore-remarks.yml`, हाथ से), Dependabot (महीने में एक), privacy.html (अंग्रेज़ी), Google Search से छिपाव, Firebase scripts पर integrity (SRI) + CSP meta (index.html — नए DC का
   database/authDomain `*.firebaseio.com`/`*.firebaseapp.com` में पहले से आता है)
 - **टेस्ट/CI:** ~600 Playwright टेस्ट (असली आकार का डेटा, धीमा फ़ोन, दो टैब, पुराना फ़ोन, "मासिक अपलोड"), rules emulator, e2e emulator,
   बैकअप-ताला, lint/typecheck/xss/globals/sri/alerts
