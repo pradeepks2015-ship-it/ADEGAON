@@ -10,8 +10,10 @@
      सूची: gstatic (Firebase library + reCAPTCHA) · google.com (reCAPTCHA = App Check) · apis.google.com +
      firebaseapp.com (Firebase login का अपना iframe) · googleapis.com (login, token, App Check) · firebaseio.com
      (डेटाबेस, लाइव-sync)। कोई नया बाहरी पता जोड़ें तो यहां भी — वरना browser रोक देगा, लॉग में "csp-block"
-     (js/logger.js)। टेस्ट: tests/boot-ui.spec.js "CSP" -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://www.google.com https://apis.google.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://*.googleapis.com https://www.google.com; frame-src https://www.google.com https://recaptcha.google.com https://*.firebaseapp.com https://apis.google.com; img-src 'self' data: blob: https://www.gstatic.com https://www.google.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self' data: blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+     (js/logger.js)। टेस्ट: tests/boot-ui.spec.js "CSP"
+     v9.231: connect-src में apis.google.com — Firebase login की gapi script (apis.google.com/js/api.js) वहीं से
+     डेटा भी मांगती है; 15/10 को एक फ़ोन पर csp-block "connect-src apis.google.com" आया (टेस्ट में असली gapi नहीं चलती) -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://www.google.com https://apis.google.com; connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://*.googleapis.com https://www.google.com https://apis.google.com; frame-src https://www.google.com https://recaptcha.google.com https://*.firebaseapp.com https://apis.google.com; img-src 'self' data: blob: https://www.gstatic.com https://www.google.com; style-src 'self' 'unsafe-inline'; font-src 'self' data:; media-src 'self' data: blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>वसूली ट्रैकर | आदेगांव DC</title>
 <!-- WhatsApp/Google पर लिंक की झलक — सिर्फ़ तब पढ़ी जाती है जब कोई लिंक share करे (WhatsApp/crawler
      ख़ुद उतारते हैं); ऐप चलाने वाले फ़ोन पर इससे कोई अतिरिक्त download नहीं। तस्वीर का पूरा पता

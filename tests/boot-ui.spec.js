@@ -689,6 +689,8 @@ test.describe('CSP और integrity', () => {
     expect(pol).toContain("object-src 'none'");
     expect(pol).toContain("base-uri 'self'");
     expect(pol).toMatch(/connect-src [^;]*https:\/\/\*\.firebaseio\.com/);
+    // v9.231: Firebase login की gapi script अपने पते से डेटा भी मांगती है (असली फ़ोन का csp-block, 15/10)
+    for (const h of ['https://apis.google.com', 'https://www.google.com', 'https://*.googleapis.com']) expect(pol).toMatch(new RegExp('connect-src [^;]*' + h.replace(/[.*]/g, (c) => '\\' + c)));
   });
 
   test('ऐप खुलने और लाइनमैन login/सूची में CSP कुछ नहीं रोकता', async ({ page }) => {
