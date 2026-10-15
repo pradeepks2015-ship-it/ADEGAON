@@ -26,11 +26,11 @@
   ग्राम-वार, मुख्यालय व टैरिफ रिपोर्ट, स्कोरकार्ड/डिस्प्ले बोर्ड, कर्मचारी सक्रियता, एरर लॉग, डेटा उपयोग, डेटा बचाओ मोड, Lineman PIN,
   पूरा बैकअप, चरण 3, श्रेणी-नाम, विषय-वार मेनू
 - **सुरक्षा/भरोसा:** Firebase Security Rules (हर HQ अलग, JE-only हिस्से, `LEDGER_CUT`), App Check (Enforced), JE पासवर्ड memory में ही,
-  कट-ऑफ़ से पुरानी वसूली अपने-आप साफ़, बासी cache/ETag बचाव, एरर लॉग (बिना नेट वाली बाद में), साप्ताहिक बैकअप **पासवर्ड-ताले** के साथ
+  कट-ऑफ़ से पुरानी वसूली अपने-आप साफ़, बासी cache/ETag बचाव, एरर लॉग (बिना नेट वाली बाद में), अपने-आप alert (हर 4 घंटे सर्वर-लॉग → GitHub issue, `alert.yml`), साप्ताहिक बैकअप **पासवर्ड-ताले** के साथ
   (`BACKUP_PASSWORD` secret), Dependabot (महीने में एक), privacy.html (अंग्रेज़ी), Google Search से छिपाव, Firebase scripts पर integrity (SRI) + CSP meta (index.html — नए DC का
   database/authDomain `*.firebaseio.com`/`*.firebaseapp.com` में पहले से आता है)
 - **टेस्ट/CI:** ~600 Playwright टेस्ट (असली आकार का डेटा, धीमा फ़ोन, दो टैब, पुराना फ़ोन, "मासिक अपलोड"), rules emulator, e2e emulator,
-  बैकअप-ताला, lint/typecheck/xss/globals/sri
+  बैकअप-ताला, lint/typecheck/xss/globals/sri/alerts
 
 कोई feature/logic नहीं बदलता — सिर्फ़ नीचे की चीज़ें। सूची 1/10/2026 को पूरे repo में
 `adegaon-dc-top-50`, `adegaondc`, JE email, App Check key, हर HQ नाम, "आदेगांव/Adegaon/ADEGAON",

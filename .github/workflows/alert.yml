@@ -1,0 +1,31 @@
+name: App Alert
+
+# अपने-आप alert (JE, 15/10/2026): हर 4 घंटे — सुबह 6, 10, दोपहर 2, शाम 6, रात 10 बजे (IST) — सर्वर के लॉग
+# (/LOGS, आज + कल, कुछ KB) पढ़कर गंभीर गड़बड़ी पर "🚨 ऐप alert" issue बनाता/उसमें जोड़ता है; GitHub उसकी
+# सूचना JE को Gmail और GitHub ऐप पर भेजता है। क्या alert बने — scripts/check-alerts.js की सूचियां।
+# issue में कोई नाम/device/संदेश नहीं (repo public)। "Actions" टैब से कभी भी हाथ से भी चलाया जा सकता है
+on:
+  schedule:
+    - cron: '30 0,4,8,12,16 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # सिर्फ़ Firebase token के लिए — backup.yml वाला ही pinned version
+      - run: npm install --no-save firebase-admin@14.4.0
+      - name: Check server logs
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/check-alerts.js
