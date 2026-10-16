@@ -58,6 +58,7 @@ var OPTIONAL=[
   "./icons/scorecard-icon.svg",
   "./icons/mascot.webp",
   "./icons/village-sketch.webp", // v9.232: ग्राम-वार वसूली टाइल का स्केच (~6 KB) — बिना नेट भी दिखे
+  "./icons/header-sketch.webp",  // v9.232: header के बाएं कोने का स्केच — बिना नेट भी दिखे
   // जश्न की असली आवाज़ें — कुल 63 KB (JE की दी हुई 1.88 MB फ़ाइलों को काटकर/mono करके)।
   // OPTIONAL में हैं ताकि गाँव में offline रहते हुए भी बजें, पर इनके न मिलने से पूरा install
   // न रुके — तब ऐप बनी हुई (synthesized) आवाज़ पर लौट जाता है

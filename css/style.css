@@ -132,6 +132,8 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 /* बोल्ड/मॉडर्न हैडर — sync-bar वाला ही signature gradient यहां भी, ताकि दोनों मिलकर एक बड़ा,
    रंगीन, "floating header card" जैसा दिखें (नीचे रेडियस देकर स्क्रीन से अलग उठा हुआ अहसास) */
 .app-header{background:var(--grad-brand);padding:12px 14px 10px;position:sticky;top:0;z-index:100;box-shadow:0 8px 24px -8px rgba(18,73,113,.4);overflow:hidden;border-radius:0 0 22px 22px;}
+/* v9.232: header के बाएं कोने में पूरा स्केच — header की ऊंचाई जितना, नीले पर स्याही जैसा (multiply), दाईं ओर नीले में घुलता */
+.hdr-sketch{position:absolute;top:0;left:0;height:100%;width:auto;max-width:72%;object-fit:contain;object-position:left center;pointer-events:none;z-index:0;mix-blend-mode:multiply;opacity:.5;-webkit-mask-image:linear-gradient(270deg,transparent 0,#000 18%);mask-image:linear-gradient(270deg,transparent 0,#000 18%);}
 .hdr-tower-deco{position:absolute;top:-14px;right:-6px;width:100px;height:auto;opacity:.16;pointer-events:none;z-index:0;filter:brightness(4);}
 .app-header::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 70% 100% at 100% 0%,rgba(255,255,255,.10),transparent 70%);pointer-events:none;z-index:0;}
 .app-header>.hq-scroll{position:relative;z-index:1;}

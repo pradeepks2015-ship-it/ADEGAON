@@ -744,3 +744,22 @@ test.describe('canary निशान', () => {
     await expect.poll(() => mark(page)).toBe(true);
   });
 });
+
+// v9.232 (JE, 16/10): स्केच — टाइल और header। छोटे रहें (मुफ़्त/तेज़) और बिना नेट भी दिखें (sw.js OPTIONAL)
+test('स्केच तस्वीरें छोटी, बिना-नेट सूची में, और पन्ने पर लगीं', async ({ page }) => {
+  const fs = require('fs');
+  const path = require('path');
+  const root = path.join(__dirname, '..');
+  const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+  for (const [f, max] of [['icons/village-sketch.webp', 12000], ['icons/header-sketch.webp', 30000]]) {
+    expect(fs.statSync(path.join(root, f)).size).toBeLessThan(max);
+    expect(sw).toContain('"./' + f + '"');
+  }
+  await openApp(page);
+  await loginJE(page);
+  await page.click('#uname-disp'); // टाइल वाली तस्वीर loading="lazy" — मेनू खुलने पर ही उतरती है
+  await expect.poll(() => page.evaluate(() => {
+    const ok = (s) => { const i = document.querySelector(s); return !!(i && i.complete && i.naturalWidth > 0); };
+    return ok('.app-header .hdr-sketch') && ok('#village-menu-item .mn-img') && !!document.querySelector('.app-header .hdr-tower-deco');
+  })).toBe(true);
+});
