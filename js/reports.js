@@ -376,7 +376,7 @@ function downloadExcel(){
     if(!ok){toast("📴 Excel download के लिए इन्टरनेट चाहिए","err");return;}
     var rows=[["क्र.","नाम","पिता/पति","Consumer No","बकाया","Tariff","Load","Unit","Mobile","पता","स्थिति","भुगतान तिथि","पिछला भुगतान","पिछला तिथि","रिमार्क (सभी)","अपडेट by"]];
     data.forEach(function(x,i){
-      var allRmk=(x.remarksArr||[]).map(function(r){return r.text+" ("+r.by+")";}).join(" | ");
+      var allRmk=remarksAll(x,activeHQ).map(function(r){return r.text+" ("+r.by+")";}).join(" | ");
       rows.push([i+1,x.name||"",x.father||"",x.acc||"",Number(x.amount)||0,x.tariff||"",x.load||"",x.unit||"",x.phone||"",x.addr||"",x.status==="paid"?"वसूल":"बाकी",x.paydate||"",x.lastPaidAmt||"",x.lastPayDate||"",allRmk,x.updatedBy||""]);
     });
     var ws=XLSX.utils.aoa_to_sheet(rows);
@@ -402,7 +402,7 @@ function downloadPDF(){
     var isPaid=x.status==="paid";
     // remarksArr का text लाइनमैन/JE का free-typed इनपुट है — escHtml के बिना यहां (document.write
     // से बने नए tab में) कोई भी स्क्रिप्ट-जैसा remark टाइप करके असली XSS चला सकता था (असली bug यही था)
-    var allRmk=(x.remarksArr||[]).map(function(r){return escHtml(r.text)+" <small>("+escHtml(r.by)+")</small>";}).join("<br>");
+    var allRmk=remarksAll(x,activeHQ).map(function(r){return escHtml(r.text)+" <small>("+escHtml(r.by)+")</small>";}).join("<br>");
     return "<tr style='border-bottom:1px solid #ddd;background:"+(i%2===0?"#fff":"#f9f9f9")+";'>"+
       "<td style='padding:5px;text-align:center;'>"+(i+1)+"</td>"+
       "<td style='padding:5px;text-align:center;font-weight:600;'>"+escHtml(x.name)+"</td>"+

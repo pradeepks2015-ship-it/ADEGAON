@@ -171,7 +171,8 @@ test.describe('चरण 3 — per-record write-path (_diffToPatch)', () => {
         [{ acc: '1', status: 'pending', o: 0 }], null);
     }));
     expect(r.method).toBe('PATCH');            // पूरी लिस्ट का PUT नहीं
-    expect(r.body['1']).toBeTruthy();
+    // v9.234: रिमार्क-पढ़ाई (यहां बाहरी नेट बंद) नाकाम हो तो record field-path ("1/status") से जाता है — दोनों per-record
+    expect(r.body['1'] || r.body['1/status']).toBeTruthy();
     expect(r.logs.length).toBe(1);
     expect(r.logs[0].m).toContain('रामू');     // JE को पता चले किसका Consumer No भरना है
     expect(r.logs[0].m).toContain('9999999999');
@@ -758,7 +759,7 @@ test.describe('चरण 3 — migration-revert ऑटो-पहचान', () =
       }, 100);
     }));
     expect(Array.isArray(body.body)).toBe(false); // सबसे ज़रूरी: raw array नहीं गया
-    expect(body.body['1']).toBeTruthy();          // per-record (acc-keyed) फॉर्मेट ही गया
+    expect(body.body['1'] || body.body['1/acc']).toBeTruthy(); // per-record (acc-keyed) फॉर्मेट ही गया (v9.234: रिमार्क-पढ़ाई नाकाम तो field-path)
   });
 
   test('_migRender — "पलटा हुआ" HQ को लाल चेतावनी के साथ अलग दिखाता है, और माइग्रेट बटन भी दिखता रहता है (मैन्युअल ठीक करने के लिए)', async ({ page }) => {

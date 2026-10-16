@@ -87,6 +87,11 @@
 - **"पहले JE, फिर सब" (canary, v9.231):** नया `sw.js` JE-login वाले फ़ोन (Cache `dc-role`/`je-device`) पर तुरंत, बाक़ी फ़ोनों
   पर `rollout.json` के `waitMin` (10) मिनट बाद। JE "रोको" कहें तो `rollout.json` में `"hold": true` + बदलाव वापस; "सबको भेजो"
   पर `"hold": false`/`waitMin: 0`। सिर्फ़ ऐप-कोड पर — rules/workflows merge पर सब पर तुरंत। `sw.js` activate `dc-role` नहीं मिटाता
+- **रिमार्क (v9.234):** हर सूची में उपभोक्ता की अलग copy — दिखाते वक़्त `remarksAll(x,hq)` (list.js) उसी HQ की सब
+  सूचियों से उसी Consumer No के रिमार्क मिलाता है (सिर्फ़ फ़ोन की copy, कोई Firebase पढ़ाई नहीं); नया रिमार्क-दिखाने वाला कोड
+  `x.remarksArr` नहीं, यही इस्तेमाल करे। भेजते वक़्त `_mergeServerRemarks` सर्वर-रिमार्क मिलाता है; पढ़ाई नाकाम हो तो रिमार्क
+  छोड़कर बाक़ी fields ("acc/field" path) जाते हैं और पूरा record "बाक़ी" में रुकता है (`hold`); offline-queue भेजते वक़्त
+  `REMARK_FLUSH_MAX` (500) तक 10-10 करके मिलान
 - **बैकअप से रिमार्क वापसी (15/10):** Actions → "Restore Remarks From Backup" (सिर्फ़ हाथ से; `scripts/restore-remarks.js`)।
   पहले "गिनती", JE की Ok पर "लिखो"। सिर्फ़ जोड़ता है (text-मिलान, `restored: "backup-<दिन>"` निशान), लॉग में कोई नाम नहीं
 - इस sandbox से github.io तक पहुंच नहीं (proxy 403) — "लाइव" सिर्फ़ deployments API के `success` से पक्का करें

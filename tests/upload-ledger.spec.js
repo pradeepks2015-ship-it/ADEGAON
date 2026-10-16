@@ -1311,3 +1311,153 @@ test.describe('अपलोड — पहले सूचियां सर्�
     expect(r).toEqual({ n: 0, log: 1 });
   });
 });
+
+// v9.234 (JE 16/10): कमज़ोर नेट पर सर्वर-रिमार्क की पढ़ाई नाकाम/timeout हो तो पहले record बिना मिलान पूरा भेज दिया
+// जाता था — सर्वर का रिमार्क दब जाता। अब उसके रिमार्क छोड़कर बाक़ी fields जाते हैं, पूरा record "बाक़ी" में रुकता है
+test.describe('कमज़ोर नेट पर रिमार्क न दबे (v9.234)', () => {
+  const run = (page, o) => page.evaluate((o) => new Promise((resolve) => {
+    Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+    var hq = 'टेस्ट HQ32', cat = 'कुल उपभोक्ता';
+    MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+    var serverRmk = [{ text: 'सर्वर वाला', by: 'राजू', at: '15/10/2026, 6:00 pm' }];
+    var readOk = !o.readFail, gets = 0, patches = [];
+    var orig = window.fetch;
+    window.fetch = function (url, init) {
+      var u = String(url);
+      if (u.indexOf(fbPath(hq, cat)) > -1) {
+        if (init && init.method === 'PATCH') { patches.push(JSON.parse(init.body)); return Promise.resolve(new Response('{}', { status: 200 })); }
+        if (u.indexOf('/remarksArr.json') > -1) {
+          gets++;
+          return readOk ? Promise.resolve(new Response(JSON.stringify(serverRmk), { status: 200 })) : Promise.reject(new TypeError('Failed to fetch'));
+        }
+      }
+      return orig(url, init);
+    };
+    var n = o.count || 1, prev = [], arr = [];
+    for (var i = 0; i < n; i++) {
+      prev.push({ acc: String(200 + i), name: 'उ', status: 'pending', o: i, remarksArr: [] });
+      arr.push({ acc: String(200 + i), name: 'उ', status: 'paid', paydate: '16/10/2026', o: i, remarksArr: [] });
+    }
+    cSet(hq, cat, arr);
+    var done = function () {
+      window.fetch = orig;
+      var p = getPending()[cKey(hq, cat)];
+      resolve({ gets: gets, patches: patches, pendKeys: p && p.patch ? Object.keys(p.patch) : [] });
+    };
+    if (o.viaFlush) {
+      // offline में दिन भर का काम जमा — फिर नेट पर भेजा
+      var patch = {}; arr.forEach(function (x) { patch[x.acc] = x; });
+      markPending(hq, cat, 'put', patch);
+      flushPending();
+      setTimeout(done, 500);
+      return;
+    }
+    fbSet(hq, cat, arr, prev, function () {
+      if (!o.thenFlush) { done(); return; }
+      readOk = true; // नेट सुधरा
+      flushPending();
+      setTimeout(done, 400);
+    });
+  }), o);
+
+  test('रिमार्क-पढ़ाई नाकाम — वसूली (status) तुरंत जाए पर remarksArr नहीं; पूरा record "बाक़ी" में', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await run(page, { readFail: true });
+    expect(r.patches.length).toBe(1);
+    const p = r.patches[0];
+    expect(p['200/status']).toBe('paid');
+    expect(p['200/acc']).toBe('200');
+    expect(p['200']).toBeUndefined(); // पूरा record (जो सर्वर का रिमार्क दबाता) नहीं गया
+    expect(Object.keys(p).some((k) => /remarks/.test(k))).toBe(false);
+    expect(r.pendKeys).toEqual(['200']);
+  });
+
+  test('नेट सुधरने पर रुका record मिलान होकर जाए — सर्वर वाला रिमार्क बचे, फिर "बाक़ी" ख़ाली', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await run(page, { readFail: true, thenFlush: true });
+    expect(r.patches.length).toBe(2);
+    expect(r.patches[1]['200'].remarksArr.map((x) => x.text)).toEqual(['सर्वर वाला']);
+    expect(r.pendKeys).toEqual([]);
+  });
+
+  test('offline में जमा 15 records — भेजते वक़्त हर एक के सर्वर-रिमार्क मिलें (पहले >10 पर मिलान ही नहीं होता था)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await run(page, { count: 15, viaFlush: true });
+    expect(r.gets).toBe(15);
+    expect(r.patches.length).toBe(1);
+    expect(Object.keys(r.patches[0]).length).toBe(15);
+    expect(r.patches[0]['214'].remarksArr.map((x) => x.text)).toEqual(['सर्वर वाला']);
+    expect(r.pendKeys).toEqual([]);
+  });
+});
+
+test('एक उपभोक्ता का सेव सफल हो तो उसी सूची में पहले से रुका दूसरा उपभोक्ता "बाक़ी" से न छूटे (v9.234)', async ({ page }) => {
+  await openApp(page);
+  await loginJE(page);
+  const r = await page.evaluate(() => new Promise((resolve) => {
+    Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+    var hq = 'टेस्ट HQ33', cat = 'कुल उपभोक्ता';
+    MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+    var orig = window.fetch;
+    window.fetch = function (url, init) {
+      var u = String(url);
+      if (u.indexOf(fbPath(hq, cat)) > -1) {
+        if (init && init.method === 'PATCH') return Promise.resolve(new Response('{}', { status: 200 }));
+        if (u.indexOf('/remarksArr.json') > -1) return Promise.resolve(new Response('null', { status: 200 }));
+      }
+      return orig(url, init);
+    };
+    // A पहले से रुका (जैसे offline में "वसूल" किया)
+    markPending(hq, cat, 'put', { 1: { acc: '1', status: 'paid', o: 0 } });
+    var prev = [{ acc: '1', status: 'paid', o: 0 }, { acc: '2', status: 'pending', o: 1 }];
+    var arr = [{ acc: '1', status: 'paid', o: 0 }, { acc: '2', status: 'paid', o: 1 }];
+    cSet(hq, cat, arr);
+    fbSet(hq, cat, arr, prev, function () {
+      window.fetch = orig;
+      var p = getPending()[cKey(hq, cat)];
+      resolve(p && p.patch ? Object.keys(p.patch) : []);
+    });
+  }));
+  expect(r).toEqual(['1']); // पहले पूरी entry मिट जाती थी — A का "वसूल" सर्वर तक कभी न जाता
+});
+
+// v9.234 (JE 16/10): 1134007169 का रिमार्क "कुल उपभोक्ता" में था, "5 Year Nonpay" में नहीं दिखा — हर सूची की अलग copy।
+// अब कार्ड/रिमार्क-खिड़की/वादा उसी HQ की सब सूचियों से उसी Consumer No के रिमार्क मिलाकर (सिर्फ़ फ़ोन की copy से)
+test.describe('रिमार्क सब सूचियों से मिलाकर दिखें (v9.234)', () => {
+  test('दूसरी सूची का रिमार्क इस सूची के कार्ड पर, बिना दोहराव; बैकअप-वापसी वाला दोहराव भी नहीं; कोई Firebase लिखाई नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      var hq = activeHQ, cats = [];
+      for (var i = 0; i < CATS_DEFAULT.length; i++) cats.push(isCatEditable(i) ? getCatName(hq, i) : CATS_DEFAULT[i]);
+      var a = { text: 'घर बंद मिला', by: 'राजू', at: '14/10/2026, 5:00 pm', cat: cats[0] };
+      var restoredDup = { text: 'घर बंद मिला', by: 'राजू', at: 'बैकअप 2026-10-12', restored: 'backup-2026-10-12' };
+      var b = { text: 'कल देंगे', by: 'श्याम', at: '15/10/2026, 9:00 am', due: '2099-01-01' };
+      var writes = 0, orig = window.fetch;
+      window.fetch = function (u, init) { if (init && init.method && init.method !== 'GET') writes++; return orig(u, init); };
+      cSet(hq, cats[0], [{ acc: '1134007169', name: 'M', amount: 5120, status: 'pending', remarksArr: [a] }]);
+      cSet(hq, cats[1], [{ acc: '1134007169', name: 'M', amount: 5120, status: 'pending', remarksArr: [restoredDup] },
+        { acc: '9', name: 'X', amount: 1, status: 'pending', remarksArr: [] }]);
+      cSet(hq, cats[2], [{ acc: ' 1134007169 ', name: 'M', status: 'pending', remarksArr: [b, a] }]);
+      var x = cGet(hq, cats[1])[0];
+      var all = remarksAll(x, hq).map(function (z) { return z.text + '@' + (z.cat || ''); });
+      activeCat = cats[1];
+      renderListWith(cGet(hq, cats[1]));
+      var cardTxt = document.querySelector('.con-card .cc-rmk-list').textContent;
+      window.fetch = orig;
+      return { all: all, cardHas: cardTxt.indexOf('कल देंगे') > -1 && cardTxt.indexOf('घर बंद मिला') > -1,
+        due: promiseDue(x), other: remarksAll(cGet(hq, cats[1])[1], hq).length, own: x.remarksArr.length, writes: writes, cat2: cats[2] };
+    });
+    // सिर्फ़ एक "घर बंद मिला" (असली, बैकअप वाला दोहराव नहीं), पुराना → नया
+    expect(r.all.map((s) => s.split('@')[0])).toEqual(['घर बंद मिला', 'कल देंगे']);
+    expect(r.all[1]).toBe('कल देंगे@' + r.cat2); // किस सूची से आया — रिमार्क खिड़की में 📁 टैग
+    expect(r.cardHas).toBe(true);
+    expect(r.due).toBe('2099-01-01'); // दूसरी सूची में लिखा वादा भी गिना
+    expect(r.other).toBe(0);
+    expect(r.own).toBe(1); // फ़ोन/सर्वर की copy नहीं बदली — सिर्फ़ दिखाने में मिलान
+    expect(r.writes).toBe(0);
+  });
+});

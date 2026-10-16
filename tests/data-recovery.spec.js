@@ -475,6 +475,8 @@ test.describe('डेटा और वसूली', () => {
         if (typeof url === 'string' && url.indexOf('आदेगांव/कुल_उपभोक्ता') > -1 && opts && opts.method === 'PATCH') {
           resolve(JSON.parse(opts.body));
         }
+        // सर्वर पहुंच में (v9.234: रिमार्क-पढ़ाई नाकाम हो तो रिमार्क वाला हिस्सा "बाक़ी" में रुकता है — वह अलग टेस्ट)
+        if (typeof url === 'string' && url.indexOf('/remarksArr.json') > -1) return Promise.resolve(new Response('null', { status: 200 }));
         return orig(url, opts);
       };
       openRmkModal(0, '555666');

@@ -194,12 +194,21 @@ function _noAccLabels(arr){
 // flushPending भेजने से पहले यही मिलान दोबारा करेगा
 var REMARK_MERGE_MAX=10;
 var REMARK_MERGE_TIMEOUT_MS=5000;
-function _mergeServerRemarks(hq,cat,patch){
+// v9.234 (JE 16/10): offline में जमा patch (दिन भर का काम) नेट आने पर भेजते वक़्त 10 से ज़्यादा records
+// हों तब भी मिलान — 10-10 करके। पहले >10 पर मिलान होता ही नहीं था और फ़ोन की पुरानी copy सर्वर के रिमार्क दबा देती
+var REMARK_FLUSH_MAX=500;
+var REMARK_MERGE_BATCH=10;
+var _rmkHoldLogged={};
+// लौटाता है {send, hold}: send = अभी भेजने लायक़ patch; hold = वे records जिनके सर्वर-रिमार्क पढ़े नहीं जा सके
+// (कमज़ोर नेट पर timeout/नाकामी)। v9.234 से पहले ऐसे record बिना मिलान पूरे भेज दिए जाते थे — सर्वर का
+// रिमार्क दब जाता। अब उनके रिमार्क छोड़कर बाक़ी fields ("acc/status" जैसे अलग path) तुरंत जाते हैं, और पूरा
+// record "बाक़ी" (pending) में रुकता है — अगली बार मिलान होकर ही भेजा जाएगा
+function _mergeServerRemarks(hq,cat,patch,max){
   var keys=Object.keys(patch||{}).filter(function(k){ return patch[k]&&typeof patch[k]==="object"&&k.indexOf("/")<0; });
-  if(!keys.length||keys.length>REMARK_MERGE_MAX||!navigator.onLine) return Promise.resolve(patch);
-  var gained={};
-  return Promise.all(keys.map(function(k){
-    // धीमे नेट पर यह पढ़ाई असली सेव को देर तक न रोके — REMARK_MERGE_TIMEOUT_MS बाद जैसा है वैसा भेजो
+  if(!keys.length||keys.length>(max||REMARK_MERGE_MAX)||!navigator.onLine) return Promise.resolve({send:patch,hold:null});
+  var gained={},failed={};
+  function one(k){
+    // धीमे नेट पर यह पढ़ाई असली सेव को देर तक न रोके — REMARK_MERGE_TIMEOUT_MS बाद हार मानो (record रुकेगा)
     return Promise.race([
       fetch(FB+"/"+fbPath(hq,cat)+"/"+encodeURIComponent(k)+"/remarksArr.json?t="+Date.now()).then(_fbJson),
       new Promise(function(_,rej){ setTimeout(function(){ rej(new Error("timeout")); },REMARK_MERGE_TIMEOUT_MS); })
@@ -220,8 +229,13 @@ function _mergeServerRemarks(hq,cat,patch){
         patch[k].remarks=out[out.length-1].text; // backward-compat field — saveRmk जैसा ही
         gained[k]=out;
       })
-      .catch(function(){});
-  })).then(function(){
+      .catch(function(){ failed[k]=1; });
+  }
+  var chain=/** @type {Promise<any>} */(Promise.resolve());
+  for(var i=0;i<keys.length;i+=REMARK_MERGE_BATCH){
+    (function(part){ chain=chain.then(function(){ return Promise.all(part.map(one)); }); })(keys.slice(i,i+REMARK_MERGE_BATCH));
+  }
+  return chain.then(function(){
     // सर्वर से मिले रिमार्क इस फ़ोन की कॉपी में भी तुरंत दिखें (SSE के भरोसे न रहें)
     if(Object.keys(gained).length){
       var d=cGet(hq,cat)||[];
@@ -232,7 +246,18 @@ function _mergeServerRemarks(hq,cat,patch){
       cSet(hq,cat,d);
       if(CU&&hq===activeHQ&&cat===activeCat){ renderSummaryWith(d); renderListWith(d); }
     }
-    return patch;
+    if(!Object.keys(failed).length) return {send:patch,hold:null};
+    var send={},hold={};
+    Object.keys(patch).forEach(function(k){
+      var rec=patch[k];
+      if(!failed[k]){ send[k]=rec; return; }
+      hold[k]=rec;
+      Object.keys(rec).forEach(function(f){ if(f!=="remarksArr"&&f!=="remarks") send[k+"/"+f]=rec[f]; });
+    });
+    // हर 20 सेकंड वाली कोशिश पर लॉग न भरे — हर सूची पर एक बार (इस बार ऐप खुलने तक)
+    if(!_rmkHoldLogged[hq+"/"+cat]) logErr("remark-merge-hold",Object.keys(hold).length+" उपभोक्ता के सर्वर-रिमार्क पढ़े नहीं जा सके (कमज़ोर नेट) — उनकी वसूली/बाक़ी बदलाव भेजे, रिमार्क वाला हिस्सा बाद में मिलाकर भेजा जाएगा",hq+"/"+cat);
+    _rmkHoldLogged[hq+"/"+cat]=1;
+    return {send:send,hold:hold};
   });
 }
 
@@ -245,17 +270,21 @@ function _fbPutPerRecord(hq,cat,prev,arr,cb){
   }
   var patch=_diffToPatch(prev,arr);
   if(!Object.keys(patch).length){ if(cb) cb(true); return; } // कुछ बदला ही नहीं — network call भी नहीं
-  _mergeServerRemarks(hq,cat,patch).then(function(){ _fbSendPatch(hq,cat,patch,cb); });
+  _mergeServerRemarks(hq,cat,patch).then(function(res){ _fbSendPatch(hq,cat,patch,cb,res); });
 }
-function _fbSendPatch(hq,cat,patch,cb){
+// res (v9.234): _mergeServerRemarks का {send, hold} — send भेजो; hold वाले पूरे records "बाक़ी" में रुकें।
+// नाकाम हो तो पूरा मूल patch ही "बाक़ी" में (ताकि अगली बार फिर से मिलान हो)
+function _fbSendPatch(hq,cat,patch,cb,res){
+  var send=res&&res.send||patch, hold=res&&res.hold;
   fetch(FB+"/"+fbPath(hq,cat)+".json",{
     method:"PATCH",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(patch)
+    body:JSON.stringify(send)
   }).then(function(r){
     if(!r.ok) return _fbHttpErr(r);
-    clearPendingKey(cKey(hq,cat));
-    updTime(); setSyncStatus(true);
+    pendingDropRecs(hq,cat,patch,false); // यह सेव सबसे नया — इन records का पुराना "बाक़ी" रूप भी बेकार
+    if(hold) markPending(hq,cat,"put",hold);
+    updTime(); setSyncStatus(!isPending(hq,cat));
     if(cb) cb(true);
   }).catch(function(e){
     if(navigator.onLine) logErr("save-fail",e,hq+"/"+cat+_authDiag(e));
