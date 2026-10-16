@@ -263,7 +263,7 @@ test.describe('रोल-आधारित UI', () => {
     await expect(page.locator('#pin-menu-item')).toBeHidden(); // बंद हिस्सा — छोटा मेनू
     await expect(page.locator('#todaysc-menu-item')).toBeVisible(); // रिपोर्ट टाइल सीधे
     await page.click('#mn-admin summary');
-    for (const id of ['dv-menu-item', 'log-menu-item', 'usage-menu-item', 'pause-menu-item', 'pin-menu-item', 'backup-menu-item', 'mig-menu-item', 'clearcats-menu-item']) {
+    for (const id of ['dv-menu-item', 'log-menu-item', 'usage-menu-item', 'pause-menu-item', 'pin-menu-item', 'backup-menu-item', 'mig-menu-item']) {
       await expect(page.locator('#' + id)).toBeVisible();
     }
     // v9.233: रोज़ वाले 3 टाइल में; मिटाने/चरण 3 वाले लाल घेरे में, बाक़ियों से अलग; सेटिंग पर एक-लाइन मतलब
@@ -272,9 +272,9 @@ test.describe('रोल-आधारित UI', () => {
       const inTiles = (id) => !!document.getElementById(id).closest('.mn-grid3');
       return {
         tiles: ['dv-menu-item', 'log-menu-item', 'usage-menu-item'].every(inTiles),
-        zone: ['clearcats-menu-item', 'mig-menu-item'].every(inZone),
+        zone: inZone('mig-menu-item') && !document.getElementById('clearcats-menu-item'), // JE 16/10: मिटाने वाला बटन हटा
         safeOut: ['pin-menu-item', 'pause-menu-item', 'backup-menu-item', 'log-menu-item'].every((id) => !inZone(id)),
-        desc: ['pin-menu-item', 'pause-menu-item', 'backup-menu-item', 'mig-menu-item', 'clearcats-menu-item']
+        desc: ['pin-menu-item', 'pause-menu-item', 'backup-menu-item', 'mig-menu-item']
           .every((id) => !!(document.querySelector('#' + id + ' .mn-desc') || {}).textContent),
       };
     })).toEqual({ tiles: true, zone: true, safeOut: true, desc: true });

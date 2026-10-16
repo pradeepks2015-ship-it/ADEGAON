@@ -199,7 +199,7 @@ try{
             <button type="button" class="logout-item mn-sw" id="vgbar-menu-item" style="color:#1565c0;" onclick="toggleVillageBar(event)">&#128205; गांव की पट्टी <span class="vgbar-menu-state" id="vgbar-menu-state">✓ दिखे</span></button>
             <details class="mn-more" id="mn-admin" style="display:none;">
               <summary class="mn-head mn-sum" onclick="event.stopPropagation()">&#9881;&#65039; JE सेटिंग व जांच <span id="mn-admin-badge" class="log-badge" style="display:none;"></span></summary>
-              <!-- v9.233 (JE, 16/10): JE सेटिंग तीन उप-समूहों में — रोज़ वाले टाइल, सेटिंग पर एक-लाइन मतलब, ख़तरनाक लाल घेरे में।
+              <!-- v9.233 (JE, 16/10): JE सेटिंग तीन उप-समूहों में — रोज़ वाले टाइल, सेटिंग पर एक-लाइन मतलब, कभी-कभार वाला लाल घेरे में (JE 16/10: "पुरानी categories मिटाएं" हटाया — उपयोगिता नहीं रही)।
                    id/onclick वही; दिखना-छुपना ui-core.js पहले जैसा (style.display) -->
               <div class="mn-sub">&#128064; रोज़ एक नज़र</div>
               <div class="mn-grid mn-grid3">
@@ -214,7 +214,6 @@ try{
               <div class="mn-zone">
                 <div class="mn-sub">&#9888;&#65039; कभी-कभार — सोच-समझकर</div>
                 <button type="button" class="logout-item mn-two" id="mig-menu-item" style="display:none;color:#455a64;" onclick="openMigModal()"><span>&#128736;&#65039; चरण 3 जांच</span><span class="mn-desc">डेटा-रूप बदलाव की जांच (सिर्फ़ Claude के कहने पर)</span></button>
-                <button type="button" class="logout-item mn-two" id="clearcats-menu-item" style="display:none;color:var(--red);" onclick="clearOldCategoriesData()"><span>&#128465;&#65039; पुरानी categories मिटाएं</span><span class="mn-desc">वापस नहीं होगा — पहले बैकअप लें</span></button>
               </div>
             </details>
             <div class="mn-sep"></div>

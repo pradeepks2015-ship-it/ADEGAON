@@ -1,6 +1,6 @@
 // @ts-check
 // वसूली ट्रैकर — टेस्ट: categories-rules (साझा helpers: tests/helpers.js)
-const { test, expect, fs, path, openApp, loginLineman, loginJE } = require('./helpers');
+const { test, expect, fs, path, openApp, loginJE } = require('./helpers');
 
 test.describe('श्रेणी/HQ नाम में "/" — नेस्टेड Firebase path बनकर permission-denied (401) में फंसने से बचाव', () => {
   test('fbPath — HQ या category नाम में "/" हो तो भी सिर्फ़ 2-स्तर वाला path बने (एक भी हिस्से में "/" न बचे)', async ({ page }) => {
@@ -240,68 +240,15 @@ test.describe('श्रेणी/HQ नाम में "/" — नेस्ट
   });
 });
 
-test.describe('पुरानी categories मिटाएं — घरेलू/व्यवसाय/कृषि/गवर्नमेंट का unused data एक साथ हटाना (JE only)', () => {
-  test('clearcats-menu-item — lineman को न दिखे', async ({ page }) => {
-    await openApp(page);
-    await loginLineman(page);
-    const hidden = await page.evaluate(() => getComputedStyle(document.getElementById('clearcats-menu-item')).display);
-    expect(hidden).toBe('none');
-  });
-
-  test('clearOldCategoriesData — lineman सीधे function बुलाए तो भी कुछ न हो (defense-in-depth)', async ({ page }) => {
-    await openApp(page);
-    await loginLineman(page);
-    const r = await page.evaluate(() => {
-      cSet('आदेगांव', 'घरेलू', [{ acc: '1', name: 'X', status: 'pending', amount: 100 }]);
-      clearOldCategoriesData();
-      return cGet('आदेगांव', 'घरेलू').length;
-    });
-    expect(r).toBe(1); // कुछ नहीं हटा
-  });
-
-  test('सिर्फ़ घरेलू/व्यवसाय/कृषि/गवर्नमेंट (नाम से मिलान) मिटें — rename हो चुकी category सुरक्षित रहे', async ({ page }) => {
-    await openApp(page);
-    await loginJE(page);
-    const r = await page.evaluate(() => new Promise((resolve) => {
-      cSet('आदेगांव', 'घरेलू', [{ acc: '1', status: 'pending', amount: 100 }]);
-      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '1', status: 'pending', amount: 100 }]); // मास्टर — छूना नहीं चाहिए
-      // पाटन में slot 4 ("गवर्नमेंट") को rename कर दिया गया है — इसे न छुआ जाए
-      CAT_NAMES['पाटन'] = { 4: '3 MONTH NON PAYEE' };
-      cSet('पाटन', '3 MONTH NON PAYEE', [{ acc: '2', status: 'pending', amount: 200 }]);
-      window.confirm = function () { return true; };
-      var origFbDel = fbDel;
-      var delCalls = [];
-      fbDel = function (hq, cat, cb) { delCalls.push(hq + '/' + cat); cSet(hq, cat, []); if (cb) cb(); };
-      clearOldCategoriesData();
-      setTimeout(() => {
-        fbDel = origFbDel;
-        resolve({
-          delCalls: delCalls,
-          adegaonGhareluGone: cGet('आदेगांव', 'घरेलू').length,
-          masterSafe: cGet('आदेगांव', 'कुल उपभोक्ता').length,
-          patanRenamedSafe: cGet('पाटन', '3 MONTH NON PAYEE').length,
-        });
-      }, 100);
-    }));
-    expect(r.delCalls).toContain('आदेगांव/घरेलू');
-    expect(r.delCalls).not.toContain('पाटन/3 MONTH NON PAYEE'); // rename हो चुकी थी — सुरक्षित
-    expect(r.adegaonGhareluGone).toBe(0);
-    expect(r.masterSafe).toBe(1); // "कुल उपभोक्ता" कभी नहीं छूती
-    expect(r.patanRenamedSafe).toBe(1); // rename वाली category का data सुरक्षित रहा
-  });
-
-  test('confirm में "नहीं" चुनने पर कुछ न मिटे', async ({ page }) => {
-    await openApp(page);
-    await loginJE(page);
-    const r = await page.evaluate(() => {
-      cSet('आदेगांव', 'घरेलू', [{ acc: '1', status: 'pending', amount: 100 }]);
-      window.confirm = function () { return false; };
-      clearOldCategoriesData();
-      return cGet('आदेगांव', 'घरेलू').length;
-    });
-    expect(r).toBe(1);
-  });
+// JE (16/10/2026): "पुरानी categories मिटाएं" बटन पूरा हटाया — घरेलू/व्यवसाय/कृषि/गवर्नमेंट का पुराना data
+// पहले ही मिट चुका, अब उपयोगिता नहीं; एक ग़लत दबाव सभी HQ का data मिटा सकता था। वापस न आ जाए:
+test('पुरानी categories मिटाने वाला बटन और function हट चुके (JE 16/10)', async ({ page }) => {
+  await openApp(page);
+  await loginJE(page);
+  expect(await page.evaluate(() => ({ btn: !!document.getElementById('clearcats-menu-item'), fn: typeof window.clearOldCategoriesData })))
+    .toEqual({ btn: false, fn: 'undefined' });
 });
+
 
 test.describe('database.rules.json — HQ_PIN अब सिर्फ़ JE ही पढ़/लिख सके (v9.146 सुरक्षा-फिक्स: पहले "auth != null" था, यानी कोई भी login-किया — anonymous भी, ऐप अपने-आप हर visitor को anonymous sign-in करा देता है — बिना कुछ किए सीधे /HQ_PIN.json पढ़कर सभी HQ के PIN पा सकता था, और PIN से बना Firebase password इस्तेमाल करके सीधे उस HQ के असली account में घुस सकता था — असली account-takeover रास्ता)', () => {
   test('HQ_PIN का read भी CAT_NAMES/MIGRATED जैसे JE-only ही हो — किसी और को (anonymous समेत) कच्चा PIN न दिखे', () => {
