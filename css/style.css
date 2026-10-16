@@ -594,3 +594,10 @@ html.big-text .si{font-size:15px;}
 /* ── v9.206: फ़ोन-खिड़की में SMS का पूर्वावलोकन (छोटा रूप) ── */
 .sms-prev{margin:2px 4px 10px;padding:9px 11px;border-radius:10px;background:rgba(33,150,243,.07);border:1px dashed rgba(33,150,243,.45);font-size:12px;line-height:1.55;color:var(--text);white-space:pre-line;}
 .sms-prev b{display:block;font-size:10.5px;color:#1565c0;margin-bottom:3px;}
+
+/* v9.232: header स्केच पूरे पर्दे पर (js/ui-core.js openHeaderSketch) */
+#sketch-view{position:fixed;inset:0;z-index:9000;background:rgba(8,16,30,.92);display:none;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px;cursor:pointer;}
+#sketch-view.open{display:flex;}
+#sketch-view img{max-width:100%;max-height:78vh;border-radius:12px;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.5);}
+#sketch-view .sketch-cap{color:#e8eef6;font-size:14px;font-weight:700;text-align:center;}
+#sketch-view .sketch-x{position:absolute;top:12px;right:14px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:20px;cursor:pointer;}

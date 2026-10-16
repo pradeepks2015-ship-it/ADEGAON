@@ -763,3 +763,20 @@ test('स्केच तस्वीरें छोटी, बिना-ने
     return ok('.app-header .hdr-sketch') && ok('#village-menu-item .mn-img') && !!document.querySelector('.app-header .hdr-tower-deco');
   })).toBe(true);
 });
+
+// v9.232: header की ख़ाली जगह पर टैप → स्केच पूरे पर्दे पर; बटन/मेनू पर टैप से नहीं; कहीं भी टैप → बंद
+test('header की ख़ाली जगह पर टैप से स्केच पूरे पर्दे पर, बटन पर नहीं', async ({ page }) => {
+  await openApp(page);
+  await loginJE(page);
+  await page.evaluate(() => { const L = document.getElementById('loader'); if (L) L.style.display = 'none'; });
+  const open = () => page.evaluate(() => { const v = document.getElementById('sketch-view'); return !!(v && v.classList.contains('open')); });
+  await page.locator('.hdr-title').click();
+  await expect.poll(open).toBe(true);
+  await expect(page.locator('#sketch-view img')).toHaveJSProperty('complete', true);
+  await page.locator('#sketch-view').click();
+  await expect.poll(open).toBe(false);
+  await page.locator('#uname-disp').click(); // मेनू खुले, स्केच नहीं
+  await page.waitForTimeout(200);
+  expect(await open()).toBe(false);
+  await expect(page.locator('#logout-menu')).toHaveClass(/open/);
+});
