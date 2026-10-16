@@ -167,6 +167,9 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .mn-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:2px 4px 6px;}
 .mn-grid .logout-item{flex-direction:column;justify-content:center;text-align:center;gap:3px;padding:9px 6px;min-height:62px;font-size:11.5px;line-height:1.25;background:var(--surface2,rgba(0,0,0,.03));border:1px solid var(--border);border-radius:11px;}
 .mn-ico{font-size:19px;line-height:1;}
+/* v9.232: ग्राम-वार वसूली टाइल पर स्केच (icons/village-sketch.webp, ~6 KB) — emoji जितनी ऊंचाई में, कोने गोल */
+.mn-img{width:72px;height:45px;object-fit:cover;border-radius:7px;display:block;}
+[data-theme="dark"] .mn-img{filter:brightness(.85);}
 .mn-sw{justify-content:flex-start;}
 .mn-sw .sort-menu-state,.mn-sw .vgbar-menu-state{float:none;margin-left:auto;flex-shrink:0;position:relative;width:34px;height:19px;border-radius:10px;background:var(--border);font-size:0;color:transparent;transition:background .15s;}
 .mn-sw .sort-menu-state::after,.mn-sw .vgbar-menu-state::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s;}
