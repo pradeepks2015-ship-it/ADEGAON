@@ -266,6 +266,18 @@ test.describe('रोल-आधारित UI', () => {
     for (const id of ['dv-menu-item', 'log-menu-item', 'usage-menu-item', 'pause-menu-item', 'pin-menu-item', 'backup-menu-item', 'mig-menu-item', 'clearcats-menu-item']) {
       await expect(page.locator('#' + id)).toBeVisible();
     }
+    // v9.233: रोज़ वाले 3 टाइल में; मिटाने/चरण 3 वाले लाल घेरे में, बाक़ियों से अलग; सेटिंग पर एक-लाइन मतलब
+    expect(await page.evaluate(() => {
+      const inZone = (id) => !!document.getElementById(id).closest('.mn-zone');
+      const inTiles = (id) => !!document.getElementById(id).closest('.mn-grid3');
+      return {
+        tiles: ['dv-menu-item', 'log-menu-item', 'usage-menu-item'].every(inTiles),
+        zone: ['clearcats-menu-item', 'mig-menu-item'].every(inZone),
+        safeOut: ['pin-menu-item', 'pause-menu-item', 'backup-menu-item', 'log-menu-item'].every((id) => !inZone(id)),
+        desc: ['pin-menu-item', 'pause-menu-item', 'backup-menu-item', 'mig-menu-item', 'clearcats-menu-item']
+          .every((id) => !!(document.querySelector('#' + id + ' .mn-desc') || {}).textContent),
+      };
+    })).toEqual({ tiles: true, zone: true, safeOut: true, desc: true });
     // एरर-गिनती की नक़ल summary पर
     await page.evaluate(() => {
       const b = document.getElementById('log-badge'); const m = document.getElementById('mn-admin-badge');

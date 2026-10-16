@@ -165,7 +165,7 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .logout-menu.open{display:block;animation:fadeUp .18s ease-out;}
 /* v9.229: विषय-वार मेनू — लंबा हो तो अंदर ही स्क्रॉल; रिपोर्ट 2-कॉलम टाइल; चालू/बंद स्विच; JE सेटिंग खुलने-बंद वाली */
 .logout-menu{width:min(300px,calc(100vw - 20px));max-height:calc(100vh - 76px);max-height:calc(100dvh - 76px);overflow-y:auto;overscroll-behavior:contain;}
-.mn-head{font-size:10.5px;font-weight:800;color:var(--muted);letter-spacing:.3px;padding:8px 10px 4px;}
+.mn-head{font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.3px;padding:8px 10px 4px;}
 .mn-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:2px 4px 6px;}
 .mn-grid .logout-item{flex-direction:column;justify-content:center;text-align:center;gap:3px;padding:9px 6px;min-height:62px;font-size:11.5px;line-height:1.25;background:var(--surface2,rgba(0,0,0,.03));border:1px solid var(--border);border-radius:11px;}
 .mn-ico{font-size:19px;line-height:1;}
@@ -183,7 +183,16 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .mn-sum::after{content:"\25BE";margin-left:auto;font-size:13px;color:var(--muted);transition:transform .15s;}
 .mn-more[open] .mn-sum::after{transform:rotate(180deg);}
 .mn-sum .log-badge{margin-left:4px;}
-.mn-danger{border-top:1px dashed var(--border);margin-top:4px;border-radius:0 0 9px 9px;}
+/* v9.233: JE सेटिंग के उप-समूह — रोज़ वाले 3-टाइल, सेटिंग पर एक-लाइन मतलब, ख़तरनाक बटन लाल dashed घेरे में */
+.mn-sub{font-size:11.5px;font-weight:800;color:var(--muted);padding:8px 10px 3px;}
+.mn-grid3{grid-template-columns:1fr 1fr 1fr;}
+.mn-grid3 .logout-item{min-height:58px;padding:8px 4px;}
+.mn-grid3 .log-badge{margin-left:0;}
+.logout-item.mn-two{flex-direction:column;align-items:flex-start;text-align:left;gap:1px;}
+[data-theme="dark"] #mig-menu-item{color:#90a4ae !important;}
+.mn-desc{display:block;font-size:11.5px;font-weight:500;color:var(--muted);line-height:1.3;}
+.mn-zone{margin:8px 4px 4px;border:1.5px dashed var(--red);border-radius:10px;padding:0 0 4px;}
+.mn-zone .mn-sub{color:var(--red);}
 .mn-sep{border-top:1px solid var(--border);margin:6px 0 4px;}
 .user-info-item{padding:8px 12px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);margin-bottom:4px;}
 .logout-item{width:100%;background:none;border:none;appearance:none;font-family:"Noto Sans Devanagari",sans-serif;text-align:left;padding:9px 12px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;color:var(--red);transition:background .12s;}
