@@ -92,7 +92,7 @@ function _shareCanvas(x){
     if(x.updatedBy&&x.updatedAt) rows.push("🔄 अपडेट: "+x.updatedBy+" • "+x.updatedAt);
     rows.forEach(function(r){ text(r,24,"500","#34495e",38); });
     // रिमार्क — सारे, पुराने से नए क्रम में
-    var rs=(x.remarksArr||[]).filter(function(r){ return r&&r.text; });
+    var rs=remarksAll(x,activeHQ).filter(function(r){ return r&&r.text; });
     if(rs.length){
       y+=10;
       if(draw){ ctx.fillStyle="#e3e9ef"; ctx.fillRect(P,y,IW,2); }

@@ -161,9 +161,70 @@ function _oldPayChip(x){
 // सबसे नया वादा ही गिना जाता है; वसूल होते ही वादा अपने-आप ख़त्म (status देखकर)। पुराने version वाले
 // फ़ोन due को बस अनदेखा करते हैं — रिमार्क text में भी तारीख़ लिखी रहती है
 function _isoToday(){ var t=new Date(); return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0"); }
+// ── v9.234 (JE 16/10): एक ही उपभोक्ता के रिमार्क उसी HQ की सारी सूचियों से मिलाकर दिखाना ──
+// हर सूची में उपभोक्ता की अलग copy है। रिमार्क जिस सूची में लिखा वहीं रहता — propagateRemark बाक़ी सूचियों में
+// तभी जोड़ता है जब वो लिखने वाले फ़ोन पर उतरी हों, और Replace अपलोड फ़ोन की copy से रिमार्क उठाता है। असली
+// घटना: 1134007169 का रिमार्क "कुल उपभोक्ता" में था, "5 Year Nonpay" (14/10 को अपलोड) में नहीं दिखा।
+// अब दिखाते वक़्त (कार्ड, रिमार्क खिड़की, वादा, शेयर, PDF/Excel) फ़ोन में पड़ी सब सूचियों से उसी Consumer No
+// के रिमार्क जुड़ते हैं — सिर्फ़ फ़ोन की copy से: कोई Firebase पढ़ाई/लिखाई नहीं, बिना नेट भी
+var _rmkIdx={hq:null,gen:-1,refs:null,map:null};
+function _rmkIndex(hq){
+  var cats=[],refs=[];
+  for(var i=0;i<CATS_DEFAULT.length;i++){
+    var cat=isCatEditable(i)?getCatName(hq,i):CATS_DEFAULT[i];
+    cats.push(cat);
+    // cGet नहीं — वह "इस्तेमाल हुई" निशान लगाता है (न खुली सूचियों की सफ़ाई बिगड़ती)
+    var d=CACHE[cKey(hq,cat)];
+    refs.push(d,d?d.length:0);
+  }
+  var c=_rmkIdx;
+  if(c.hq===hq&&c.gen===_cacheGen&&c.refs&&c.refs.length===refs.length&&refs.every(function(v,j){ return v===c.refs[j]; })) return c.map;
+  var map={};
+  cats.forEach(function(cat,j){
+    (refs[j*2]||[]).forEach(function(x){
+      if(!x||!x.remarksArr||!x.remarksArr.length||x.acc==null) return;
+      var k=String(x.acc).trim(); if(!k) return;
+      var a=map[k]||(map[k]=[]);
+      x.remarksArr.forEach(function(r){ if(r&&r.text) a.push({r:r,cat:cat}); });
+    });
+  });
+  _rmkIdx={hq:hq,gen:_cacheGen,refs:refs,map:map};
+  return map;
+}
+// रिमार्क की तारीख़ (दिन) — "16/10/2026, 3:55 pm" (hi-IN) या "बैकअप 2026-10-12"; न पढ़ी जाए तो 0
+function _rmkDayTs(at){
+  var s=String(at==null?"":at), m=s.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+  if(m) return new Date(+m[3],+m[2]-1,+m[1]).getTime()||0;
+  m=s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  return m?(new Date(+m[1],+m[2]-1,+m[3]).getTime()||0):0;
+}
+function remarksAll(x,hq){
+  var own=(x&&x.remarksArr)||[];
+  if(!x||x.acc==null||!hq) return own;
+  var extra=_rmkIndex(hq)[String(x.acc).trim()];
+  if(!extra||!extra.length) return own;
+  // पहचान text|by|at; बैकअप से लौटा (restored) रिमार्क और असली एक ही बात हों तो एक ही दिखे
+  var seen={},seenTB={},out=[];
+  function add(r,srcCat){
+    if(!r||!r.text) return;
+    var k=rmkKeyOf(r), tb=r.text+"|"+(r.by||"");
+    if(seen[k]) return;
+    if(seenTB[tb]&&(r.restored||seenTB[tb].restored)) return;
+    seen[k]=1; seenTB[tb]=r;
+    out.push(srcCat&&!r.cat?Object.assign({},r,{cat:srcCat}):r);
+  }
+  own.forEach(function(r){ add(r,null); });
+  var n=out.length;
+  extra.forEach(function(e){ add(e.r,e.cat); });
+  if(out.length===n) return own; // दूसरी सूचियों में कुछ नया नहीं
+  // क्रम: पुराना → नया (तारीख़ से); तारीख़ न पढ़ी जाए तो पिछले वाले की मानो — जगह न बदले
+  var last=0;
+  return out.map(function(r,i){ var t=_rmkDayTs(r.at)||last; last=t; return {r:r,t:t,i:i}; })
+    .sort(function(a,b){ return a.t-b.t||a.i-b.i; }).map(function(o){ return o.r; });
+}
 function promiseDue(x){
   if(!x||x.status==="paid") return "";
-  var a=x.remarksArr||[];
+  var a=remarksAll(x,activeHQ);
   for(var i=a.length-1;i>=0;i--){ if(a[i]&&/^\d{4}-\d{2}-\d{2}$/.test(a[i].due||"")) return a[i].due; }
   return "";
 }
@@ -337,7 +398,7 @@ function renderListWith(data){
   // eslint-disable-next-line no-unsanitized/property
   c.innerHTML=toRender.map(function(x){
     var oi=data.indexOf(x),isPaid=x.status==="paid";
-    var remarksArr=x.remarksArr||[];
+    var remarksArr=remarksAll(x,activeHQ);
     var rmkHtml="";
     if(remarksArr.length){
       rmkHtml="<div class='cc-rmk-list'>";
@@ -700,8 +761,8 @@ function openRmkModal(idx,acc){
     } else {pdEl.value="";}
   })();
   setRmkStatus(x.status||"pending");
-  // Show previous remarks
-  var arr=x.remarksArr||[];
+  // Show previous remarks — v9.234: सब सूचियों से मिलाकर
+  var arr=remarksAll(x,activeHQ);
   var sec=document.getElementById("prev-rmk-section");
   var lst=document.getElementById("prev-rmk-list");
   var cnt=document.getElementById("prev-rmk-count");

@@ -11,9 +11,12 @@ function cGet(hq,cat){
   }
   return CACHE[k]||[];
 }
+// v9.234: हर cSet पर बढ़ता है — list.js का सब-सूचियों वाला रिमार्क-index (remarksAll) इसी से जानता है कि दोबारा बनाना है
+var _cacheGen=0;
 function cSet(hq,cat,d){
   var k=cKey(hq,cat);
   CACHE[k]=d;
+  _cacheGen++;
   _noteListUse(k);
   _listNeedDone(k);
   _listsBcPost(k,d);
@@ -138,6 +141,7 @@ if(_listsBc) _listsBc.onmessage=function(ev){
   var m=ev&&ev.data;
   if(!m||typeof m.k!=="string"||!Array.isArray(m.d)) return;
   CACHE[m.k]=m.d; // लिखाई भेजने वाला टैब कर चुका — यहां सिर्फ़ memory
+  _cacheGen++;
   try{
     if(typeof CU!=="undefined"&&CU&&typeof activeHQ!=="undefined"&&cKey(activeHQ,activeCat)===m.k
       &&document.getElementById("app-screen").classList.contains("active")) renderList();
@@ -394,6 +398,19 @@ function markPending(hq,cat,type,patch,err){
   if(err!==undefined) _bumpAuthFail(k,err);
 }
 function clearPendingKey(k){var p=getPending();delete p[k];setPendingObj(p);}
+// v9.234: भेजे गए records ही "बाक़ी" से हटें — पहले किसी एक उपभोक्ता का सेव सफल होते ही पूरी सूची की entry हटती थी,
+// तो उसी सूची में पहले से रुका (offline वाला, या सर्वर-रिमार्क न पढ़ पाने से रुका) दूसरा उपभोक्ता चुपचाप छूट जाता।
+// onlySame: तभी हटाओ जब "बाक़ी" वाला रूप वही हो जो भेजा (भेजते-भेजते उसी पर नया बदलाव आया हो तो वह बचे)
+function pendingDropRecs(hq,cat,recs,onlySame){
+  var p=getPending(),k=cKey(hq,cat),e=p[k];
+  if(!e) return;
+  if(!e.patch){ delete p[k]; setPendingObj(p); return; }
+  Object.keys(recs||{}).forEach(function(rk){
+    if(!onlySame||JSON.stringify(e.patch[rk])===JSON.stringify(recs[rk])) delete e.patch[rk];
+  });
+  if(!Object.keys(e.patch).length) delete p[k];
+  setPendingObj(p);
+}
 
 // ── v9.209: बहुत देर से अटकी वसूली की चेतावनी ──
 // पहले सिर्फ़ login/account वाली अटकन (लगातार 401/403) पकड़ी जाती थी। कोई लाइनमैन 2–3 दिन नेट पर
@@ -536,14 +553,22 @@ function flushPending(){
       // (इसलिए यहां fetch+merge की ज़रूरत नहीं — PATCH अपने-आप बाकी keys को बिना छेड़े रहने देता है)
       // offline में बने patch में भी भेजने से पहले सर्वर के रिमार्क मिलाओ — इस बीच किसी और ने
       // उसी उपभोक्ता पर रिमार्क डाला हो तो वो न दबे (देखें database.js: _mergeServerRemarks)
-      _mergeServerRemarks(it.hq,it.cat,it.patch).then(function(){
+      // v9.234: 10 से ज़्यादा records हों तब भी मिलान (10-10 करके); जिनके सर्वर-रिमार्क न पढ़ पाए वो "बाक़ी" में ही रुकें
+      var hold=null, sentAs=JSON.parse(JSON.stringify(it.patch)); // मिलान से पहले का रूप — "बाक़ी" से मिलाने को
+      _mergeServerRemarks(it.hq,it.cat,it.patch,REMARK_FLUSH_MAX).then(function(res){
+        hold=res.hold;
         return fetch(FB+"/"+fbPath(it.hq,it.cat)+".json",{
-          method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(it.patch)
+          method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(res.send)
         });
       }).then(function(r){
         if(!r.ok)return _fbHttpErr(r);
-        clearPendingKey(k);
-        updTime();setSyncStatus(true);
+        pendingDropRecs(it.hq,it.cat,sentAs,true);
+        if(hold){
+          // since वही रहे — रिमार्क-पढ़ाई बार-बार नाकाम हो तो "pending-old" alert समय पर बने
+          markPending(it.hq,it.cat,"put",hold);
+          var pp=getPending(); if(pp[k]&&it.since){ pp[k].since=it.since; setPendingObj(pp); }
+        }
+        updTime();setSyncStatus(!isPending(it.hq,it.cat));
         if(CU&&it.hq===activeHQ&&it.cat===activeCat){var d=cGet(it.hq,it.cat);renderSummaryWith(d);renderListWith(d);}
         fin(true);
       }).catch(function(e){if(navigator.onLine)logErr("sync-patch-fail",e,it.hq+"/"+it.cat+_authDiag(e));_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
