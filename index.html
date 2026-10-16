@@ -159,6 +159,8 @@ try{
        वरना लाइनमैन को लगेगा ऐप ख़राब हो गई (दूसरों का ताज़ा डेटा आना रुक जाता है) -->
   <div id="pause-bar" style="display:none;"></div>
   <div class="app-header">
+    <!-- v9.232 (JE, 16/10): बाएं कोने में "गाँव के घर पर बिल वसूली करता लाइनमैन" स्केच (~20 KB), दाएं टावर वैसा ही -->
+    <img class="hdr-sketch" src="icons/header-sketch.webp" alt="" aria-hidden="true" width="219" height="138">
     <img class="hdr-tower-deco" src="icons/tower-decoration.svg" alt="" aria-hidden="true">
     <div class="hdr1">
       <div class="hdr-left">
@@ -184,7 +186,7 @@ try{
             <div class="mn-head">&#128202; रिपोर्ट</div>
             <div class="mn-grid">
               <button type="button" class="logout-item" id="todaysc-menu-item" style="display:none;color:#ef6c00;" onclick="openTodayScorecard()"><span class="mn-ico">&#128197;</span>आज की वसूली</button>
-              <button type="button" class="logout-item" id="village-menu-item" style="color:#a34d00;" onclick="openVillageModal()"><span class="mn-ico">&#127961;</span>ग्राम-वार वसूली</button>
+              <button type="button" class="logout-item" id="village-menu-item" style="color:#a34d00;" onclick="openVillageModal()"><img class="mn-img" src="icons/village-sketch.webp" alt="" width="72" height="45" loading="lazy">ग्राम-वार वसूली</button>
               <button type="button" class="logout-item" id="voicesc-menu-item" style="display:none;color:#5e35b1;" onclick="openVoiceScorecard()"><span class="mn-ico">&#128203;</span>मुख्यालय व टैरिफ रिपोर्ट</button>
               <button type="button" class="logout-item" id="wasc-menu-item" style="display:none;color:#00695c;" onclick="openWaScorecard()"><span class="mn-ico">&#128202;</span>स्कोरकार्ड डिस्प्ले</button>
               <button type="button" class="logout-item" id="hsc-menu-item" style="display:none;color:#7b3fd1;" onclick="openHscModal()"><span class="mn-ico">&#128421;</span>होम पेज डिस्प्ले बोर्ड</button>

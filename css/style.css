@@ -132,6 +132,8 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 /* बोल्ड/मॉडर्न हैडर — sync-bar वाला ही signature gradient यहां भी, ताकि दोनों मिलकर एक बड़ा,
    रंगीन, "floating header card" जैसा दिखें (नीचे रेडियस देकर स्क्रीन से अलग उठा हुआ अहसास) */
 .app-header{background:var(--grad-brand);padding:12px 14px 10px;position:sticky;top:0;z-index:100;box-shadow:0 8px 24px -8px rgba(18,73,113,.4);overflow:hidden;border-radius:0 0 22px 22px;}
+/* v9.232: header के बाएं कोने में पूरा स्केच — header की ऊंचाई जितना, नीले पर स्याही जैसा (multiply), दाईं ओर नीले में घुलता */
+.hdr-sketch{position:absolute;top:0;left:0;height:100%;width:auto;max-width:72%;object-fit:contain;object-position:left center;pointer-events:none;z-index:0;mix-blend-mode:multiply;opacity:.5;-webkit-mask-image:linear-gradient(270deg,transparent 0,#000 18%);mask-image:linear-gradient(270deg,transparent 0,#000 18%);}
 .hdr-tower-deco{position:absolute;top:-14px;right:-6px;width:100px;height:auto;opacity:.16;pointer-events:none;z-index:0;filter:brightness(4);}
 .app-header::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 70% 100% at 100% 0%,rgba(255,255,255,.10),transparent 70%);pointer-events:none;z-index:0;}
 .app-header>.hq-scroll{position:relative;z-index:1;}
@@ -167,6 +169,9 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .mn-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:2px 4px 6px;}
 .mn-grid .logout-item{flex-direction:column;justify-content:center;text-align:center;gap:3px;padding:9px 6px;min-height:62px;font-size:11.5px;line-height:1.25;background:var(--surface2,rgba(0,0,0,.03));border:1px solid var(--border);border-radius:11px;}
 .mn-ico{font-size:19px;line-height:1;}
+/* v9.232: ग्राम-वार वसूली टाइल पर स्केच (icons/village-sketch.webp, ~6 KB) — emoji जितनी ऊंचाई में, कोने गोल */
+.mn-img{width:72px;height:45px;object-fit:cover;border-radius:7px;display:block;}
+[data-theme="dark"] .mn-img{filter:brightness(.85);}
 .mn-sw{justify-content:flex-start;}
 .mn-sw .sort-menu-state,.mn-sw .vgbar-menu-state{float:none;margin-left:auto;flex-shrink:0;position:relative;width:34px;height:19px;border-radius:10px;background:var(--border);font-size:0;color:transparent;transition:background .15s;}
 .mn-sw .sort-menu-state::after,.mn-sw .vgbar-menu-state::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s;}
@@ -589,3 +594,10 @@ html.big-text .si{font-size:15px;}
 /* ── v9.206: फ़ोन-खिड़की में SMS का पूर्वावलोकन (छोटा रूप) ── */
 .sms-prev{margin:2px 4px 10px;padding:9px 11px;border-radius:10px;background:rgba(33,150,243,.07);border:1px dashed rgba(33,150,243,.45);font-size:12px;line-height:1.55;color:var(--text);white-space:pre-line;}
 .sms-prev b{display:block;font-size:10.5px;color:#1565c0;margin-bottom:3px;}
+
+/* v9.232: header स्केच पूरे पर्दे पर (js/ui-core.js openHeaderSketch) */
+#sketch-view{position:fixed;inset:0;z-index:9000;background:rgba(8,16,30,.92);display:none;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:12px;cursor:pointer;}
+#sketch-view.open{display:flex;}
+#sketch-view img{max-width:100%;max-height:78vh;border-radius:12px;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.5);}
+#sketch-view .sketch-cap{color:#e8eef6;font-size:14px;font-weight:700;text-align:center;}
+#sketch-view .sketch-x{position:absolute;top:12px;right:14px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:20px;cursor:pointer;}

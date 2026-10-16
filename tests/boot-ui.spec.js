@@ -744,3 +744,39 @@ test.describe('canary निशान', () => {
     await expect.poll(() => mark(page)).toBe(true);
   });
 });
+
+// v9.232 (JE, 16/10): स्केच — टाइल और header। छोटे रहें (मुफ़्त/तेज़) और बिना नेट भी दिखें (sw.js OPTIONAL)
+test('स्केच तस्वीरें छोटी, बिना-नेट सूची में, और पन्ने पर लगीं', async ({ page }) => {
+  const fs = require('fs');
+  const path = require('path');
+  const root = path.join(__dirname, '..');
+  const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+  for (const [f, max] of [['icons/village-sketch.webp', 12000], ['icons/header-sketch.webp', 30000]]) {
+    expect(fs.statSync(path.join(root, f)).size).toBeLessThan(max);
+    expect(sw).toContain('"./' + f + '"');
+  }
+  await openApp(page);
+  await loginJE(page);
+  await page.click('#uname-disp'); // टाइल वाली तस्वीर loading="lazy" — मेनू खुलने पर ही उतरती है
+  await expect.poll(() => page.evaluate(() => {
+    const ok = (s) => { const i = document.querySelector(s); return !!(i && i.complete && i.naturalWidth > 0); };
+    return ok('.app-header .hdr-sketch') && ok('#village-menu-item .mn-img') && !!document.querySelector('.app-header .hdr-tower-deco');
+  })).toBe(true);
+});
+
+// v9.232: header की ख़ाली जगह पर टैप → स्केच पूरे पर्दे पर; बटन/मेनू पर टैप से नहीं; कहीं भी टैप → बंद
+test('header की ख़ाली जगह पर टैप से स्केच पूरे पर्दे पर, बटन पर नहीं', async ({ page }) => {
+  await openApp(page);
+  await loginJE(page);
+  await page.evaluate(() => { const L = document.getElementById('loader'); if (L) L.style.display = 'none'; });
+  const open = () => page.evaluate(() => { const v = document.getElementById('sketch-view'); return !!(v && v.classList.contains('open')); });
+  await page.locator('.hdr-title').click();
+  await expect.poll(open).toBe(true);
+  await expect(page.locator('#sketch-view img')).toHaveJSProperty('complete', true);
+  await page.locator('#sketch-view').click();
+  await expect.poll(open).toBe(false);
+  await page.locator('#uname-disp').click(); // मेनू खुले, स्केच नहीं
+  await page.waitForTimeout(200);
+  expect(await open()).toBe(false);
+  await expect(page.locator('#logout-menu')).toHaveClass(/open/);
+});

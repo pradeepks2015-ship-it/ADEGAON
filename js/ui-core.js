@@ -372,3 +372,37 @@ function _setupBnavAutoHide(){
 }
 _setupBnavAutoHide();
 
+
+// ── v9.232 (JE, 16/10): header का स्केच अकेले, पूरे पर्दे पर ──
+// header में स्केच बटनों के पीछे दबा रहता है; header की ख़ाली जगह (बटन/टैब/मेनू नहीं) पर टैप → पूरा चित्र,
+// फिर कहीं भी टैप → बंद। वही फ़ाइल जो header में पहले से फ़ोन में है — कोई नया डाउनलोड नहीं, बिना नेट भी
+function openHeaderSketch(){
+  var ov=document.getElementById("sketch-view");
+  if(!ov){
+    ov=document.createElement("div");
+    ov.id="sketch-view";
+    ov.setAttribute("role","dialog");
+    ov.setAttribute("aria-label","गाँव के घर पर बिजली बिल वसूली करता लाइनमैन");
+    var im=document.createElement("img");
+    im.src="icons/header-sketch.webp"; im.alt="गाँव के घर पर बिजली बिल वसूली करता लाइनमैन";
+    var cap=document.createElement("div");
+    cap.className="sketch-cap"; cap.textContent="गाँव के घर पर बिजली बिल वसूली करता लाइनमैन";
+    var x=document.createElement("button");
+    x.type="button"; x.className="sketch-x"; x.setAttribute("aria-label","बंद करें"); x.textContent="✕";
+    ov.appendChild(x); ov.appendChild(im); ov.appendChild(cap);
+    ov.addEventListener("click",closeHeaderSketch);
+    document.body.appendChild(ov);
+  }
+  ov.classList.add("open");
+}
+function closeHeaderSketch(){
+  var ov=document.getElementById("sketch-view");
+  if(ov) ov.classList.remove("open");
+}
+document.addEventListener("click",function(e){
+  var t=/** @type {Element|null} */(e.target);
+  if(!t||!t.closest||!t.closest(".app-header")) return;
+  if(t.closest("button,a,input,select,label,[onclick],.user-pill,.logout-menu")) return; // बटन का काम वैसा ही
+  openHeaderSketch();
+});
+document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeHeaderSketch(); });
