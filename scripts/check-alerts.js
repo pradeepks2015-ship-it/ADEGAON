@@ -40,7 +40,7 @@ const MULTI = [
   'pending-stuck-auth', 'lazy-load-fail', 'auto-logout', 'session-unknown-hq', 'je-auth-retry-fail',
   'cache-idb-slow', 'array-put-noflags', 'save-shape-probe-fail', 'migrate-fail', 'excel-parse',
   'pin-save-fail', 'ph-custom-save-fail', 'pause-save-fail', 'catname-save', 'catrename-partial',
-  'catrename-move', 'hsc-publish', 'homebg-upload', 'cash-refresh-partial', 'remark-merge-hold',
+  'catrename-move', 'hsc-publish', 'homebg-upload', 'cash-refresh-partial', 'remark-merge-hold', 'ask-cb',
 ];
 // ⚪ कभी alert नहीं — "ठीक हो गया"/एक-बार सफ़ाई/जानकारी वाली
 const IGNORE = [

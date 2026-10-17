@@ -148,7 +148,9 @@ function onPhotoSelected(input){
 
 // फ़ोटो हटाना — पहले सिर्फ़ बदलने का रास्ता था, हटाने का कोई नहीं (JE का सुझाव)
 function removeProfilePhoto(){
-  if(!confirm("फ़ोटो हटाना चाहते हैं?")) return;
+  appAsk({icon:"🖼️",title:"फ़ोटो हटाना चाहते हैं?",buttons:[{label:"हां, फ़ोटो हटाओ",kind:"ok",value:true},{label:"नहीं",kind:"cancel",value:false}]},function(v){ if(v) _removeProfilePhotoNow(); });
+}
+function _removeProfilePhotoNow(){
   var key=_profileKey();
   fetch(FB+"/PROFILE_PHOTOS/"+key+".json",{method:"DELETE"})
     .then(function(r){

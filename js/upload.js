@@ -446,7 +446,10 @@ function confirmUpload(){
     _confirmUploadNow();
   },true);
 }
-function _confirmUploadNow(){
+// asked (v9.236): ऐप के डिब्बे (appAsk) में जो चेतावनी "हां" हो चुकी — जवाब आने पर यही function दोबारा चलता है
+// (चेतावनियों से पहले यहां सिर्फ़ गणना है, कोई लिखाई नहीं — इसलिए दोबारा चलाना सुरक्षित)
+function _confirmUploadNow(asked){
+  asked=asked||{};
   try{
     var hq=document.getElementById("up-hq").value;
     var cat=document.getElementById("up-cat").value;
@@ -509,14 +512,12 @@ function _confirmUploadNow(){
       var _newAcc={};
       arr.forEach(function(r){ if(r&&r.acc) _newAcc[String(r.acc).trim()]=1; });
       var _gone=_exR.filter(function(e){ return e&&e.acc&&!_newAcc[String(e.acc).trim()]; }).length;
-      if(_gone>=REPLACE_WARN_MIN_GONE&&_gone>_exR.length*REPLACE_WARN_FRAC){
-        if(!confirm("⚠️ अभी \""+cat+"\" में "+_exR.length+" उपभोक्ता हैं, नई फ़ाइल में "+arr.length+"।\n"+
-          "Replace से "+_gone+" उपभोक्ता सूची से हट जाएंगे।\n\n"+
-          "सिर्फ़ नए उपभोक्ता जोड़ने हों तो 'रद्द' दबाकर ➕ Merge चुनें।\n"+
-          "पूरा नया लेजर है और यही चाहिए तो 'OK' दबाएं।")){
-          toast("अपलोड रोक दिया — कुछ नहीं बदला","inf");
-          return;
-        }
+      if(_gone>=REPLACE_WARN_MIN_GONE&&_gone>_exR.length*REPLACE_WARN_FRAC&&!asked.gone){
+        appAsk({icon:"📤",title:"Replace से "+_gone+" उपभोक्ता सूची से हट जाएंगे",msg:"अभी \""+cat+"\" में "+_exR.length+" उपभोक्ता हैं, नई फ़ाइल में "+arr.length+"।",
+          warn:"सिर्फ़ नए उपभोक्ता जोड़ने हों तो \"रुको\" दबाकर ➕ Merge चुनें",
+          buttons:[{label:"रुको — अपलोड न करें",kind:"cancel",value:false},{label:"हां, पूरा नया लेजर है",kind:"danger",value:true}]},
+          function(v){ if(v){ asked.gone=1; _confirmUploadNow(asked); } else toast("अपलोड रोक दिया — कुछ नहीं बदला","inf"); });
+        return;
       }
     }
 
@@ -539,8 +540,12 @@ function _confirmUploadNow(){
     // देकर पूछते हैं — "हां" पर ही आगे बढ़ते हैं, वरना अपलोड शुरू ही नहीं होता (कुछ नहीं बदलता)
     if(keepEl&&!keepEl.checked){
       var _willLose=_upCountPaid(hq);
-      if(_willLose&&!confirm("⚠️ "+hq+" के सभी बटनों से "+_willLose+" उपभोक्ताओं की वसूली मिट जाएगी।\n\nसिर्फ़ इस सूची की वसूली रखनी हो तो ऊपर \"पुरानी वसूली सुरक्षित रखें\" पर सही का निशान लगाएं।\n\n(ग़लती हो जाए तो 7 दिन के अंदर वही लेजर checkbox लगाकर दोबारा अपलोड करने पर वसूली लौट आएगी।)\n\nक्या वाकई आगे बढ़ें?")){
-        toast("अपलोड रोक दिया — कुछ नहीं बदला","inf");
+      if(_willLose&&!asked.lose){
+        appAsk({icon:"⚠️",title:hq+" के सभी बटनों से "+_willLose+" उपभोक्ताओं की वसूली मिट जाएगी",
+          msg:"सिर्फ़ इस सूची की वसूली रखनी हो तो ऊपर \"पुरानी वसूली सुरक्षित रखें\" पर सही का निशान लगाएं।",
+          warn:"ग़लती हो जाए तो 7 दिन के अंदर वही लेजर checkbox लगाकर दोबारा अपलोड करने पर वसूली लौट आएगी",
+          buttons:[{label:"रुको — अपलोड न करें",kind:"cancel",value:false},{label:"हां, वसूली मिटाकर अपलोड करो",kind:"danger",value:true}]},
+          function(v){ if(v){ asked.lose=1; _confirmUploadNow(asked); } else toast("अपलोड रोक दिया — कुछ नहीं बदला","inf"); });
         return;
       }
       // checkbox हटा है — इस category की सारी पुरानी वसूली जा रही है, सबका backup रखो

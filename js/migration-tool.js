@@ -142,14 +142,9 @@ function _migRender(rows){
 
 function confirmAndRunMigration(){
   if(!MIG_REPORT||!MIG_REPORT.length){toast("पहले जांच चलाएं","err");return;}
-  var ok=confirm(
-    "⚠️ यह असली production data बदल देगा (array → per-record फॉर्मेट)।\n\n"+
-    "सिर्फ कम-ट्रैफिक समय पर करें, और पक्का करें कि सभी सक्रिय devices नया app version ले चुके हैं "+
-    "(वरना पुराना version किसी record को बचाते समय पूरी लिस्ट फिर से array में लिख सकता है)।\n\n"+
-    "क्या अभी माइग्रेट करना शुरू करें?"
-  );
-  if(!ok)return;
-  runMigration();
+  appAsk({icon:"🛠️",title:"अभी माइग्रेट करना शुरू करें?",msg:"यह असली production data बदल देगा (array → per-record फॉर्मेट)। सिर्फ़ कम-ट्रैफ़िक समय पर करें।",
+    warn:"पक्का करें कि सभी सक्रिय devices नया app version ले चुके हैं — वरना पुराना version किसी record को बचाते समय पूरी लिस्ट फिर से array में लिख सकता है",
+    buttons:[{label:"रुको, अभी नहीं",kind:"cancel",value:false},{label:"🛠️ हां, माइग्रेट करो",kind:"danger",value:true}]},function(v){ if(v) runMigration(); });
 }
 
 function runMigration(){

@@ -1162,6 +1162,23 @@ test.describe('अपलोड — Replace डिफ़ॉल्ट और क�
     await page.waitForFunction(() => cGet('आदेगांव', 'कुल उपभोक्ता').length === 5);
   });
 
+  test('ऐप के अपने डिब्बे में (v9.236): "रुको" पर कुछ नहीं, "हां" पर Replace — ब्राउज़र का डिब्बा नहीं खुले', async ({ page }) => {
+    await seed(page, 100);
+    let native = 0;
+    page.on('dialog', (d) => { native++; d.dismiss(); });
+    await page.evaluate(() => { delete window.__askAuto; });
+    await page.evaluate((r) => { parsedRows = r; confirmUpload(); }, rows([1000, 1001, 1002, 1003, 1004]));
+    await expect(page.locator('#ask-ov .ask-title')).toContainText('Replace से 95 उपभोक्ता');
+    await page.click('#ask-ov .ask-cancel');
+    await expect(page.locator('#ask-ov')).toHaveCount(0);
+    expect(await page.evaluate(() => cGet('आदेगांव', 'कुल उपभोक्ता').length)).toBe(100);
+    await expect(page.locator('#toast')).toContainText('अपलोड रोक दिया');
+    await page.evaluate((r) => { parsedRows = r; confirmUpload(); }, rows([1000, 1001, 1002, 1003, 1004]));
+    await page.click('#ask-ov .ask-danger');
+    await page.waitForFunction(() => cGet('आदेगांव', 'कुल उपभोक्ता').length === 5);
+    expect(native).toBe(0);
+  });
+
   test('असली मासिक लेजर (कुछ ही हटे, कुछ नए जुड़े) — कोई पुष्टि-संदेश नहीं', async ({ page }) => {
     await seed(page, 100);
     const msgs = [];

@@ -134,8 +134,7 @@ function goBack(){
   }
   // सबसे पीछे — login page पर जाएं (lineman के लिए, या supervisor पहले HQ पर)
   // बिना पूछे लॉगआउट जैसा महसूस न हो, इसलिए पक्का पूछें
-  if(!confirm("लॉगआउट करना चाहते हैं?"))return;
-  goToLogin();
+  appAsk({icon:"🚪",title:"लॉगआउट करना चाहते हैं?",buttons:[{label:"हां, लॉगआउट",kind:"ok",value:true},{label:"नहीं",kind:"cancel",value:false}]},function(v){ if(v) goToLogin(); });
 }
 
 function goToLogin(){
@@ -208,7 +207,13 @@ function _pauseToggle(){
   if(_pauseBusy){toast("⏳ पिछली कोशिश का जवाब आ रहा है…","inf");return;}
   if(!navigator.onLine){toast("📴 नेट नहीं है — यह स्विच सर्वर पर बदलता है, नेट आने पर दबाएं","err");return;}
   var next=!isDataPaused();
-  if(next&&!confirm("डाउनलोड रोक दें?\n\nसभी devices पर दूसरों का ताज़ा डेटा आना बंद हो जाएगा। वसूली दर्ज करना चलता रहेगा।")) return;
+  if(next){
+    appAsk({icon:"🛑",title:"डाउनलोड रोक दें?",msg:"सभी devices पर दूसरों का ताज़ा डेटा आना बंद हो जाएगा। वसूली दर्ज करना चलता रहेगा।",buttons:[{label:"रुको, अभी नहीं",kind:"cancel",value:false},{label:"🛑 हां, डाउनलोड रोको",kind:"danger",value:true}]},function(v){ if(v) _pauseSend(next); });
+    return;
+  }
+  _pauseSend(next);
+}
+function _pauseSend(next){
   var body={on:next,by:CU.name,at:{".sv":"timestamp"}};
   _pauseBusy=true;
   fetch(FB+"/PAUSE.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
@@ -406,3 +411,53 @@ document.addEventListener("click",function(e){
   openHeaderSketch();
 });
 document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeHeaderSketch(); });
+
+// ── v9.236: ऐप का अपना पुष्टि-डिब्बा (ब्राउज़र के सादे confirm()/prompt() की जगह) ──
+// ब्राउज़र वाला ऊपर वेबसाइट का पता दिखाता, बटन सिर्फ़ "ठीक है/रद्द करें", ख़तरनाक और मामूली काम एक-से, dark theme
+// नहीं मानता। यह: हिंदी शीर्षक, बटन पर साफ़ काम ("हां, सूची हटाओ"), ख़तरनाक पर लाल बटन + चेतावनी, "रुको" ऊपर।
+// सारा पाठ textContent से (कोई innerHTML नहीं — नाम/संदेश में कुछ भी हो, स्क्रिप्ट नहीं चल सकती)।
+// o = {icon, title, msg, list:[…], warn, input:{value, placeholder, maxlength}, buttons:[{label, kind:"ok"|"danger"|"alt"|"cancel", value}]}
+// cb(value, inputText) — बाहर टैप/Back/Esc = cancel वाले बटन का value (न हो तो null)
+var _askOpen=null;
+function appAsk(o,cb){
+  // टेस्ट के लिए (असली ऐप में कभी set नहीं): window.__askAuto(o) तुरंत जवाब देता है — input वाले डिब्बे पर
+  // लिखा text (या null = रद्द), बाक़ी पर बटन का value
+  if(typeof window.__askAuto==="function"){ var r=window.__askAuto(o); if(cb){ if(o.input) cb(r==null?null:true,r==null?undefined:String(r)); else cb(r); } return; }
+  if(_askOpen) _askClose(null);
+  var ov=document.createElement("div"); ov.id="ask-ov"; ov.setAttribute("role","dialog"); ov.setAttribute("aria-modal","true");
+  var box=document.createElement("div"); box.className="ask-box"; ov.appendChild(box);
+  var top=document.createElement("div"); top.className="ask-top";
+  if(o.icon){ var ic=document.createElement("span"); ic.className="ask-ic"; ic.textContent=o.icon; top.appendChild(ic); }
+  var tt=document.createElement("div"); tt.className="ask-title"; tt.id="ask-title"; tt.textContent=o.title||""; top.appendChild(tt);
+  box.appendChild(top); ov.setAttribute("aria-labelledby","ask-title");
+  if(o.msg){ var m=document.createElement("div"); m.className="ask-msg"; m.textContent=o.msg; box.appendChild(m); }
+  if(o.list&&o.list.length){ var l=document.createElement("div"); l.className="ask-list"; l.textContent=o.list.map(function(s){ return "• "+s; }).join("\n"); box.appendChild(l); }
+  if(o.warn){ var w=document.createElement("div"); w.className="ask-warn"; w.textContent="⚠️ "+o.warn; box.appendChild(w); }
+  var inp=null;
+  if(o.input){
+    inp=document.createElement("input"); inp.className="ask-inp"; inp.type="text";
+    inp.value=o.input.value||""; if(o.input.placeholder) inp.placeholder=o.input.placeholder;
+    if(o.input.maxlength) inp.maxLength=o.input.maxlength;
+    box.appendChild(inp);
+  }
+  var btns=document.createElement("div"); btns.className="ask-btns"; box.appendChild(btns);
+  var cancelVal=null;
+  (o.buttons||[{label:"ठीक है",kind:"ok",value:true},{label:"रद्द करें",kind:"cancel",value:false}]).forEach(function(b){
+    if(b.kind==="cancel") cancelVal=b.value;
+    var e=document.createElement("button"); e.type="button"; e.className="ask-btn ask-"+(b.kind||"ok"); e.textContent=b.label;
+    e.onclick=function(){ _askClose(b.value); };
+    btns.appendChild(e);
+  });
+  ov.addEventListener("click",function(ev){ if(ev.target===ov) _askClose(cancelVal); });
+  _askOpen={ov:ov,cb:cb,inp:inp,cancel:cancelVal};
+  document.body.appendChild(ov);
+  if(inp){ setTimeout(function(){ try{ inp.focus(); inp.select(); }catch(e){} },50); }
+}
+function _askClose(val){
+  var a=_askOpen; if(!a) return;
+  _askOpen=null;
+  var txt=a.inp?a.inp.value:undefined;
+  if(a.ov.parentNode) a.ov.parentNode.removeChild(a.ov);
+  if(a.cb) try{ a.cb(val,txt); }catch(e){ logErr("ask-cb",e); }
+}
+document.addEventListener("keydown",function(e){ if(e.key==="Escape"&&_askOpen) _askClose(_askOpen.cancel); });

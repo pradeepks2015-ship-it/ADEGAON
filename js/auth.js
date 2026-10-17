@@ -514,7 +514,8 @@ function _finishLogin(name,silent){
 
 function doLogout(askConfirm){
   if(askConfirm===undefined) askConfirm=true;
-  if(askConfirm&&!confirm("लॉगआउट करना चाहते हैं?"))return;
+  // v9.236: ब्राउज़र के confirm() की जगह ऐप का अपना डिब्बा (appAsk)
+  if(askConfirm){ appAsk({icon:"🚪",title:"लॉगआउट करना चाहते हैं?",buttons:[{label:"हां, लॉगआउट",kind:"ok",value:true},{label:"नहीं",kind:"cancel",value:false}]},function(v){ if(v) doLogout(false); }); return; }
   // JE था तो Firebase session भी हटाएं — अपने आप anonymous पर लौट जाएगा (firebase.js का onIdTokenChanged)
   try{
     var u=firebase.auth().currentUser;

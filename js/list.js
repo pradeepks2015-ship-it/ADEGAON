@@ -766,7 +766,10 @@ function latestPayVal(x){
 }
 
 function clearList(){
-  if(!confirm(activeHQ+" › "+activeCat+" की लिस्ट हटाएं?"))return;
+  var n=(cGet(activeHQ,activeCat)||[]).length, hq=activeHQ, cat=activeCat;
+  appAsk({icon:"🗑️",title:"सूची हटाएं?",msg:hq+" › "+cat+" की पूरी सूची ("+n+" उपभोक्ता) हटेगी — सर्वर से भी।",warn:"वापस नहीं होगा — पहले \"पूरा बैकअप\" ले लें",buttons:[{label:"रुको, अभी नहीं",kind:"cancel",value:false},{label:"🗑️ हां, सूची हटाओ",kind:"danger",value:true}]},function(v){ if(v&&hq===activeHQ&&cat===activeCat) _clearListNow(); });
+}
+function _clearListNow(){
   cSet(activeHQ,activeCat,[]);
   renderSummaryWith([]); renderListWith([]);
   toast("🗑️ लिस्ट हटाई गई","inf");

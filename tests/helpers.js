@@ -22,6 +22,19 @@ const test = baseTest.extend({
     // v9.228: असली ऐप में Replace अपलोड से पहले सूचियां सर्वर से ताज़ा होती हैं (async)। पुराने सैकड़ों टेस्ट confirmUpload()
     // के ठीक बाद नतीजा जांचते हैं — उनके लिए यह रोक (upload.js)। वह रास्ता field-conditions.spec.js ("मासिक अपलोड") जांचता है
     await context.addInitScript(() => { window.__TEST_UPLOAD_NO_REFRESH = 1; });
+    // v9.236: ऐप का अपना डिब्बा (appAsk) ब्राउज़र के confirm()/prompt() की जगह आया। पुराने टेस्ट जवाब के लिए
+    // window.confirm/prompt बदलते हैं (या page.on('dialog') से) — उनके लिए appAsk वही पूछे (असली ऐप में __askAuto कभी नहीं)।
+    // जगह-का-सवाल (सभी HQ/सिर्फ़ यह) पुराने confirm जैसा: true = सभी, false = सिर्फ़ यह। असली डिब्बा + बटन
+    // "ऐप का अपना पुष्टि-डिब्बा" वाले टेस्ट __askAuto हटाकर जांचते हैं (boot-ui.spec.js)
+    await context.addInitScript(() => {
+      window.__askAuto = function (o) {
+        var t = [o.title, o.msg, (o.list || []).join('\n'), o.warn].filter(Boolean).join('\n');
+        if (o.input) return window.prompt(t, o.input.value || '');
+        var vals = (o.buttons || []).map(function (b) { return b.value; });
+        if (vals.indexOf('all') > -1) return window.confirm(t) ? 'all' : 'one';
+        return window.confirm(t);
+      };
+    });
     await context.route((u) => /^\/(index\.html)?$/.test(u.pathname), async (route) => {
       const r = await route.fetch();
       const body = (await r.text()).replace('</body>', LAZY_FILES.map((f) => `<script src="${f}"></script>`).join('') + '</body>');

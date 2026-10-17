@@ -616,3 +616,20 @@ html.big-text .si{font-size:15px;}
 #sketch-view img{max-width:100%;max-height:78vh;border-radius:12px;background:#fff;box-shadow:0 10px 40px rgba(0,0,0,.5);}
 #sketch-view .sketch-cap{color:#e8eef6;font-size:14px;font-weight:700;text-align:center;}
 #sketch-view .sketch-x{position:absolute;top:12px;right:14px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:20px;cursor:pointer;}
+/* v9.236: ऐप का अपना पुष्टि-डिब्बा (appAsk) — ब्राउज़र के सादे confirm() की जगह */
+#ask-ov{position:fixed;inset:0;background:rgba(10,20,40,.55);display:flex;align-items:center;justify-content:center;z-index:9500;padding:18px;animation:fadeUp .15s ease-out;}
+.ask-box{background:var(--surface);color:var(--text);border-radius:18px;width:min(380px,100%);max-height:calc(100dvh - 36px);overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.35);font-family:"Noto Sans Devanagari",sans-serif;}
+.ask-top{display:flex;align-items:center;gap:10px;padding:16px 18px 6px;}
+.ask-ic{font-size:28px;line-height:1;}
+.ask-title{font-size:17px;font-weight:800;line-height:1.35;}
+.ask-msg{padding:4px 18px;font-size:15px;line-height:1.55;white-space:pre-line;}
+.ask-list{margin:6px 18px 0;padding:8px 12px;border-radius:10px;background:rgba(127,140,160,.12);font-size:14px;line-height:1.6;white-space:pre-line;}
+.ask-warn{margin:8px 18px 0;padding:9px 12px;border-radius:10px;background:rgba(229,57,53,.1);color:var(--red);font-size:14px;font-weight:700;}
+.ask-inp{display:block;width:calc(100% - 36px);margin:10px 18px 0;padding:11px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:16px;font-family:inherit;background:var(--surface);color:var(--text);box-sizing:border-box;}
+.ask-btns{display:flex;flex-direction:column;gap:9px;padding:16px 18px 18px;}
+.ask-btn{border:none;border-radius:12px;padding:13px 10px;font-size:16px;font-weight:800;font-family:inherit;cursor:pointer;}
+.ask-ok{background:#1565c0;color:#fff;}
+.ask-alt{background:#0d47a1;color:#fff;}
+.ask-danger{background:#d32f2f;color:#fff;}
+.ask-cancel{background:rgba(127,140,160,.14);color:var(--text);border:1.5px solid var(--border);}
+html.big-text .ask-title{font-size:20px;} html.big-text .ask-msg,html.big-text .ask-list{font-size:17px;} html.big-text .ask-btn{font-size:18px;}
