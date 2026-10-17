@@ -225,7 +225,10 @@ function remarksAll(x,hq){
 function promiseDue(x){
   if(!x||x.status==="paid") return "";
   var a=remarksAll(x,activeHQ);
-  for(var i=a.length-1;i>=0;i--){ if(a[i]&&/^\d{4}-\d{2}-\d{2}$/.test(a[i].due||"")) return a[i].due; }
+  for(var i=a.length-1;i>=0;i--){
+    if(a[i]&&a[i].brk) return ""; // v9.235: "💔 वादा टूटा" (दो बार टैप) — उससे पहले वाला वादा ख़त्म; नया वादा डालें तो फिर गिना
+    if(a[i]&&/^\d{4}-\d{2}-\d{2}$/.test(a[i].due||"")) return a[i].due;
+  }
   return "";
 }
 function _isoPlus(n){ var t=new Date(); t.setDate(t.getDate()+n); return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0"); }
@@ -262,7 +265,10 @@ function _weekRange(){
 }
 // v9.208 (JE, 11/10): पिछले सप्ताहों के टूटे वादे (अब भी बाकी) भी इसी बटन में — तारीख़ के क्रम से सबसे ऊपर, लाल "(बीत गया)"।
 // वसूल होते ही promiseDue() ख़ाली, तो अपने-आप हट जाते हैं। अगले सप्ताह के वादे अब भी नहीं
-function isPromiseDue(x,wk){ var pd=promiseDue(x); if(!pd) return false; wk=wk||_weekRange(); return pd<=wk[1]; }
+// v9.235 (JE 16/10): बीता वादा (उपभोक्ता ने जमा नहीं किया) महीने भर बटन में रहे — महीना बदलते ही अपने-आप हटे।
+// पिछले महीने की वादा-तारीख़ = बटन से बाहर (रिमार्क/कार्ड का "वादा … (बीत गया)" निशान बना रहता है; नया वादा डालें तो फिर दिखे)
+function _monthStart(){ var t=new Date(); return t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-01"; }
+function isPromiseDue(x,wk){ var pd=promiseDue(x); if(!pd) return false; wk=wk||_weekRange(); return pd<=wk[1]&&pd>=_monthStart(); }
 // ── v9.203: गांव की पट्टी — सूची के ऊपर गांवों के बटन, टैप करते ही उसी गांव की सूची ──
 // गांव = लेजर का "पता" खाना, js/village.js वाली ही कुंजी (_vgNormKey: बड़े अक्षर + VILLAGE_ALIASES के
 // स्पेलिंग-सुधार, जैसे JUMUA → JAMUA) — ताकि गांव-वार वसूली और यह पट्टी एक जैसा गिनें। JE (11/10): नाम
@@ -419,7 +425,9 @@ function renderListWith(data){
     }
     var payDateInfo=x.paydate?"<span class='cc-paydate'>💰 वसूल: "+escHtml(x.paydate)+"</span>":"";
     var pdue=promiseDue(x), dueChip="";
-    if(pdue) dueChip="<span class='chip chip-due"+(pdue<today?" over":pdue===today?" today":"")+"'>🤝 वादा: "+escHtml(_fmtDue(pdue))+
+    // v9.235: बीते वादे पर दो बार टैप = "💔 वादा टूटा" (टूटने का animation, फिर सामान्य सूची में)
+    if(pdue) dueChip="<span class='chip chip-due"+(pdue<today?" over":pdue===today?" today":"")+"'"+
+      (pdue<today?" onclick=\"dueChipTap(this,"+oi+",'"+escJsAttr(x.acc||"")+"')\"":"")+">🤝 वादा: "+escHtml(_fmtDue(pdue))+
       (pdue<today?" (बीत गया)":pdue===today?" (आज)":"")+"</span>";
     return "<div class='con-card "+(isPaid?"paid":"pending")+"'>"+
       "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+(x.father?" / "+escHtml(x.father):"")+"</div><button class='cc-share' title='शेयर' aria-label='शेयर' onclick=\"shareCard("+oi+",'"+escJsAttr(x.acc||"")+"',this)\">"+CC_SHARE_ICON+"</button><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
@@ -686,6 +694,40 @@ function markPaid(idx,acc){
   }catch(e){}
   fbSet(activeHQ,activeCat,d,prevSnap,null);
   propagateStatus(d[idx].acc,activeCat,"paid",dateStr,dtStr,d[idx].ts);
+}
+
+// ── v9.235 (JE 17/10): बीता वादा — दो बार टैप पर "टूटा" दर्ज, टूटने का animation, फिर "वादे" बटन से बाहर ──
+// एक रिमार्क {brk:<वादा-तारीख़>} जुड़ता है (सामान्य रिमार्क जैसा ही सेव/sync — बिना नेट भी), इतिहास में "💔 वादा टूटा" दिखता
+// है; promiseDue उसके बाद पुराना वादा नहीं गिनता। ग़लती से न हो, इसलिए एक टैप पर सिर्फ़ संकेत
+var _dueTap={el:null,t:0};
+function dueChipTap(el,idx,acc){
+  var now=Date.now();
+  if(_dueTap.el!==el||now-_dueTap.t>600){ _dueTap={el:el,t:now}; toast("💔 वादा टूटा मानने के लिए दो बार जल्दी टैप करें","inf"); return; }
+  _dueTap={el:null,t:0};
+  breakPromise(idx,acc,el);
+}
+function breakPromise(idx,acc,el){
+  var d=cGet(activeHQ,activeCat);
+  idx=_findRecordIdx(d,idx,acc);
+  if(idx<0){toast("यह रिकॉर्ड अब सूची में नहीं मिला — सूची ताज़ा हो गई होगी, दोबारा कोशिश करें","err");return;}
+  var pd=promiseDue(d[idx]); if(!pd) return;
+  var prevSnap=JSON.parse(JSON.stringify(d));
+  var dtStr=new Date().toLocaleString("hi-IN");
+  var entry={text:"💔 वादा टूटा ("+_fmtDue(pd)+" का)",by:CU.name,at:dtStr,cat:activeCat,brk:pd};
+  if(!d[idx].remarksArr) d[idx].remarksArr=[];
+  d[idx].remarksArr.push(entry);
+  d[idx].remarks=entry.text;
+  d[idx].ts=serverNow();
+  cSet(activeHQ,activeCat,d);
+  fbSet(activeHQ,activeCat,d,prevSnap,null);
+  propagateRemark(d[idx].acc,activeCat,entry);
+  var done=function(){ renderSummaryWith(d); renderListWith(d); toast("💔 वादा टूटा दर्ज — उपभोक्ता सामान्य सूची में","ok"); };
+  var card=el&&el.closest?el.closest(".con-card"):null;
+  if(!el||(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)){ done(); return; }
+  el.textContent="💔 वादा टूटा";
+  el.classList.add("breaking");
+  if(card&&activeFilter==="promise") setTimeout(function(){ card.classList.add("leaving"); },550);
+  setTimeout(done,activeFilter==="promise"?1050:700);
 }
 
 function markUnpaid(idx,acc){

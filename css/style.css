@@ -263,6 +263,12 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .chip-due{background:rgba(255,152,0,.12);color:#e65100;font-weight:700;}
 .chip-due.today{background:rgba(255,152,0,.22);}
 .chip-due.over{background:rgba(255,77,109,.14);color:var(--red);}
+/* v9.235: बीते वादे पर दो बार टैप — 🤝 टूटकर 💔, कार्ड खिसककर "वादे" सूची से बाहर */
+.chip-due.over{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;}
+.chip-due.breaking{animation:dueBreak .55s ease-out both;}
+@keyframes dueBreak{0%{transform:scale(1)}15%{transform:scale(1.18) rotate(-6deg)}30%{transform:scale(1.18) rotate(6deg)}45%{transform:scale(1.12) rotate(-4deg)}60%{transform:scale(1) rotate(0);background:var(--red);color:#fff}100%{transform:scale(.96);background:var(--red);color:#fff}}
+.con-card.leaving{animation:cardLeave .5s ease-in forwards;pointer-events:none;}
+@keyframes cardLeave{to{transform:translateX(110%) rotate(4deg);opacity:0}}
 /* v9.215: 🕰️ पुराना भुगतान पहले — "⏰ N महीने से भुगतान नहीं" (6+ नारंगी, 12+ लाल) */
 .chip-oldpay{background:rgba(96,125,139,.12);color:var(--muted);font-weight:700;}
 .chip-oldpay.orange{background:rgba(255,152,0,.14);color:#e65100;}
