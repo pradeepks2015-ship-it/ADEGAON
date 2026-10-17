@@ -209,13 +209,17 @@ test.describe('वसूल + बाकी = कुल (सूची और ग�
 
 // ── v9.202: "बड़ी बकाया पहले" क्रम + वादा-तारीख़ (JE: उद्देश्य-अनुकूलता 9.0 → 9.5) ──
 test.describe('सूची का क्रम और वादा-तारीख़ (v9.202)', () => {
+  // v9.235: वादा महीने से भी जुड़ा — कुछ टेस्ट पक्की तारीख़ (BASE) पर चलते हैं (page.clock से ब्राउज़र भी वही)
+  let BASE = null;
+  const now = () => (BASE ? new Date(BASE) : new Date());
+  test.afterEach(() => { BASE = null; });
   const iso = (offset) => {
-    const t = new Date(); t.setDate(t.getDate() + offset);
+    const t = now(); t.setDate(t.getDate() + offset);
     return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
   };
   // v9.207: इस सप्ताह के सोमवार से n दिन बाद (n=-1 → पिछला रविवार, 6 → इस सप्ताह का रविवार, 7 → अगला सोमवार)
   const wkDay = (n) => {
-    const t = new Date(); t.setHours(12, 0, 0, 0); t.setDate(t.getDate() - ((t.getDay() + 6) % 7) + n);
+    const t = now(); t.setHours(12, 0, 0, 0); t.setDate(t.getDate() - ((t.getDay() + 6) % 7) + n);
     return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
   };
   const seed = async (page, recs) => {
@@ -281,6 +285,9 @@ test.describe('सूची का क्रम और वादा-तारी
   });
 
   test('बटन में इस सप्ताह (सोमवार–रविवार) के और पिछले सप्ताहों के टूटे वादे (v9.208) — टूटे सबसे ऊपर लाल "(बीत गया)"; अगले सप्ताह के नहीं; बीती तारीख़ नई डालने से रोके', async ({ page }) => {
+    // महीने के बीच का बुधवार — पिछला रविवार भी इसी महीने में (v9.235: पिछले महीने के वादे बटन में नहीं)
+    BASE = '2026-10-14T12:00:00';
+    await page.clock.setFixedTime(new Date(BASE));
     await seed(page, [
       { acc: '1', name: 'रविवार वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'x', by: 'a', at: '1', due: wkDay(6) }] },
       { acc: '2', name: 'पिछले सप्ताह वाला', amount: 1, status: 'pending', remarksArr: [{ text: 'y', by: 'a', at: '2', due: wkDay(-1) }] },
@@ -297,6 +304,54 @@ test.describe('सूची का क्रम और वादा-तारी
     await page.evaluate((d) => { openRmkModal(0, '1'); document.getElementById('rmk-due').value = d; document.getElementById('rmk-text').value = 'z'; saveRmk(); }, iso(-1));
     await expect(page.locator('#toast')).toContainText('वादा-तारीख़ आज या आगे की होनी चाहिए');
     expect(await page.evaluate(() => cGet(activeHQ, activeCat)[0].remarksArr.length)).toBe(1);
+  });
+
+  test('बीता वादा महीने भर बटन में, महीना बदलते ही अपने-आप हटे (v9.235, JE 16/10) — नया वादा डालें तो फिर दिखे', async ({ page }) => {
+    // 3/11/2026 मंगलवार: इस सप्ताह = 2/11–8/11
+    BASE = '2026-11-03T12:00:00';
+    await page.clock.setFixedTime(new Date(BASE));
+    await seed(page, [
+      { acc: '1', name: 'अक्टूबर का टूटा वादा', amount: 1, status: 'pending', remarksArr: [{ text: 'x', by: 'a', at: '1', due: '2026-10-30' }] },
+      { acc: '2', name: 'नवंबर का बीता वादा', amount: 1, status: 'pending', remarksArr: [{ text: 'y', by: 'a', at: '2', due: '2026-11-02' }] },
+      { acc: '3', name: 'इस सप्ताह आगे', amount: 1, status: 'pending', remarksArr: [{ text: 'z', by: 'a', at: '3', due: '2026-11-06' }] },
+    ]);
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा (2)');
+    await page.click('#fb-promise');
+    expect(await names(page)).toEqual(['नवंबर का बीता वादा', 'इस सप्ताह आगे']);
+    // रिमार्क/निशान मिटा नहीं — "सभी" में कार्ड पर अब भी "(बीत गया)"
+    await page.evaluate(() => { activeFilter = 'all'; renderList(); });
+    await expect(page.locator('.con-card', { hasText: 'अक्टूबर का टूटा वादा' }).locator('.chip-due.over')).toContainText('(बीत गया)');
+    // नया वादा → फिर बटन में
+    await page.evaluate(() => { openRmkModal(0, '1'); document.getElementById('rmk-due').value = '2026-11-05'; document.getElementById('rmk-text').value = 'फिर कहा'; saveRmk(); });
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा (3)');
+  });
+
+  test('बीते वादे पर दो बार टैप = "💔 वादा टूटा" — "वादे" बटन से बाहर, इतिहास में दर्ज; एक टैप पर सिर्फ़ संकेत; नया वादा फिर गिने (v9.235)', async ({ page }) => {
+    BASE = '2026-10-14T12:00:00';
+    await page.clock.setFixedTime(new Date(BASE));
+    await seed(page, [
+      { acc: '1', name: 'टूटा वादा', amount: 1, status: 'pending', remarksArr: [{ text: 'x', by: 'a', at: '12/10/2026, 9:00 am', due: '2026-10-12' }] },
+      { acc: '2', name: 'आगे का वादा', amount: 1, status: 'pending', remarksArr: [{ text: 'y', by: 'a', at: '13/10/2026, 9:00 am', due: '2026-10-17' }] },
+    ]);
+    await page.evaluate(() => { window.matchMedia = () => ({ matches: true }); }); // animation छोड़कर तुरंत (टेस्ट तेज़)
+    await page.click('#fb-promise');
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा (2)');
+    // आज/आगे वाले chip पर टैप से कुछ नहीं
+    expect(await page.locator('.con-card', { hasText: 'आगे का वादा' }).locator('.chip-due').getAttribute('onclick')).toBeNull();
+    const chip = page.locator('.con-card', { hasText: 'टूटा वादा' }).locator('.chip-due.over');
+    await chip.click();
+    await expect(page.locator('#toast')).toContainText('दो बार जल्दी टैप');
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा (2)'); // एक टैप से नहीं टूटा
+    await chip.click();
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा (1)');
+    expect(await names(page)).toEqual(['आगे का वादा']);
+    const r = await page.evaluate(() => { const x = cGet(activeHQ, activeCat)[0]; const l = x.remarksArr[x.remarksArr.length - 1]; return [l.text, l.brk, x.status, (getPending()[cKey(activeHQ, activeCat)] || {}).patch ? 1 : 0]; });
+    expect(r[0]).toContain('💔 वादा टूटा');
+    expect(r[1]).toBe('2026-10-12');
+    expect(r[2]).toBe('pending'); // वसूली की स्थिति नहीं छुई
+    // नया वादा → फिर बटन में
+    await page.evaluate(() => { openRmkModal(0, '1'); document.getElementById('rmk-due').value = '2026-10-16'; document.getElementById('rmk-text').value = 'फिर कहा'; saveRmk(); });
+    await expect(page.locator('#fb-promise')).toHaveText('इस सप्ताह जमा का वादा (2)');
   });
 
   test('"वसूल हुआ" चुनने पर वादा-तारीख़ वाला खाना छिपे; PDF/Excel में "इस सप्ताह के वादे" वाली सूची जाए', async ({ page }) => {
