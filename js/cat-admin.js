@@ -8,8 +8,13 @@ function openEditCat(i, slotKey){
   // ऑफ़लाइन नाम बदलने देना सबसे ख़तरनाक है: नाम बदल जाता पर डेटा पुराने पते पर रह जाता, और
   // अगली पढ़ाई में खाली सूची cache पर लिख जाती — इसलिए यहीं रोक देते हैं
   if(!navigator.onLine){toast("📴 नाम बदलने के लिए नेट ज़रूरी है — डेटा भी नए नाम पर ले जाना पड़ता है","err");return;}
-  var cur=CATS[i];
-  var newName=prompt(activeHQ+" — श्रेणी का नया नाम डालें:",cur);
+  var cur=CATS[i], hq0=activeHQ;
+  // v9.236: ब्राउज़र के prompt()/confirm() की जगह ऐप का अपना डिब्बा (appAsk) — तीनों सवाल उसी से
+  appAsk({icon:"✏️",title:"श्रेणी का नया नाम",msg:hq0+" — \""+cur+"\" का नया नाम लिखें:",input:{value:cur,maxlength:40},
+    buttons:[{label:"आगे",kind:"ok",value:true},{label:"रद्द करें",kind:"cancel",value:false}]},
+    function(v,txt){ if(v&&hq0===activeHQ) _editCatNamed(i,cur,txt); });
+}
+function _editCatNamed(i,cur,newName){
   if(!newName||!newName.trim()||newName.trim()===cur) return;
   newName=newName.trim();
   // "/" (या .#$[]) नाम में हो तो Firebase पर गलत जगह (नेस्टेड path) सेव होकर हमेशा के लिए
@@ -24,7 +29,12 @@ function openEditCat(i, slotKey){
   }
   // नाम हर मुख्यालय का अपना है (/CAT_NAMES/{HQ}/{index}), इसलिए यह पूछना ज़रूरी है — JE अक्सर
   // सभी छह में एक जैसा नाम चाहते हैं, पर कभी किसी एक HQ में अलग नाम भी रखना पड़ सकता है
-  var allHQ=confirm("\""+newName+"\" नाम कहाँ लगाना है?\n\n[OK] = सभी "+HQS.length+" मुख्यालयों में\n[Cancel] = सिर्फ़ "+activeHQ+" में");
+  // पहले यहां "[OK] = सभी, [Cancel] = सिर्फ़ यह HQ" था — "रद्द" दबाने का मतलब रद्द नहीं था (उलझन)। अब तीन साफ़ बटन
+  appAsk({icon:"📍",title:"नया नाम कहां लगाना है?",msg:"श्रेणी का नया नाम: \""+newName+"\"",
+    buttons:[{label:"सभी "+HQS.length+" मुख्यालयों में",kind:"alt",value:"all"},{label:"सिर्फ़ "+activeHQ+" में",kind:"ok",value:"one"},{label:"रद्द करें — नाम न बदलें",kind:"cancel",value:null}]},
+    function(w){ if(w) _editCatWhere(i,newName,w==="all"); });
+}
+function _editCatWhere(i,newName,allHQ){
   var targets=allHQ?HQS.slice():[activeHQ];
   // हर HQ में इस slot का अपना मौजूदा नाम अलग हो सकता है — इसलिए हर एक का oldCat अलग निकालो,
   // और जिनका नाम पहले से यही है उन्हें छोड़ दो (उनका डेटा बेवजह हिलाने की ज़रूरत नहीं)
@@ -52,12 +62,12 @@ function openEditCat(i, slotKey){
       hideLoader();
       var tot=0,unknown=false;
       jobs.forEach(function(x){ if(x.n==null) unknown=true; else tot+=x.n; });
-      var msg="\""+newName+"\" नाम "+(jobs.length===1?jobs[0].hq+" में":jobs.length+" मुख्यालयों में")+" लगाएँ?\n\n";
-      jobs.forEach(function(x){ msg+="• "+x.hq+" › "+x.oldCat+" — "+(x.n==null?"गिनती नहीं मिली":(x.n+" records"))+"\n"; });
-      msg+="\nकुल "+tot+" records नए नाम पर ले जाए जाएँगे"+(unknown?" (कुछ की गिनती नहीं मिली)":"")+"।";
-      msg+="\n\nहर मुख्यालय का डेटा एक बार पढ़ा और एक बार लिखा जाएगा, और सभी फ़ोनों पर नई सूची जाएगी — इसलिए यह काम कम-ट्रैफ़िक समय पर करें (दोपहर 12:30 के बाद)।";
-      if(!confirm(msg)) return;
-      _runCatRenames(i,newName,jobs);
+      appAsk({icon:"✏️",title:"\""+newName+"\" नाम "+(jobs.length===1?jobs[0].hq+" में":jobs.length+" मुख्यालयों में")+" लगाएं?",
+        list:jobs.map(function(x){ return x.hq+" › "+x.oldCat+" — "+(x.n==null?"गिनती नहीं मिली":(x.n+" records")); }),
+        msg:"कुल "+tot+" records नए नाम पर ले जाए जाएंगे"+(unknown?" (कुछ की गिनती नहीं मिली)":"")+"।",
+        warn:"हर मुख्यालय का डेटा एक बार पढ़ा और एक बार लिखा जाएगा, और सभी फ़ोनों पर नई सूची जाएगी — कम-ट्रैफ़िक समय पर करें (दोपहर 12:30 के बाद)",
+        buttons:[{label:"रुको, अभी नहीं",kind:"cancel",value:false},{label:"✏️ हां, नाम बदलो",kind:"ok",value:true}]},
+        function(v){ if(v) _runCatRenames(i,newName,jobs); });
     });
   });
 }

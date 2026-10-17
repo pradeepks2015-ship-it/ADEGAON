@@ -405,7 +405,9 @@ function _dvClearOld(){
     var r=raw[k]; return r&&typeof r==="object"&&(Number(r.t)||0)<cutoff;
   });
   if(!olds.length){toast("कोई पुरानी entry नहीं — सूची पहले से साफ़ है","ok");return;}
-  if(!confirm("⚠️ "+olds.length+" पुरानी entries हटेंगी (जो "+_DV_WINDOW+" दिन से नहीं दिखीं)।\n\nजो device अब भी इस्तेमाल में है, वो अगली बार login होते ही अपने आप वापस आ जाएगा — कोई डेटा नहीं खोता।\n\nजारी रखें?")) return;
+  appAsk({icon:"🧹",title:olds.length+" पुरानी entries हटाएं?",msg:"जो "+_DV_WINDOW+" दिन से नहीं दिखीं। जो device अब भी इस्तेमाल में है, वो अगली बार login होते ही अपने आप वापस आ जाएगा — कोई डेटा नहीं खोता।",buttons:[{label:"हां, हटाओ",kind:"ok",value:true},{label:"नहीं",kind:"cancel",value:false}]},function(v){ if(v) _dvPruneNow(olds,raw); });
+}
+function _dvPruneNow(olds,raw){
   Promise.all(olds.map(function(k){
     return fetch(FB+"/DEVICE_VERSIONS/"+encodeURIComponent(k)+".json",{method:"DELETE"})
       .then(function(r){ if(r.ok) delete raw[k]; })
@@ -648,7 +650,9 @@ function clearLocalLogs(){
 // बाद अपने आप साफ़ होता था (cleanupOldServerLogs), JE के पास मैन्युअल तरीका नहीं था, तो पुरानी/
 // पहले ही देखी-समझी entries जमा होती रहतीं और हर बार लॉग खोलने पर वही ढेर दिखता रहता — असली bug यही था
 function clearServerLogs(){
-  if(!confirm("⚠️ यह सभी devices से दिख रहे पिछले 2 दिन के लॉग हमेशा के लिए मिटा देगा (सिर्फ़ इस device का लॉग नहीं — सबका)। जारी रखें?"))return;
+  appAsk({icon:"🗑️",title:"सभी devices के लॉग साफ़ करें?",msg:"पिछले 2 दिन के लॉग हमेशा के लिए मिटेंगे — सिर्फ़ इस device का नहीं, सबका।",buttons:[{label:"रुको, अभी नहीं",kind:"cancel",value:false},{label:"🗑️ हां, सबके लॉग मिटाओ",kind:"danger",value:true}]},function(v){ if(v) _clearServerLogsNow(); });
+}
+function _clearServerLogsNow(){
   document.getElementById("log-srv").innerHTML='<div class="log-empty">साफ़ हो रहा है...</div>';
   var days=[0,1].map(function(off){return new Date(Date.now()-off*86400000).toISOString().slice(0,10);});
   Promise.all(days.map(function(day){

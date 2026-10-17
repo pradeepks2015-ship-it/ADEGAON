@@ -92,6 +92,10 @@
   `x.remarksArr` नहीं, यही इस्तेमाल करे। भेजते वक़्त `_mergeServerRemarks` सर्वर-रिमार्क मिलाता है; पढ़ाई नाकाम हो तो रिमार्क
   छोड़कर बाक़ी fields ("acc/field" path) जाते हैं और पूरा record "बाक़ी" में रुकता है (`hold`); offline-queue भेजते वक़्त
   `REMARK_FLUSH_MAX` (500) तक 10-10 करके मिलान
+- **पुष्टि-डिब्बा (v9.236):** ब्राउज़र का `confirm()`/`prompt()` नहीं — ऐप का `appAsk(o,cb)` (ui-core.js; सारा पाठ textContent,
+  ख़तरनाक पर `kind:"danger"`, "रुको" ऊपर)। सिर्फ़ "वसूली वापस बाकी" (`markUnpaid`) जान-बूझकर ब्राउज़र वाला (JE 16/10)।
+  टेस्ट: `tests/helpers.js` `window.__askAuto` लगाता है जो पुराने window.confirm/prompt stub से जवाब देता है; असली डिब्बा
+  "ऐप का अपना पुष्टि-डिब्बा" टेस्ट (boot-ui) `__askAuto` हटाकर जांचते हैं
 - **बैकअप से रिमार्क वापसी (15/10):** Actions → "Restore Remarks From Backup" (सिर्फ़ हाथ से; `scripts/restore-remarks.js`)।
   पहले "गिनती", JE की Ok पर "लिखो"। सिर्फ़ जोड़ता है (text-मिलान, `restored: "backup-<दिन>"` निशान), लॉग में कोई नाम नहीं
 - इस sandbox से github.io तक पहुंच नहीं (proxy 403) — "लाइव" सिर्फ़ deployments API के `success` से पक्का करें

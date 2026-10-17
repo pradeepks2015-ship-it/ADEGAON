@@ -152,7 +152,7 @@ test('JE: असली login → लेजर अपलोड सर्वर �
     document.getElementById('up-cat').value = 'कुल उपभोक्ता';
     setUpMode('replace');
     parsedRows = [{ acc: '9001', name: 'नया लेजर', amount: 450, status: 'pending', remarksArr: [] }];
-    window.confirm = () => true;
+    window.__askAuto = () => true; // v9.236: अपलोड की चेतावनी ऐप के अपने डिब्बे (appAsk) में — "हां"
     confirmUpload();
   });
   await expect.poll(async () => {

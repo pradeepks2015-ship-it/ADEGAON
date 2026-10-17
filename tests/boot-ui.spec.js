@@ -792,3 +792,67 @@ test('header की ख़ाली जगह पर टैप से स्क�
   expect(await open()).toBe(false);
   await expect(page.locator('#logout-menu')).toHaveClass(/open/);
 });
+
+// ── v9.236: ऐप का अपना पुष्टि-डिब्बा (appAsk) — ब्राउज़र के confirm()/prompt() की जगह ──
+test.describe('ऐप का अपना पुष्टि-डिब्बा (v9.236)', () => {
+  test('सूची हटाना: "रुको"/बाहर टैप/Esc पर कुछ नहीं, लाल "हां" पर हटे; ब्राउज़र डिब्बा कभी नहीं; पाठ सिर्फ़ text (HTML नहीं चलता)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    let native = 0;
+    page.on('dialog', (d) => { native++; d.dismiss(); });
+    await page.evaluate(() => { delete window.__askAuto; cSet(activeHQ, activeCat, [{ acc: '1', name: 'क', amount: 1, status: 'pending' }]); renderList(); });
+    await page.evaluate(() => clearList());
+    await expect(page.locator('#ask-ov .ask-warn')).toContainText('वापस नहीं होगा');
+    await expect(page.locator('#ask-ov .ask-msg')).toContainText('1 उपभोक्ता');
+    await page.click('#ask-ov .ask-cancel');
+    expect(await page.evaluate(() => cGet(activeHQ, activeCat).length)).toBe(1);
+    await page.evaluate(() => clearList());
+    await page.locator('#ask-ov').click({ position: { x: 8, y: 600 } }); // डिब्बे के बाहर (काली परत पर) टैप
+    await expect(page.locator('#ask-ov')).toHaveCount(0);
+    await page.evaluate(() => clearList());
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#ask-ov')).toHaveCount(0);
+    expect(await page.evaluate(() => cGet(activeHQ, activeCat).length)).toBe(1);
+    await page.evaluate(() => clearList());
+    await page.click('#ask-ov .ask-danger');
+    expect(await page.evaluate(() => cGet(activeHQ, activeCat).length)).toBe(0);
+    // नाम/संदेश में HTML हो तो भी सिर्फ़ text दिखे
+    await page.evaluate(() => { window.__xss = 0; appAsk({ title: '<img src=x onerror="window.__xss=1">', buttons: [{ label: 'ठीक', kind: 'ok', value: 1 }] }, function () {}); });
+    await expect(page.locator('#ask-ov .ask-title')).toHaveText('<img src=x onerror="window.__xss=1">');
+    expect(await page.evaluate(() => [window.__xss, document.querySelectorAll('#ask-ov img').length])).toEqual([0, 0]);
+    await page.click('#ask-ov .ask-ok');
+    expect(native).toBe(0);
+  });
+
+  test('श्रेणी का नाम: लिखने का खाना + "कहां लगाना" के तीन साफ़ बटन (पहले OK/Cancel का उलझा सवाल)', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      delete window.__askAuto;
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      var seen = [];
+      var oCnt = window.catRecordCount, oRun = window._runCatRenames;
+      window.catRecordCount = function (hq, cat, cb) { cb(3); };
+      window._runCatRenames = function (i, name, jobs) { window.catRecordCount = oCnt; window._runCatRenames = oRun; resolve({ seen: seen, name: name, hqs: jobs.map(function (j) { return j.hq; }) }); };
+      var idx = -1; for (var i = 0; i < CATS_DEFAULT.length; i++) if (isCatEditable(i)) { idx = i; break; }
+      openEditCat(idx, 'cat' + idx);
+      var step = function () {
+        var t = document.querySelector('#ask-ov .ask-title');
+        if (!t) { setTimeout(step, 30); return; }
+        seen.push(t.textContent);
+        var inp = document.querySelector('#ask-ov .ask-inp');
+        if (inp) { inp.value = 'नया-परख-नाम'; document.querySelector('#ask-ov .ask-ok').click(); }
+        else if (document.querySelector('#ask-ov .ask-alt')) { seen.push([].map.call(document.querySelectorAll('#ask-ov .ask-btn'), function (b) { return b.textContent; }).join('|')); document.querySelector('#ask-ov .ask-ok').click(); }
+        else { document.querySelector('#ask-ov .ask-ok').click(); return; }
+        setTimeout(step, 30);
+      };
+      setTimeout(step, 30);
+    }));
+    expect(r.seen[0]).toBe('श्रेणी का नया नाम');
+    expect(r.seen[1]).toBe('नया नाम कहां लगाना है?');
+    expect(r.seen[2]).toMatch(/^सभी \d+ मुख्यालयों में\|सिर्फ़ .+ में\|रद्द करें — नाम न बदलें$/);
+    expect(r.name).toBe('नया-परख-नाम');
+    expect(r.hqs.length).toBe(1); // "सिर्फ़ यह HQ"
+  });
+});
+
