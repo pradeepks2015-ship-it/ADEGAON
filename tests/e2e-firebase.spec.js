@@ -120,6 +120,37 @@ test('लाइनमैन: सही PIN → असली login (HQ खात�
   expect(await page.evaluate(() => Object.keys(getPending()).length)).toBe(0); // कतार में कुछ अटका नहीं
 });
 
+// v9.234/236: सर्वर-रिमार्क की पढ़ाई नाकाम हो तो record "acc/field" path से (रिमार्क छोड़कर) जाता है — असली rules उसे मानें,
+// सर्वर का रिमार्क न दबे, और नेट सुधरने पर रुका हिस्सा मिलाकर जाए (per-record / migrated सूची पर)
+test('लाइनमैन: रिमार्क-पढ़ाई नाकाम → वसूली field-path से सर्वर पर (rules मानें), सर्वर का रिमार्क बचे, बाद में "बाक़ी" ख़ाली', async ({ page }) => {
+  const srvRmk = [{ text: 'सर्वर पर पहले से', by: 'दूसरा', at: '15/10/2026, 9:00:00 am' }];
+  await admin('PUT', '', {
+    MIGRATED: { 'आदेगांव': { 'कुल_उपभोक्ता': true } },
+    'आदेगांव': { 'कुल_उपभोक्ता': {
+      7001: { acc: '7001', name: 'रामलाल पटेल', amount: 1200, status: 'pending', o: 0, remarksArr: srvRmk },
+      7002: { acc: '7002', name: 'श्याम यादव', amount: 800, status: 'pending', o: 1 },
+    } },
+  });
+  await openOnEmulator(page);
+  let blockRmk = true;
+  await page.route(/remarksArr\.json/, (r) => (blockRmk ? r.abort() : r.fallback()));
+  await lineLogin(page, PIN);
+  await page.waitForFunction(() => document.getElementById('app-screen').classList.contains('active'), null, { timeout: 20000 });
+  await expect(page.locator('.con-card').first()).toContainText('रामलाल', { timeout: 20000 });
+  // इस फ़ोन की copy में सर्वर वाला रिमार्क नहीं (पुरानी copy जैसा)
+  await page.evaluate(() => { const d = cGet(activeHQ, activeCat); d.forEach((x) => { delete x.remarksArr; delete x.remarks; }); cSet(activeHQ, activeCat, d); markPaid(0, '7001'); });
+  const rec = () => admin('GET', 'आदेगांव/कुल_उपभोक्ता/7001');
+  await expect.poll(async () => (await rec()).status, { timeout: 20000 }).toBe('paid');
+  expect((await rec()).remarksArr.map((r) => r.text)).toEqual(['सर्वर पर पहले से']);
+  expect(await page.evaluate(() => Object.keys((getPending()[cKey(activeHQ, activeCat)] || {}).patch || {}))).toEqual(['7001']);
+  blockRmk = false;
+  await page.evaluate(() => flushPending());
+  await expect.poll(() => page.evaluate(() => Object.keys(getPending()).length), { timeout: 20000 }).toBe(0);
+  const fin = await rec();
+  expect(fin.status).toBe('paid');
+  expect(fin.remarksArr.map((r) => r.text)).toEqual(['सर्वर पर पहले से']);
+});
+
 test('लाइनमैन: ग़लत PIN → अंदर न जाने दे, सर्वर का डेटा न बदले', async ({ page }) => {
   await openOnEmulator(page);
   await lineLogin(page, '999999');

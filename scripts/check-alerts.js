@@ -40,13 +40,14 @@ const MULTI = [
   'pending-stuck-auth', 'lazy-load-fail', 'auto-logout', 'session-unknown-hq', 'je-auth-retry-fail',
   'cache-idb-slow', 'array-put-noflags', 'save-shape-probe-fail', 'migrate-fail', 'excel-parse',
   'pin-save-fail', 'ph-custom-save-fail', 'pause-save-fail', 'catname-save', 'catrename-partial',
-  'catrename-move', 'hsc-publish', 'homebg-upload', 'cash-refresh-partial', 'remark-merge-hold', 'ask-cb',
+  'catrename-move', 'hsc-publish', 'homebg-upload', 'cash-refresh-partial', 'ask-cb',
 ];
 // ⚪ कभी alert नहीं — "ठीक हो गया"/एक-बार सफ़ाई/जानकारी वाली
 const IGNORE = [
   'appcheck-recovered', 'je-auth-recovered', 'cache-reset', 'cache-prune', 'cut-clean',
   'migration-revert-fixed', 'migration-revert-already', 'migration-revert-empty', 'migration-dup-merged',
   'mig-noacc-skip', 'repeat-mark', 'hsc-conflict', 'cash-refresh-cb', 'cache-init-cb',
+  'remark-merge-hold', // v9.237: अपने-आप संभलती है (20 sec बाद फिर कोशिश); अटके तो pending-old alert
 ];
 
 const TITLE = '🚨 ऐप alert';
