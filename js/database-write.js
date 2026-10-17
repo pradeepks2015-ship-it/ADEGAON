@@ -229,7 +229,7 @@ function _mergeServerRemarks(hq,cat,patch,max){
         patch[k].remarks=out[out.length-1].text; // backward-compat field — saveRmk जैसा ही
         gained[k]=out;
       })
-      .catch(function(){ failed[k]=1; });
+      .catch(function(e){ failed[k]=String((e&&e.message)||e||"?").slice(0,60); });
   }
   var chain=/** @type {Promise<any>} */(Promise.resolve());
   for(var i=0;i<keys.length;i+=REMARK_MERGE_BATCH){
@@ -255,7 +255,10 @@ function _mergeServerRemarks(hq,cat,patch,max){
       Object.keys(rec).forEach(function(f){ if(f!=="remarksArr"&&f!=="remarks") send[k+"/"+f]=rec[f]; });
     });
     // हर 20 सेकंड वाली कोशिश पर लॉग न भरे — हर सूची पर एक बार (इस बार ऐप खुलने तक)
-    if(!_rmkHoldLogged[hq+"/"+cat]) logErr("remark-merge-hold",Object.keys(hold).length+" उपभोक्ता के सर्वर-रिमार्क पढ़े नहीं जा सके (कमज़ोर नेट) — उनकी वसूली/बाक़ी बदलाव भेजे, रिमार्क वाला हिस्सा बाद में मिलाकर भेजा जाएगा",hq+"/"+cat);
+    // v9.237: वजह भी (timeout = कमज़ोर नेट; HTTP 401 = login/App Check अभी तैयार नहीं) — यह अपने-आप संभलने वाली
+    // हालत है, alert नहीं बनती (check-alerts IGNORE); घंटों अटके तो "pending-old" alert आता है
+    var why=failed[Object.keys(failed)[0]];
+    if(!_rmkHoldLogged[hq+"/"+cat]) logErr("remark-merge-hold",Object.keys(hold).length+" उपभोक्ता के सर्वर-रिमार्क पढ़े नहीं जा सके — उनकी वसूली/बाक़ी बदलाव भेजे, रिमार्क वाला हिस्सा बाद में मिलाकर भेजा जाएगा",hq+"/"+cat+" • वजह: "+why);
     _rmkHoldLogged[hq+"/"+cat]=1;
     return {send:send,hold:hold};
   });
