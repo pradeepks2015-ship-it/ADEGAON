@@ -516,6 +516,44 @@ function mergeArrays(local,server){
   return out;
 }
 
+// ── v9.239: "बाक़ी" भेजते वक़्त हर सर्वर-बात पर समय-सीमा ──
+// असली production (18/10, पाटन/कुल उपभोक्ता, राजकुमार): पूरी-सूची वाली entry 28 घंटे अटकी रही और लॉग में
+// कोई नाकामी नहीं — कमज़ोर नेट पर fetch न पूरा होता न नाकाम, _flushing हमेशा true रहता, और उस बार ऐप खुले
+// रहने तक भेजना रुका रहता। अब समय बीतते ही "timeout" error — fin(false), लॉग में वजह, अगली बार फिर कोशिश
+var FLUSH_FETCH_MS=60000;      // PATCH/DELETE (छोटे)
+var FLUSH_LIST_FETCH_MS=120000; // पूरी सूची उतारना (कुछ MB, धीमे नेट पर)
+function _fetchT(url,opts,ms){
+  var ac=(typeof AbortController!=="undefined")?new AbortController():null;
+  var o=opts||{}; if(ac) o.signal=ac.signal;
+  var timer=0;
+  return Promise.race([
+    fetch(url,o),
+    new Promise(function(_,rej){ timer=setTimeout(function(){ if(ac){try{ac.abort();}catch(e){}} rej(new Error("timeout")); },ms); })
+  ]).then(function(r){ clearTimeout(timer); return r; },function(e){ clearTimeout(timer); throw e; });
+}
+// key-क्रम से बेफ़िक्र तुलना — mergeRecord नया object बनाता है, सादा JSON.stringify हर record को "बदला" मान लेता
+function _stableJson(v){
+  if(v===null||typeof v!=="object") return JSON.stringify(v);
+  if(Array.isArray(v)) return "["+v.map(_stableJson).join(",")+"]";
+  return "{"+Object.keys(v).sort().filter(function(k){return v[k]!==undefined;}).map(function(k){return JSON.stringify(k)+":"+_stableJson(v[k]);}).join(",")+"}";
+}
+// v9.239: per-record (migrated) सूची की "पूरी सूची" वाली entry — मिलाई हुई copy में से सिर्फ़ वे उपभोक्ता जो
+// सर्वर से अलग हैं (पहले पूरी सूची PUT होती थी: कई MB, और बीच में किसी और का बदलाव दब सकता था)।
+// हटाना कभी नहीं — mergeArrays सर्वर के सब records रखता है; Consumer No-रहित records per-record में जा ही नहीं सकते
+function _mergedPatch(server,merged){
+  var sByAcc={},maxO=-1,patch={};
+  (server||[]).forEach(function(x){ var k=accKeyOf(x); if(k) sByAcc[k]=x; if(x&&x.o!=null&&Number(x.o)>maxO) maxO=Number(x.o); });
+  (merged||[]).forEach(function(x){
+    var k=accKeyOf(x); if(!k) return;
+    var old=sByAcc[k];
+    if(old&&_stableJson(old)===_stableJson(x)) return;
+    var rec=JSON.parse(JSON.stringify(x));
+    if(rec.o==null) rec.o=(old&&old.o!=null)?old.o:++maxO;
+    patch[k]=rec;
+  });
+  return patch;
+}
+
 var _flushing=false;
 function flushPending(){
   if(_flushing||!navigator.onLine) return;
@@ -543,7 +581,7 @@ function flushPending(){
       return;
     }
     if(it.type==="del"){
-      fetch(FB+"/"+fbPath(it.hq,it.cat)+".json",{method:"DELETE"})
+      _fetchT(FB+"/"+fbPath(it.hq,it.cat)+".json",{method:"DELETE"},FLUSH_FETCH_MS)
         .then(function(r){if(!r.ok)return _fbHttpErr(r);clearPendingKey(k);setSyncStatus(true);fin(true);})
         .catch(function(e){if(navigator.onLine)logErr("sync-del-fail",e,it.hq+"/"+it.cat+_authDiag(e));_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
       return;
@@ -557,9 +595,9 @@ function flushPending(){
       var hold=null, sentAs=JSON.parse(JSON.stringify(it.patch)); // मिलान से पहले का रूप — "बाक़ी" से मिलाने को
       _mergeServerRemarks(it.hq,it.cat,it.patch,REMARK_FLUSH_MAX).then(function(res){
         hold=res.hold;
-        return fetch(FB+"/"+fbPath(it.hq,it.cat)+".json",{
+        return _fetchT(FB+"/"+fbPath(it.hq,it.cat)+".json",{
           method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(res.send)
-        });
+        },FLUSH_FETCH_MS);
       }).then(function(r){
         if(!r.ok)return _fbHttpErr(r);
         pendingDropRecs(it.hq,it.cat,sentAs,true);
@@ -576,7 +614,7 @@ function flushPending(){
     }
     // put (पुराना array फॉर्मेट) — पहले server data लो, merge करो, फिर save — दोनों के बदलाव बचें
     // (_fbPut को ही बुलाओ, सीधे fetch PUT नहीं — वही एक जगह है जो migrated श्रेणी पर raw array भेजने से बचाती है)
-    fetch(FB+"/"+fbPath(it.hq,it.cat)+".json?t="+Date.now())
+    _fetchT(FB+"/"+fbPath(it.hq,it.cat)+".json?t="+Date.now(),{},FLUSH_LIST_FETCH_MS)
       .then(_fbJson)
       .then(function(d){
         trackUsageOf(d); // offline बदलाव भेजने से पहले वाली पढ़ाई
@@ -591,6 +629,24 @@ function flushPending(){
         var server=normList(d);
         var merged=mergeArrays(cGet(it.hq,it.cat),server);
         cSet(it.hq,it.cat,merged);
+        // v9.239: सर्वर पर सूची per-record है — पूरी सूची PUT नहीं, सिर्फ़ अलग उपभोक्ता PATCH (देखें _mergedPatch)
+        if(isMigrated(it.hq,it.cat)||_shapeFromShallow(d)==="obj"){
+          var mp=_mergedPatch(server,merged), mpN=Object.keys(mp).length;
+          var mpDone=function(){
+            // भेजते-भेजते इसी सूची में नया बदलाव जुड़ा हो (entry में patch) तो वह "बाक़ी" में बचे
+            pendingDropRecs(it.hq,it.cat,mp,true); updTime(); setSyncStatus(!isPending(it.hq,it.cat));
+            if(CU&&it.hq===activeHQ&&it.cat===activeCat){renderSummaryWith(merged);renderListWith(merged);}
+            fin(true);
+          };
+          if(!mpN){ mpDone(); return; }
+          return _fetchT(FB+"/"+fbPath(it.hq,it.cat)+".json",{
+            method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(mp)
+          },FLUSH_FETCH_MS).then(function(r){
+            if(!r.ok) return _fbHttpErr(r);
+            _noteShape(it.hq,it.cat,{});
+            mpDone();
+          });
+        }
         _fbPut(it.hq,it.cat,merged,function(ok){
           if(ok&&CU&&it.hq===activeHQ&&it.cat===activeCat){renderSummaryWith(merged);renderListWith(merged);}
           fin(!!ok);

@@ -1478,3 +1478,64 @@ test.describe('रिमार्क सब सूचियों से मि�
     expect(r.writes).toBe(0);
   });
 });
+
+// v9.239 (18/10, पाटन/कुल उपभोक्ता, राजकुमार): "पूरी सूची" वाली बाक़ी entry 28 घंटे अटकी, लॉग में कोई नाकामी नहीं।
+// (क) भेजते वक़्त सर्वर-बात अटके तो समय-सीमा पर "timeout" — _flushing छूटे, अगली बार फिर कोशिश;
+// (ख) per-record सूची पर पूरी सूची PUT नहीं — मिलाई हुई copy में से सिर्फ़ सर्वर से अलग उपभोक्ता PATCH
+test.describe('पूरी-सूची वाली बाक़ी entry (v9.239)', () => {
+  const run = (page, opts) => page.evaluate((opts) => new Promise((resolve) => {
+    Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+    const hq = 'टेस्ट HQ39', cat = 'कुल उपभोक्ता';
+    if (opts.migrated) { MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true; }
+    if (opts.hang) { FLUSH_LIST_FETCH_MS = 300; }
+    const server = { 1: { acc: '1', name: 'क', status: 'pending', o: 0, remarksArr: [{ text: 'सर्वर वाला', at: 5 }] }, 2: { acc: '2', name: 'ख', status: 'pending', o: 1 } };
+    const calls = [];
+    const orig = window.fetch;
+    window.fetch = function (url, init) {
+      const u = String(url);
+      if (u.indexOf(fbPath(hq, cat)) > -1) {
+        const m = (init && init.method) || 'GET';
+        calls.push({ m, body: init && init.body ? JSON.parse(init.body) : null });
+        if (m === 'GET') return opts.hang ? new Promise(() => {}) : Promise.resolve(new Response(JSON.stringify(server), { status: 200 }));
+        return Promise.resolve(new Response('{}', { status: 200 }));
+      }
+      return orig(url, init);
+    };
+    // फ़ोन में: 1 वसूल (key-क्रम अलग), 2 वैसा ही — entry बिना patch ("पूरी सूची")
+    cSet(hq, cat, [{ status: 'paid', o: 0, name: 'क', acc: '1', paydate: '18/10/2026' }, { o: 1, status: 'pending', name: 'ख', acc: '2' }]);
+    localStorage.setItem('dc_pending3', JSON.stringify({ [cKey(hq, cat)]: { hq, cat, type: 'put', since: Date.now() } }));
+    _flushing = false;
+    flushPending();
+    const t0 = Date.now();
+    (function wait() {
+      if (_flushing && Date.now() - t0 < 5000) return setTimeout(wait, 50);
+      window.fetch = orig;
+      resolve({
+        calls: calls.map((c) => c.m), patch: calls.filter((c) => c.m === 'PATCH').map((c) => c.body)[0] || null,
+        flushing: _flushing, pending: !!getPending()[cKey(hq, cat)],
+        log: getLogs().filter((l) => l.c === 'sync-put-fail').map((l) => l.m),
+      });
+    })();
+  }), opts);
+
+  test('per-record सूची: पूरी सूची PUT नहीं — सिर्फ़ बदला उपभोक्ता PATCH, सर्वर का रिमार्क साथ, entry ख़त्म', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await run(page, { migrated: true });
+    expect(r.calls).toEqual(['GET', 'PATCH']);
+    expect(Object.keys(r.patch)).toEqual(['1']); // "ख" वैसा ही था (सिर्फ़ key-क्रम अलग) — नहीं भेजा
+    expect(r.patch['1'].status).toBe('paid');
+    expect(r.patch['1'].remarksArr.map((x) => x.text)).toEqual(['सर्वर वाला']);
+    expect(r.pending).toBe(false);
+  });
+
+  test('सर्वर से सूची उतरना अटक जाए तो समय-सीमा पर छूटे — लॉग में "timeout", entry बाक़ी में सुरक्षित, अगली बार फिर कोशिश', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await run(page, { migrated: true, hang: true });
+    expect(r.calls).toEqual(['GET']);
+    expect(r.flushing).toBe(false); // पहले हमेशा true रहता — उस बार ऐप खुले रहने तक भेजना बंद
+    expect(r.pending).toBe(true);
+    expect(r.log).toContain('timeout');
+  });
+});
