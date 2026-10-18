@@ -634,6 +634,31 @@ test.describe('logo और लिंक-झलक (v9.189)', () => {
     expect(ok).toBe(true);
   });
 
+  // v9.238: logo intro (JE का चुना "3+5") — 1.2s में पूरा, फिर logo अपनी जगह पूरा दिखे; animation चलते हुए भी
+  // भूमिका-कार्ड दब सके (login में कोई रुकावट नहीं); "कम animation" वाले फ़ोन पर तुरंत ख़त्म
+  test('login logo intro: पूरा होकर logo/नाम दिखें, बीच में भी बटन दबें, कम-animation पर तुरंत', async ({ page }) => {
+    await openApp(page);
+    const st = () => page.evaluate(() => {
+      const im = document.querySelector('.logo-wrap .login-logo');
+      const cs = getComputedStyle(im);
+      return { name: cs.animationName, op: +cs.opacity, tf: cs.transform, title: +getComputedStyle(document.querySelector('.login-title')).opacity };
+    });
+    expect((await st()).name).toBe('logoIn');
+    // animation के बीच भूमिका चुनना काम करे
+    await page.evaluate(() => { const l = document.getElementById('login-screen'); l.style.display = 'none'; void l.offsetWidth; l.style.display = ''; });
+    await page.click('#rc-sup', { timeout: 1000 });
+    await expect.poll(st, { timeout: 4000 }).toMatchObject({ op: 1, tf: 'none', title: 1 });
+  });
+
+  test('login logo intro: "कम animation" (reduced motion) पर logo तुरंत अपनी जगह', async ({ browser }) => {
+    const ctx = await browser.newContext({ reducedMotion: 'reduce' });
+    const page = await ctx.newPage();
+    await openApp(page);
+    const r = await page.evaluate(() => { const cs = getComputedStyle(document.querySelector('.login-logo')); return { op: +cs.opacity, tf: cs.transform }; });
+    expect(r).toEqual({ op: 1, tf: 'none' });
+    await ctx.close();
+  });
+
   test('sw.js — 512px वाले icons precache न हों; जो भी precache सूची में है वह फ़ाइल सचमुच मौजूद हो', () => {
     const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
     const block = sw.slice(sw.indexOf('var CORE='), sw.indexOf('self.addEventListener("install"'));
