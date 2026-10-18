@@ -2,6 +2,8 @@
 var _appStarted=false;
 function startApp(){
   if(_appStarted)return; _appStarted=true;
+  // v9.238: login logo की intro — हर बार ऐप खुलने पर "3+4" (दो हिस्से जुड़ें) या "3+5" (ज़ूम) में से एक (JE 18/10)
+  if(Math.random()<0.5) document.getElementById("login-screen").classList.add("li-34");
   // v9.220: सूचियां IndexedDB से memory में आ जाएं, तभी आगे (देखें storage.js: cacheInit)
   cacheInit(_startAppReady);
 }
