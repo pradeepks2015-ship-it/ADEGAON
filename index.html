@@ -86,7 +86,8 @@ try{
   <div class="org-banner" style="position:fixed;top:0;left:0;right:0;z-index:50;">&#9889; आदेगांव बिजली वितरण केंद्र</div>
   <!-- 92px में दिखता है — पहले 327 KB की icon-512.png थी; अब 276px WebP (~14 KB, तेज़ स्क्रीन के लिए 3 गुना)।
        WebP न खुले (बहुत पुराना browser) तो पहले icon-192.png, फिर ⚡ -->
-  <img class="login-logo" src="icons/login-logo.webp" width="92" height="92" alt="Vasuli Tracker Adegaon logo" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='icons/icon-192.png';}else{this.outerHTML='<div style=\'font-size:60px;margin-bottom:10px\'>&#9889;</div>';}">
+  <!-- v9.238: logo की intro (JE के video से प्रेरित) — "3+5" ज़ूम होकर गिरे या "3+4" दो हिस्से जुड़ें (main.js में बेतरतीब चुनाव); सिर्फ़ CSS (style.css "logo-wrap") -->
+  <span class="logo-wrap"><img class="login-logo" src="icons/login-logo.webp" width="92" height="92" alt="Vasuli Tracker Adegaon logo" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='icons/icon-192.png';}else{this.outerHTML='<div style=\'font-size:60px;margin-bottom:10px\'>&#9889;</div>';}"><i class="logo-half l" aria-hidden="true"></i><i class="logo-half r" aria-hidden="true"></i><i class="logo-flash" aria-hidden="true"></i><i class="logo-shadow" aria-hidden="true"></i><i class="logo-glow" aria-hidden="true"></i></span>
   <div class="login-title">आदेगांव DC वसूली ट्रैकर</div>
   <div class="login-sub">लखनादौन डिवीजन सिवनी सर्कल</div>
   <div id="ver-badge" style="font-size:10px;font-weight:600;color:var(--gold);border:1px solid var(--border);background:var(--card);border-radius:12px;padding:3px 12px;margin:-14px 0 20px;"></div>

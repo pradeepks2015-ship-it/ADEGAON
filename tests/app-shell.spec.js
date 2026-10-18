@@ -634,6 +634,51 @@ test.describe('logo और लिंक-झलक (v9.189)', () => {
     expect(ok).toBe(true);
   });
 
+  // v9.238: logo intro — हर खुलने पर "3+5" (logoIn) या "3+4" (li-34: दो हिस्से जुड़ें) बेतरतीब; दोनों 1.5s में पूरे,
+  // फिर logo/नाम पूरे दिखें; animation चलते हुए भी भूमिका-कार्ड दबे (login में कोई रुकावट नहीं)
+  test('login logo intro: 3+5 और 3+4 दोनों पूरे होकर logo/नाम दिखें, बीच में भी बटन दबें', async ({ page }) => {
+    await openApp(page);
+    const st = () => page.evaluate(() => {
+      const im = document.querySelector('.logo-wrap .login-logo');
+      const cs = getComputedStyle(im);
+      const halves = [...document.querySelectorAll('.logo-half')].map((h) => +getComputedStyle(h).opacity);
+      return { name: cs.animationName, op: +cs.opacity, tf: cs.transform, title: +getComputedStyle(document.querySelector('.login-title')).opacity, halves };
+    });
+    for (const v of ['li-35', 'li-34']) {
+      await page.evaluate((v) => {
+        const l = document.getElementById('login-screen'); l.classList.remove('li-34'); if (v === 'li-34') l.classList.add('li-34');
+        l.style.display = 'none'; void l.offsetWidth; l.style.display = '';
+      }, v);
+      expect((await st()).name).toBe(v === 'li-34' ? 'logoShow, logoBounce' : 'logoIn');
+      // भूमिका-कार्ड का अपना fadeUp चलता है ("stable" नहीं) — force से सीधा दबाकर देखें कि चुना गया
+      await page.locator('#rc-sup').click({ force: true, timeout: 1000 });
+      await expect(page.locator('#rc-sup')).toHaveClass(/selected/);
+      // अंत में असली logo पूरा, आधे हिस्से छुपे (वरना दोहरी परछाईं)
+      await expect.poll(st, { timeout: 4000 }).toMatchObject({ op: 1, tf: 'none', title: 1, halves: [0, 0] });
+    }
+  });
+
+  test('login logo intro: हर खुलने पर दोनों में से एक चुना जाए (main.js)', () => {
+    const m = fs.readFileSync(path.join(__dirname, '..', 'js', 'main.js'), 'utf8');
+    expect(m).toMatch(/Math\.random\(\)<0\.5\) document\.getElementById\("login-screen"\)\.classList\.add\("li-34"\)/);
+  });
+
+  test('login logo intro: "कम animation" (reduced motion) पर logo तुरंत अपनी जगह', async ({ browser }) => {
+    const ctx = await browser.newContext({ reducedMotion: 'reduce' });
+    const page = await ctx.newPage();
+    await openApp(page);
+    for (const v of ['li-35', 'li-34']) {
+      const r = await page.evaluate((v) => {
+        const l = document.getElementById('login-screen'); l.classList.toggle('li-34', v === 'li-34');
+        l.style.display = 'none'; void l.offsetWidth; l.style.display = '';
+        const cs = getComputedStyle(document.querySelector('.login-logo'));
+        return { op: +cs.opacity, tf: cs.transform, halves: [...document.querySelectorAll('.logo-half')].map((h) => +getComputedStyle(h).opacity) };
+      }, v);
+      expect(r, v).toEqual({ op: 1, tf: 'none', halves: [0, 0] });
+    }
+    await ctx.close();
+  });
+
   test('sw.js — 512px वाले icons precache न हों; जो भी precache सूची में है वह फ़ाइल सचमुच मौजूद हो', () => {
     const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
     const block = sw.slice(sw.indexOf('var CORE='), sw.indexOf('self.addEventListener("install"'));
