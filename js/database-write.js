@@ -199,20 +199,41 @@ var REMARK_MERGE_TIMEOUT_MS=5000;
 var REMARK_FLUSH_MAX=500;
 var REMARK_MERGE_BATCH=10;
 var _rmkHoldLogged={};
+// v9.241 (19/10, JE के फ़ोन पर 10:56 — 6 HQ की 8 सूचियों में 61 उपभोक्ताओं के रिमार्क "timeout" पर रुके, नेट ठीक होते हुए):
+// कई सूचियां एक साथ भेजी जाएं तो हर सूची 10-10 पढ़ाई एक साथ छोड़ती थी (80 तक) — ब्राउज़र उन्हें कतार में रखता और
+// 5 सेकंड की घड़ी कतार में ही बीत जाती। अब पूरे ऐप में एक साथ ज़्यादा से ज़्यादा REMARK_READ_PARALLEL पढ़ाई,
+// और घड़ी तभी चलती है जब पढ़ाई सचमुच शुरू हो
+var REMARK_READ_PARALLEL=6;
+var REMARK_FLUSH_TIMEOUT_MS=15000; // "बाक़ी" पीछे से भेजते वक़्त (कोई इंतज़ार नहीं कर रहा) — सामने वाली सेव में 5s ही
+var _rmkActive=0,_rmkQueue=[];
+function _rmkSlot(run){
+  return new Promise(function(resolve,reject){
+    function go(){
+      _rmkActive++;
+      run().then(function(v){ done(); resolve(v); },function(e){ done(); reject(e); });
+    }
+    function done(){ _rmkActive--; var nx=_rmkQueue.shift(); if(nx) nx(); }
+    if(_rmkActive<REMARK_READ_PARALLEL) go(); else _rmkQueue.push(go);
+  });
+}
 // लौटाता है {send, hold}: send = अभी भेजने लायक़ patch; hold = वे records जिनके सर्वर-रिमार्क पढ़े नहीं जा सके
 // (कमज़ोर नेट पर timeout/नाकामी)। v9.234 से पहले ऐसे record बिना मिलान पूरे भेज दिए जाते थे — सर्वर का
 // रिमार्क दब जाता। अब उनके रिमार्क छोड़कर बाक़ी fields ("acc/status" जैसे अलग path) तुरंत जाते हैं, और पूरा
 // record "बाक़ी" (pending) में रुकता है — अगली बार मिलान होकर ही भेजा जाएगा
-function _mergeServerRemarks(hq,cat,patch,max){
+function _mergeServerRemarks(hq,cat,patch,max,timeoutMs){
+  var tmo=timeoutMs||REMARK_MERGE_TIMEOUT_MS;
   var keys=Object.keys(patch||{}).filter(function(k){ return patch[k]&&typeof patch[k]==="object"&&k.indexOf("/")<0; });
   if(!keys.length||keys.length>(max||REMARK_MERGE_MAX)||!navigator.onLine) return Promise.resolve({send:patch,hold:null});
   var gained={},failed={};
   function one(k){
     // धीमे नेट पर यह पढ़ाई असली सेव को देर तक न रोके — REMARK_MERGE_TIMEOUT_MS बाद हार मानो (record रुकेगा)
-    return Promise.race([
-      fetch(FB+"/"+fbPath(hq,cat)+"/"+encodeURIComponent(k)+"/remarksArr.json?t="+Date.now()).then(_fbJson),
-      new Promise(function(_,rej){ setTimeout(function(){ rej(new Error("timeout")); },REMARK_MERGE_TIMEOUT_MS); })
-    ])
+    return _rmkSlot(function(){
+      var timer=0;
+      return Promise.race([
+        fetch(FB+"/"+fbPath(hq,cat)+"/"+encodeURIComponent(k)+"/remarksArr.json?t="+Date.now()).then(_fbJson),
+        new Promise(function(_,rej){ timer=setTimeout(function(){ rej(new Error("timeout")); },tmo); })
+      ]).then(function(v){ clearTimeout(timer); return v; },function(e){ clearTimeout(timer); throw e; });
+    })
       .then(function(srv){
         trackUsageOf(srv);
         if(!srv||typeof srv!=="object") return;

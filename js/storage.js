@@ -607,7 +607,7 @@ function flushPending(){
       // उसी उपभोक्ता पर रिमार्क डाला हो तो वो न दबे (देखें database.js: _mergeServerRemarks)
       // v9.234: 10 से ज़्यादा records हों तब भी मिलान (10-10 करके); जिनके सर्वर-रिमार्क न पढ़ पाए वो "बाक़ी" में ही रुकें
       var hold=null, sentAs=JSON.parse(JSON.stringify(it.patch)); // मिलान से पहले का रूप — "बाक़ी" से मिलाने को
-      _mergeServerRemarks(it.hq,it.cat,it.patch,REMARK_FLUSH_MAX).then(function(res){
+      _mergeServerRemarks(it.hq,it.cat,it.patch,REMARK_FLUSH_MAX,REMARK_FLUSH_TIMEOUT_MS).then(function(res){
         hold=res.hold;
         var pb=JSON.stringify(res.send);
         return _fetchT(FB+"/"+fbPath(it.hq,it.cat)+".json",{
