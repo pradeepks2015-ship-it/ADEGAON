@@ -522,6 +522,15 @@ function mergeArrays(local,server){
 // रहने तक भेजना रुका रहता। अब समय बीतते ही "timeout" error — fin(false), लॉग में वजह, अगली बार फिर कोशिश
 var FLUSH_FETCH_MS=60000;      // PATCH/DELETE (छोटे)
 var FLUSH_LIST_FETCH_MS=120000; // पूरी सूची उतारना (कुछ MB, धीमे नेट पर)
+// v9.240 (19/10, मढ़ी, राजकुमार — v9.239 पर हर कुछ मिनट "timeout"): कई दिन के जमा बदलाव (सैकड़ों उपभोक्ता) एक PATCH में
+// जाएं तो धीमे नेट पर 60s कम — भेजे जा रहे आकार के हिसाब से समय (हर 4 KB पर 1s और), 3 मिनट तक
+var FLUSH_FETCH_MAX_MS=180000;
+function _flushMs(body){ return Math.min(FLUSH_FETCH_MAX_MS,FLUSH_FETCH_MS+Math.floor(String(body||"").length/4096)*1000); }
+// timeout के बाद हर 20 सेकंड (ui-core का setInterval) वही भारी कोशिश न दोहराएं — पहले 2 मिनट, फिर 5 मिनट रुकें
+// (कमज़ोर नेट पर लाइनमैन का डेटा/बैटरी बचे)। कोई भेजना सफल हो या ऐप दोबारा खुले तो फिर तुरंत। डेटा "बाक़ी" में सुरक्षित रहता है
+var FLUSH_BACKOFF_MS=[120000,300000];
+var _flushTimeouts=0,_flushBackoffUntil=0,_flushRoundTimeout=false;
+function _flushNoteErr(e){ if(e&&e.message==="timeout") _flushRoundTimeout=true; } // एक दौर में कितनी भी सूचियां — गिनती एक
 function _fetchT(url,opts,ms){
   var ac=(typeof AbortController!=="undefined")?new AbortController():null;
   var o=opts||{}; if(ac) o.signal=ac.signal;
@@ -556,19 +565,24 @@ function _mergedPatch(server,merged){
 
 var _flushing=false;
 function flushPending(){
-  if(_flushing||!navigator.onLine) return;
+  if(_flushing||!navigator.onLine||Date.now()<_flushBackoffUntil) return;
   var p=getPending();
   var keys=Object.keys(p);
   var needCat=false;
   try{needCat=localStorage.getItem("dc_catpending3")==="1";}catch(e){}
   if(!keys.length&&!needCat) return;
-  _flushing=true;
+  _flushing=true; _flushRoundTimeout=false;
   var done=0,total=keys.length+(needCat?1:0),okAll=true;
   function fin(ok){
     if(!ok)okAll=false;
     done++;
     if(done>=total){
       _flushing=false;
+      if(okAll){ _flushTimeouts=0; _flushBackoffUntil=0; }
+      else if(_flushRoundTimeout){
+        _flushBackoffUntil=Date.now()+FLUSH_BACKOFF_MS[Math.min(_flushTimeouts,FLUSH_BACKOFF_MS.length-1)];
+        _flushTimeouts++;
+      }
       setSyncStatus(navigator.onLine);
       if(okAll&&pendingCount()===0) toast("✅ सभी offline बदलाव sync हो गए","ok");
     }
@@ -583,7 +597,7 @@ function flushPending(){
     if(it.type==="del"){
       _fetchT(FB+"/"+fbPath(it.hq,it.cat)+".json",{method:"DELETE"},FLUSH_FETCH_MS)
         .then(function(r){if(!r.ok)return _fbHttpErr(r);clearPendingKey(k);setSyncStatus(true);fin(true);})
-        .catch(function(e){if(navigator.onLine)logErr("sync-del-fail",e,it.hq+"/"+it.cat+_authDiag(e));_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
+        .catch(function(e){if(navigator.onLine)logErr("sync-del-fail",e,it.hq+"/"+it.cat+_authDiag(e));_flushNoteErr(e);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
       return;
     }
     if(it.patch){
@@ -595,9 +609,10 @@ function flushPending(){
       var hold=null, sentAs=JSON.parse(JSON.stringify(it.patch)); // मिलान से पहले का रूप — "बाक़ी" से मिलाने को
       _mergeServerRemarks(it.hq,it.cat,it.patch,REMARK_FLUSH_MAX).then(function(res){
         hold=res.hold;
+        var pb=JSON.stringify(res.send);
         return _fetchT(FB+"/"+fbPath(it.hq,it.cat)+".json",{
-          method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(res.send)
-        },FLUSH_FETCH_MS);
+          method:"PATCH",headers:{"Content-Type":"application/json"},body:pb
+        },_flushMs(pb));
       }).then(function(r){
         if(!r.ok)return _fbHttpErr(r);
         pendingDropRecs(it.hq,it.cat,sentAs,true);
@@ -609,7 +624,7 @@ function flushPending(){
         updTime();setSyncStatus(!isPending(it.hq,it.cat));
         if(CU&&it.hq===activeHQ&&it.cat===activeCat){var d=cGet(it.hq,it.cat);renderSummaryWith(d);renderListWith(d);}
         fin(true);
-      }).catch(function(e){if(navigator.onLine)logErr("sync-patch-fail",e,it.hq+"/"+it.cat+_authDiag(e));_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
+      }).catch(function(e){if(navigator.onLine)logErr("sync-patch-fail",e,it.hq+"/"+it.cat+_authDiag(e));_flushNoteErr(e);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
       return;
     }
     // put (पुराना array फॉर्मेट) — पहले server data लो, merge करो, फिर save — दोनों के बदलाव बचें
@@ -639,9 +654,10 @@ function flushPending(){
             fin(true);
           };
           if(!mpN){ mpDone(); return; }
+          var mpb=JSON.stringify(mp);
           return _fetchT(FB+"/"+fbPath(it.hq,it.cat)+".json",{
-            method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(mp)
-          },FLUSH_FETCH_MS).then(function(r){
+            method:"PATCH",headers:{"Content-Type":"application/json"},body:mpb
+          },_flushMs(mpb)).then(function(r){
             if(!r.ok) return _fbHttpErr(r);
             _noteShape(it.hq,it.cat,{});
             mpDone();
@@ -652,7 +668,7 @@ function flushPending(){
           fin(!!ok);
         });
       })
-      .catch(function(e){if(navigator.onLine)logErr("sync-put-fail",e,it.hq+"/"+it.cat+_authDiag(e));_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
+      .catch(function(e){if(navigator.onLine)logErr("sync-put-fail",e,it.hq+"/"+it.cat+_authDiag(e));_flushNoteErr(e);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
   });
   if(needCat){
     var reqs=Object.keys(CAT_NAMES).map(function(hq){

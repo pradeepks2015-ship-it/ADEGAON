@@ -41,6 +41,7 @@ window.addEventListener("online",function(){
   ensureLibs();
   fetchPause(); // 🛑 स्विच का ताज़ा हाल — नेट बंद रहते हुए JE ने बदला हो सकता है
   _ensureCorrectHqAuth(); // पहले सही account पक्का करें, तभी flushPending() को असली मौक़ा मिलेगा
+  _flushBackoffUntil=0; // v9.240: नेट लौटा — timeout वाला इंतज़ार छोड़कर तुरंत भेजें
   flushPending();
   flushLogs(); // बिना नेट के वक़्त की errors (v9.209)
   if(typeof _jePendingPw!=="undefined"&&_jePendingPw) _jeRetryAuth(); // v9.217: बिना नेट login हुए JE को नेट आते ही Firebase से जोड़ें
