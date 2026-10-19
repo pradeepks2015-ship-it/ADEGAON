@@ -1539,3 +1539,54 @@ test.describe('पूरी-सूची वाली बाक़ी entry (v9.
     expect(r.log).toContain('timeout');
   });
 });
+
+// v9.240 (19/10, मढ़ी, राजकुमार — v9.239 पर हर कुछ मिनट "timeout"): (क) समय-सीमा भेजे जा रहे आकार के हिसाब से (3 मिनट तक);
+// (ख) timeout के बाद हर 20 सेकंड वही भारी कोशिश नहीं — 2 मिनट, फिर 5 मिनट रुकें; नेट लौटे या सफल हो तो तुरंत
+test.describe('timeout के बाद रुककर भेजना (v9.240)', () => {
+  test('समय-सीमा आकार के हिसाब से — छोटा 60s, बड़ा ज़्यादा, 3 मिनट से ऊपर नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => [_flushMs('x'), _flushMs('x'.repeat(400 * 1024)), _flushMs('x'.repeat(5 * 1024 * 1024))]);
+    expect(r).toEqual([60000, 160000, 180000]);
+  });
+
+  test('timeout के बाद 2 मिनट, फिर 5 मिनट कोई कोशिश नहीं; "online" पर तुरंत; सफल होते ही इंतज़ार ख़त्म', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      const hq = 'टेस्ट HQ40', cat = 'कुल उपभोक्ता';
+      MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+      FLUSH_FETCH_MS = 200; REMARK_MERGE_TIMEOUT_MS = 100;
+      let mode = 'hang', patches = 0;
+      const orig = window.fetch;
+      window.fetch = function (url, init) {
+        const u = String(url);
+        if (u.indexOf(fbPath(hq, cat)) > -1) {
+          if (u.indexOf('/remarksArr.json') > -1) return Promise.resolve(new Response('null', { status: 200 }));
+          if (init && init.method === 'PATCH') { patches++; return mode === 'hang' ? new Promise(() => {}) : Promise.resolve(new Response('{}', { status: 200 })); }
+        }
+        return orig(url, init);
+      };
+      localStorage.setItem('dc_pending3', JSON.stringify({ [cKey(hq, cat)]: { hq, cat, type: 'put', since: Date.now(), patch: { 7: { acc: '7', status: 'paid', o: 0 } } } }));
+      _flushing = false; _flushTimeouts = 0; _flushBackoffUntil = 0;
+      const out = {};
+      const until = (f, cb) => { const t0 = Date.now(); (function w() { if (!f() && Date.now() - t0 < 5000) return setTimeout(w, 30); cb(); })(); };
+      flushPending();
+      until(() => !_flushing, () => {
+        out.wait1 = Math.round((_flushBackoffUntil - Date.now()) / 60000);
+        const before = patches; flushPending(); out.blocked = patches === before && !_flushing;
+        window.dispatchEvent(new Event('online')); // नेट लौटा — तुरंत
+        until(() => !_flushing && patches > before, () => {
+          out.wait2 = Math.round((_flushBackoffUntil - Date.now()) / 60000);
+          mode = 'ok'; _flushBackoffUntil = 0; flushPending();
+          until(() => !_flushing && !getPending()[cKey(hq, cat)], () => {
+            window.fetch = orig;
+            out.after = { until: _flushBackoffUntil, n: _flushTimeouts, pending: !!getPending()[cKey(hq, cat)] };
+            resolve(out);
+          });
+        });
+      });
+    }));
+    expect(r).toEqual({ wait1: 2, blocked: true, wait2: 5, after: { until: 0, n: 0, pending: false } });
+  });
+});
