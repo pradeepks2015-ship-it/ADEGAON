@@ -201,8 +201,10 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .mn-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:2px 4px 6px;}
 .mn-grid .logout-item{flex-direction:column;justify-content:center;text-align:center;gap:3px;padding:9px 6px;min-height:62px;font-size:11.5px;line-height:1.25;background:var(--surface2,rgba(0,0,0,.03));border:1px solid var(--border);border-radius:11px;}
 .mn-ico{font-size:19px;line-height:1;}
-/* v9.232: ग्राम-वार वसूली टाइल पर स्केच (icons/village-sketch.webp, ~6 KB) — emoji जितनी ऊंचाई में, कोने गोल */
+/* v9.232: टाइल पर स्केच (icons/village-sketch.webp, ~6 KB) — emoji जितनी ऊंचाई में, कोने गोल */
 .mn-img{width:72px;height:45px;object-fit:cover;border-radius:7px;display:block;}
+/* v9.242 (JE 19/10): स्केच "आज की वसूली" पर गया; "ग्राम-वार वसूली" पर गोल गांव-सर्वे चित्र (icons/village-survey.webp, ~8 KB) */
+.mn-img-sq{width:45px;height:45px;object-fit:contain;border-radius:50%;}
 [data-theme="dark"] .mn-img{filter:brightness(.85);}
 .mn-sw{justify-content:flex-start;}
 .mn-sw .sort-menu-state,.mn-sw .vgbar-menu-state{float:none;margin-left:auto;flex-shrink:0;position:relative;width:34px;height:19px;border-radius:10px;background:var(--border);font-size:0;color:transparent;transition:background .15s;}
