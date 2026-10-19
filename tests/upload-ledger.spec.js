@@ -1590,3 +1590,40 @@ test.describe('timeout के बाद रुककर भेजना (v9.240)
     expect(r).toEqual({ wait1: 2, blocked: true, wait2: 5, after: { until: 0, n: 0, pending: false } });
   });
 });
+
+// v9.241 (19/10, JE के फ़ोन पर 10:56): कई सूचियां एक साथ भेजीं तो 6 HQ की 8 सूचियों में 61 उपभोक्ताओं के रिमार्क "timeout" पर रुके —
+// हर सूची 10-10 पढ़ाई एक साथ, ब्राउज़र कतार में रखता और 5 सेकंड की घड़ी कतार में ही बीत जाती। अब पूरे ऐप में एक साथ 6, घड़ी
+// पढ़ाई शुरू होने पर; "बाक़ी" पीछे से भेजते वक़्त 15 सेकंड
+test.describe('रिमार्क-पढ़ाई की कतार (v9.241)', () => {
+  test('3 सूचियां × 10 उपभोक्ता एक साथ — एक बार में 6 से ज़्यादा पढ़ाई नहीं, और कतार में इंतज़ार timeout न बने', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      REMARK_MERGE_TIMEOUT_MS = 500;
+      // "सर्वर/ब्राउज़र" एक साथ 6 ही संभाले, हर पढ़ाई 300ms — बाक़ी कतार में (असली फ़ोन जैसा)
+      let active = 0, reads = 0; const q = [];
+      const serve = () => { while (active < 6 && q.length) { const done = q.shift(); active++; setTimeout(() => { active--; done(); serve(); }, 300); } };
+      let inFlight = 0, maxInFlight = 0;
+      const orig = window.fetch;
+      window.fetch = function (url, init) {
+        if (String(url).indexOf('/remarksArr.json') > -1) {
+          reads++; inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+          return new Promise((res) => { q.push(() => { inFlight--; res(new Response('null', { status: 200 })); }); serve(); });
+        }
+        return orig(url, init);
+      };
+      const mk = () => { const p = {}; for (let i = 0; i < 10; i++) p[String(100 + i)] = { acc: String(100 + i), status: 'paid', remarksArr: [{ text: 'x', at: 1 }] }; return p; };
+      return Promise.all(['A', 'B', 'C'].map((c) => _mergeServerRemarks('टेस्ट HQ41', 'सूची ' + c, mk())))
+        .then((res) => { window.fetch = orig; return { reads, maxInFlight, holds: res.filter((x) => x.hold).length }; });
+    });
+    expect(r).toEqual({ reads: 30, maxInFlight: 6, holds: 0 });
+  });
+
+  test('"बाक़ी" पीछे से भेजते वक़्त रिमार्क-पढ़ाई की सीमा 15 सेकंड (सामने वाली सेव 5 सेकंड)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({ live: REMARK_MERGE_TIMEOUT_MS, flush: REMARK_FLUSH_TIMEOUT_MS, par: REMARK_READ_PARALLEL,
+      wired: /REMARK_FLUSH_MAX,REMARK_FLUSH_TIMEOUT_MS/.test(flushPending.toString()) }));
+    expect(r).toEqual({ live: 5000, flush: 15000, par: 6, wired: true });
+  });
+});
