@@ -1602,7 +1602,7 @@ test.describe('रिमार्क-पढ़ाई की कतार (v9.241
       Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
       REMARK_MERGE_TIMEOUT_MS = 500;
       // "सर्वर/ब्राउज़र" एक साथ 6 ही संभाले, हर पढ़ाई 300ms — बाक़ी कतार में (असली फ़ोन जैसा)
-      let active = 0, maxActive = 0, reads = 0; const q = [];
+      let active = 0, reads = 0; const q = [];
       const serve = () => { while (active < 6 && q.length) { const done = q.shift(); active++; setTimeout(() => { active--; done(); serve(); }, 300); } };
       let inFlight = 0, maxInFlight = 0;
       const orig = window.fetch;
