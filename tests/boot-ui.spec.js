@@ -763,7 +763,7 @@ test('स्केच तस्वीरें छोटी, बिना-ने
   const path = require('path');
   const root = path.join(__dirname, '..');
   const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
-  for (const [f, max] of [['icons/village-sketch.webp', 12000], ['icons/header-sketch.webp', 30000]]) {
+  for (const [f, max] of [['icons/village-sketch.webp', 12000], ['icons/header-sketch.webp', 30000], ['icons/village-survey.webp', 12000]]) {
     expect(fs.statSync(path.join(root, f)).size).toBeLessThan(max);
     expect(sw).toContain('"./' + f + '"');
   }
@@ -772,7 +772,7 @@ test('स्केच तस्वीरें छोटी, बिना-ने
   await page.click('#uname-disp'); // टाइल वाली तस्वीर loading="lazy" — मेनू खुलने पर ही उतरती है
   await expect.poll(() => page.evaluate(() => {
     const ok = (s) => { const i = document.querySelector(s); return !!(i && i.complete && i.naturalWidth > 0); };
-    return ok('.app-header .hdr-sketch') && ok('#village-menu-item .mn-img') && !!document.querySelector('.app-header .hdr-tower-deco');
+    return ok('.app-header .hdr-sketch') && ok('#village-menu-item .mn-img') && ok('#todaysc-menu-item .mn-img') && !!document.querySelector('.app-header .hdr-tower-deco');
   })).toBe(true);
 });
 

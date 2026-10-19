@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v258";
+var CACHE_NAME="adegaon-dc-v259";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -57,7 +57,8 @@ var OPTIONAL=[
   "./icons/tower-decoration.svg",
   "./icons/scorecard-icon.svg",
   "./icons/mascot.webp",
-  "./icons/village-sketch.webp", // v9.232: ग्राम-वार वसूली टाइल का स्केच (~6 KB) — बिना नेट भी दिखे
+  "./icons/village-sketch.webp", // v9.232: स्केच (~6 KB) — v9.242 से "आज की वसूली" टाइल पर; बिना नेट भी दिखे
+  "./icons/village-survey.webp", // v9.242: "ग्राम-वार वसूली" टाइल का गोल चित्र (~8 KB)
   "./icons/header-sketch.webp",  // v9.232: header के बाएं कोने का स्केच — बिना नेट भी दिखे
   // जश्न की असली आवाज़ें — कुल 63 KB (JE की दी हुई 1.88 MB फ़ाइलों को काटकर/mono करके)।
   // OPTIONAL में हैं ताकि गाँव में offline रहते हुए भी बजें, पर इनके न मिलने से पूरा install
