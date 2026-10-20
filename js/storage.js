@@ -566,6 +566,9 @@ function _mergedPatch(server,merged){
 var _flushing=false;
 function flushPending(){
   if(_flushing||!navigator.onLine||Date.now()<_flushBackoffUntil) return;
+  // v9.243: App Check पर्ची नाकाम है — भेजना Firebase को बेकार (unverified) requests ही देगा; पर्ची बनते ही
+  // _acNoteOk (firebase.js) यही function फिर बुलाता है
+  if(typeof _acBlocked==="function"&&_acBlocked()) return;
   var p=getPending();
   var keys=Object.keys(p);
   var needCat=false;
