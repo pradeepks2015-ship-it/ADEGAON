@@ -1679,7 +1679,7 @@ test.describe('App Check पर्ची नहीं — Firebase को बे
       _rawFetch = function (u, o) { hits.push(String(u)); return Promise.resolve(new Response('{}', { status: 200 })); };
       let tokenOk = false, asks = 0;
       window.firebase = window.firebase || {};
-      firebase.appCheck = () => ({ getToken: () => { asks++; return tokenOk ? Promise.resolve({ token: 'ac-new' }) : Promise.reject(Object.assign(new Error('x'), { code: 'appCheck/throttled' })); } });
+      window.firebase.appCheck = () => ({ getToken: () => { asks++; return tokenOk ? Promise.resolve({ token: 'ac-new' }) : Promise.reject(Object.assign(new Error('x'), { code: 'appCheck/throttled' })); } });
       ID_TOKEN = 'id'; AC_READY = true; AC_TOKEN = null; _acGateAt = 0; _acGateJob = null;
       localStorage.setItem('dc_acfail', JSON.stringify({ since: Date.now(), n: 1 }));
       const hq = 'टेस्ट HQ43', cat = 'कुल उपभोक्ता';
