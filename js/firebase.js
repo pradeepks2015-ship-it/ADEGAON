@@ -231,8 +231,31 @@ function _fbFetchWithAuth(url,opts){
     return r;
   });
 }
+// ── v9.243 (JE 20/10: Firebase App Check "Verified" 97% → 94%) ──
+// App Check की पर्ची (token) नाकाम हो चुकी हो (dc_acfail दर्ज) और अभी न हो, तो Firebase को भेजी हर request
+// "unverified" गिनी जाकर मना होती थी — पर "बाक़ी" हर 20s, साथ में 10-10 रिमार्क-पढ़ाई, फिर 401 पर एक और कोशिश।
+// अब ऐसी हालत में पहले पर्ची एक बार ज़बरदस्ती मांगें (15s में एक बार से ज़्यादा नहीं); न मिले तो नेट पर भेजे
+// बिना वही 401 लौटाएं जो सर्वर देता — बुलाने वाले उसे पहले की तरह संभालते हैं (डेटा "बाक़ी" में)। पर्ची बनते ही
+// _acNoteOk "बाक़ी" भेज देता है
+var _acGateJob=null,_acGateAt=0;
+function _acBlocked(){
+  if(AC_TOKEN||!AC_READY) return false;
+  try{ return !!localStorage.getItem(AC_FAIL_KEY); }catch(e){ return false; }
+}
+function _acGate(){
+  if(_acGateJob) return _acGateJob;
+  if(Date.now()-_acGateAt<AC_RETRY_MS) return Promise.resolve(false);
+  _acGateAt=Date.now();
+  _acGateJob=Promise.race([_acForceRefresh(),new Promise(function(r){ setTimeout(r,FRESH_WAIT_MS); })])
+    .then(function(){ _acGateJob=null; return !!AC_TOKEN; },function(){ _acGateJob=null; return false; });
+  return _acGateJob;
+}
+function _acBlockedResp(){
+  return new Response('{ "error" : "Missing appcheck token (ऐप ने नहीं भेजा — पर्ची बनने का इंतज़ार)" }',{status:401,headers:{"Content-Type":"application/json"}});
+}
 window.fetch = function(url, opts){
   if(typeof url==="string" && url.indexOf(FB)===0){
+    if(_acBlocked()) return _acGate().then(function(ok){ return ok?window.fetch(url,opts):_acBlockedResp(); });
     if(ID_TOKEN && AC_READY) return _fbEnsureFresh().then(function(){ return _fbFetchWithAuth(url,opts); });
     // offline — तुरंत fail होकर offline-queue संभाले। पर v9.172 के लॉग (save-fail "Failed to fetch")
     // से पता चला कि कमज़ोर नेट पर फ़ोन ख़ुद को offline मान लेता है जबकि नेट थोड़ा-बहुत चल रहा होता है —

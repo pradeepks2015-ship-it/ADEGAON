@@ -1664,3 +1664,54 @@ test.describe('App Check की कमी से वसूली अटके �
     expect(r.left).toBe(0); // भेजी जा चुकी
   });
 });
+
+// v9.243 (JE 20/10: Firebase App Check "Verified" 97% → 94%): पर्ची नाकाम हो चुकी हो और अभी न हो तो Firebase को बेकार
+// (unverified, मना होने वाली) requests न जाएं — पहले एक बार पर्ची मांगें, न मिले तो बिना नेट वही 401; "बाक़ी" रुका रहे,
+// पर्ची बनते ही अपने-आप जाए
+test.describe('App Check पर्ची नहीं — Firebase को बेकार requests नहीं (v9.243)', () => {
+  test('पर्ची नाकाम: नेट पर request नहीं, 401 लौटे, "बाक़ी" न भेजा जाए; पर्ची बनते ही "बाक़ी" जाए', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      const hits = [];
+      const raw = _rawFetch;
+      _rawFetch = function (u, o) { hits.push(String(u)); return Promise.resolve(new Response('{}', { status: 200 })); };
+      let tokenOk = false, asks = 0;
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = () => ({ getToken: () => { asks++; return tokenOk ? Promise.resolve({ token: 'ac-new' }) : Promise.reject(Object.assign(new Error('x'), { code: 'appCheck/throttled' })); } });
+      ID_TOKEN = 'id'; AC_READY = true; AC_TOKEN = null; _acGateAt = 0; _acGateJob = null;
+      localStorage.setItem('dc_acfail', JSON.stringify({ since: Date.now(), n: 1 }));
+      const hq = 'टेस्ट HQ43', cat = 'कुल उपभोक्ता';
+      localStorage.setItem('dc_pending3', JSON.stringify({ [cKey(hq, cat)]: { hq, cat, type: 'put', since: Date.now(), patch: { 5: { acc: '5', status: 'paid', o: 0 } } } }));
+      _flushing = false; _flushBackoffUntil = 0;
+      fetch(FB + '/x.json').then((res) => {
+        const out = { status: res.status, hits1: hits.length, asks1: asks };
+        // 15 सेकंड के अंदर दोबारा — पर्ची फिर नहीं मांगी, नेट पर कुछ नहीं
+        return fetch(FB + '/y.json').then((res2) => {
+          out.status2 = res2.status; out.asks2 = asks; out.hits2 = hits.length;
+          flushPending();
+          out.flushed = _flushing || hits.length > 0;
+          // पर्ची बनी — _acRefresh → _setAcToken → _acNoteOk → "बाक़ी" भेजा
+          tokenOk = true; _acRefresh();
+          const t0 = Date.now();
+          (function wait() {
+            if (hits.some((u) => u.indexOf(fbPath(hq, cat)) > -1) || Date.now() - t0 > 4000) {
+              _rawFetch = raw;
+              out.afterToken = hits.some((u) => u.indexOf(fbPath(hq, cat)) > -1);
+              out.acfail = localStorage.getItem('dc_acfail');
+              resolve(out);
+            } else setTimeout(wait, 50);
+          })();
+        });
+      });
+    }));
+    expect(r).toEqual({ status: 401, hits1: 0, asks1: 1, status2: 401, asks2: 1, hits2: 0, flushed: false, afterToken: true, acfail: null });
+  });
+
+  test('पर्ची कभी नाकाम नहीं हुई (dc_acfail नहीं) — पहले जैसा, कोई रोक नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => { localStorage.removeItem('dc_acfail'); AC_READY = true; AC_TOKEN = null; return _acBlocked(); });
+    expect(r).toBe(false);
+  });
+});
