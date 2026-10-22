@@ -530,7 +530,13 @@ function _flushMs(body){ return Math.min(FLUSH_FETCH_MAX_MS,FLUSH_FETCH_MS+Math.
 // (कमज़ोर नेट पर लाइनमैन का डेटा/बैटरी बचे)। कोई भेजना सफल हो या ऐप दोबारा खुले तो फिर तुरंत। डेटा "बाक़ी" में सुरक्षित रहता है
 var FLUSH_BACKOFF_MS=[120000,300000];
 var _flushTimeouts=0,_flushBackoffUntil=0,_flushRoundTimeout=false;
-function _flushNoteErr(e){ if(e&&e.message==="timeout") _flushRoundTimeout=true; } // एक दौर में कितनी भी सूचियां — गिनती एक
+// v9.245 (22/10, पाटन, वैभव — 5+ घंटे "Failed to fetch"): फ़ोन "नेट है" कहे पर कनेक्शन बीच में टूटे, तो भी हर 20s
+// वही (पूरी सूची उतारने वाली भारी) कोशिश न हो — timeout जैसा ही 2, फिर 5 मिनट रुकें। नेट सच में लौटे ("online") तो तुरंत
+function _flushNetErr(e){
+  var m=(e&&e.message)||"";
+  return m==="timeout"||(navigator.onLine&&/Failed to fetch|NetworkError|Load failed|network (error|connection)/i.test(m));
+}
+function _flushNoteErr(e){ if(_flushNetErr(e)) _flushRoundTimeout=true; } // एक दौर में कितनी भी सूचियां — गिनती एक
 function _fetchT(url,opts,ms){
   var ac=(typeof AbortController!=="undefined")?new AbortController():null;
   var o=opts||{}; if(ac) o.signal=ac.signal;
