@@ -581,6 +581,54 @@ test.describe('अपलोड — दो फ़ाइलें जल्दी-
   });
 });
 
+// v9.244 (JE 22/10): सूची के कॉलम-शीर्षक/नाम हिंदी में हों तो भी अपलोड हो — कॉलम पहचाने जाएं, "पिता का नाम"
+// उपभोक्ता का नाम न बने, हिंदी अंक चलें, बिगड़ी हिंदी (???) पर चेतावनी, और पूर्वावलोकन में कौन-सा कॉलम पहचाना
+test.describe('हिंदी शीर्षक वाली सूची अपलोड (v9.244)', () => {
+  test('हिंदी कॉलम पहचाने जाएं, पिता का नाम ≠ नाम, हिंदी अंक, पूर्वावलोकन में कॉलम', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      openUpModal(); document.getElementById('up-cat').value = 'घरेलू';
+      // "पिता का नाम" पहले — partial मिलान में "नाम" उसे न पकड़े
+      processRows([
+        { 'क्रमांक': '1', 'पिता का नाम': 'मोहनलाल', 'हितग्राही का नाम': 'रामलाल', 'उपभोक्ता क्रमांक': '१२३४५६७८९०', 'कुल देय राशि': '१,२५०', 'देय तिथि': '25/10/2026', 'गांव का नाम': 'आदेगांव', 'मोबाइल नंबर': '९८७६५४३२१०' },
+      ]);
+      const x = parsedRows[0];
+      return { n: parsedRows.length, name: x.name, father: x.father, acc: x.acc, amount: x.amount, addr: x.addr, phone: x.phone,
+        cols: document.getElementById('prev-cols').textContent, warn: document.getElementById('up-warn').style.display };
+    });
+    expect(r.n).toBe(1);
+    expect(r.name).toBe('रामलाल');
+    expect(r.father).toBe('मोहनलाल');
+    expect(r.acc).toBe('1234567890');
+    expect(r.amount).toBe('1250');
+    expect(r.addr).toBe('आदेगांव');
+    expect(r.phone).toBe('9876543210');
+    expect(r.cols).toContain('नाम: "हितग्राही का नाम"');
+    expect(r.cols).toContain('Consumer No: "उपभोक्ता क्रमांक"');
+    expect(r.cols).toContain('राशि: "कुल देय राशि"');
+    expect(r.warn).toBe('none');
+  });
+
+  test('पुरानी अंग्रेज़ी फ़ाइल वैसे ही चले; बिगड़ी हिंदी (???) पर चेतावनी; कॉलम न मिले तो ❌', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      openUpModal(); document.getElementById('up-cat').value = 'घरेलू';
+      processRows([{ 'Consumer No': '1001', 'Consumer Name': 'RAMLAL', 'Father Name': 'MOHAN', 'Net Bill': '500', 'Village': 'ADEGAON' }]);
+      const en = { name: parsedRows[0].name, father: parsedRows[0].father, amount: parsedRows[0].amount, addr: parsedRows[0].addr };
+      processRows([{ 'Consumer No': '1002', 'Consumer Name': '????? ???', 'Net Bill': '300' }, { 'Consumer No': '1003', 'Consumer Name': 'ठीक नाम', 'Net Bill': '300' }]);
+      const warn = document.getElementById('up-warn').textContent;
+      processRows([{ 'क्रमांक': '1', 'नाम': 'रामलाल', 'राशि': '100' }]); // अकेला "क्रमांक" Consumer No नहीं
+      return { en, warn, cols: document.getElementById('prev-cols').textContent, n: parsedRows.length };
+    });
+    expect(r.en).toEqual({ name: 'RAMLAL', father: 'MOHAN', amount: '500', addr: 'ADEGAON' });
+    expect(r.warn).toContain('1 पंक्तियों में हिंदी बिगड़ी');
+    expect(r.cols).toContain('❌ Consumer No: कॉलम नहीं मिला');
+    expect(r.n).toBe(0);
+  });
+});
+
 // असली सवाल (JE, 28/9): "किसी मुख्यालय में कुल उपभोक्ता में नया लेजर अपलोड करूं और दूसरे बटनों में
 // पुराना डाटा रहे — फिर एक को वसूल मार्क करूं तो दूसरा भी वसूल हो जाएगा क्या?" जड़ यह निकली कि
 // अपलोड की तारीख़-कट-ऑफ़ सिर्फ़ उसी category पर लगती थी, और उसके तुरंत बाद चलने वाला reconcileHQ()

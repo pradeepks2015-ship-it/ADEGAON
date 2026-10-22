@@ -247,14 +247,16 @@ function handleFile(f){
 }
 
 // Fuzzy column finder — case-insensitive, ignores spaces/symbols, partial match fallback
-function fuzzyFind(k, patterns){
+// v9.244: excl (regex) — partial मिलान में ऐसे कॉलम छोड़ें (जैसे "नाम" से "पिता का नाम" न पकड़ा जाए)।
+// मिला कॉलम (header) लौटाता है — पूर्वावलोकन में "कौन-सा कॉलम पहचाना" दिखाने के लिए
+function fuzzyKey(k, patterns, excl){
   // k = {normalized_header: value} where normalized = lowercase trimmed
   // First pass: exact alphanumeric match
   for(var pi=0;pi<patterns.length;pi++){
     var pNorm=patterns[pi].toLowerCase().replace(/[^a-z0-9\u0900-\u097f]/g,"");
     for(var ki in k){
       var kNorm=ki.replace(/[^a-z0-9\u0900-\u097f]/g,"");
-      if(kNorm===pNorm) return k[ki]||"";
+      if(kNorm===pNorm) return ki;
     }
   }
   // Second pass: partial match
@@ -262,17 +264,67 @@ function fuzzyFind(k, patterns){
     var pNorm2=patterns[pi2].toLowerCase().replace(/[^a-z0-9\u0900-\u097f]/g,"");
     for(var ki2 in k){
       var kNorm2=ki2.replace(/[^a-z0-9\u0900-\u097f]/g,"");
-      if(kNorm2.length>2&&(kNorm2.indexOf(pNorm2)!==-1||pNorm2.indexOf(kNorm2)!==-1)) return k[ki2]||"";
+      if(excl&&excl.test(kNorm2)) continue;
+      if(kNorm2.length>2&&(kNorm2.indexOf(pNorm2)!==-1||pNorm2.indexOf(kNorm2)!==-1)) return ki2;
     }
   }
-  return "";
+  return null;
 }
+function fuzzyFind(k, patterns, excl){
+  var key=fuzzyKey(k,patterns,excl);
+  return key===null?"":(k[key]||"");
+}
+// v9.244: हिंदी कॉलम-नाम (JE 22/10) — शीर्षक हिंदी में हों तो भी कॉलम पहचाने जाएं। excl: partial मिलान में
+// दूसरे field के कॉलम न पकड़ें ("पिता का नाम"/"गांव का नाम" नाम नहीं; "पिछली राशि"/"देय तिथि" बकाया नहीं)
+var UP_COLS={
+  name:{p:["consumername","consumer name","cname","name","naam","नाम","उपभोक्ता का नाम","उपभोक्ता नाम","उपभोक्ता","कंज्यूमर का नाम","कंज्यूमर नाम","ग्राहक का नाम","ग्राहक नाम","हितग्राही का नाम","हितग्राही"],
+    x:/पिता|पति|अभिभावक|गार्जियन|father|husband|guardian|relat|गांव|गाँव|ग्राम|village|मोहल्ला|फीडर|feeder|लाइनमैन|lineman/},
+  acc:{p:["consumernumber","consumer number","consumerno","consumer no","accountno","account no","ivrs","ivrs no","ivrsno","consumerid","consumer id","acc","conno","con no","उपभोक्ता क्रमांक","उपभोक्ता संख्या","उपभोक्ता नंबर","उपभोक्ता नं","उपभोक्ता क्र","कंज्यूमर नंबर","कंज्यूमर क्रमांक","कनेक्शन क्रमांक","कनेक्शन नंबर","खाता क्रमांक","खाता संख्या","खाता नंबर","आईवीआरएस","आईवीआरएस नंबर"],
+    x:/^(क्र|क्रमांक|क्रसं|सक्र|सरलक्रमांक|अनुक्रमांक)$/}, // "क्रमांक" अकेला = पंक्ति का क्रम, Consumer No नहीं
+  amt:{p:["netbill","net bill","netamt","net amt","netamount","net amount","amount","dues","arrear","arrears","balance","bill","बकाया","देय राशि","बकाया राशि","कुल बकाया","कुल देय","कुल देय राशि","शुद्ध बिल","नेट बिल","बिल राशि","शेष राशि","कुल राशि"],
+    x:/पिछल|भुगतान|तिथि|दिनांक|तारीख/},
+  phone:{p:["mobileno","mobile no","mobile","mobilenumber","mobile number","phone","mob","contact","contactno","contact no","phoneno","phone no","मोबाइल","मोबाइल नंबर","मोबाइल नं","मोबाइल क्रमांक","फोन","फ़ोन","फोन नंबर","फ़ोन नंबर","संपर्क","संपर्क नंबर"]},
+  addr:{p:["address","addr","adress","add","village","gram","location","स्थान","पता","ग्राम","गांव","गाँव","गांव का नाम","गाँव का नाम","ग्राम का नाम","मोहल्ला"]},
+  rem:{p:["remark","remarks","note","notes","comment","comments","टिप्पणी","रिमार्क","विवरण"]},
+  tariff:{p:["tariff","tariffcode","tarrif","tarrifcode","tarifftype","tarifcode","टैरिफ","टेरिफ"]},
+  load:{p:["load","sanctionedload","sanctioned load","connectedload","connected load","loadkw","लोड","भार","स्वीकृत भार"]},
+  unit:{p:["unit","units","consumption","unitsconsumed","units consumed","यूनिट","खपत"]},
+  lastPayDate:{p:["lastpaiddate","last paid date","lastpaymentdate","last payment date","lastpaydate","last pay date","lastdate","last date","prevpaydate","prev pay date","previouspaymentdate","previous payment date","prevdate","prev date","paymentdate","payment date","piclatithe","पिछली तिथि","पिछला दिनांक","अंतिम भुगतान दिनांक","अंतिम भुगतान तिथि","पिछला भुगतान दिनांक","पिछले भुगतान की तिथि"],
+    x:/राशि|रकम|amt|amount/},
+  father:{p:["fathername","father name","fname","pitaname","pita","fathernamme","fathrname","father","pitaji","f name","fathernam","पिता","पिता का नाम","पिताजी","guardian","guardianname","guardian name","husbandname","husband name","husband","fathersname","father's name","fath","pitanaam","pita naam","dadaname","dada name","fathername1","f_name","s/o","s.o","w/o","w.o","d/o","d.o","sonof","son of","wifeof","wife of","daughterof","daughter of","relation","relativename","relative name","paternalnm","fathernm","pitatype","पति","पिता/पति","पिताजी का नाम","अभिभावक","गार्जियन","पति का नाम","पिता/पति का नाम"]},
+  lastPaidAmt:{p:["lastpaidamt","last paid amt","lastpaid","last paid","lastamt","last amt","lastpaidamount","last paid amount","lastpaymentamt","last payment amt","lastpaymentamount","last payment amount","prevamt","prev amt","previousamt","previous amt","previouspaidamt","previous paid amt","prevpaid","prev paid","lastbill","last bill","previousbill","previous bill","पिछला भुगतान","पिछली राशि","अंतिम भुगतान राशि","पिछली भुगतान राशि","पिछला भुगतान राशि"],
+    x:/दिनांक|तिथि|तारीख/}
+};
+function _upCol(k,f){ return fuzzyFind(k,UP_COLS[f].p,UP_COLS[f].x); }
+// हिंदी अंक (०-९) → 0-9 — नंबर/राशि/मोबाइल हिंदी अंकों में हों तो भी पहचाने जाएं
+function _upDigits(s){ return String(s).replace(/[०-९]/g,function(d){ return String(d.charCodeAt(0)-0x0966); }); }
+// CSV को Excel में "CSV" (UTF-8 नहीं) से save करने पर हिंदी "???" या "�" बन जाती है — लौटती नहीं
+function _upGarbled(s){ return !!s&&(/\uFFFD/.test(s)||/\?{2,}/.test(s)); }
 
 // v9.224: फ़ाइल में किस Consumer No की राशि सचमुच दी गई थी — "कुल उपभोक्ता" में राशि वैकल्पिक है (न हो तो "0"
 // भरता है), और उस "0" को दूसरी सूचियों में फैलाना ग़लत होगा (देखें _upSyncAmounts)
 /** @type {Object<string,boolean>} */ var parsedAmtGiven={};
+// v9.244: पूर्वावलोकन में "कौन-सा कॉलम किस काम में पहचाना" — ग़लत कॉलम (जैसे पिता का नाम ही नाम बन जाए)
+// अपलोड से पहले ही दिख जाए
+function _upShowCols(k){
+  var el=document.getElementById("prev-cols");
+  if(!el) return;
+  el.textContent="";
+  if(!k) return;
+  var F=[["name","नाम",1],["acc","Consumer No",1],["amt","राशि",0],["father","पिता/पति",0],["addr","गांव/पता",0],["phone","मोबाइल",0]];
+  var used={};
+  F.forEach(function(f){
+    var key=fuzzyKey(k,UP_COLS[f[0]].p,UP_COLS[f[0]].x);
+    var d=document.createElement("div");
+    var dup=key!==null&&used[key];
+    d.textContent=(key===null?(f[2]?"❌ ":"— "):(dup?"⚠️ ":"✓ "))+f[1]+": "+(key===null?"कॉलम नहीं मिला":"\""+key+"\""+(dup?" (यही कॉलम "+used[key]+" में भी!)":""));
+    if(key===null&&f[2]||dup) d.style.color="var(--red,#c41f3d)";
+    if(key!==null&&!used[key]) used[key]=f[1];
+    el.appendChild(d);
+  });
+}
 function processRows(rows){
-  var valid=[],errors=[];
+  var valid=[],errors=[],garbled=0,colKeys=null;
   parsedAmtGiven={};
   var now=new Date();
   var dtStr=now.toLocaleString("hi-IN");
@@ -283,18 +335,20 @@ function processRows(rows){
       var clean=h.toString().trim().toLowerCase();
       k[clean]=String(r[h]).trim();
     });
-    var name=fuzzyFind(k,["consumername","consumer name","cname","name","naam","नाम"]).trim();
-    var acc=fuzzyFind(k,["consumernumber","consumer number","consumerno","consumer no","accountno","account no","ivrs","ivrs no","ivrsno","consumerid","consumer id","acc","conno","con no"]).trim();
-    var rawAmt=fuzzyFind(k,["netbill","net bill","netamt","net amt","netamount","net amount","amount","dues","arrear","arrears","balance","bill","बकाया","देय राशि"]).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
-    var phone=fuzzyFind(k,["mobileno","mobile no","mobile","mobilenumber","mobile number","phone","mob","contact","contactno","contact no","phoneno","phone no"]).trim();
-    var addr=fuzzyFind(k,["address","addr","adress","add","village","gram","location","स्थान","पता","ग्राम"]).trim();
-    var rem=fuzzyFind(k,["remark","remarks","note","notes","comment","comments","टिप्पणी"]).trim();
-    var tariff=fuzzyFind(k,["tariff","tariffcode","tarrif","tarrifcode","tarifftype","tarifcode","टैरिफ"]).trim();
-    var load=fuzzyFind(k,["load","sanctionedload","sanctioned load","connectedload","connected load","loadkw","लोड"]).trim();
-    var unit=fuzzyFind(k,["unit","units","consumption","unitsconsumed","units consumed","यूनिट"]).trim();
-    var lastPayDate=fuzzyFind(k,["lastpaiddate","last paid date","lastpaymentdate","last payment date","lastpaydate","last pay date","lastdate","last date","prevpaydate","prev pay date","previouspaymentdate","previous payment date","prevdate","prev date","paymentdate","payment date","piclatithe","पिछली तिथि","पिछला दिनांक"]).trim();
-    var father=fuzzyFind(k,["fathername","father name","fname","pitaname","pita","fathernamme","fathrname","father","pitaji","f name","fathernam","पिता","पिता का नाम","पिताजी","guardian","guardianname","guardian name","husbandname","husband name","husband","fathersname","father's name","fath","pitanaam","pita naam","dadaname","dada name","fathername1","f_name","s/o","s.o","w/o","w.o","d/o","d.o","sonof","son of","wifeof","wife of","daughterof","daughter of","relation","relativename","relative name","paternalnm","fathernm","pitatype","पति","पिता/पति","पिताजी का नाम","अभिभावक","गार्जियन"]).trim();
-    var lastPaidAmt=fuzzyFind(k,["lastpaidamt","last paid amt","lastpaid","last paid","lastamt","last amt","lastpaidamount","last paid amount","lastpaymentamt","last payment amt","lastpaymentamount","last payment amount","prevamt","prev amt","previousamt","previous amt","previouspaidamt","previous paid amt","prevpaid","prev paid","lastbill","last bill","previousbill","previous bill","पिछला भुगतान","पिछली राशि"]).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
+    var name=_upCol(k,"name").trim();
+    var acc=_upDigits(_upCol(k,"acc")).trim();
+    var rawAmt=_upDigits(_upCol(k,"amt")).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
+    var phone=_upDigits(_upCol(k,"phone")).trim();
+    var addr=_upCol(k,"addr").trim();
+    var rem=_upCol(k,"rem").trim();
+    var tariff=_upCol(k,"tariff").trim();
+    var load=_upDigits(_upCol(k,"load")).trim();
+    var unit=_upDigits(_upCol(k,"unit")).trim();
+    var lastPayDate=_upDigits(_upCol(k,"lastPayDate")).trim();
+    var father=_upCol(k,"father").trim();
+    var lastPaidAmt=_upDigits(_upCol(k,"lastPaidAmt")).replace(/,/g,"").replace(/[₹\s]/g,"").trim();
+    if(i===0) colKeys=k;
+    if(_upGarbled(name)||_upGarbled(father)||_upGarbled(addr)) garbled++;
     // "कुल उपभोक्ता" में amount optional है
     var _upCat=document.getElementById("up-cat")?document.getElementById("up-cat").value:"";
     var amtOptional=(_upCat==="कुल उपभोक्ता"||_upCat===CATS[0]);
@@ -303,7 +357,7 @@ function processRows(rows){
     // amount साफ करें — कॉमा, रुपया चिह्न, spaces हटाएं
     if(cleanAmt) cleanAmt=cleanAmt.replace(/,/g,"").replace(/[₹\s]/g,"").replace(/[^0-9.-]/g,"").trim();
 
-    var rowOk=name&&acc&&(amtOptional||(cleanAmt&&!isNaN(cleanAmt)));
+    var rowOk=name&&acc&&(amtOptional||(cleanAmt&&!isNaN(Number(cleanAmt))));
     if(!rowOk){
       errors.push({row:i+2, reason:!name?"नाम नहीं":!acc?"Consumer No नहीं":(!amtOptional&&!cleanAmt)?"राशि नहीं":"राशि गलत"});
     } else {
@@ -312,7 +366,7 @@ function processRows(rows){
         tariff:tariff,load:load,unit:unit,lastPayDate:lastPayDate,lastPaidAmt:lastPaidAmt,
         status:"pending",uploadedBy:CU.name,uploadedAt:dtStr,ts:serverNow(),remarksArr:[]};
       // बकाया 0 या minus हो तो अपने आप वसूल
-      if(cleanAmt!=="" && !isNaN(cleanAmt) && Number(cleanAmt)<=0){
+      if(cleanAmt!=="" && !isNaN(Number(cleanAmt)) && Number(cleanAmt)<=0){
         entry.status="paid";
         entry.paydate=new Date().toLocaleDateString("hi-IN");
         entry.updatedBy=CU.name+" (बकाया ≤0 auto)";
@@ -327,15 +381,17 @@ function processRows(rows){
   parsedRows=valid.slice(0,getMaxRecords(_cat));
   document.getElementById("up-preview").style.display="block";
   var wb2=document.getElementById("up-warn");
+  var warns=[];
+  if(garbled) warns.push("⚠️ "+garbled+" पंक्तियों में हिंदी बिगड़ी दिखती है (??? या �) — Excel में \"CSV UTF-8\" से save करें या .xlsx फ़ाइल ही चुनें, वरना नाम ऐसे ही बिगड़े सहेजे जाएंगे");
   if(errors.length){
-    wb2.style.display="block";
     var errMsg="⚠️ "+errors.length+" rows skip — ";
     var details=errors.slice(0,3).map(function(e){return "Row "+e.row+": "+e.reason;}).join(" | ");
-    wb2.textContent=errMsg+details+(errors.length>3?" ...और "+(errors.length-3)+" rows":"");
-  } else {
-    wb2.style.display="none";
-    wb2.textContent="";
+    warns.push(errMsg+details+(errors.length>3?" ...और "+(errors.length-3)+" rows":""));
   }
+  wb2.style.display=warns.length?"block":"none";
+  wb2.textContent=warns.join("\n");
+  wb2.style.whiteSpace="pre-line";
+  _upShowCols(colKeys);
   document.getElementById("prev-title").textContent="पूर्वावलोकन ("+parsedRows.length+" records)";
   // audit-verified: नीचे हर r.name/r.father/r.acc escHtml() से गुज़रता है
   // eslint-disable-next-line no-unsanitized/property
