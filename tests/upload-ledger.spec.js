@@ -1639,6 +1639,49 @@ test.describe('timeout के बाद रुककर भेजना (v9.240)
   });
 });
 
+// v9.245 (22/10, पाटन): नेट "है" पर कनेक्शन टूटे ("Failed to fetch") तो भी हर 20s वही भारी कोशिश नहीं — 2 मिनट रुकें
+test.describe('कनेक्शन टूटने पर भी रुककर भेजना (v9.245)', () => {
+  test('"Failed to fetch" के बाद 2 मिनट कोई कोशिश नहीं; 401 जैसी गड़बड़ी पर यह रोक नहीं', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      const hq = 'टेस्ट HQ41', cat = 'कुल उपभोक्ता';
+      MIGRATED[hqKey(hq)] = {}; MIGRATED[hqKey(hq)][catKey(cat)] = true;
+      REMARK_MERGE_TIMEOUT_MS = 100;
+      let mode = 'net', patches = 0;
+      const orig = window.fetch;
+      window.fetch = function (url, init) {
+        const u = String(url);
+        if (u.indexOf(fbPath(hq, cat)) > -1) {
+          if (u.indexOf('/remarksArr.json') > -1) return Promise.resolve(new Response('null', { status: 200 }));
+          if (init && init.method === 'PATCH') {
+            patches++;
+            return mode === 'net' ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve(new Response('{"error":"x"}', { status: 400 }));
+          }
+        }
+        return orig(url, init);
+      };
+      localStorage.setItem('dc_pending3', JSON.stringify({ [cKey(hq, cat)]: { hq, cat, type: 'put', since: Date.now(), patch: { 7: { acc: '7', status: 'paid', o: 0 } } } }));
+      _flushing = false; _flushTimeouts = 0; _flushBackoffUntil = 0;
+      const out = {};
+      const until = (f, cb) => { const t0 = Date.now(); (function w() { if (!f() && Date.now() - t0 < 5000) return setTimeout(w, 30); cb(); })(); };
+      flushPending();
+      until(() => !_flushing && patches > 0, () => {
+        out.wait1 = Math.round((_flushBackoffUntil - Date.now()) / 60000);
+        const before = patches; flushPending(); out.blocked = patches === before && !_flushing;
+        mode = 'http'; _flushBackoffUntil = 0; _flushTimeouts = 0; flushPending();
+        until(() => !_flushing && patches > before, () => {
+          window.fetch = orig;
+          out.httpUntil = _flushBackoffUntil; out.pending = !!getPending()[cKey(hq, cat)];
+          resolve(out);
+        });
+      });
+    }));
+    expect(r).toEqual({ wait1: 2, blocked: true, httpUntil: 0, pending: true });
+  });
+});
+
 // v9.241 (19/10, JE के फ़ोन पर 10:56): कई सूचियां एक साथ भेजीं तो 6 HQ की 8 सूचियों में 61 उपभोक्ताओं के रिमार्क "timeout" पर रुके —
 // हर सूची 10-10 पढ़ाई एक साथ, ब्राउज़र कतार में रखता और 5 सेकंड की घड़ी कतार में ही बीत जाती। अब पूरे ऐप में एक साथ 6, घड़ी
 // पढ़ाई शुरू होने पर; "बाक़ी" पीछे से भेजते वक़्त 15 सेकंड
