@@ -3,6 +3,51 @@
 const { test, lazyTest, expect, fs, path, LAZY_FILES, openApp, loginLineman, loginJE } = require('./helpers');
 
 test.describe('अपडेट बैनर — नया version आने पर रीलोड prompt', () => {
+  // v9.246 (JE 24/10): फ़ोन पुराने version पर अटका हो (नया उतरा ही नहीं) तो भी बैनर — जब तक नया न हो जाए
+  test('rollout.json का ver = APP_VER (हर version पर साथ बढ़े)', async ({ page }) => {
+    await openApp(page);
+    const v = await page.evaluate(() => APP_VER);
+    const ro = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'rollout.json'), 'utf8'));
+    expect(ro.ver).toBe(v);
+  });
+
+  test('पुराने version पर अटका: लाइनमैन waitMin+3 मिनट बाद, JE 3 मिनट बाद "उतर रहा है" बैनर; hold पर लाइनमैन को नहीं; उतरते ही "रीलोड करें"', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(async () => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      let cfg = { ver: '99.1', waitMin: 10, hold: false };
+      const orig = window.fetch;
+      window.fetch = (u, o) => String(u).indexOf('rollout.json') > -1 ? Promise.resolve(new Response(JSON.stringify(cfg), { status: 200 })) : orig(u, o);
+      let updates = 0;
+      const reg = { update: () => { updates++; return Promise.resolve(); } };
+      const has = () => !!document.getElementById('update-banner');
+      const ago = (min) => localStorage.setItem(VER_SEEN_KEY, JSON.stringify({ v: cfg.ver, t: Date.now() - min * 60000 }));
+      const out = { newer: [_verNewer('9.246', '9.245'), _verNewer('9.245', '9.245'), _verNewer('9.10', '9.9'), _verNewer('9.244', '9.245')] };
+      localStorage.removeItem(VER_SEEN_KEY); CU = null;
+      await _verCheck(reg); out.first = has();             // अभी-अभी दिखा — नहीं
+      ago(12); await _verCheck(reg); out.lm12 = has();     // लाइनमैन 12 मिनट (< 10+3) — नहीं
+      cfg.hold = true; ago(30); await _verCheck(reg); out.hold = has(); cfg.hold = false; // hold — नहीं
+      ago(14); await _verCheck(reg); out.lm14 = has();     // 14 मिनट — हां
+      out.text = document.getElementById('update-banner').textContent;
+      document.getElementById('update-banner-btn').click(); out.updates = updates;
+      _showUpdateBanner();                                 // नया उतर गया — वही बैनर अब "रीलोड करें"
+      out.after = { n: document.querySelectorAll('#update-banner').length, text: document.getElementById('update-banner').textContent };
+      document.getElementById('update-banner').remove(); _pendingUpdate = false;
+      CU = { role: 'supervisor', hq: 'आदेगांव', name: 'JE' };
+      ago(2); await _verCheck(reg); out.je2 = has();
+      ago(4); await _verCheck(reg); out.je4 = has();
+      cfg.ver = APP_VER; document.getElementById('update-banner').remove();
+      ago(60); await _verCheck(reg); out.same = has();     // version वही — कभी नहीं
+      window.fetch = orig;
+      return out;
+    });
+    expect(r.newer).toEqual([true, false, true, false]);
+    expect(r).toMatchObject({ first: false, lm12: false, hold: false, lm14: true, updates: 1, je2: false, je4: true, same: false });
+    expect(r.text).toContain('नया version (99.1) उतर रहा है');
+    expect(r.after.n).toBe(1);
+    expect(r.after.text).toContain('रीलोड करें');
+  });
+
   test('_showUpdateBanner — बैनर दिखता है, दोबारा बुलाने पर डुप्लीकेट नहीं बनता, बटन रीलोड करता है', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => {

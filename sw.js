@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v262";
+var CACHE_NAME="adegaon-dc-v263";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -153,6 +153,8 @@ self.addEventListener("fetch",function(e){
   var url=e.request.url;
   if(e.request.method!=="GET") return;
   if(url.indexOf("firebaseio.com")!==-1) return; /* data hamesha network se — app khud offline handle karta hai */
+  // v9.246: rollout.json (नया version कौन-सा — js/reports.js का _verCheck) हमेशा सर्वर से, कभी cache से नहीं
+  if(/\/rollout\.json(\?|$)/.test(url)) return;
   if(_isOwnFile(url)){
     e.respondWith(_fromCache(e.request).then(function(m){ return m||_networkFirst(e); }));
     return;
