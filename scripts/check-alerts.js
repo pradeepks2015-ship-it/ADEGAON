@@ -44,7 +44,7 @@ const MULTI = [
 ];
 // ⚪ कभी alert नहीं — "ठीक हो गया"/एक-बार सफ़ाई/जानकारी वाली
 const IGNORE = [
-  'appcheck-recovered', 'je-auth-recovered', 'cache-reset', 'cache-prune', 'cut-clean',
+  'appcheck-recovered', 'je-auth-recovered', 'cache-idb-late', 'cache-reset', 'cache-prune', 'cut-clean',
   'migration-revert-fixed', 'migration-revert-already', 'migration-revert-empty', 'migration-dup-merged',
   'mig-noacc-skip', 'repeat-mark', 'hsc-conflict', 'cash-refresh-cb', 'cache-init-cb',
   'remark-merge-hold', // v9.237: अपने-आप संभलती है (20 sec बाद फिर कोशिश); अटके तो pending-old alert

@@ -22,6 +22,7 @@ function cSet(hq,cat,d){
   _listsBcPost(k,d);
   if(!_cacheReady){ _cacheDirty[k]=true; return; } // cacheInit ख़ुद लिख देगा
   if(_cacheDb){ _idbPut(k,d,hq+"/"+cat); return; }
+  if(_cacheSlow){ _cacheDirty[k]=true; return; } // v9.249: IndexedDB देर से खुलेगा — तब तक memory में, localStorage में नहीं
   if(!lsSet(LS_PREFIX+k,JSON.stringify(d),"cache")) _etagDrop(hq+"/"+cat);
 }
 // v9.222: सूची फ़ोन में save न हो पाए तो उसका ETag ("सर्वर पर कौन-सा version") भी हटाएं। असली production
@@ -163,6 +164,38 @@ var _cacheReady=false;
 /** @type {Object<string,boolean>} */ var _cacheDirty={}; // तैयार होने से पहले cSet हुई सूचियां
 /** @type {Array<Function>} */ var _cacheWaiters=[];
 var _cacheInitStarted=false;
+// ── v9.249 (JE फ़ोन 24/10: cache-idb-slow ×3, फिर storage-full) ──
+// IndexedDB 4 सेकंड में न खुला तो पहले पूरा session localStorage पर चलता — 1 MB की सूचियां वहां लिखी जातीं और
+// ~5 MB भर जाता (GitHub Pages पर JE के सारे ऐप वही जगह बांटते हैं; LAKHNADON वाला 1.2 MB), और IndexedDB देर
+// से खुलता भी तो छोड़ दिया जाता (फ़ोन में रखी सूचियां उस session में दिखती ही नहीं)। अब: तब तक सूचियां सिर्फ़
+// memory में (_cacheSlow), localStorage में नहीं; IndexedDB खुलते ही अपनाया (_cacheAdopt) — उसकी सूचियां दिखें,
+// इस बीच बदली सूचियां उसमें लिखी जाएं। बिना भेजी वसूली (queue) पहले की तरह localStorage में — वह छोटी है।
+// सूची save न हुई हो तो उसका ETag नहीं सहेजते (_cacheUnsaved — v9.222 वाली बासी-सूची घटना)
+var _cacheSlow=false;
+function _cacheUnsaved(hq,cat){ return _cacheSlow&&!!_cacheDirty[cKey(hq,cat)]; }
+/** @param {IDBDatabase} db */
+function _cacheAdopt(db){
+  _cacheLoadAll(db,function(ok){
+    if(!ok||!_cacheSlow) return;
+    _cacheSlow=false; _cacheDb=db; _cacheGen++;
+    var dirty=_cacheDirty; _cacheDirty={};
+    Object.keys(dirty).forEach(function(k){ if(CACHE[k]) _idbPut(k,CACHE[k]); });
+    logErr("cache-idb-late","IndexedDB देर से खुला — अपनाया ("+Object.keys(dirty).length+" बदली सूची लिखी)");
+    try{
+      if(typeof CU!=="undefined"&&CU&&typeof activeHQ!=="undefined"&&activeHQ&&typeof renderListWith==="function"){
+        var d=cGet(activeHQ,activeCat); renderSummaryWith(d); renderListWith(d);
+      }
+    }catch(e){}
+  });
+}
+// Chrome से "यह डेटा जगह कम होने पर अपने-आप न मिटाना" — बिना पॉप-अप, मिले न मिले कोई फ़र्क़ नहीं
+function _cachePersist(){
+  try{
+    if(navigator.storage&&navigator.storage.persisted&&navigator.storage.persist){
+      navigator.storage.persisted().then(function(p){ if(!p) return navigator.storage.persist(); }).catch(function(){});
+    }
+  }catch(e){}
+}
 /** @param {string} k @param {any} d @param {string} [ek] ETag की key (hq/cat) */
 function _idbPut(k,d,ek){
   try{
@@ -190,24 +223,29 @@ function cacheInit(cb){
     _cacheReady=true; _cacheDb=db;
     _cacheStaleReset(db);
     // तैयार होने से पहले बदली सूचियां अब सही जगह लिखें
-    Object.keys(_cacheDirty).forEach(function(k){
-      if(db) _idbPut(k,CACHE[k]); else lsSet(LS_PREFIX+k,JSON.stringify(CACHE[k]),"cache");
-    });
-    _cacheDirty={};
+    if(db||!_cacheSlow){
+      Object.keys(_cacheDirty).forEach(function(k){
+        if(db) _idbPut(k,CACHE[k]); else lsSet(LS_PREFIX+k,JSON.stringify(CACHE[k]),"cache");
+      });
+      _cacheDirty={};
+    }
     var w=_cacheWaiters; _cacheWaiters=[];
     w.forEach(function(f){ try{ f(); }catch(e){ logErr("cache-init-cb",e); } });
   };
-  var timer=setTimeout(function(){ logErr("cache-idb-slow","IndexedDB "+CACHE_INIT_MAX_MS/1000+" सेकंड में नहीं खुला — localStorage से"); done(null); },CACHE_INIT_MAX_MS);
+  _cachePersist();
+  var timer=setTimeout(function(){ _cacheSlow=true; logErr("cache-idb-slow","IndexedDB "+CACHE_INIT_MAX_MS/1000+" सेकंड में नहीं खुला — खुलने तक सूचियां memory में"); done(null); },CACHE_INIT_MAX_MS);
   var fin=function(db){ clearTimeout(timer); done(db); };
   try{
     if(typeof indexedDB==="undefined") return fin(null);
     var rq=indexedDB.open(CACHE_DB_NAME,1);
     rq.onupgradeneeded=function(){ rq.result.createObjectStore(CACHE_DB_STORE); };
-    rq.onerror=function(){ logErr("cache-idb-open",rq.error||"?"); fin(null); };
-    rq.onblocked=function(){ fin(null); };
+    // सचमुच नहीं खुलेगा — पुराना रास्ता (localStorage); slow वाली memory-सूचियां भी अब वहीं
+    var noIdb=function(){ if(_cacheSlow){ _cacheSlow=false; Object.keys(_cacheDirty).forEach(function(k){ lsSet(LS_PREFIX+k,JSON.stringify(CACHE[k]),"cache"); }); _cacheDirty={}; } fin(null); };
+    rq.onerror=function(){ logErr("cache-idb-open",rq.error||"?"); noIdb(); };
+    rq.onblocked=function(){ noIdb(); };
     rq.onsuccess=function(){
       var db=rq.result;
-      if(_cacheReady){ return; } // देर से खुला — इस बार localStorage ही
+      if(_cacheReady){ if(_cacheSlow) _cacheAdopt(db); return; } // v9.249: देर से खुला — अब अपनाएं
       _cacheLoadAll(db,function(ok){ fin(ok?db:null); });
     };
   }catch(e){ logErr("cache-idb-open",e); fin(null); }
