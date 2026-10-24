@@ -173,3 +173,22 @@ test('canary: hold — लाइनमैन फ़ोन पर समय ब�
     await expect(page.locator('#update-banner')).toBeVisible({ timeout: 20000 });
   } finally { srv.close(); }
 });
+
+// v9.246: rollout.json (नया version कौन-सा) SW कभी cache से न दे — वरना फ़ोन को पुराना "ver" दिखता रहता
+test('असली SW: rollout.json हमेशा सर्वर से (cache से नहीं)', async ({ page, context }) => {
+  const src = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  const state = { sw: src, rollout: { ver: '1.0', waitMin: 10 } };
+  const srv = await startServer(state);
+  try {
+    await stubExternal(context);
+    const base = 'http://127.0.0.1:' + srv.address().port + '/';
+    await page.goto(base);
+    await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller), { timeout: 20000 }).toBe(true);
+    const read = () => page.evaluate(() => fetch('rollout.json', { cache: 'no-store' }).then((r) => r.json()).then((j) => j.ver));
+    expect(await read()).toBe('1.0');
+    state.rollout = { ver: '2.0', waitMin: 10 };
+    expect(await read()).toBe('2.0');
+  } finally {
+    srv.close();
+  }
+});

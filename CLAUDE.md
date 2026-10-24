@@ -105,7 +105,7 @@
 2. `git log --oneline -20` और हाल के merged PRs देख लें — पूरा इतिहास (फ़ैसले, bug root-causes, fixes) commit messages और PR descriptions में दर्ज है।
 
 ## हर बदलाव के लिए तय प्रक्रिया (सख़्ती से पालन करें)
-1. कोई भी asset/behavior बदलाव करने पर `js/config.js` का `APP_VER` और `sw.js` का `CACHE_NAME` दोनों एक-साथ बढ़ाएं (जैसे 9.65→9.66, v82→v83)।
+1. कोई भी asset/behavior बदलाव करने पर `js/config.js` का `APP_VER`, `sw.js` का `CACHE_NAME` और `rollout.json` का `ver` तीनों एक-साथ बढ़ाएं (जैसे 9.65→9.66, v82→v83)। `ver` से ही पुराने version पर अटके फ़ोन को "नया version उतर रहा है" बैनर दिखता है (v9.246, `_verCheck`) — टेस्ट मिलान जांचता है
 2. बदलाव के बाद पूरा Playwright suite पास होना ज़रूरी है:
    ```
    PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npx playwright test

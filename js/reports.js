@@ -242,14 +242,69 @@ var _pendingUpdate=false; // नया SW version आया — अगली ब
 function _reloadPage(){ location.reload(); } // tests में override हो सके
 function _swSetupAutoUpdate(reg){
   if(!reg) return;
-  setInterval(function(){reg.update().catch(function(){});},5*60*1000);
+  setInterval(function(){reg.update().catch(function(){});_verCheck(reg);},5*60*1000);
+  _verCheck(reg);
   document.addEventListener("visibilitychange",function(){
     if(document.visibilityState==="visible"){
       // background में था और update आ चुका था — user के वापस आते ही silently reload (interrupt नहीं)
       if(_pendingUpdate){_reloadPage();return;}
       reg.update().catch(function(){});
+      _verCheck(reg);
     }
   });
+}
+// ── v9.246 (JE 24/10: "जब तक अपडेट न हो जाए, बैनर दिखता रहे") ──
+// पहले बैनर सिर्फ़ तब आता था जब नया version फ़ोन पर उतर चुका हो; कमज़ोर नेट पर उतरना ही बीच में टूटे तो
+// फ़ोन चुपचाप पुराने पर चलता रहता (तालिका में दिन भर 9.243)। अब ऐप rollout.json (GitHub Pages, ~150 bytes —
+// Firebase नहीं) का "ver" पढ़ता है: यह फ़ोन पुराने पर है और नया उतरने का समय (लाइनमैन: waitMin + 3 मिनट,
+// JE: 3 मिनट) बीत गया, तो "नया version उतर रहा है" बैनर — ऐप बंद-खोलने पर भी, जब तक नया न हो जाए।
+// "hold" पर लाइनमैनों को नहीं। बिना नेट कुछ नहीं (पुराना ऐप वैसे ही चलता)
+var VER_GRACE_MS=3*60*1000;
+var VER_SEEN_KEY="dc_vernew1"; // {v, t} — नया version पहली बार कब दिखा (इसी फ़ोन पर)
+function _verNum(v){ return String(v||"").split(".").map(function(x){ return parseInt(x,10)||0; }); }
+function _verNewer(a,b){ // a, b से नया है?
+  var x=_verNum(a), y=_verNum(b);
+  for(var i=0;i<Math.max(x.length,y.length);i++){ var d=(x[i]||0)-(y[i]||0); if(d) return d>0; }
+  return false;
+}
+function _isJeDevice(){ return !!(typeof CU!=="undefined"&&CU&&CU.role==="supervisor"); }
+function _verCheck(reg){
+  if(!navigator.onLine||_pendingUpdate) return Promise.resolve();
+  return fetch("rollout.json",{cache:"no-store"}).then(function(r){ return r.ok?r.json():null; }).then(function(cfg){
+    if(!cfg||!cfg.ver||!_verNewer(cfg.ver,APP_VER)) return;
+    var je=_isJeDevice();
+    if(cfg.hold===true&&!je) return;
+    var seen=null, now=Date.now();
+    try{ seen=JSON.parse(localStorage.getItem(VER_SEEN_KEY)||"null"); }catch(e){}
+    if(!seen||seen.v!==cfg.ver||!(seen.t<=now)){
+      seen={v:cfg.ver,t:now};
+      try{ localStorage.setItem(VER_SEEN_KEY,JSON.stringify(seen)); }catch(e){}
+    }
+    var wait=je?0:Number(cfg.waitMin);
+    if(!(wait>=0)) wait=10;
+    if(now-seen.t<wait*60000+VER_GRACE_MS) return;
+    _showComingBanner(cfg.ver,reg);
+  }).catch(function(){});
+}
+// नया version अभी उतरा नहीं — बैनर, "अभी उतारें" से दोबारा कोशिश। उतरते ही (controllerchange) यही बैनर
+// "रीलोड करें" वाला बन जाता है (_showUpdateBanner)
+function _showComingBanner(ver,reg){
+  if(_pendingUpdate||document.getElementById("update-banner")) return;
+  var b=document.createElement("div");
+  b.id="update-banner";
+  b.className="ub-coming";
+  var sp=document.createElement("span");
+  sp.textContent="🔄 नया version ("+ver+") उतर रहा है — नेट चालू रखें";
+  var btn=document.createElement("button");
+  btn.id="update-banner-btn";
+  btn.textContent="अभी उतारें";
+  btn.onclick=function(){
+    btn.textContent="उतार रहे हैं…"; btn.disabled=true;
+    var done=function(){ setTimeout(function(){ if(!_pendingUpdate){ btn.textContent="फिर कोशिश"; btn.disabled=false; } },20000); };
+    if(reg&&reg.update) reg.update().then(done,done); else done();
+  };
+  b.appendChild(sp); b.appendChild(btn);
+  document.body.appendChild(b);
 }
 // v9.214: पन्ना खुलते वक़्त कोई SW क़ब्ज़े में नहीं था (पहली बार ऐप खुला, या Chrome डेटा साफ़ हुआ) — तब
 // पहला controllerchange सिर्फ़ नए SW का क़ब्ज़ा लेना (clients.claim) है, नया version नहीं। पहले उस पर भी
@@ -266,7 +321,9 @@ if("serviceWorker" in navigator && location.protocol.indexOf("http")===0){
 }
 function _showUpdateBanner(){
   _pendingUpdate=true; // visible होने पर visibilitychange handler reload करेगा
-  if(document.getElementById("update-banner")) return;
+  var old=document.getElementById("update-banner");
+  if(old&&old.className!=="ub-coming") return;
+  if(old) old.remove(); // "उतर रहा है" वाला बैनर — अब "रीलोड करें" वाला
   var b=document.createElement("div");
   b.id="update-banner";
   b.innerHTML="<span>🔄 ऐप का नया version आ गया है</span>"+
