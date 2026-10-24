@@ -245,7 +245,9 @@ function _mergeServerRemarks(hq,cat,patch,max,timeoutMs){
           var rk=rmkKeyOf(r);
           if(!seen[rk]){ seen[rk]=1; out.push(r); }
         });
-        if(out.length===mine.length) return; // सर्वर पर ऐसा कुछ नहीं जो इस फ़ोन पर न हो
+        out=rmkTrim(out); // v9.247: 10 से ज़्यादा नहीं — सर्वर पर पड़ा पुराना (यहां हटा) लौटे नहीं
+        var mineK={}; mine.forEach(function(r){ if(r&&typeof r==="object") mineK[rmkKeyOf(r)]=1; });
+        if(out.length===mine.length&&out.every(function(r){ return mineK[rmkKeyOf(r)]; })) return; // सर्वर पर ऐसा कुछ नहीं जो इस फ़ोन पर न हो
         patch[k].remarksArr=out;
         patch[k].remarks=out[out.length-1].text; // backward-compat field — saveRmk जैसा ही
         gained[k]=out;

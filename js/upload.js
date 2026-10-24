@@ -464,7 +464,9 @@ function _upApplyOldRemarks(recs,byAcc){
       var k=rmkKeyOf(x);
       if(!seen[k]){ seen[k]=1; out.push(x); }
     });
-    if(out.length===(r.remarksArr||[]).length) return;
+    out=rmkTrim(out); // v9.247: 10 से ज़्यादा नहीं
+    var had={}; (r.remarksArr||[]).forEach(function(x){ had[rmkKeyOf(x)]=1; });
+    if(out.length===(r.remarksArr||[]).length&&out.every(function(x){ return had[rmkKeyOf(x)]; })) return;
     r.remarksArr=out;
     r.remarks=out[out.length-1].text; // backward-compat field — saveRmk जैसा ही
     n++;
