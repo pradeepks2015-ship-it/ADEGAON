@@ -562,6 +562,45 @@ test.describe('डेटा और वसूली', () => {
     expect(r.ts).toEqual([true, true]);
   });
 
+  // v9.249 (JE फ़ोन 24/10: cache-idb-slow ×3 → storage-full): IndexedDB देर से खुले तो सूचियां localStorage में न जाएं,
+  // खुलते ही अपनाया जाए (फ़ोन में रखी सूची दिखे, इस बीच बदली उसमें लिखी जाए); बिना save हुई सूची का ETag नहीं
+  test('IndexedDB देर से खुले: localStorage में बड़ी सूची नहीं, बाद में अपनाया, ETag तभी', async ({ page }) => {
+    test.setTimeout(60000);
+    await openApp(page);
+    await page.evaluate(() => { cSet('आदेगांव', 'घरेलू', [{ acc: '11', name: 'पहले से', status: 'pending', amount: 5 }]); });
+    await page.waitForTimeout(300);
+    // अगली बार IndexedDB 6 सेकंड देर से खुले (सीमा 4 सेकंड)
+    await page.addInitScript(() => {
+      const open = indexedDB.open.bind(indexedDB);
+      indexedDB.open = function (...a) {
+        const rq = open(...a);
+        const fake = { result: null, error: null, onupgradeneeded: null, onerror: null, onblocked: null, onsuccess: null };
+        rq.onupgradeneeded = (e) => { fake.result = rq.result; if (fake.onupgradeneeded) fake.onupgradeneeded(e); };
+        rq.onerror = (e) => { setTimeout(() => { fake.error = rq.error; if (fake.onerror) fake.onerror(e); }, 6000); };
+        rq.onsuccess = (e) => { setTimeout(() => { fake.result = rq.result; if (fake.onsuccess) fake.onsuccess(e); }, 6000); };
+        return fake;
+      };
+    });
+    await page.reload();
+    await page.waitForFunction(() => typeof _cacheSlow !== 'undefined' && _cacheSlow === true, null, { timeout: 15000 });
+    const during = await page.evaluate(() => {
+      cSet('आदेगांव', 'व्यवसाय', [{ acc: '22', name: 'बीच में', status: 'pending', amount: 7 }]);
+      _etagSet('आदेगांव', 'व्यवसाय', 'tag-x');
+      return { ls: localStorage.getItem(LS_PREFIX + cKey('आदेगांव', 'व्यवसाय')), etag: (_etagAll() || {})['आदेगांव/व्यवसाय'] || null };
+    });
+    expect(during.ls).toBeNull();     // localStorage में नहीं
+    expect(during.etag).toBeNull();   // सूची save नहीं — ETag भी नहीं
+    await page.waitForFunction(() => _cacheSlow === false && !!_cacheDb, null, { timeout: 15000 });
+    await page.waitForTimeout(300);
+    const after = await page.evaluate(() => new Promise((res) => {
+      const tx = _cacheDb.transaction(CACHE_DB_STORE, 'readonly');
+      const rq = tx.objectStore(CACHE_DB_STORE).get(cKey('आदेगांव', 'व्यवसाय'));
+      rq.onsuccess = () => res({ ghar: cGet('आदेगांव', 'घरेलू').map((x) => x.name), saved: (rq.result || []).map((x) => x.name) });
+    }));
+    expect(after.ghar).toEqual(['पहले से']); // फ़ोन में रखी सूची अपनाई गई
+    expect(after.saved).toEqual(['बीच में']); // बीच में बदली IndexedDB में लिखी गई
+  });
+
   test('openRmkModal — दूसरी category से आया रिमार्क 📁 टैग के साथ दिखे, अपनी ही category का रिमार्क बिना टैग', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {

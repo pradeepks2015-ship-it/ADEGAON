@@ -23,6 +23,7 @@ function _etagGet(hq,cat){
 }
 function _etagSet(hq,cat,tag){
   if(!tag) return;
+  if(typeof _cacheUnsaved==="function"&&_cacheUnsaved(hq,cat)) return; // v9.249: सूची अभी सिर्फ़ memory में — ETag पर भरोसा नहीं
   var a=_etagAll(); a[hq+"/"+cat]=tag;
   try{localStorage.setItem(ETAG_KEY,JSON.stringify(a));}catch(e){}
 }
