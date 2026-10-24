@@ -362,6 +362,8 @@ function _bumpAuthFail(k,err){
     p[k]=entry; setPendingObj(p); // गिनती जैसी है वैसी — token लौटते ही _acNoteOk भेज देगा
     return;
   }
+  // v9.248: उस वक़्त खाता ही नहीं/अनाम था — यह "इस HQ के लिए अधिकृत नहीं" नहीं, गिनती न बढ़े
+  if(/HTTP (401|403)/.test(msg)&&typeof _fbAcctNone==="function"&&_fbAcctNone()){ p[k]=entry; setPendingObj(p); return; }
   if(/HTTP (401|403)/.test(msg)){
     entry.authFailCount=(entry.authFailCount||0)+1;
     // हार मानने से पहले खुद ठीक होने की एक कोशिश: 401 की सबसे आम वजह यह है कि device सही HQ
@@ -605,6 +607,12 @@ function flushPending(){
   // v9.243: App Check पर्ची नाकाम है — भेजना Firebase को बेकार (unverified) requests ही देगा; पर्ची बनते ही
   // _acNoteOk (firebase.js) यही function फिर बुलाता है
   if(typeof _acBlocked==="function"&&_acBlocked()) return;
+  // v9.248: login से पहले/अनाम खाते पर नहीं — असली खाता बनते ही _authAcctReady (firebase.js) फिर बुलाता है
+  if(typeof _fbAcctNone==="function"&&AUTH_READY&&_fbAcctNone()){
+    // लाइनमैन अंदर है पर खाता अनाम — सही HQ खाते से sign-in की कोशिश (पहले यह पहले 401 पर होती थी; अपना guard है)
+    if(CU&&CU.role==="lineman"&&typeof _ensureCorrectHqAuth==="function"&&pendingCount()>0){ try{ _ensureCorrectHqAuth(); }catch(e){} }
+    return;
+  }
   var p=getPending();
   var keys=Object.keys(p);
   var needCat=false;
