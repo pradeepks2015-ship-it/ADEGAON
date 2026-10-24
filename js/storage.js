@@ -363,7 +363,12 @@ function _bumpAuthFail(k,err){
     return;
   }
   // v9.248: उस वक़्त खाता ही नहीं/अनाम था — यह "इस HQ के लिए अधिकृत नहीं" नहीं, गिनती न बढ़े
-  if(/HTTP (401|403)/.test(msg)&&typeof _fbAcctNone==="function"&&_fbAcctNone()){ p[k]=entry; setPendingObj(p); return; }
+  // (पर सही HQ खाते से जुड़ने की कोशिश ज़रूर — यही 401 की असली वजह है; _ensureCorrectHqAuth का अपना guard है)
+  if(/HTTP (401|403)/.test(msg)&&typeof _fbAcctNone==="function"&&_fbAcctNone()){
+    p[k]=entry; setPendingObj(p);
+    try{_ensureCorrectHqAuth();}catch(e){}
+    return;
+  }
   if(/HTTP (401|403)/.test(msg)){
     entry.authFailCount=(entry.authFailCount||0)+1;
     // हार मानने से पहले खुद ठीक होने की एक कोशिश: 401 की सबसे आम वजह यह है कि device सही HQ
