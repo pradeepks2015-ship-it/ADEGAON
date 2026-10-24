@@ -169,12 +169,30 @@ try{
       u.getIdToken().then(function(t){
         _setIdToken(t);
         _tokenWaiters.splice(0).forEach(function(f){try{f();}catch(e){}});
+        _authAcctReady(u);
       });
     }
     else { firebase.auth().signInAnonymously().catch(function(){setSyncStatus(false);}); }
   });
 }catch(e){}
 
+// v9.248 (JE फ़ोन 24/10): login से पहले/अनाम (anonymous) खाते पर "बाक़ी" भेजने में सर्वर मना करता — 3 बार पर वह "अटका"
+// मानी जाती और यह निशान फ़ोन में रहता; JE login पर हटता ही नहीं था (सिर्फ़ लाइनमैन के अपने HQ पर)। अब असली खाता
+// (JE या किसी HQ का) बनते ही: JE = सब HQ की, HQ खाता = उसी HQ की "अटका" गिनती हटे और "बाक़ी" भेजा जाए
+function _authAcctReady(u){
+  try{
+    if(!u||u.isAnonymous||!u.email) return;
+    if(u.email===JE_EMAIL){ if(typeof resetAuthFailAll==="function") resetAuthFailAll(); }
+    else{
+      for(var h in HQ_AUTH_EMAIL){ if(HQ_AUTH_EMAIL[h]===u.email&&typeof _resetAuthFailForHQ==="function") _resetAuthFailForHQ(h); }
+    }
+    if(typeof flushPending==="function") setTimeout(function(){ try{ flushPending(); }catch(x){} },0);
+  }catch(e){}
+}
+// login से पहले या अनाम खाते पर Firebase सूचियों में लिख ही नहीं सकता (Security Rules) — तब भेजना बेकार
+function _fbAcctNone(){
+  try{ var u=firebase.auth().currentUser; return !u||!!u.isAnonymous||!u.email; }catch(e){ return false; } // firebase ही नहीं (टेस्ट) — रोक नहीं
+}
 // FB (Realtime Database) की हर fetch call में auth token अपने आप जुड़ जाए — कहीं और कोड बदलने की ज़रूरत नहीं
 // token अभी न बना हो तो 4 sec तक इंतज़ार — वरना app खुलते ही निकली save बिना token के 401 खा जाती है
 var _rawFetch = window.fetch.bind(window);

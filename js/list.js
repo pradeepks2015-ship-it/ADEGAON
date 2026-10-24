@@ -199,7 +199,7 @@ function _rmkDayTs(at){
   return m?(new Date(+m[1],+m[2]-1,+m[3]).getTime()||0):0;
 }
 function remarksAll(x,hq){
-  var own=(x&&x.remarksArr)||[];
+  var own=rmkTrim((x&&x.remarksArr)||[]); // v9.247: 10 से ज़्यादा नहीं दिखें (पुराने version वाले फ़ोन ने लौटाए हों तो भी)
   if(!x||x.acc==null||!hq) return own;
   var extra=_rmkIndex(hq)[String(x.acc).trim()];
   if(!extra||!extra.length) return own;
@@ -219,8 +219,8 @@ function remarksAll(x,hq){
   if(out.length===n) return own; // दूसरी सूचियों में कुछ नया नहीं
   // क्रम: पुराना → नया (तारीख़ से); तारीख़ न पढ़ी जाए तो पिछले वाले की मानो — जगह न बदले
   var last=0;
-  return out.map(function(r,i){ var t=_rmkDayTs(r.at)||last; last=t; return {r:r,t:t,i:i}; })
-    .sort(function(a,b){ return a.t-b.t||a.i-b.i; }).map(function(o){ return o.r; });
+  return rmkTrim(out.map(function(r,i){ var t=_rmkDayTs(r.at)||last; last=t; return {r:r,t:t,i:i}; })
+    .sort(function(a,b){ return a.t-b.t||a.i-b.i; }).map(function(o){ return o.r; }));
 }
 function promiseDue(x){
   if(!x||x.status==="paid") return "";
@@ -716,6 +716,7 @@ function breakPromise(idx,acc,el){
   var entry={text:"💔 वादा टूटा ("+_fmtDue(pd)+" का)",by:CU.name,at:dtStr,cat:activeCat,brk:pd};
   if(!d[idx].remarksArr) d[idx].remarksArr=[];
   d[idx].remarksArr.push(entry);
+  d[idx].remarksArr=rmkTrim(d[idx].remarksArr);
   d[idx].remarks=entry.text;
   d[idx].ts=serverNow();
   cSet(activeHQ,activeCat,d);
@@ -881,6 +882,7 @@ function saveRmk(){
     newEntry={text:newText,by:CU.name,at:dtStr,cat:activeCat};
     if(due) newEntry.due=due;
     d[idx].remarksArr.push(newEntry);
+    d[idx].remarksArr=rmkTrim(d[idx].remarksArr); // v9.247: 10 से ज़्यादा हों तो सबसे पुराना हटे
     // Keep backward-compat field as latest remark text
     d[idx].remarks=newText;
   }
@@ -918,6 +920,7 @@ function propagateRemark(acc,srcCat,entry){
       if(x&&x.acc&&String(x.acc).trim()===String(acc).trim()){
         if(!x.remarksArr) x.remarksArr=[];
         x.remarksArr.push(entry);
+        x.remarksArr=rmkTrim(x.remarksArr);
         x.remarks=entry.text; // backward-compat field — saveRmk जैसा ही
         changed=true;
       }

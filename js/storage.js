@@ -362,6 +362,13 @@ function _bumpAuthFail(k,err){
     p[k]=entry; setPendingObj(p); // गिनती जैसी है वैसी — token लौटते ही _acNoteOk भेज देगा
     return;
   }
+  // v9.248: उस वक़्त खाता ही नहीं/अनाम था — यह "इस HQ के लिए अधिकृत नहीं" नहीं, गिनती न बढ़े
+  // (पर सही HQ खाते से जुड़ने की कोशिश ज़रूर — यही 401 की असली वजह है; _ensureCorrectHqAuth का अपना guard है)
+  if(/HTTP (401|403)/.test(msg)&&typeof _fbAcctNone==="function"&&_fbAcctNone()){
+    p[k]=entry; setPendingObj(p);
+    try{_ensureCorrectHqAuth();}catch(e){}
+    return;
+  }
   if(/HTTP (401|403)/.test(msg)){
     entry.authFailCount=(entry.authFailCount||0)+1;
     // हार मानने से पहले खुद ठीक होने की एक कोशिश: 401 की सबसे आम वजह यह है कि device सही HQ
@@ -483,6 +490,36 @@ function _resetAuthFailForHQ(hq){
 
 // Record-level merge — दूसरों के बदलाव न मिटें
 function rmkKeyOf(r){return (r.text||"")+"|"+(r.by||"")+"|"+(r.at||"");}
+// ── v9.247 (JE 24/10): एक उपभोक्ता पर ज़्यादा से ज़्यादा 10 रिमार्क — 11वां जुड़ते ही सबसे पुराना हटे (FIFO) ──
+// रिमार्क फ़ोनों/सर्वर/सूचियों के बीच "जोड़कर" मिलते हैं (किसी का न मिटे), इसलिए छंटाई हर उस जगह जहां वे जुड़ते
+// या मिलते हैं (saveRmk, propagateRemark, breakPromise, mergeRecord, _mergeServerRemarks, अपलोड) — हर फ़ोन पर
+// एक ही नियम: समय से सबसे पुराने हटें, ताकि हटा रिमार्क किसी और फ़ोन से लौटे भी तो अगली बार फिर वही हटे।
+// चल रहे वादे (🤝 तारीख़ आज या आगे) वाला रिमार्क नहीं हटता — उसकी जगह अगला पुराना। दिखाते वक़्त भी 10 (remarksAll)
+var RMK_MAX=10;
+// रिमार्क का समय (ms) — "24/10/2026, 9:05:07 pm" (hi-IN) या "2026-10-12"; न पढ़ा जाए तो 0 (सबसे पुराना माना जाए)
+function _rmkTs(at){
+  var s=String(at==null?"":at), m=s.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\D+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|पूर्वाह्न|अपराह्न)?)?/i);
+  if(m){
+    var h=+(m[4]||0), ap=(m[7]||"").toLowerCase();
+    if(ap==="pm"||ap==="अपराह्न"){ if(h<12) h+=12; } else if((ap==="am"||ap==="पूर्वाह्न")&&h===12) h=0;
+    return new Date(+m[3],+m[2]-1,+m[1],h,+(m[5]||0),+(m[6]||0)).getTime()||0;
+  }
+  m=s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  return m?(new Date(+m[1],+m[2]-1,+m[3]).getTime()||0):0;
+}
+function rmkTrim(arr){
+  if(!arr||arr.length<=RMK_MAX) return arr;
+  var t=new Date(), today=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0");
+  var order=arr.map(function(r,i){ return {r:r,i:i,t:(r&&_rmkTs(r.at))||0,k:r?rmkKeyOf(r):""}; })
+    .sort(function(a,b){ return a.t-b.t||(a.k<b.k?-1:a.k>b.k?1:a.i-b.i); }); // पुराना पहले; बराबरी पर हर फ़ोन पर एक ही क्रम
+  var drop={}, need=arr.length-RMK_MAX;
+  for(var j=0;j<order.length&&need>0;j++){
+    var r=order[j].r;
+    if(r&&typeof r.due==="string"&&r.due>=today) continue; // चल रहा वादा — रहे
+    drop[order[j].i]=1; need--;
+  }
+  return arr.filter(function(_,i){ return !drop[i]; });
+}
 function mergeRecord(l,st){
   var base=((l.ts||0)>=(st.ts||0))?l:st;
   var out=JSON.parse(JSON.stringify(base));
@@ -491,7 +528,7 @@ function mergeRecord(l,st){
     if(!r)return; var k=rmkKeyOf(r);
     if(!seen[k]){seen[k]=1;arr.push(r);}
   });
-  out.remarksArr=arr;
+  out.remarksArr=rmkTrim(arr);
   return out;
 }
 // Consumer No का मिलान हमेशा खाली जगह हटाकर — असली bug (JE की रिपोर्ट, मढ़ी/कुल उपभोक्ता, 1134019486):
@@ -575,6 +612,12 @@ function flushPending(){
   // v9.243: App Check पर्ची नाकाम है — भेजना Firebase को बेकार (unverified) requests ही देगा; पर्ची बनते ही
   // _acNoteOk (firebase.js) यही function फिर बुलाता है
   if(typeof _acBlocked==="function"&&_acBlocked()) return;
+  // v9.248: login से पहले/अनाम खाते पर नहीं — असली खाता बनते ही _authAcctReady (firebase.js) फिर बुलाता है
+  if(typeof _fbAcctNone==="function"&&AUTH_READY&&_fbAcctNone()){
+    // लाइनमैन अंदर है पर खाता अनाम — सही HQ खाते से sign-in की कोशिश (पहले यह पहले 401 पर होती थी; अपना guard है)
+    if(CU&&CU.role==="lineman"&&typeof _ensureCorrectHqAuth==="function"&&pendingCount()>0){ try{ _ensureCorrectHqAuth(); }catch(e){} }
+    return;
+  }
   var p=getPending();
   var keys=Object.keys(p);
   var needCat=false;

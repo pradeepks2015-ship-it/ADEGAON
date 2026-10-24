@@ -1,6 +1,6 @@
 {
   "_": "पहले JE, फिर सब (sw.js का _canaryGate): नया version JE के फ़ोन पर तुरंत, बाक़ी फ़ोनों पर waitMin मिनट बाद। hold:true = लाइनमैनों तक बिल्कुल नहीं | ver = ताज़ा APP_VER (js/config.js) — ऐप इसी से जानता है कि वह पुराने पर है (js/reports.js का _verCheck); हर version पर साथ बढ़ाएं",
-  "ver": "9.246",
+  "ver": "9.248",
   "waitMin": 10,
   "hold": false
 }

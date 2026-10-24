@@ -1715,3 +1715,49 @@ test.describe('App Check पर्ची नहीं — Firebase को बे
     expect(r).toBe(false);
   });
 });
+
+// v9.248 (JE फ़ोन 24/10): login से पहले अनाम खाते पर "बाक़ी" भेजने में 3× Permission denied → "अटका"; JE login पर
+// हटता नहीं था (सिर्फ़ लाइनमैन के अपने HQ पर)
+test.describe('अनाम खाते पर "बाक़ी" न भेजें, JE login पर सब HQ की "अटका" हटे (v9.248)', () => {
+  test('अनाम खाता: कोई भेजना नहीं; 401 पर गिनती नहीं; JE खाता बनते ही सब HQ की अटका हटे और भेजा जाए; HQ खाता = सिर्फ़ उसका HQ', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      let user = { isAnonymous: true, email: null };
+      window.firebase = { auth: () => ({ currentUser: user }) };
+      AUTH_READY = true; AC_READY = true; AC_TOKEN = 'x'; localStorage.removeItem('dc_acfail');
+      _flushing = false; _flushBackoffUntil = 0;
+      let calls = 0;
+      const orig = window.fetch;
+      window.fetch = function (u, o) { if (String(u).indexOf(FB) === 0) { calls++; return Promise.resolve(new Response('{}', { status: 200 })); } return orig(u, o); };
+      const k1 = cKey('बीबी', 'सुनील'), k2 = cKey('पाटन', 'वैभव');
+      localStorage.setItem('dc_pending3', JSON.stringify({
+        [k1]: { hq: 'बीबी', cat: 'सुनील', type: 'put', authFailCount: 3, patch: {} },
+        [k2]: { hq: 'पाटन', cat: 'वैभव', type: 'put', authFailCount: 3, patch: {} },
+      }));
+      const out = {};
+      flushPending(); out.anonCalls = calls; out.anonFlushing = _flushing;
+      // अनाम पर 401 — गिनती न बढ़े
+      const p = getPending(); p[k1].authFailCount = 1; setPendingObj(p);
+      _bumpAuthFail(k1, Object.assign(new Error('HTTP 401'), { body: '{ "error" : "Permission denied" }' }));
+      out.anonCount = getPending()[k1].authFailCount;
+      const p2 = getPending(); p2[k1].authFailCount = 3; setPendingObj(p2);
+      // पाटन का HQ खाता — सिर्फ़ पाटन की गिनती हटे
+      user = { isAnonymous: false, email: HQ_AUTH_EMAIL['पाटन'] };
+      window.fetch = () => new Promise(() => {}); // भेजना लटका रहे — सिर्फ़ गिनती देखनी है
+      _authAcctReady(user);
+      out.hq = { bibi: getPending()[k1].authFailCount, patan: getPending()[k2].authFailCount || 0 };
+      _flushing = false;
+      user = { isAnonymous: false, email: JE_EMAIL };
+      _authAcctReady(user);
+      out.je = { bibi: getPending()[k1].authFailCount || 0 };
+      setTimeout(() => { out.flushStarted = _flushing; window.fetch = orig; resolve(out); }, 50);
+    }));
+    expect(r.anonCalls).toBe(0);
+    expect(r.anonFlushing).toBe(false);
+    expect(r.anonCount).toBe(1);
+    expect(r.hq).toEqual({ bibi: 3, patan: 0 });
+    expect(r.je).toEqual({ bibi: 0 });
+    expect(r.flushStarted).toBe(true);
+  });
+});

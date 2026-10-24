@@ -515,6 +515,53 @@ test.describe('डेटा और वसूली', () => {
     expect(r.vyapar.remarksArr).toBeFalsy(); // अलग acc — बिल्कुल न छुआ
   });
 
+  // v9.247 (JE 24/10): एक उपभोक्ता पर ज़्यादा से ज़्यादा 10 रिमार्क — 11वां जुड़ते ही सबसे पुराना हटे (FIFO)
+  test('रिमार्क FIFO 10: 11वां सेव करते ही सबसे पुराना हटे (सब सूचियों में), चल रहा वादा न हटे, card पर 10', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      const t = new Date(); const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const fut = new Date(t.getTime() + 5 * 864e5);
+      const mk = () => Array.from({ length: 10 }, (_, i) => ({ text: 'रिमार्क ' + (i + 1), by: 'X', at: (i + 1) + '/1/2026, 10:00:00 am' }));
+      const arr = mk(); arr[0].due = iso(fut); // सबसे पुराना = आगे का वादा — रहे
+      cSet('आदेगांव', 'कुल उपभोक्ता', [{ acc: '4321', name: 'राम', status: 'pending', amount: 100, remarksArr: arr }]);
+      cSet('आदेगांव', 'घरेलू', [{ acc: '4321', name: 'राम', status: 'pending', amount: 100, remarksArr: mk() }]);
+    });
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता';
+      openRmkModal(0, '4321'); document.getElementById('rmk-text').value = 'नया 11वां'; saveRmk();
+      const m = cGet('आदेगांव', 'कुल उपभोक्ता')[0].remarksArr.map((x) => x.text);
+      const g = cGet('आदेगांव', 'घरेलू')[0].remarksArr.map((x) => x.text);
+      renderListWith(cGet('आदेगांव', 'कुल उपभोक्ता'));
+      return { m, g, card: document.querySelectorAll('.con-card .cc-rmk-item').length };
+    });
+    expect(r.m.length).toBe(10);
+    expect(r.m).toContain('रिमार्क 1');       // सबसे पुराना, पर चल रहा वादा — रहा
+    expect(r.m).not.toContain('रिमार्क 2');   // उसकी जगह अगला पुराना हटा
+    expect(r.m[r.m.length - 1]).toBe('नया 11वां');
+    expect(r.g.length).toBe(10);
+    expect(r.g).not.toContain('रिमार्क 1');
+    expect(r.g).toContain('नया 11वां');
+    expect(r.card).toBe(10);
+  });
+
+  test('रिमार्क FIFO 10: सर्वर पर पड़ा (यहां हटा) पुराना रिमार्क मिलाने पर लौटे नहीं; मिलान/दिखाना हर जगह 10; समय am/pm से', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const a = Array.from({ length: 12 }, (_, i) => ({ text: 'r' + i, by: 'X', at: '5/1/2026, ' + (i < 6 ? (i + 1) + ':00:00 am' : (i - 5) + ':00:00 pm') }));
+      const tr = rmkTrim(a.slice().reverse()).map((x) => x.text); // क्रम उलटा हो तो भी समय से
+      const merged = mergeRecord({ acc: '1', ts: 2, remarksArr: a.slice(2) }, { acc: '1', ts: 1, remarksArr: a.slice(0, 10) }).remarksArr.map((x) => x.text);
+      const shown = remarksAll({ acc: '1', remarksArr: a }, null).length;
+      return { tr, merged, shown, ts: [_rmkTs('24/10/2026, 12:05:07 am') < _rmkTs('24/10/2026, 9:05:07 am'), _rmkTs('24/10/2026, 9:05:07 pm') > _rmkTs('24/10/2026, 12:05:07 pm')] };
+    });
+    expect(r.tr.length).toBe(10);
+    expect(r.tr).not.toContain('r0');
+    expect(r.tr).not.toContain('r1');
+    expect(r.merged).toEqual(['r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10', 'r11']);
+    expect(r.shown).toBe(10);
+    expect(r.ts).toEqual([true, true]);
+  });
+
   test('openRmkModal — दूसरी category से आया रिमार्क 📁 टैग के साथ दिखे, अपनी ही category का रिमार्क बिना टैग', async ({ page }) => {
     await openApp(page);
     await page.evaluate(() => {
