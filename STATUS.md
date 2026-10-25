@@ -4,7 +4,7 @@
 > `docs/STATUS-history.md` में — **पूरा न पढ़ें**, ज़रूरत हो तो `grep -n`। हर बदलाव की पूरी कहानी commit/PR में।
 > काम पूरा होने पर यहां सिर्फ़ ज़रूरी बातें अपडेट करें (नीचे की तालिका + खुले काम), लंबा ब्योरा commit/PR में।
 
-**आख़िरी अपडेट:** 25 अक्टूबर 2026 · **लाइव version:** 9.253 · **CACHE_NAME:** adegaon-dc-v270 · **खुला PR:** कोई नहीं
+**आख़िरी अपडेट:** 25 अक्टूबर 2026 · **लाइव version:** 9.254 · **CACHE_NAME:** adegaon-dc-v271 · **खुला PR:** कोई नहीं
 
 ---
 
@@ -27,6 +27,7 @@
 | #292 | v9.250/9.251 — security: CSP से `unsafe-inline` हटाने की ओर, चरण 1 (login) + 2 (सूची/उपभोक्ता card): inline onclick की जगह `data-act` + `ACTIONS` सूची (ui-core.js, सिर्फ़ सूची वाले काम), उपभोक्ता डेटा सिर्फ़ escHtml वाले `data-*` में। boot-ui में ratchet `INLINE_HANDLER_MAX` (130, हर चरण घटे)। **बाक़ी चरण:** रिमार्क खिड़की, JE मेनू/सेटिंग, अपलोड, रिपोर्ट/स्कोरकार्ड, बाक़ी index.html, 2 inline script → आख़िर में CSP से `'unsafe-inline'` हटाना | 25 अक्टू ✅ |
 | #293 | v9.252 — security चरण 3: रिमार्क खिड़की (10 inline handler) → `data-act`; नया `data-change` (change delegation); ratchet 120 | 25 अक्टू ✅ |
 | #294 | v9.253 — security चरण 4: मोबाइल (SMS/WhatsApp) + Consumer No खिड़की (14 inline handler) → `data-act`; नया `data-input` (input delegation); ratchet 106 | 25 अक्टू ✅ |
+| #295 | v9.254 — security चरण 5: ऊपर की पट्टी + नाम वाला मेनू (24 inline handler) → `data-act`; मेनू बंद करने वाला listener नाम-बटन/JE सेटिंग पर नहीं (पहले inline stopPropagation); ratchet 82। **बाक़ी:** खोज/फ़िल्टर/नीचे की पट्टी/Profile-सेटिंग, स्कोरकार्ड/कैश/अपलोड/JE खिड़कियां, JS में बनी बाक़ी HTML, 2 inline script, print window → फिर CSP | 25 अक्टू ✅ |
 | #282 | v9.242 — JE मेनू: झोपड़ी-लाइनमैन वाला स्केच "आज की वसूली" टाइल पर (📅 की जगह), "ग्राम-वार वसूली" पर नया गोल गांव-सर्वे चित्र (`icons/village-survey.webp`, ~8 KB, JE के Power BI चित्र से काटकर; sw.js CORE) — JE screenshot-Ok 19/10 | 19 अक्टू ✅ |
 | #281 | v9.241 — रिमार्क-पढ़ाई (`_mergeServerRemarks`) पूरे ऐप में एक साथ 6 (`_rmkSlot`), timeout की घड़ी पढ़ाई शुरू होने पर; "बाक़ी" पीछे से भेजते वक़्त सीमा 15s (`REMARK_FLUSH_TIMEOUT_MS`), सामने वाली सेव 5s — 19/10 10:56 JE के फ़ोन पर 6 HQ की 8 सूचियों में 61 उपभोक्ताओं के रिमार्क "timeout" पर रुके (एक साथ 80 तक पढ़ाई, घड़ी कतार में बीतती) | 19 अक्टू ✅ |
 | #280 | v9.240 — "बाक़ी" भेजने की समय-सीमा भेजे जा रहे आकार के हिसाब से (60s + हर 4 KB पर 1s, 3 मिनट तक; `_flushMs`) + timeout के बाद हर 20s वही भारी कोशिश नहीं: पहले 2 मिनट, फिर 5 मिनट रुकें (`_flushBackoffUntil`), "online" event या कोई सफल भेजना हो तो तुरंत — 19/10 मढ़ी (राजकुमार, v9.239) पर हर कुछ मिनट 3 सूचियों के `sync-patch-fail timeout` | 19 अक्टू ✅ |
