@@ -158,6 +158,37 @@ function selectRole(r){
 
 function togglePw(){var i=document.getElementById("sup-pw");i.type=i.type==="password"?"text":"password";}
 
+// ── Security (JE 25/10): बटन का काम HTML में inline onclick नहीं, यहां की सूची से (data-act) ──
+// मक़सद: CSP से 'unsafe-inline' हटाना — तब नाम/रिमार्क में घुसा छिपा कोड (XSS) ब्राउज़र चलाएगा ही नहीं। बटन पर
+// data-act="नाम" (और ज़रूरत हो तो data-arg) लिखें, काम नीचे ACTIONS में। सिर्फ़ इसी सूची के काम चलते हैं (कोई भी
+// global function नाम से नहीं — वरना घुसा हुआ data-act भी कुछ भी बुला सकता)। चरणों में स्क्रीन-दर-स्क्रीन
+/** @type {Object<string,(el:HTMLElement,ev:Event)=>void>} */
+var ACTIONS={
+  role:function(el){ selectRole(el.dataset.arg||""); },
+  togglePw:function(){ togglePw(); },
+  login:function(){ doLogin(); }
+};
+function _actDispatch(ev){
+  var t=/** @type {HTMLElement|null} */(ev.target&&ev.target.closest?ev.target.closest("[data-act]"):null);
+  if(!t) return;
+  var fn=Object.prototype.hasOwnProperty.call(ACTIONS,t.dataset.act||"")?ACTIONS[t.dataset.act||""]:null;
+  if(!fn) return;
+  try{ fn(t,ev); }catch(e){ logErr("act-fail",e,t.dataset.act); }
+}
+document.addEventListener("click",_actDispatch);
+// login का logo न मिले तो पहले icon-192, वह भी न मिले तो ⚡ (पहले inline onerror से)
+function _logoFallback(img){
+  if(!img.dataset.fb){ img.dataset.fb="1"; img.src="icons/icon-192.png"; return; }
+  var d=document.createElement("div"); d.style.fontSize="60px"; d.style.marginBottom="10px"; d.textContent="⚡";
+  img.replaceWith(d);
+}
+(function(){
+  var img=/** @type {HTMLImageElement|null} */(document.querySelector("#login-screen img.login-logo"));
+  if(!img) return;
+  img.addEventListener("error",function(){ _logoFallback(img); });
+  if(img.complete&&!img.naturalWidth) _logoFallback(img); // script चलने से पहले ही नाकाम हो चुका
+})();
+
 // ── 🛑 डेटा बचाओ मोड — पट्टी और JE का स्विच (असली रोक js/database.js में है) ───────────────
 function renderPauseBar(){
   var el=document.getElementById("pause-bar");

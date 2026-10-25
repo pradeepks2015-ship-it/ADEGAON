@@ -856,3 +856,42 @@ test.describe('ऐप का अपना पुष्टि-डिब्बा 
   });
 });
 
+
+// ── Security (JE 25/10): inline onclick/onerror हटाकर CSP से 'unsafe-inline' हटाना — चरणों में ──
+// हर चरण में जिस स्क्रीन के बटन बदले, वहां कोई inline handler न रहे; और पूरे पन्ने की गिनती इस सीमा से ऊपर
+// न जाए (नया inline handler जोड़ने पर टेस्ट फेल — हर चरण के बाद सीमा घटाते जाएं, आख़िर में 0)
+const INLINE_HANDLER_MAX = 130; // चरण 1 के बाद (login के 5 हटे)
+test.describe('inline handler हटाना (security, चरण 1: login स्क्रीन)', () => {
+  test('login स्क्रीन में कोई inline on* handler नहीं; पूरे पन्ने में सीमा से ज़्यादा नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const cnt = (root) => Array.from(root.querySelectorAll('*')).reduce((n, el) => n + Array.from(el.attributes).filter((a) => /^on/i.test(a.name)).length, 0);
+      return { login: cnt(document.getElementById('login-screen')), all: cnt(document) };
+    });
+    expect(r.login).toBe(0);
+    expect(r.all).toBeLessThanOrEqual(INLINE_HANDLER_MAX);
+  });
+
+  test('login के बटन data-act से चलें: भूमिका चुनना, पासवर्ड आंख, प्रवेश', async ({ page }) => {
+    await openApp(page);
+    await page.click('#rc-sup', { force: true });
+    expect(await page.evaluate(() => selectedRole)).toBe('supervisor');
+    const t1 = await page.evaluate(() => document.getElementById('sup-pw').type);
+    await page.click('.pw-eye');
+    const t2 = await page.evaluate(() => document.getElementById('sup-pw').type);
+    expect(t1).toBe('password');
+    expect(t2).toBe('text');
+    await page.click('#rc-lin', { force: true });
+    expect(await page.evaluate(() => selectedRole)).toBe('lineman');
+  });
+
+  test('logo की फ़ाइल न मिले तो पहले icon-192, वह भी न मिले तो ⚡ (onerror के बिना)', async ({ page }) => {
+    await page.route('**/icons/login-logo.webp', (r) => r.abort());
+    await page.route('**/icons/icon-192.png', (r) => r.abort());
+    await openApp(page);
+    await expect.poll(() => page.evaluate(() => {
+      const w = document.querySelector('#login-screen .logo-wrap');
+      return !w.querySelector('img.login-logo') && w.textContent.indexOf('⚡') > -1;
+    }), { timeout: 5000 }).toBe(true);
+  });
+});
