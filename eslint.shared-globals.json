@@ -153,6 +153,7 @@
   "_acStale",
   "_acWaiters",
   "_actDispatch",
+  "_actOn",
   "_afterAuthReady",
   "_appStarted",
   "_applauseBed",

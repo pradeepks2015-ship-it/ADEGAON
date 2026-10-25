@@ -234,51 +234,51 @@ try{
     <div class="search-wrap">
       <div class="si-wrap">
         <span class="si-icon">&#128269;</span>
-        <input type="text" class="si" id="search-inp" placeholder="नाम, No., Mobile, पता, Tariff खोजें..." oninput="debounceSearch()">
+        <input type="text" class="si" id="search-inp" placeholder="नाम, No., Mobile, पता, Tariff खोजें..." data-input="search">
       </div>
     </div>
     <!-- v9.203: गांव की पट्टी — टैप करते ही उसी गांव की सूची (JE: अंग्रेज़ी नाम, सबसे ज़्यादा बाकी पहले) -->
     <div class="vg-wrap" id="vg-wrap" style="display:none;"></div>
     <div class="filter-wrap">
-      <button class="filter-btn active-all" data-f="all" onclick="setFilter(this)">सभी</button>
-      <button class="filter-btn" data-f="pending" onclick="setFilter(this)">&#9203; बाकी</button>
-      <button class="filter-btn" data-f="paid" onclick="setFilter(this)">&#10004; वसूल</button>
+      <button class="filter-btn active-all" data-f="all" data-act="filter">सभी</button>
+      <button class="filter-btn" data-f="pending" data-act="filter">&#9203; बाकी</button>
+      <button class="filter-btn" data-f="paid" data-act="filter">&#10004; वसूल</button>
       <!-- v9.202: आज/बीते दिन के वादे वाले बाकी उपभोक्ता (रिमार्क में डाली वादा-तारीख़ से) -->
-      <button class="filter-btn" data-f="promise" id="fb-promise" onclick="setFilter(this)">इस सप्ताह जमा का वादा</button>
+      <button class="filter-btn" data-f="promise" id="fb-promise" data-act="filter">इस सप्ताह जमा का वादा</button>
     </div>
-    <div class="np-strip je-auth-strip" id="je-auth-strip" style="display:none;"><span>🔐 JE खाता सर्वर से नहीं जुड़ा — ताज़ा डेटा नहीं आएगा। लॉगआउट करके पासवर्ड से दोबारा login करें</span><button type="button" class="np-off" onclick="doLogout(true)">लॉगआउट</button></div>
+    <div class="np-strip je-auth-strip" id="je-auth-strip" style="display:none;"><span>🔐 JE खाता सर्वर से नहीं जुड़ा — ताज़ा डेटा नहीं आएगा। लॉगआउट करके पासवर्ड से दोबारा login करें</span><button type="button" class="np-off" data-act="logout">लॉगआउट</button></div>
     <div class="np-strip" id="np-strip" style="display:none;"></div>
     <div class="con-list" id="con-list"></div>
   </div>
   <div class="bottom-nav">
-    <button class="bnav-item active" onclick="_bnavHome()">
+    <button class="bnav-item active" data-act="bnavHome">
       <span class="bnav-ico">&#127968;</span><span class="bnav-lbl">Home</span>
     </button>
-    <button class="bnav-item" id="sc-bnav-btn" onclick="openScorecard()">
+    <button class="bnav-item" id="sc-bnav-btn" data-act="scorecard">
       <img class="bnav-ico-img" src="icons/scorecard-icon.svg" alt="">
       <span class="bnav-lbl">स्कोरकार्ड</span>
     </button>
-    <button class="bnav-item" onclick="openProfileModal()">
+    <button class="bnav-item" data-act="profile">
       <span class="bnav-ico">&#128100;</span><span class="bnav-lbl">Profile</span>
     </button>
-    <button class="bnav-item" onclick="openSupportModal()">
+    <button class="bnav-item" data-act="support">
       <span class="bnav-ico">&#10067;</span><span class="bnav-lbl">Support</span>
     </button>
   </div>
 </div>
 
 <!-- PROFILE (फ़ोटो अपलोड सहित) -->
-<div class="moverlay" id="profile-overlay" onclick="if(event.target===this)closeProfileModal()">
+<div class="moverlay" id="profile-overlay" data-act="profileOutside">
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">&#128100; प्रोफ़ाइल</div>
     <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:16px;">
       <div id="profile-avatar-wrap" style="width:88px;height:88px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#fff;margin-bottom:10px;box-shadow:var(--shadow-md);"></div>
       <div style="display:flex;gap:8px;">
-        <button class="btn-cancel" style="width:auto;padding:8px 16px;" onclick="document.getElementById('profile-photo-inp').click()">&#128247; फ़ोटो बदलें</button>
-        <button class="btn-cancel" id="profile-photo-remove-btn" style="width:auto;padding:8px 16px;display:none;" onclick="removeProfilePhoto()">&#128465; फ़ोटो हटाएं</button>
+        <button class="btn-cancel" style="width:auto;padding:8px 16px;" data-act="photoPick">&#128247; फ़ोटो बदलें</button>
+        <button class="btn-cancel" id="profile-photo-remove-btn" style="width:auto;padding:8px 16px;display:none;" data-act="photoRemove">&#128465; फ़ोटो हटाएं</button>
       </div>
-      <input type="file" id="profile-photo-inp" accept="image/*" style="display:none;" onchange="onPhotoSelected(this)">
+      <input type="file" id="profile-photo-inp" accept="image/*" style="display:none;" data-change="photoSelected">
     </div>
     <div class="rmk-info">
       <div class="rmk-name" id="profile-name">-</div>
@@ -286,25 +286,25 @@ try{
     </div>
     <div class="theme-row">
       <span>&#127769; डार्क मोड <span style="font-weight:400;color:var(--muted);">(कम रोशनी में आँखों को आराम)</span></span>
-      <button class="theme-switch" id="theme-switch-btn" onclick="toggleTheme()" aria-label="डार्क मोड टॉगल करें"><span class="theme-switch-knob"></span></button>
+      <button class="theme-switch" id="theme-switch-btn" data-act="theme" aria-label="डार्क मोड टॉगल करें"><span class="theme-switch-knob"></span></button>
     </div>
     <!-- v9.205: बड़े अक्षर — JE: "जहां से डार्क मोड करते हैं वहीं से" (धूप में / 45+ उम्र वालों के लिए; डिफ़ॉल्ट बंद) -->
     <div class="theme-row">
       <span>&#128288; बड़े अक्षर <span style="font-weight:400;color:var(--muted);">(सूची के नंबर, पता, बटन — पढ़ने में आसान)</span></span>
-      <button class="theme-switch" id="bigtext-switch-btn" onclick="toggleBigText()" aria-label="बड़े अक्षर चालू/बंद करें"><span class="theme-switch-knob"></span></button>
+      <button class="theme-switch" id="bigtext-switch-btn" data-act="bigText" aria-label="बड़े अक्षर चालू/बंद करें"><span class="theme-switch-knob"></span></button>
     </div>
     <div class="theme-row">
       <span>&#128227; वसूली पर आवाज़ <span style="font-weight:400;color:var(--muted);">(ताली और घंटी — फ़ोन में ही बनती है)</span></span>
-      <button class="theme-switch" id="sound-switch-btn" onclick="toggleCelebSound()" aria-label="वसूली पर आवाज़ चालू/बंद करें"><span class="theme-switch-knob"></span></button>
+      <button class="theme-switch" id="sound-switch-btn" data-act="celebSound" aria-label="वसूली पर आवाज़ चालू/बंद करें"><span class="theme-switch-knob"></span></button>
     </div>
     <div class="mfooter">
-      <button class="btn-save" onclick="closeProfileModal()">बंद करें</button>
+      <button class="btn-save" data-act="profileClose">बंद करें</button>
     </div>
   </div>
 </div>
 
 <!-- SUPPORT -->
-<div class="moverlay" id="support-overlay" onclick="if(event.target===this)closeSupportModal()">
+<div class="moverlay" id="support-overlay" data-act="supportOutside">
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">&#10067; सहायता</div>
@@ -313,13 +313,13 @@ try{
       <div style="font-size:13px;margin-top:10px;" id="support-je-email">-</div>
     </div>
     <div class="mfooter">
-      <button class="btn-save" onclick="closeSupportModal()">बंद करें</button>
+      <button class="btn-save" data-act="supportClose">बंद करें</button>
     </div>
   </div>
 </div>
 
 <!-- UPLOAD MODAL -->
-<div class="moverlay" id="up-overlay" onclick="closeUpOutside(event)">
+<div class="moverlay" id="up-overlay" data-act="s7_closeUpOutside">
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">&#128228; लिस्ट अपलोड करें</div>
@@ -328,10 +328,10 @@ try{
       <b>&#128241; Mobile:</b> Files/Downloads से select करें<br>
       <b>जरूरी:</b> Consumer No, Consumer Name, Net Bill
     </div>
-    <button class="tmpl-btn" onclick="dlTemplate()">&#11015; Template CSV डाउनलोड करें</button>
+    <button class="tmpl-btn" data-act="s7_dlTemplate">&#11015; Template CSV डाउनलोड करें</button>
     <div class="up-sel2">
       <div class="fg" style="margin:0;"><label>HQ *</label>
-        <div class="sel-wrap" style="margin:0;"><select class="fs" id="up-hq" onchange="onUpHqChange()"></select></div>
+        <div class="sel-wrap" style="margin:0;"><select class="fs" id="up-hq" data-change="s7_onUpHqChange"></select></div>
       </div>
       <div class="fg" style="margin:0;"><label>Category *</label>
         <div class="sel-wrap" style="margin:0;">
@@ -339,7 +339,7 @@ try{
                नामों से बनाता है। पहले ये यहीं hardcoded थे और सिर्फ़ 4-7 सिंक होते थे, इसलिए
                बदले हुए घरेलू/व्यवसाय/कृषि यहाँ पुराने नाम से दिखते रहते थे, और HQ बदलने पर तो
                किसी और मुख्यालय के नाम दिख जाते — यानी ग़लत पते पर अपलोड होने का ख़तरा -->
-          <select class="fs" id="up-cat" onchange="updateUpCounter();onCatChange()"></select>
+          <select class="fs" id="up-cat" data-change="s7_updateUpCounter"></select>
         </div>
       </div>
     </div>
@@ -349,7 +349,7 @@ try{
     <div id="up-merge-note" style="display:none;margin:10px 2px;padding:9px 11px;background:rgba(66,165,245,.08);border:1px solid rgba(66,165,245,.35);border-radius:10px;font-size:12px;line-height:1.55;color:var(--text);"></div>
     <div id="up-keep-sec">
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;margin:10px 2px 6px;">
-      <input type="checkbox" id="up-keeppaid" checked onchange="_upKeepToggle()" style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;">
+      <input type="checkbox" id="up-keeppaid" checked data-change="s7__upKeepToggle" style="width:18px;height:18px;accent-color:var(--green);flex-shrink:0;">
       पुरानी ✅ वसूली सुरक्षित रखें
     </label>
     <!-- नया लेजर आने पर पिछले माह की वसूली नहीं रखनी चाहिए (वरना जिसने नया बिल जमा नहीं किया वो
@@ -357,7 +357,7 @@ try{
          वसूली इसी माह दर्ज हुई है वो नए लेजर में भी बनी रहनी चाहिए — इसीलिए तारीख़ से छँटाई -->
     <div id="up-keepfrom-wrap" style="margin:0 2px 10px;padding:9px 11px;background:rgba(0,200,150,.06);border:1px solid rgba(0,200,150,.25);border-radius:10px;">
       <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:5px;">इस तारीख़ से दर्ज वसूली ही रखें — इससे पुरानी (पिछले लेजर की) हट जाएगी</label>
-      <input type="date" class="fi" id="up-keepfrom" onchange="_upKeepPreview()" style="margin-bottom:6px;">
+      <input type="date" class="fi" id="up-keepfrom" data-change="s7__upKeepPreview" style="margin-bottom:6px;">
       <div id="up-keepnote" style="font-size:11.5px;color:var(--green);font-weight:700;line-height:1.5;"></div>
     </div>
     </div>
@@ -373,16 +373,16 @@ try{
     </div>
     <div class="fg"><label>मोड</label>
       <div class="stoggle">
-        <button class="topt sel-pending" id="mode-rep" onclick="setUpMode('replace')">&#128260; Replace</button>
-        <button class="topt" id="mode-mrg" onclick="setUpMode('merge')">&#10133; Merge</button>
+        <button class="topt sel-pending" id="mode-rep" data-act="s7_setUpMode">&#128260; Replace</button>
+        <button class="topt" id="mode-mrg" data-act="s7_setUpMode2">&#10133; Merge</button>
       </div>
     </div>
-    <div class="upload-zone" id="up-zone" onclick="document.getElementById('file-input').click()" ondragover="dOver(event)" ondragleave="dLeave()" ondrop="dDrop(event)">
+    <div class="upload-zone" id="up-zone" data-act="s7_click_file_input" data-dragover="s7_dOver" data-dragleave="s7_dLeave" data-drop="s7_dDrop">
       <div class="uz-icon" id="uz-ico">&#128194;</div>
       <div class="uz-t" id="uz-t">CSV या Excel फ़ाइल चुनें</div>
       <div class="uz-s">&#128187; Drag &amp; Drop | &#128241; Files app से select करें</div>
     </div>
-    <input type="file" id="file-input" accept=".csv,.xlsx,.xls,*/*" onchange="handleFile(this.files[0])">
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls,*/*" data-change="s7_handleFile">
     <div id="up-preview" style="display:none;">
       <div class="warn-box" id="up-warn" style="display:none;"></div>
       <div class="preview-box">
@@ -392,8 +392,8 @@ try{
       </div>
     </div>
     <div class="mfooter">
-      <button class="btn-cancel" onclick="closeUpModal()">रद्द करें</button>
-      <button class="btn-save btn-green" id="btn-up-ok" onclick="confirmUpload()" disabled style="opacity:.5;">&#128228; अपलोड करें</button>
+      <button class="btn-cancel" data-act="s7_closeUpModal">रद्द करें</button>
+      <button class="btn-save btn-green" id="btn-up-ok" data-act="s7_confirmUpload" disabled style="opacity:.5;">&#128228; अपलोड करें</button>
     </div>
   </div>
 </div>
@@ -449,7 +449,7 @@ try{
 </div>
 
 <!-- SCORECARD MODAL -->
-<div class="moverlay" id="sc-overlay" onclick="closeScOutside(event)">
+<div class="moverlay" id="sc-overlay" data-act="s7_closeScOutside">
   <div class="msheet" style="max-height:95vh;">
     <div class="mhandle"></div>
     <div class="mtitle"><img src="icons/scorecard-icon.svg" alt="" style="width:18px;height:18px;vertical-align:-4px;margin-right:3px;"> DC स्कोरकार्ड</div>
@@ -461,21 +461,21 @@ try{
     <div class="sc-date-hdr" id="sc-date-hdr">📅 दिनांक-वार वसूली</div>
     <div id="sc-body"><div class="sc-loading">⏳ लोड हो रहा है...</div></div>
     <div class="mfooter">
-      <button class="btn-cancel" onclick="closeScModal()">बंद करें</button>
-      <button class="btn-save" style="background:linear-gradient(135deg,#6a1b9a,#4a148c);color:#fff;" onclick="downloadScPDF()">&#128196; PDF</button>
+      <button class="btn-cancel" data-act="s7_closeScModal">बंद करें</button>
+      <button class="btn-save" style="background:linear-gradient(135deg,#6a1b9a,#4a148c);color:#fff;" data-act="s7_downloadScPDF">&#128196; PDF</button>
     </div>
   </div>
 </div>
 
 <!-- एक दिन की पूरी सूची — स्कोरकार्ड की तालिका में सिर्फ़ 3 नाम/नंबर ही आ पाते हैं (वो भी कटे हुए) -->
-<div class="moverlay" id="scday-overlay" style="z-index:600;" onclick="if(event.target===this)closeScDayModal()">
+<div class="moverlay" id="scday-overlay" style="z-index:600;" data-act="s7_out_closeScDayModal">
   <div class="msheet" style="max-height:92vh;">
     <div class="mhandle"></div>
     <div class="mtitle" id="scday-title">📅 दिनांक-वार वसूली</div>
     <div id="scday-sub" style="font-size:11px;color:var(--muted);margin:-4px 0 10px;font-weight:700;"></div>
     <div id="scday-content"></div>
     <div class="mfooter">
-      <button class="btn-cancel" onclick="closeScDayModal()">बंद करें</button>
+      <button class="btn-cancel" data-act="s7_closeScDayModal">बंद करें</button>
     </div>
   </div>
 </div>
@@ -549,27 +549,27 @@ try{
 </div>
 
 <!-- CASH LIST UPLOAD (JE only) -->
-<div class="moverlay" id="cash-overlay" onclick="if(event.target===this)closeCashModal()">
+<div class="moverlay" id="cash-overlay" data-act="s7_out_closeCashModal">
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">&#128181; कैश लिस्ट अपलोड</div>
     <div class="up-info-box">जिन उपभोक्ताओं का बिल जमा हो गया, उनके IVRS नंबर की Excel/CSV फाइल चुनें — सभी HQ की हर tab में वे अपने आप <b>✅ वसूल</b> हो जाएँगे।<br><br>&#128290; <b>पहला column:</b> IVRS नंबर<br>&#128197; <b>दूसरा column (वैकल्पिक):</b> भुगतान तारीख़ — जैसे <b>20/9/2026</b>। यह न हो तो आज की तारीख़ चढ़ेगी। पिछले दिनों की वसूली चढ़ा रहे हों तो तारीख़ ज़रूर डालें, वरना रोज़ का हिसाब ग़लत बनेगा।</div>
-    <div class="upload-zone" onclick="document.getElementById('cash-file').click()">
+    <div class="upload-zone" data-act="s7_click_cash_file">
       <div class="uz-icon" id="cash-ico">&#128181;</div>
       <div class="uz-t">फाइल चुनें</div>
       <div class="uz-s" id="cash-status">Excel (.xlsx/.xls) या CSV</div>
     </div>
-    <input type="file" id="cash-file" accept=".xlsx,.xls,.csv,.txt" style="display:none;" onchange="cashFile(this.files[0])">
+    <input type="file" id="cash-file" accept=".xlsx,.xls,.csv,.txt" style="display:none;" data-change="s7_cashFile">
     <div id="cash-result" style="font-size:12px;color:var(--muted);line-height:1.8;margin:8px 2px;"></div>
     <div class="mfooter">
-      <button class="mbtn mbtn-ghost" onclick="closeCashModal()">बंद करें</button>
-      <button class="mbtn mbtn-go" id="cash-apply" style="display:none;" onclick="applyCashList()">&#10004; सभी को वसूल करें</button>
+      <button class="mbtn mbtn-ghost" data-act="s7_closeCashModal">बंद करें</button>
+      <button class="mbtn mbtn-go" id="cash-apply" style="display:none;" data-act="s7_applyCashList">&#10004; सभी को वसूल करें</button>
     </div>
   </div>
 </div>
 
 <!-- HOME SCORECARD UPLOAD (JE only) -->
-<div class="moverlay" id="hsc-overlay" onclick="if(event.target===this)closeHscModal()">
+<div class="moverlay" id="hsc-overlay" data-act="s7_out_closeHscModal">
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">&#128421; होम पेज डिस्प्ले बोर्ड</div>
@@ -585,12 +585,12 @@ try{
       <div style="display:flex;gap:10px;align-items:center;">
         <div id="hsc-bg-thumb" style="width:86px;height:86px;border-radius:10px;background:var(--card) center/cover no-repeat;border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted);text-align:center;">कोई फ़ोटो नहीं</div>
         <div style="display:flex;flex-direction:column;gap:7px;flex:1;">
-          <button type="button" class="btn-save" style="padding:8px;font-size:12px;" onclick="document.getElementById('hsc-bg-file').click()">📷 फ़ोटो बदलें</button>
-          <button type="button" class="btn-save" id="hsc-bg-del" style="padding:8px;font-size:12px;background:var(--red);" onclick="hscBgRemove()">🗑 हटाएं</button>
+          <button type="button" class="btn-save" style="padding:8px;font-size:12px;" data-act="s7_click_hsc_bg_file">📷 फ़ोटो बदलें</button>
+          <button type="button" class="btn-save" id="hsc-bg-del" style="padding:8px;font-size:12px;background:var(--red);" data-act="s7_hscBgRemove">🗑 हटाएं</button>
           <div id="hsc-bg-note" style="font-size:10px;color:var(--muted);"></div>
         </div>
       </div>
-      <input type="file" id="hsc-bg-file" accept="image/*" style="display:none" onchange="hscBgPick(this)">
+      <input type="file" id="hsc-bg-file" accept="image/*" style="display:none" data-change="s7_hscBgPick">
     </div>
     <div class="fg"><label>As On (दिनांक)</label><input class="fi" id="hsc-ason" placeholder="16-07-2026"></div>
     <div class="up-sel2">
@@ -630,14 +630,14 @@ try{
       <label style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text);cursor:pointer;"><input type="checkbox" id="hsc-showeff" style="width:18px;height:18px;accent-color:var(--gold);"> 📉 दक्षता बोर्ड</label>
     </div>
     <div class="mfooter">
-      <button class="btn-cancel" onclick="closeHscModal()">रद्द</button>
-      <button class="btn-save" onclick="saveHsc()">&#128190; प्रकाशित करें</button>
+      <button class="btn-cancel" data-act="s7_closeHscModal">रद्द</button>
+      <button class="btn-save" data-act="s7_saveHsc">&#128190; प्रकाशित करें</button>
     </div>
   </div>
 </div>
 
 <!-- ERROR LOG MODAL (JE only) -->
-<div class="moverlay" id="log-overlay" onclick="closeLogOutside(event)">
+<div class="moverlay" id="log-overlay" data-act="s7_closeLogOutside">
   <div class="msheet" style="max-height:92vh;">
     <div class="mhandle"></div>
     <div class="mtitle">&#129534; एरर लॉग</div>
@@ -646,27 +646,27 @@ try{
     <div class="log-sec-hdr">&#127760; सभी डिवाइस (पिछले 2 दिन)</div>
     <div class="log-list" id="log-srv"></div>
     <div class="mfooter" style="flex-wrap:wrap;">
-      <button class="btn-cancel" style="flex-basis:100%;color:var(--red);" onclick="clearServerLogs()">&#128465; सभी डिवाइस लॉग साफ़ करें</button>
-      <button class="btn-cancel" onclick="clearLocalLogs()">&#128465; लोकल साफ़ करें</button>
-      <button class="btn-save" onclick="closeLogModal()">बंद करें</button>
+      <button class="btn-cancel" style="flex-basis:100%;color:var(--red);" data-act="s7_clearServerLogs">&#128465; सभी डिवाइस लॉग साफ़ करें</button>
+      <button class="btn-cancel" data-act="s7_clearLocalLogs">&#128465; लोकल साफ़ करें</button>
+      <button class="btn-save" data-act="s7_closeLogModal">बंद करें</button>
     </div>
   </div>
 </div>
 
 <!-- DATA USAGE MODAL (JE only) — Firebase Blaze plan पर अनुमानित डेटा-उपयोग ट्रेंड -->
-<div class="moverlay" id="usage-overlay" onclick="closeUsageOutside(event)">
+<div class="moverlay" id="usage-overlay" data-act="s7_closeUsageOutside">
   <div class="msheet" style="max-height:92vh;">
     <div class="mhandle"></div>
     <div class="mtitle">&#128246; डेटा उपयोग (अनुमानित)</div>
     <div id="usage-content"></div>
     <div class="mfooter">
-      <button class="btn-save" onclick="closeUsageModal()">बंद करें</button>
+      <button class="btn-save" data-act="s7_closeUsageModal">बंद करें</button>
     </div>
   </div>
 </div>
 
 <!-- चरण 3 (per-record migration) — Dry-run जांच, सिर्फ पढ़ता है, कुछ नहीं लिखता (JE only) -->
-<div class="moverlay" id="mig-overlay" onclick="if(event.target===this)closeMigModal()">
+<div class="moverlay" id="mig-overlay" data-act="s7_out_closeMigModal">
   <div class="msheet" style="max-height:92vh;">
     <div class="mhandle"></div>
     <div class="mtitle">&#128736;&#65039; चरण 3 — Dry-run जांच</div>
@@ -674,29 +674,29 @@ try{
     <div id="mig-content"></div>
 
     <div class="mfooter">
-      <button class="btn-cancel" id="mig-dl" style="display:none;" onclick="downloadMigReport()">&#128190; रिपोर्ट Excel</button>
-      <button class="btn-save" onclick="_migRunDryRun()">&#128260; दोबारा जांचें</button>
-      <button class="btn-save" onclick="closeMigModal()">बंद करें</button>
+      <button class="btn-cancel" id="mig-dl" style="display:none;" data-act="s7_downloadMigReport">&#128190; रिपोर्ट Excel</button>
+      <button class="btn-save" data-act="s7__migRunDryRun">&#128260; दोबारा जांचें</button>
+      <button class="btn-save" data-act="s7_closeMigModal">बंद करें</button>
     </div>
   </div>
 </div>
 
 <!-- 🛑 डेटा बचाओ मोड (JE only) — आपातकालीन ब्रेक, जिस दिन Firebase का रोज़ाना download quota
      भरता दिखे -->
-<div class="moverlay" id="pause-overlay" onclick="if(event.target===this)closePauseModal()">
+<div class="moverlay" id="pause-overlay" data-act="s7_out_closePauseModal">
   <div class="msheet" style="max-height:92vh;">
     <div class="mhandle"></div>
     <div class="mtitle">&#128721; डेटा बचाओ मोड</div>
     <div id="pause-content"></div>
     <div class="mfooter">
-      <button class="btn-save" onclick="closePauseModal()">बंद करें</button>
+      <button class="btn-save" data-act="s7_closePauseModal">बंद करें</button>
     </div>
   </div>
 </div>
 
 <!-- कर्मचारी सक्रियता (JE only) — रोज़ देखने वाली चीज़, इसलिए चरण 3 (कभी-कभार वाली माइग्रेशन
      जांच) से अलग करके मेनू में अपना विकल्प दिया गया है -->
-<div class="moverlay" id="dv-overlay" onclick="if(event.target===this)closeDvModal()">
+<div class="moverlay" id="dv-overlay" data-act="s7_out_closeDvModal">
   <div class="msheet" style="max-height:92vh;">
     <div class="mhandle"></div>
     <div class="mtitle">&#128101; कर्मचारी सक्रियता</div>
@@ -704,48 +704,48 @@ try{
     <div id="mig-devices"></div>
 
     <div class="mfooter">
-      <button class="btn-save" onclick="_dvRefreshAll()">&#128260; ताज़ा करें</button>
-      <button class="btn-save" onclick="closeDvModal()">बंद करें</button>
+      <button class="btn-save" data-act="s7__dvRefreshAll">&#128260; ताज़ा करें</button>
+      <button class="btn-save" data-act="s7_closeDvModal">बंद करें</button>
     </div>
   </div>
 </div>
 
 <!-- Lineman PIN सेट करना (JE only) — हर HQ के लिए एक साझा PIN, सामान्य सुरक्षा-मज़बूती के लिए -->
-<div class="moverlay" id="pin-overlay" onclick="if(event.target===this)closePinModal()">
+<div class="moverlay" id="pin-overlay" data-act="s7_out_closePinModal">
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">&#128274; Lineman PIN</div>
     <div style="font-size:11px;color:var(--muted);padding:0 4px 10px;line-height:1.7;">हर HQ के लिए एक PIN — जिस HQ का खाली छोड़ेंगे, वहां बिना PIN के login चलता रहेगा (पुराना व्यवहार)। PIN <b>कम से कम 6 अंक</b> का रखें: लाइनमैन का password सीधे इसी से बनता है, इसलिए 4 अंक वाला PIN अंदाज़े से तोड़ा जा सकता है।<br><br>&#9888; <b>यहां सेव करने से PIN तुरंत लागू नहीं होता।</b> सेव करने के बाद GitHub &rarr; Actions &rarr; <b>"HQ PIN लागू करें"</b> चलाएं (मुख्यालय चुनें या "सभी") — तभी लाइनमैन का login नया PIN मानेगा।</div>
     <div id="pin-fields"></div>
     <div class="mfooter">
-      <button class="btn-save" onclick="savePins()">&#128190; सेव करें</button>
-      <button class="btn-save" onclick="closePinModal()">बंद करें</button>
+      <button class="btn-save" data-act="s7_savePins">&#128190; सेव करें</button>
+      <button class="btn-save" data-act="s7_closePinModal">बंद करें</button>
     </div>
   </div>
 </div>
 
 <!-- स्कोरकार्ड डिस्प्ले (JE only) — सभी HQ की सारांश तालिका, WhatsApp शेयर के लिए -->
-<div class="moverlay" id="wasc-overlay" onclick="if(event.target===this)closeWaScorecard()">
+<div class="moverlay" id="wasc-overlay" data-act="s7_out_closeWaScorecard">
   <div class="msheet" style="max-height:92vh;">
     <div class="mhandle"></div>
     <div class="mtitle">&#128202; स्कोरकार्ड डिस्प्ले</div>
     <div id="wasc-content"></div>
     <div class="mfooter">
-      <button class="btn-cancel" onclick="loadWaScorecard()">&#128260; रिफ्रेश करें</button>
-      <button class="btn-save" onclick="closeWaScorecard()">बंद करें</button>
+      <button class="btn-cancel" data-act="s7_loadWaScorecard">&#128260; रिफ्रेश करें</button>
+      <button class="btn-save" data-act="s7_closeWaScorecard">बंद करें</button>
     </div>
   </div>
 </div>
 
 <!-- आज की वसूली (JE only) — वर्तमान दिनांक का मुख्यालय-वार भुगतान संख्या स्कोरकार्ड -->
-<div class="moverlay" id="todaysc-overlay" onclick="if(event.target===this)closeTodayScorecard()">
+<div class="moverlay" id="todaysc-overlay" data-act="s7_out_closeTodayScorecard">
   <div class="msheet" style="max-height:92vh;">
     <div class="mhandle"></div>
     <div class="mtitle">&#128979;&#65039; आज की वसूली</div>
     <div id="todaysc-content"></div>
     <div class="mfooter">
-      <button class="btn-cancel" onclick="loadTodayScorecard()">&#128260; रिफ्रेश करें</button>
-      <button class="btn-save" onclick="closeTodayScorecard()">बंद करें</button>
+      <button class="btn-cancel" data-act="s7_loadTodayScorecard">&#128260; रिफ्रेश करें</button>
+      <button class="btn-save" data-act="s7_closeTodayScorecard">बंद करें</button>
     </div>
   </div>
 </div>
@@ -754,35 +754,35 @@ try{
      JE का सवाल था "network cost बढ़ाए बिना ऐसा बटन बन सकता है क्या" — जवाब: सिर्फ़ device के अपने
      cache (cGet) से बनती है, कोई fetch() नहीं (देखें js/reports.js: _voiceHQBreakdown/_voiceScRender)।
      बोलकर सुनाने वाला बटन पहले यहां था (v9.132), JE ने कहा "सिर्फ़ लिस्ट चाहिए" — हटा दिया (v9.133) -->
-<div class="moverlay" id="voicesc-overlay" onclick="if(event.target===this)closeVoiceScorecard()">
+<div class="moverlay" id="voicesc-overlay" data-act="s7_out_closeVoiceScorecard">
   <div class="msheet" style="max-height:92vh;">
     <div class="mhandle"></div>
     <div class="mtitle">&#128203; मुख्यालय व टैरिफ रिपोर्ट</div>
     <div style="font-size:10px;color:var(--muted);margin:-6px 0 8px;">यह device पर पहले से मौजूद (cache किए हुए) data से बनती है — कोई नया Firebase डाउनलोड नहीं होता। किसी HQ/श्रेणी को हाल ही में न खोला हो तो वहां data पुराना या खाली दिख सकता है।</div>
     <div id="voicesc-content"></div>
     <div class="mfooter">
-      <button class="btn-save" onclick="closeVoiceScorecard()">बंद करें</button>
+      <button class="btn-save" data-act="s7_closeVoiceScorecard">बंद करें</button>
     </div>
   </div>
 </div>
 
 <!-- ग्राम-वार वसूली (JE: सभी HQ चुनकर; Lineman: सिर्फ अपने HQ के गांव) -->
-<div class="moverlay" id="village-overlay" onclick="if(event.target===this)closeVillageModal()">
+<div class="moverlay" id="village-overlay" data-act="s7_out_closeVillageModal">
   <div class="msheet" style="max-height:92vh;">
     <div class="mhandle"></div>
     <div class="mtitle">&#127961; ग्राम-वार वसूली</div>
     <div class="hq-scroll" id="vg-hq-tabs" style="margin-bottom:10px;"></div>
     <div class="si-wrap" style="margin-bottom:8px;">
       <span class="si-icon">&#128269;</span>
-      <input type="text" class="si" id="vg-search" placeholder="गांव खोजें..." oninput="_vgRenderList()">
+      <input type="text" class="si" id="vg-search" placeholder="गांव खोजें..." data-input="s7__vgRenderList">
     </div>
     <div id="vg-list"></div>
     <div class="mtitle" style="font-size:14px;margin-top:14px;">&#128100; व्यक्ति/सूची-वार गोद लिए गांव</div>
     <div id="vg-adopt-list"></div>
     <div class="mfooter">
-      <button class="btn-cancel" onclick="_vgRefresh()">&#128260; रिफ्रेश करें</button>
-      <button class="btn-cancel" onclick="downloadVillageExcel()">&#128229; सुधरी Excel</button>
-      <button class="btn-save" onclick="closeVillageModal()">बंद करें</button>
+      <button class="btn-cancel" data-act="s7__vgRefresh">&#128260; रिफ्रेश करें</button>
+      <button class="btn-cancel" data-act="s7_downloadVillageExcel">&#128229; सुधरी Excel</button>
+      <button class="btn-save" data-act="s7_closeVillageModal">बंद करें</button>
     </div>
   </div>
 </div>
