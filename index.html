@@ -36,14 +36,7 @@
 <meta name="twitter:card" content="summary">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#eef2f7" id="meta-theme-color">
-<script>
-// पेज दिखने से *पहले* ही theme लगाएं — वरना पहले हल्का (light) फ्लैश दिखकर फिर dark में बदलेगा
-try{
-  if(localStorage.getItem("dc_theme")==="dark") document.documentElement.setAttribute("data-theme","dark");
-  // v9.205: बड़े अक्षर भी पहले ही — वरना छोटे दिखकर फिर बड़े होते (झटका)
-  if(localStorage.getItem("dc_bigtext")==="1") document.documentElement.classList.add("big-text");
-}catch(e){}
-</script>
+<script src="js/theme-boot.js"></script>
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">

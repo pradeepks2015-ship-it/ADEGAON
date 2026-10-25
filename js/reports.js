@@ -446,6 +446,11 @@ function downloadExcel(){
   });
 }
 
+// v9.257 (security): print-खिड़की का "Print / PDF Save" बटन — inline onclick नहीं (CSP 'unsafe-inline' हटाने पर
+// नई खिड़की भी ऐप की CSP मानती है), यहां से listener
+function _printBtnWire(w){
+  try{ var b=w.document.querySelector(".np"); if(b) b.addEventListener("click",function(){ w.print(); }); }catch(e){}
+}
 function downloadPDF(){
   var data=_filteredForDownload();
   if(!data.length){toast("कोई data नहीं","err");return;}
@@ -503,7 +508,7 @@ function downloadPDF(){
       "<div class='ib'><b style='color:green'>₹"+paidAmt.toLocaleString("hi-IN")+"</b>वसूल राशि</div>"+
       "<div class='ib'><b style='color:red'>₹"+pendAmt.toLocaleString("hi-IN")+"</b>बाकी राशि</div>"+
     "</div>"+
-    "<button class='np' onclick='window.print()' style='margin-bottom:8px;padding:6px 14px;background:#1a237e;color:#fff;border:none;border-radius:5px;cursor:pointer;'>Print / PDF Save</button>"+
+    "<button class='np' style='margin-bottom:8px;padding:6px 14px;background:#1a237e;color:#fff;border:none;border-radius:5px;cursor:pointer;'>Print / PDF Save</button>"+
     "<table><thead><tr>"+
       "<th style='width:3%'>#</th><th style='width:13%'>नाम</th><th style='width:12%'>पिता/पति</th>"+
       "<th style='width:10%'>Consumer No</th><th style='width:10%'>Mobile</th><th style='width:8%'>बकाया</th>"+
@@ -514,6 +519,6 @@ function downloadPDF(){
   // audit-verified: rows ऊपर .map().join() से बना (हर field escHtml() से गुज़रा — देखें ऊपर
   // allRmk/x.name/x.acc आदि), activeHQ/activeCat/CU.name भी escHtml() से गुज़रे
   // eslint-disable-next-line no-unsanitized/method
-  if(w){w.document.write(html);w.document.close();setTimeout(function(){w.print();},600);}
+  if(w){w.document.write(html);w.document.close();_printBtnWire(w);setTimeout(function(){w.print();},600);}
   else toast("Popup block है, allow करें","inf");
 }

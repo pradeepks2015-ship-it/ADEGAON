@@ -96,7 +96,7 @@ function _migRender(rows){
   } else if(safe){
     var doneNote=gMigrated?(" ("+gMigrated+" पहले से माइग्रेट, बाकी बची हुई)"):"";
     html+="<div style='background:rgba(0,200,150,.08);border:1px solid rgba(0,200,150,.3);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--green);font-weight:700;'>✅ सभी "+gTot+" records ठीक हैं — कोई acc missing/duplicate/illegal नहीं। माइग्रेशन के लिए तैयार।"+doneNote+
-      "<div style='margin-top:8px;'><button class='btn-save' style='width:100%;background:#c0392b;' onclick='confirmAndRunMigration()'>🚀 अभी माइग्रेट करें (कम-ट्रैफिक समय पर)</button></div></div>";
+      "<div style='margin-top:8px;'><button class='btn-save' style='width:100%;background:#c0392b;' data-act='migRun'>🚀 अभी माइग्रेट करें (कम-ट्रैफिक समय पर)</button></div></div>";
   } else {
     html+="<div style='background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.3);border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--gold2);font-weight:700;'>⚠️ पहले इन समस्याओं को ठीक करें — Missing acc: "+gMiss+", Duplicate acc: "+gDup+", अवैध acc: "+gIll+"</div>";
   }

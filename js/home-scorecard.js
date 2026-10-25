@@ -109,7 +109,7 @@ function renderHomeSc(){
     var crpu=cc/crpuDen;
     var needColl=ct>0?Math.max(0,ct*crpuDen-cc):0;
     crpuHtml="<div style='background:rgba(121,134,203,.08);border:1px solid rgba(121,134,203,.3);border-radius:10px;padding:10px;margin-top:8px;'>"+
-      "<div onclick=\"toggleBoard('crpu')\" style='display:flex;justify-content:space-between;align-items:center;cursor:pointer;"+(BRD_COL.crpu?"":"margin-bottom:7px;")+"'>"+
+      "<div data-act='board' data-arg='crpu' style='display:flex;justify-content:space-between;align-items:center;cursor:pointer;"+(BRD_COL.crpu?"":"margin-bottom:7px;")+"'>"+
         "<div style='font-size:11px;font-weight:700;color:#9fa8da;'>⚡ CRPU बोर्ड</div>"+
         "<div style='font-size:9px;color:var(--muted);'>FY 26-27 &bull; अप्रैल से अब तक <b style='color:#9fa8da;font-size:13px;'>"+(BRD_COL.crpu?"▸":"▾")+"</b></div>"+
       "</div>"+(BRD_COL.crpu?"":
@@ -166,7 +166,7 @@ function renderHomeSc(){
     }
     needHtml+="</div>";
     effHtml="<div style='background:rgba(77,182,172,.06);border:1px solid rgba(77,182,172,.25);border-radius:10px;padding:10px;margin-top:8px;'>"+
-      "<div onclick=\"toggleBoard('eff')\" style='display:flex;justify-content:space-between;align-items:center;cursor:pointer;"+(BRD_COL.eff?"":"margin-bottom:7px;")+"'>"+
+      "<div data-act='board' data-arg='eff' style='display:flex;justify-content:space-between;align-items:center;cursor:pointer;"+(BRD_COL.eff?"":"margin-bottom:7px;")+"'>"+
         "<div style='font-size:11px;font-weight:700;color:#4db6ac;'>📉 दक्षता बोर्ड (BE / CE / AT&amp;C)</div>"+
         "<div style='font-size:9px;color:var(--muted);'>FY cumulative <b style='color:#4db6ac;font-size:13px;'>"+(BRD_COL.eff?"▸":"▾")+"</b></div>"+
       "</div>"+(BRD_COL.eff?"":
@@ -179,9 +179,9 @@ function renderHomeSc(){
       "<div style='margin-top:8px;border-top:1px dashed rgba(77,182,172,.25);padding-top:7px;'>"+
         "<div style='font-size:9.5px;color:var(--muted);margin-bottom:4px;'>🧮 खुद भरकर देखें — BE/CE बदलें, AT&amp;C तुरंत:</div>"+
         "<div style='display:flex;gap:6px;align-items:center;justify-content:center;'>"+
-          "<input id='sim-be' inputmode='decimal' value='"+be.toFixed(2)+"' oninput='simAtc()' style='width:64px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--text);font-size:13px;font-weight:700;text-align:center;'>"+
+          "<input id='sim-be' inputmode='decimal' value='"+be.toFixed(2)+"' data-input='simAtc' style='width:64px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--text);font-size:13px;font-weight:700;text-align:center;'>"+
           "<span style='font-size:10px;color:var(--muted);'>BE% ×</span>"+
-          "<input id='sim-ce' inputmode='decimal' value='"+ce.toFixed(2)+"' oninput='simAtc()' style='width:64px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--text);font-size:13px;font-weight:700;text-align:center;'>"+
+          "<input id='sim-ce' inputmode='decimal' value='"+ce.toFixed(2)+"' data-input='simAtc' style='width:64px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px;color:var(--text);font-size:13px;font-weight:700;text-align:center;'>"+
           "<span style='font-size:10px;color:var(--muted);'>CE% →</span>"+
           "<b id='sim-atc' style='font-family:\"Baloo 2\",cursive;font-size:16px;color:var(--gold2);'>"+atc.toFixed(2)+"%</b>"+
         "</div>"+
@@ -524,7 +524,7 @@ function _applyCashMatched(hqs){
     "✅ <b style='color:var(--green);'>"+newly+"</b> नई वसूली दर्ज ("+tabsChanged+" tabs में)<br>"+
     (already?"ℹ "+already+" records पहले से वसूल थे<br>":"")+
     (reconciled?"🔁 "+reconciled+" record का status बाकी categories में भी मिलाया<br>":"")+
-    (noMatch?"⚠ <b style='color:var(--gold2);'>"+noMatch+"</b> IVRS किसी list में नहीं मिले<br><button class='mbtn' style='margin-top:8px;background:#37474f;color:#fff;font-size:13px;padding:9px 14px;' onclick='downloadNoMatch()'>⬇ नहीं मिले IVRS की Excel डाउनलोड करें</button>":"सभी IVRS match हो गए 🎉");
+    (noMatch?"⚠ <b style='color:var(--gold2);'>"+noMatch+"</b> IVRS किसी list में नहीं मिले<br><button class='mbtn' style='margin-top:8px;background:#37474f;color:#fff;font-size:13px;padding:9px 14px;' data-act='noMatch'>⬇ नहीं मिले IVRS की Excel डाउनलोड करें</button>":"सभी IVRS match हो गए 🎉");
   btn.style.display="none";btn.disabled=false;btn.textContent="✔ सभी को वसूल करें";
   toast("✅ कैश लिस्ट लागू — "+newly+" वसूली दर्ज","ok");
   try{renderSummaryWith(cGet(activeHQ,activeCat)||[]);renderListWith(cGet(activeHQ,activeCat)||[]);}catch(e){}

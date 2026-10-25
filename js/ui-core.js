@@ -310,7 +310,17 @@ var ACTIONS={
   s7__vgRenderList:function(el,ev){ _vgRenderList(); },
   s7__vgRefresh:function(el,ev){ _vgRefresh(); },
   s7_downloadVillageExcel:function(el,ev){ downloadVillageExcel(); },
-  s7_closeVillageModal:function(el,ev){ closeVillageModal(); }
+  s7_closeVillageModal:function(el,ev){ closeVillageModal(); },
+  // चरण 8 (v9.257): JS से बनी HTML — होम-बोर्ड, कौन काम पर, चरण 3 जांच, स्कोरकार्ड दिनांक-वार
+  board:function(el){ toggleBoard(el.dataset.arg||""); },
+  simAtc:function(){ simAtc(); },
+  noMatch:function(){ downloadNoMatch(); },
+  dvWin:function(el){ _dvSetWindow(+(el.dataset.arg||0)); },
+  dvClearOld:function(){ _dvClearOld(); },
+  pauseToggle:function(){ _pauseToggle(); },
+  migRun:function(){ confirmAndRunMigration(); },
+  scDay:function(el){ openScDayModal(+(el.dataset.i||0)); },
+  scDayCopy:function(el){ copyScDayAccs(+(el.dataset.i||0)); }
 };
 function _actDispatch(ev){
   var t=/** @type {HTMLElement|null} */(ev.target&&ev.target.closest?ev.target.closest("[data-act]"):null);
@@ -386,7 +396,7 @@ function _pauseRender(){
      "<b style='color:var(--green);'>क्या चलता रहता है:</b> पूरी ऐप device के अपने डेटा से, और सबसे ज़रूरी — <b>वसूली दर्ज करना</b> (वह upload है, quota में नहीं गिनता)।<br>"+
      "<b style='color:var(--gold2);'>ध्यान रखें:</b> चालू रहने तक आपको दूसरों की वसूली दिखना बंद हो जाएगी। बाक़ी devices तक यह ~5 मिनट में पहुँचता है।"+
      "</div>";
-  h+="<button class='btn-save' style='width:100%;background:"+(on?"var(--green)":"var(--red)")+";' onclick='_pauseToggle()'>"+
+  h+="<button class='btn-save' style='width:100%;background:"+(on?"var(--green)":"var(--red)")+";' data-act='pauseToggle'>"+
      (on?"✅ वापस सामान्य करें":"🛑 अभी डाउनलोड रोकें")+"</button>";
   // audit-verified: सिर्फ़ hardcoded markup + escHtml() से गुज़रे who/when
   // eslint-disable-next-line no-unsanitized/property

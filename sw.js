@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v273";
+var CACHE_NAME="adegaon-dc-v274";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -18,6 +18,7 @@ var CORE=[
   "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js",
   "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-check-compat.js",
   "./css/style.css",
+  "./js/theme-boot.js",
   "./js/config.js",
   "./js/logger.js",
   "./js/lazy.js",
