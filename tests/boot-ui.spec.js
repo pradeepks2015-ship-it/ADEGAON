@@ -860,7 +860,7 @@ test.describe('ऐप का अपना पुष्टि-डिब्बा 
 // ── Security (JE 25/10): inline onclick/onerror हटाकर CSP से 'unsafe-inline' हटाना — चरणों में ──
 // हर चरण में जिस स्क्रीन के बटन बदले, वहां कोई inline handler न रहे; और पूरे पन्ने की गिनती इस सीमा से ऊपर
 // न जाए (नया inline handler जोड़ने पर टेस्ट फेल — हर चरण के बाद सीमा घटाते जाएं, आख़िर में 0)
-const INLINE_HANDLER_MAX = 130; // चरण 1 के बाद (login के 5 हटे)
+const INLINE_HANDLER_MAX = 120; // चरण 3 के बाद (रिमार्क खिड़की के 10 हटे)
 test.describe('inline handler हटाना (security, चरण 1: login स्क्रीन)', () => {
   test('login स्क्रीन में कोई inline on* handler नहीं; पूरे पन्ने में सीमा से ज़्यादा नहीं', async ({ page }) => {
     await openApp(page);
@@ -959,5 +959,41 @@ test.describe('inline handler हटाना (security, चरण 2: सूच�
     expect(r.np).toBe(false);
     expect(r.vgInl).toBe(0);
     expect(r.village).toBe(r.want);
+  });
+});
+
+test.describe('inline handler हटाना (security, चरण 3: रिमार्क खिड़की)', () => {
+  test('रिमार्क खिड़की में कोई inline on* नहीं; बाकी/वसूल, वादा-chip, तारीख़, रद्द, बाहर टैप, सेव — सब चलें', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      activeCat = 'कुल उपभोक्ता';
+      cSet(activeHQ, activeCat, [{ acc: '77', name: 'राम', amount: 100, status: 'pending' }]);
+      renderListWith(cGet(activeHQ, activeCat));
+      const ov = document.getElementById('rmk-overlay');
+      const inl = Array.from(ov.querySelectorAll('*')).concat([ov]).reduce((n, el) => n + Array.from(el.attributes).filter((a) => /^on/i.test(a.name)).length, 0);
+      const out = { inl };
+      openRmkModal(0, '77');
+      document.getElementById('rs-paid').click(); out.st1 = rmkStatus;
+      document.getElementById('rs-pending').click(); out.st2 = rmkStatus;
+      document.querySelector('#rmk-overlay .due-chip[data-d="1"]').click(); out.due1 = _duePick;
+      document.querySelector('#rmk-overlay .due-chip[data-d="pick"]').click();
+      const dueEl = document.getElementById('rmk-due'); out.pickShown = dueEl.style.display !== 'none';
+      const t = new Date(Date.now() + 5 * 864e5); dueEl.value = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+      document.getElementById('rmk-due-note').textContent = ''; dueEl.dispatchEvent(new Event('change', { bubbles: true })); out.picked = /वादा/.test(document.getElementById('rmk-due-note').textContent);
+      document.querySelector('#rmk-overlay .btn-cancel').click(); out.closed1 = !ov.classList.contains('open');
+      openRmkModal(0, '77');
+      ov.querySelector('.mbox, .modal, div').click(); out.stillOpen = ov.classList.contains('open'); // अंदर टैप — बंद न हो
+      ov.dispatchEvent(new MouseEvent('click', { bubbles: true })); out.closed2 = !ov.classList.contains('open'); // बाहर (overlay) टैप
+      openRmkModal(0, '77');
+      document.getElementById('rmk-text').value = 'नया रिमार्क';
+      document.querySelector('#rmk-overlay .btn-save').click();
+      out.saved = (cGet(activeHQ, activeCat)[0].remarksArr || []).map((x) => x.text);
+      return out;
+    });
+    expect(r.inl).toBe(0);
+    expect(r).toMatchObject({ st1: 'paid', st2: 'pending', pickShown: true, picked: true, closed1: true, stillOpen: true, closed2: true });
+    expect(r.due1).toBeTruthy();
+    expect(r.saved).toContain('नया रिमार्क');
   });
 });

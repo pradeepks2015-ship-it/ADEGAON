@@ -177,7 +177,14 @@ var ACTIONS={
   dueTap:function(el){ dueChipTap(el,+(el.dataset.i||0),el.dataset.acc||""); },
   listMore:function(){ _renderLimit+=100; renderListWith(cGet(activeHQ,activeCat)); },
   village:function(el){ setVillage(el.dataset.v||""); },
-  neverPaidOff:function(){ setNeverPaid(false); }
+  neverPaidOff:function(){ setNeverPaid(false); },
+  // चरण 3 (v9.252): रिमार्क खिड़की
+  rmkOutside:function(el,ev){ closeRmkOutside(ev); },
+  rmkStatus:function(el){ setRmkStatus(el.dataset.arg||"pending"); },
+  pickDue:function(el){ pickDue(el); },
+  rmkClose:function(){ closeRmkModal(); },
+  rmkSave:function(){ saveRmk(); },
+  dueSync:function(){ _dueSync(); }
 };
 function _actDispatch(ev){
   var t=/** @type {HTMLElement|null} */(ev.target&&ev.target.closest?ev.target.closest("[data-act]"):null);
@@ -187,6 +194,16 @@ function _actDispatch(ev){
   try{ fn(t,ev); }catch(e){ logErr("act-fail",e,t.dataset.act); }
 }
 document.addEventListener("click",_actDispatch);
+// input/select के बदलने पर — data-change="नाम" (उसी ACTIONS सूची से)
+document.addEventListener("change",function(ev){
+  var tg=/** @type {any} */(ev.target);
+  var t=/** @type {HTMLElement|null} */(tg&&tg.closest?tg.closest("[data-change]"):null);
+  if(!t) return;
+  var k=t.dataset.change||"";
+  var fn=Object.prototype.hasOwnProperty.call(ACTIONS,k)?ACTIONS[k]:null;
+  if(!fn) return;
+  try{ fn(t,ev); }catch(e){ logErr("act-fail",e,k); }
+});
 // login का logo न मिले तो पहले icon-192, वह भी न मिले तो ⚡ (पहले inline onerror से)
 function _logoFallback(img){
   if(!img.dataset.fb){ img.dataset.fb="1"; img.src="icons/icon-192.png"; return; }
