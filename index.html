@@ -482,26 +482,26 @@ try{
 
 
 <!-- PHONE ACTION POPUP -->
-<div class="ph-overlay" id="ph-overlay" onclick="closePhOutside(event)">
+<div class="ph-overlay" id="ph-overlay" data-act="phOutside">
   <div class="ph-sheet">
     <div class="ph-handle"></div>
     <div class="ph-name" id="ph-name">उपभोक्ता</div>
     <div class="ph-num" id="ph-num">📞 —</div>
     <div class="ph-msgtype" id="ph-msgtype">
-      <button type="button" class="ph-mt-btn" data-type="reminder" onclick="_phSelectMsgType('reminder')">🔔 सामान्य रिमाइंडर</button>
-      <button type="button" class="ph-mt-btn" data-type="disconnect" onclick="_phSelectMsgType('disconnect')">⚠️ विच्छेदन सूचना (धारा 56)</button>
+      <button type="button" class="ph-mt-btn" data-type="reminder" data-act="phType">🔔 सामान्य रिमाइंडर</button>
+      <button type="button" class="ph-mt-btn" data-type="disconnect" data-act="phType">⚠️ विच्छेदन सूचना (धारा 56)</button>
       <div class="ph-mt-custom-slot">
-        <button type="button" class="ph-mt-btn" data-type="custom" id="ph-mt-custom-btn" onclick="_phSelectMsgType('custom')">अपना संदेश</button>
-        <button type="button" class="ph-mt-edit-btn" id="ph-mt-edit-btn" onclick="_phOpenCustomEdit()" title="बदलें" style="display:none;">✏️</button>
+        <button type="button" class="ph-mt-btn" data-type="custom" id="ph-mt-custom-btn" data-act="phType">अपना संदेश</button>
+        <button type="button" class="ph-mt-edit-btn" id="ph-mt-edit-btn" data-act="phEdit" title="बदलें" style="display:none;">✏️</button>
       </div>
     </div>
     <div class="ph-custom-wrap" id="ph-custom-wrap" style="display:none;">
-      <input type="text" class="fi" id="ph-custom-label" maxlength="24" placeholder="बटन का नाम (जैसे: अतिक्रमण सूचना)" oninput="_phCustomLabelInput()" style="margin-bottom:8px;">
-      <textarea class="fta" id="ph-custom-text" placeholder="जैसे: योजना की जानकारी, अवैध अतिक्रमण की सूचना, आदि..." oninput="_phCustomInput()"></textarea>
+      <input type="text" class="fi" id="ph-custom-label" maxlength="24" placeholder="बटन का नाम (जैसे: अतिक्रमण सूचना)" data-input="phLabel" style="margin-bottom:8px;">
+      <textarea class="fta" id="ph-custom-text" placeholder="जैसे: योजना की जानकारी, अवैध अतिक्रमण की सूचना, आदि..." data-input="phText"></textarea>
       <div class="ph-custom-meta" id="ph-custom-meta"></div>
       <div class="ph-custom-actions">
-        <button type="button" class="ph-custom-save" onclick="_phSaveCustomMsg()">💾 सेव करें (सभी मुख्यालयों में दिखेगा)</button>
-        <button type="button" class="ph-custom-cancel" onclick="_phCloseCustomEdit()">रद्द करें</button>
+        <button type="button" class="ph-custom-save" data-act="phSave">💾 सेव करें (सभी मुख्यालयों में दिखेगा)</button>
+        <button type="button" class="ph-custom-cancel" data-act="phEditClose">रद्द करें</button>
       </div>
     </div>
     <!-- v9.206: SMS में क्या जाएगा (छोटा रूप) और कितने SMS लगेंगे — WhatsApp में पूरा संदेश जाता है -->
@@ -520,23 +520,23 @@ try{
         <div><div class="ph-btn-title">WhatsApp करें</div><div class="ph-btn-sub">पूरा संदेश (लंबा वाला)</div></div>
       </a>
     </div>
-    <button class="ph-cancel" onclick="closePhModal()">रद्द करें</button>
+    <button class="ph-cancel" data-act="phClose">रद्द करें</button>
   </div>
 </div>
 <!-- CONSUMER NO POPUP -->
-<div class="acc-overlay" id="acc-overlay" onclick="closeAccOutside(event)">
+<div class="acc-overlay" id="acc-overlay" data-act="accOutside">
   <div class="acc-popup">
     <div class="acc-popup-no" id="acc-popup-no">—</div>
     <div class="acc-popup-lbl">Consumer Number</div>
     <div class="acc-popup-btns">
-      <button class="acc-popup-btn acc-btn-copy" onclick="copyAccNo()">
+      <button class="acc-popup-btn acc-btn-copy" data-act="accCopy">
         <div class="acc-popup-btn-icon">📋</div>
         <div>
           <div class="acc-popup-btn-title">Consumer No. कॉपी करें</div>
           <div class="acc-popup-btn-sub">Clipboard में copy होगा</div>
         </div>
       </button>
-      <button class="acc-popup-btn acc-btn-bill" onclick="copyAndOpenBill()">
+      <button class="acc-popup-btn acc-btn-bill" data-act="accBill">
         <div class="acc-popup-btn-icon">🧾</div>
         <div>
           <div class="acc-popup-btn-title">View Updated Bill</div>
@@ -544,7 +544,7 @@ try{
         </div>
       </button>
     </div>
-    <button class="acc-popup-cancel" onclick="closeAccModal()">रद्द करें</button>
+    <button class="acc-popup-cancel" data-act="accClose">रद्द करें</button>
   </div>
 </div>
 

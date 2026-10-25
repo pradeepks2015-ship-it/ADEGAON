@@ -860,7 +860,7 @@ test.describe('ऐप का अपना पुष्टि-डिब्बा 
 // ── Security (JE 25/10): inline onclick/onerror हटाकर CSP से 'unsafe-inline' हटाना — चरणों में ──
 // हर चरण में जिस स्क्रीन के बटन बदले, वहां कोई inline handler न रहे; और पूरे पन्ने की गिनती इस सीमा से ऊपर
 // न जाए (नया inline handler जोड़ने पर टेस्ट फेल — हर चरण के बाद सीमा घटाते जाएं, आख़िर में 0)
-const INLINE_HANDLER_MAX = 120; // चरण 3 के बाद (रिमार्क खिड़की के 10 हटे)
+const INLINE_HANDLER_MAX = 106; // चरण 4 के बाद (मोबाइल + Consumer No खिड़की के 14 हटे)
 test.describe('inline handler हटाना (security, चरण 1: login स्क्रीन)', () => {
   test('login स्क्रीन में कोई inline on* handler नहीं; पूरे पन्ने में सीमा से ज़्यादा नहीं', async ({ page }) => {
     await openApp(page);
@@ -995,5 +995,46 @@ test.describe('inline handler हटाना (security, चरण 3: रिम�
     expect(r).toMatchObject({ st1: 'paid', st2: 'pending', pickShown: true, picked: true, closed1: true, stillOpen: true, closed2: true });
     expect(r.due1).toBeTruthy();
     expect(r.saved).toContain('नया रिमार्क');
+  });
+});
+
+test.describe('inline handler हटाना (security, चरण 4: मोबाइल और Consumer No खिड़की)', () => {
+  test('मोबाइल/Consumer No खिड़की में कोई inline on* नहीं; संदेश-प्रकार, अपना संदेश (JE), टाइप, रद्द, बाहर टैप, कॉपी — सब चलें', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const inl = (id) => { const ov = document.getElementById(id); return Array.from(ov.querySelectorAll('*')).concat([ov]).reduce((n, el) => n + Array.from(el.attributes).filter((a) => /^on/i.test(a.name)).length, 0); };
+      const out = { phInl: inl('ph-overlay'), accInl: inl('acc-overlay') };
+      openPhModal('राम', '9876543210', '77', '500');
+      const ov = document.getElementById('ph-overlay');
+      document.querySelector('.ph-mt-btn[data-type="disconnect"]').click();
+      out.type1 = document.querySelector('.ph-mt-btn.active').getAttribute('data-type');
+      document.getElementById('ph-mt-edit-btn').click();
+      out.editOpen = document.getElementById('ph-custom-wrap').style.display === 'block';
+      const la = document.getElementById('ph-custom-label'); la.value = 'नई सूचना'; la.dispatchEvent(new Event('input', { bubbles: true }));
+      out.label = document.getElementById('ph-mt-custom-btn').textContent;
+      document.getElementById('ph-mt-custom-btn').click();
+      const ta = document.getElementById('ph-custom-text'); ta.value = 'मेरा संदेश'; ta.dispatchEvent(new Event('input', { bubbles: true }));
+      out.sms = decodeURIComponent(document.getElementById('ph-sms-btn').href);
+      document.querySelector('.ph-custom-cancel').click();
+      out.editClosed = document.getElementById('ph-custom-wrap').style.display === 'none';
+      ov.dispatchEvent(new MouseEvent('click', { bubbles: true })); out.phClosed = !ov.classList.contains('open');
+      openPhModal('राम', '9876543210', '77', '500');
+      document.querySelector('.ph-cancel').click(); out.phClosed2 = !ov.classList.contains('open');
+      openAccModal('1134000001');
+      const ao = document.getElementById('acc-overlay');
+      let copied = null;
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText: (t) => { copied = t; return Promise.resolve(); } }, configurable: true });
+      document.querySelector('.acc-btn-copy').click(); out.copied = copied;
+      openAccModal('1134000001');
+      document.querySelector('.acc-popup-cancel').click(); out.accClosed = !ao.classList.contains('open');
+      openAccModal('1134000001');
+      ao.dispatchEvent(new MouseEvent('click', { bubbles: true })); out.accClosed2 = !ao.classList.contains('open');
+      return out;
+    });
+    expect(r.phInl).toBe(0);
+    expect(r.accInl).toBe(0);
+    expect(r).toMatchObject({ type1: 'disconnect', editOpen: true, label: 'नई सूचना', editClosed: true, phClosed: true, phClosed2: true, copied: '1134000001', accClosed: true, accClosed2: true });
+    expect(r.sms).toContain('मेरा संदेश');
   });
 });
