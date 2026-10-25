@@ -184,7 +184,20 @@ var ACTIONS={
   pickDue:function(el){ pickDue(el); },
   rmkClose:function(){ closeRmkModal(); },
   rmkSave:function(){ saveRmk(); },
-  dueSync:function(){ _dueSync(); }
+  dueSync:function(){ _dueSync(); },
+  // चरण 4 (v9.253): मोबाइल (SMS/WhatsApp) और Consumer No खिड़की
+  phOutside:function(el,ev){ closePhOutside(ev); },
+  phType:function(el){ _phSelectMsgType(el.dataset.type||"reminder"); },
+  phEdit:function(){ _phOpenCustomEdit(); },
+  phLabel:function(){ _phCustomLabelInput(); },
+  phText:function(){ _phCustomInput(); },
+  phSave:function(){ _phSaveCustomMsg(); },
+  phEditClose:function(){ _phCloseCustomEdit(); },
+  phClose:function(){ closePhModal(); },
+  accOutside:function(el,ev){ closeAccOutside(ev); },
+  accCopy:function(){ copyAccNo(); },
+  accBill:function(){ copyAndOpenBill(); },
+  accClose:function(){ closeAccModal(); }
 };
 function _actDispatch(ev){
   var t=/** @type {HTMLElement|null} */(ev.target&&ev.target.closest?ev.target.closest("[data-act]"):null);
@@ -194,16 +207,20 @@ function _actDispatch(ev){
   try{ fn(t,ev); }catch(e){ logErr("act-fail",e,t.dataset.act); }
 }
 document.addEventListener("click",_actDispatch);
-// input/select के बदलने पर — data-change="नाम" (उसी ACTIONS सूची से)
-document.addEventListener("change",function(ev){
-  var tg=/** @type {any} */(ev.target);
-  var t=/** @type {HTMLElement|null} */(tg&&tg.closest?tg.closest("[data-change]"):null);
-  if(!t) return;
-  var k=t.dataset.change||"";
-  var fn=Object.prototype.hasOwnProperty.call(ACTIONS,k)?ACTIONS[k]:null;
-  if(!fn) return;
-  try{ fn(t,ev); }catch(e){ logErr("act-fail",e,k); }
-});
+// input/select के बदलने (data-change) / टाइप करने (data-input) पर — उसी ACTIONS सूची से
+function _actOn(attr){
+  return function(ev){
+    var tg=/** @type {any} */(ev.target);
+    var t=/** @type {HTMLElement|null} */(tg&&tg.closest?tg.closest("[data-"+attr+"]"):null);
+    if(!t) return;
+    var k=t.getAttribute("data-"+attr)||"";
+    var fn=Object.prototype.hasOwnProperty.call(ACTIONS,k)?ACTIONS[k]:null;
+    if(!fn) return;
+    try{ fn(t,ev); }catch(e){ logErr("act-fail",e,k); }
+  };
+}
+document.addEventListener("change",_actOn("change"));
+document.addEventListener("input",_actOn("input"));
 // login का logo न मिले तो पहले icon-192, वह भी न मिले तो ⚡ (पहले inline onerror से)
 function _logoFallback(img){
   if(!img.dataset.fb){ img.dataset.fb="1"; img.src="icons/icon-192.png"; return; }
