@@ -6,7 +6,7 @@
 <!-- v9.230: Content-Security-Policy — ऐप कहां से script/डेटा ले और कहां भेज सके, उसकी सूची। GitHub Pages
      _headers नहीं मानता, इसलिए meta tag से (इसके ऊपर कोई script नहीं होनी चाहिए)। मक़सद: कहीं से घुसा
      कोड (XSS) बाहर की script न ला सके और उपभोक्ताओं का डेटा किसी पराए सर्वर पर न भेज सके (connect-src)।
-     v9.258 (security चरण 9): script-src में 'unsafe-inline' नहीं — कोई inline onclick/<script> नहीं चलता
+     v9.258 (security चरण 9): script-src में 'unsafe-inline' नहीं — कोई inline onclick या बिना-src script नहीं चलती
      (बटन data-act से, ui-core.js ACTIONS)। नया बटन inline handler से न जोड़ें। style-src में अभी 'unsafe-inline'।
      सूची: gstatic (Firebase library + reCAPTCHA) · google.com (reCAPTCHA = App Check) · apis.google.com +
      firebaseapp.com (Firebase login का अपना iframe) · googleapis.com (login, token, App Check) · firebaseio.com
