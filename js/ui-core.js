@@ -246,7 +246,71 @@ var ACTIONS={
   bigText:function(){ toggleBigText(); },
   celebSound:function(){ toggleCelebSound(); },
   profileClose:function(){ closeProfileModal(); },
-  supportClose:function(){ closeSupportModal(); }
+  supportClose:function(){ closeSupportModal(); },
+  // चरण 7 (v9.256): बाक़ी सारी खिड़कियां (अपलोड, स्कोरकार्ड, कैश, होम-बोर्ड, लॉग, डेटा-उपयोग, चरण 3 जांच, डेटा-बचाओ,
+  // कौन काम पर, PIN, गांव-वार) — हर पंक्ति वही काम जो पहले index.html के inline on* में लिखा था
+  s7_closeUpOutside:function(el,ev){ closeUpOutside(ev); },
+  s7_dlTemplate:function(el,ev){ dlTemplate(); },
+  s7_onUpHqChange:function(el,ev){ onUpHqChange(); },
+  s7_updateUpCounter:function(el,ev){ updateUpCounter();onCatChange(); },
+  s7__upKeepToggle:function(el,ev){ _upKeepToggle(); },
+  s7__upKeepPreview:function(el,ev){ _upKeepPreview(); },
+  s7_setUpMode:function(el,ev){ setUpMode("replace"); },
+  s7_setUpMode2:function(el,ev){ setUpMode("merge"); },
+  s7_click_file_input:function(el,ev){ document.getElementById("file-input").click(); },
+  s7_dOver:function(el,ev){ dOver(ev); },
+  s7_dLeave:function(el,ev){ dLeave(); },
+  s7_dDrop:function(el,ev){ dDrop(ev); },
+  s7_handleFile:function(el,ev){ handleFile(el.files[0]); },
+  s7_closeUpModal:function(el,ev){ closeUpModal(); },
+  s7_confirmUpload:function(el,ev){ confirmUpload(); },
+  s7_closeScOutside:function(el,ev){ closeScOutside(ev); },
+  s7_closeScModal:function(el,ev){ closeScModal(); },
+  s7_downloadScPDF:function(el,ev){ downloadScPDF(); },
+  s7_out_closeScDayModal:function(el,ev){ if(ev.target===el)closeScDayModal(); },
+  s7_closeScDayModal:function(el,ev){ closeScDayModal(); },
+  s7_out_closeCashModal:function(el,ev){ if(ev.target===el)closeCashModal(); },
+  s7_click_cash_file:function(el,ev){ document.getElementById("cash-file").click(); },
+  s7_cashFile:function(el,ev){ cashFile(el.files[0]); },
+  s7_closeCashModal:function(el,ev){ closeCashModal(); },
+  s7_applyCashList:function(el,ev){ applyCashList(); },
+  s7_out_closeHscModal:function(el,ev){ if(ev.target===el)closeHscModal(); },
+  s7_click_hsc_bg_file:function(el,ev){ document.getElementById("hsc-bg-file").click(); },
+  s7_hscBgRemove:function(el,ev){ hscBgRemove(); },
+  s7_hscBgPick:function(el,ev){ hscBgPick(el); },
+  s7_closeHscModal:function(el,ev){ closeHscModal(); },
+  s7_saveHsc:function(el,ev){ saveHsc(); },
+  s7_closeLogOutside:function(el,ev){ closeLogOutside(ev); },
+  s7_clearServerLogs:function(el,ev){ clearServerLogs(); },
+  s7_clearLocalLogs:function(el,ev){ clearLocalLogs(); },
+  s7_closeLogModal:function(el,ev){ closeLogModal(); },
+  s7_closeUsageOutside:function(el,ev){ closeUsageOutside(ev); },
+  s7_closeUsageModal:function(el,ev){ closeUsageModal(); },
+  s7_out_closeMigModal:function(el,ev){ if(ev.target===el)closeMigModal(); },
+  s7_downloadMigReport:function(el,ev){ downloadMigReport(); },
+  s7__migRunDryRun:function(el,ev){ _migRunDryRun(); },
+  s7_closeMigModal:function(el,ev){ closeMigModal(); },
+  s7_out_closePauseModal:function(el,ev){ if(ev.target===el)closePauseModal(); },
+  s7_closePauseModal:function(el,ev){ closePauseModal(); },
+  s7_out_closeDvModal:function(el,ev){ if(ev.target===el)closeDvModal(); },
+  s7__dvRefreshAll:function(el,ev){ _dvRefreshAll(); },
+  s7_closeDvModal:function(el,ev){ closeDvModal(); },
+  s7_out_closePinModal:function(el,ev){ if(ev.target===el)closePinModal(); },
+  s7_savePins:function(el,ev){ savePins(); },
+  s7_closePinModal:function(el,ev){ closePinModal(); },
+  s7_out_closeWaScorecard:function(el,ev){ if(ev.target===el)closeWaScorecard(); },
+  s7_loadWaScorecard:function(el,ev){ loadWaScorecard(); },
+  s7_closeWaScorecard:function(el,ev){ closeWaScorecard(); },
+  s7_out_closeTodayScorecard:function(el,ev){ if(ev.target===el)closeTodayScorecard(); },
+  s7_loadTodayScorecard:function(el,ev){ loadTodayScorecard(); },
+  s7_closeTodayScorecard:function(el,ev){ closeTodayScorecard(); },
+  s7_out_closeVoiceScorecard:function(el,ev){ if(ev.target===el)closeVoiceScorecard(); },
+  s7_closeVoiceScorecard:function(el,ev){ closeVoiceScorecard(); },
+  s7_out_closeVillageModal:function(el,ev){ if(ev.target===el)closeVillageModal(); },
+  s7__vgRenderList:function(el,ev){ _vgRenderList(); },
+  s7__vgRefresh:function(el,ev){ _vgRefresh(); },
+  s7_downloadVillageExcel:function(el,ev){ downloadVillageExcel(); },
+  s7_closeVillageModal:function(el,ev){ closeVillageModal(); }
 };
 function _actDispatch(ev){
   var t=/** @type {HTMLElement|null} */(ev.target&&ev.target.closest?ev.target.closest("[data-act]"):null);
@@ -270,6 +334,9 @@ function _actOn(attr){
 }
 document.addEventListener("change",_actOn("change"));
 document.addEventListener("input",_actOn("input"));
+document.addEventListener("dragover",_actOn("dragover"));
+document.addEventListener("dragleave",_actOn("dragleave"));
+document.addEventListener("drop",_actOn("drop"));
 // login का logo न मिले तो पहले icon-192, वह भी न मिले तो ⚡ (पहले inline onerror से)
 function _logoFallback(img){
   if(!img.dataset.fb){ img.dataset.fb="1"; img.src="icons/icon-192.png"; return; }

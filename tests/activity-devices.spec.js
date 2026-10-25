@@ -538,7 +538,7 @@ test.describe('कर्मचारी सक्रियता — ताज�
       window._cashRefreshAll = (hqs, cb) => { calls.push('lists:' + hqs.length); cb(0); };
       window._dvRender = () => { calls.push('render'); };
       try { _dvRefreshAll(); } finally { window._cashRefreshAll = origCash; window._dvRender = origRender; }
-      return { calls, btn: document.querySelector('#mig-devices') ? !!document.querySelector('[onclick="_dvRefreshAll()"]') : 'no-el' };
+      return { calls, btn: document.querySelector('#mig-devices') ? !!document.querySelector('[data-act="s7__dvRefreshAll"]') : 'no-el' };
     });
     expect(r.calls).toEqual(['lists:6', 'render']);
     expect(r.btn).toBe(true);

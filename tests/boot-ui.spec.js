@@ -860,7 +860,7 @@ test.describe('ऐप का अपना पुष्टि-डिब्बा 
 // ── Security (JE 25/10): inline onclick/onerror हटाकर CSP से 'unsafe-inline' हटाना — चरणों में ──
 // हर चरण में जिस स्क्रीन के बटन बदले, वहां कोई inline handler न रहे; और पूरे पन्ने की गिनती इस सीमा से ऊपर
 // न जाए (नया inline handler जोड़ने पर टेस्ट फेल — हर चरण के बाद सीमा घटाते जाएं, आख़िर में 0)
-const INLINE_HANDLER_MAX = 62; // चरण 6 के बाद (खोज, फ़िल्टर, नीचे की पट्टी, Profile/Support के 20 हटे)
+const INLINE_HANDLER_MAX = 0; // चरण 7 के बाद — index.html में अब कोई inline handler नहीं (JS से बनी HTML चरण 8 में)
 test.describe('inline handler हटाना (security, चरण 1: login स्क्रीन)', () => {
   test('login स्क्रीन में कोई inline on* handler नहीं; पूरे पन्ने में सीमा से ज़्यादा नहीं', async ({ page }) => {
     await openApp(page);
@@ -1107,5 +1107,35 @@ test.describe('inline handler हटाना (security, चरण 6: खोज,
     });
     expect(r.inl).toBe(0);
     expect(r).toMatchObject({ filter: 'paid', search: 1, pOpen: true, theme: true, pStill: true, pClosed: true, sOpen: true, sClosed: true });
+  });
+});
+
+test.describe('inline handler हटाना (security, चरण 7: बाक़ी सारी खिड़कियां — अपलोड, स्कोरकार्ड, कैश, JE)', () => {
+  test('index.html में अब कोई inline on* नहीं; अपलोड/कैश/लॉग/गांव खिड़की के बटन, बाहर टैप, drag-drop सब चलें', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(async () => {
+      const all = Array.from(document.querySelectorAll('*')).reduce((n, el) => n + Array.from(el.attributes).filter((a) => /^on/i.test(a.name)).length, 0);
+      const out = { all };
+      // अपलोड खिड़की (lazy upload.js)
+      await openUpModal();
+      const uo = document.getElementById('up-overlay');
+      out.upOpen = uo.classList.contains('open');
+      const merge = Array.from(uo.querySelectorAll('button')).find((b) => /Merge/.test(b.textContent)); merge.click(); out.mode = upMode;
+      const z = uo.querySelector('[data-dragover]');
+      const dt = new DataTransfer(); z.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt })); out.drag = z.className;
+      uo.dispatchEvent(new MouseEvent('click', { bubbles: true })); out.upClosed = !uo.classList.contains('open');
+      // लॉग खिड़की
+      openLogModal(); const lo = document.getElementById('log-overlay'); out.logOpen = lo.classList.contains('open');
+      lo.dispatchEvent(new MouseEvent('click', { bubbles: true })); out.logClosed = !lo.classList.contains('open');
+      // कैश लिस्ट
+      openCashModal(); const co = document.getElementById('cash-overlay'); out.cashOpen = co.classList.contains('open');
+      co.firstElementChild.dispatchEvent(new MouseEvent('click', { bubbles: true })); out.cashStill = co.classList.contains('open');
+      co.dispatchEvent(new MouseEvent('click', { bubbles: true })); out.cashClosed = !co.classList.contains('open');
+      return out;
+    });
+    expect(r.all).toBe(0);
+    expect(r).toMatchObject({ upOpen: true, mode: 'merge', upClosed: true, logOpen: true, logClosed: true, cashOpen: true, cashStill: true, cashClosed: true });
+    expect(r.drag).toMatch(/drag|over|hl/i);
   });
 });
