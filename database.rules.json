@@ -62,12 +62,20 @@
       ".read": "auth.token.email === 'pradeepks2015@gmail.com'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com'",
       "$day": {
+        ".validate": "$day.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)",
         "$id": {
           ".write": "auth != null && !data.exists() && newData.exists()",
           ".validate": "newData.hasChildren(['t']) && newData.child('t').isString()",
-          "$f": {
-            ".validate": "newData.isString() && newData.val().length <= 400"
-          }
+          "t": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "v": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "u": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "d": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "c": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "m": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "x": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "i": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "r": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "$f": { ".validate": false }
         }
       }
     },
@@ -75,11 +83,12 @@
       ".read": "auth.token.email === 'pradeepks2015@gmail.com'",
       ".write": "auth.token.email === 'pradeepks2015@gmail.com'",
       "$day": {
+        ".validate": "$day.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)",
         "$id": {
           ".write": "auth != null && !data.exists() && newData.exists()",
           ".validate": "newData.hasChildren(['b'])",
           "b": {
-            ".validate": "newData.isNumber() && newData.val() >= 0"
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000000"
           },
           "t": {
             ".validate": "newData.isNumber()"

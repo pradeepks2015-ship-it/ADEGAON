@@ -346,13 +346,18 @@ test.describe('database.rules.json — LOGS/USAGE अब append-only हों (
   });
 
   test('LOGS की हर entry के हर field पर लंबाई की सीमा हो (logErr खुद m को 300 और x को 200 पर काटता है — rule उससे ढीली न हो जाए)', () => {
-    const f = readRules().LOGS.$day.$id.$f;
-    expect(f, 'LOGS/$day/$id/$f पर .validate होना चाहिए').toBeTruthy();
-    expect(f['.validate']).toContain('newData.isString()');
-    const cap = /length <= (\d+)/.exec(f['.validate']);
-    expect(cap, 'field की लंबाई पर स्पष्ट सीमा होनी चाहिए').toBeTruthy();
-    expect(Number(cap[1])).toBeGreaterThanOrEqual(300); // logErr का सबसे बड़ा field (m) कट कर 300 का होता है
-    expect(Number(cap[1])).toBeLessThanOrEqual(1000);
+    // v9.250: सिर्फ़ ऐप वाले fields (t v u d c m x i r), बाक़ी कोई नहीं ($f false) — असली जांच tests/rules/rules-check.js
+    const id = readRules().LOGS.$day.$id;
+    expect(id.$f['.validate']).toBe(false);
+    'tvudcmxir'.split('').forEach((k) => {
+      const v = id[k] && id[k]['.validate'];
+      expect(v, 'LOGS/$day/$id/' + k + ' पर .validate होना चाहिए').toBeTruthy();
+      expect(v).toContain('newData.isString()');
+      const cap = /length <= (\d+)/.exec(v);
+      expect(cap, k + ' की लंबाई पर स्पष्ट सीमा होनी चाहिए').toBeTruthy();
+      expect(Number(cap[1])).toBeGreaterThanOrEqual(300); // logErr का सबसे बड़ा field (m) कट कर 300 का होता है
+      expect(Number(cap[1])).toBeLessThanOrEqual(1000);
+    });
   });
 
   test('USAGE की entry में सिर्फ़ d/n/b/t चलें (b संख्या हो, ऋणात्मक नहीं) — बाक़ी कोई field न घुस सके', () => {

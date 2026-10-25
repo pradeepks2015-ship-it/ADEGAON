@@ -105,6 +105,11 @@
 2. `git log --oneline -20` और हाल के merged PRs देख लें — पूरा इतिहास (फ़ैसले, bug root-causes, fixes) commit messages और PR descriptions में दर्ज है।
 
 ## हर बदलाव के लिए तय प्रक्रिया (सख़्ती से पालन करें)
+0. **TDD + unit/integration टेस्ट + security (JE 25/10):** हर bug-fix/feature में **पहले टेस्ट** लिखें और उसे फेल
+   होते देखें (bug हो तो वही गड़बड़ी दोहराता टेस्ट), फिर कोड, फिर हरा। नए function का unit टेस्ट (Playwright `page.evaluate`
+   या `node --test`), data/login/rules से जुड़े बदलाव पर integration टेस्ट (`tests/e2e-firebase.spec.js` emulator, rules के लिए
+   `tests/rules/rules-check.js`)। हर बदलाव पर security नज़र से जांचें: Security Rules (कौन पढ़/लिख सकता है, अनाम खाता, बिल बढ़ाने
+   वाला दुरुपयोग), XSS (`escHtml`/textContent), App Check, लॉग/issue में निजी जानकारी, नए बाहरी पते (CSP)
 1. कोई भी asset/behavior बदलाव करने पर `js/config.js` का `APP_VER`, `sw.js` का `CACHE_NAME` और `rollout.json` का `ver` तीनों एक-साथ बढ़ाएं (जैसे 9.65→9.66, v82→v83)। `ver` से ही पुराने version पर अटके फ़ोन को "नया version उतर रहा है" बैनर दिखता है (v9.246, `_verCheck`) — टेस्ट मिलान जांचता है
 2. बदलाव के बाद पूरा Playwright suite पास होना ज़रूरी है:
    ```
