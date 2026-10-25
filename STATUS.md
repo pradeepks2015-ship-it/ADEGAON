@@ -4,7 +4,7 @@
 > `docs/STATUS-history.md` में — **पूरा न पढ़ें**, ज़रूरत हो तो `grep -n`। हर बदलाव की पूरी कहानी commit/PR में।
 > काम पूरा होने पर यहां सिर्फ़ ज़रूरी बातें अपडेट करें (नीचे की तालिका + खुले काम), लंबा ब्योरा commit/PR में।
 
-**आख़िरी अपडेट:** 25 अक्टूबर 2026 · **लाइव version:** 9.257 · **CACHE_NAME:** adegaon-dc-v274 · **खुला PR:** कोई नहीं
+**आख़िरी अपडेट:** 25 अक्टूबर 2026 · **लाइव version:** 9.258 · **CACHE_NAME:** adegaon-dc-v275 · **खुला PR:** कोई नहीं
 
 ---
 
@@ -30,6 +30,7 @@
 | #295 | v9.254 — security चरण 5: ऊपर की पट्टी + नाम वाला मेनू (24 inline handler) → `data-act`; मेनू बंद करने वाला listener नाम-बटन/JE सेटिंग पर नहीं (पहले inline stopPropagation); ratchet 82। **बाक़ी:** खोज/फ़िल्टर/नीचे की पट्टी/Profile-सेटिंग, स्कोरकार्ड/कैश/अपलोड/JE खिड़कियां, JS में बनी बाक़ी HTML, 2 inline script, print window → फिर CSP | 25 अक्टू ✅ |
 | #296 | v9.255/9.256 — security चरण 6–7: खोज/फ़िल्टर/नीचे की पट्टी/Profile/Support + बाक़ी सारी खिड़कियां → `index.html` में **कोई inline handler नहीं** (ratchet 0); `ACTIONS` में `s7_*`, drag-drop delegation। **बाक़ी (चरण 8):** JS से बनी HTML में inline on* (reports/logger/scorecards आदि), 2 inline `<script>`, print window → फिर CSP से `'unsafe-inline'` हटाना | 25 अक्टू ✅ |
 | #297 | v9.257 — security चरण 8: JS से बनी HTML (स्कोरकार्ड, बोर्ड, डिवाइस-लॉग, माइग्रेशन, डाउनलोड-रोकें) और inline theme script (अब `js/theme-boot.js`) से inline handler हटाए; print window बटन `_printBtnWire`। अगला चरण 9: CSP `script-src` से `'unsafe-inline'` हटाना |
+| #298 | v9.258 — security चरण 9 (आख़िरी): CSP `script-src` से `'unsafe-inline'` हटाया — अब कोई inline onclick/script नहीं चलती (XSS से बचाव); `style-src` में अभी रहता है। e2e bypassCSP से चलता है, असली Google login/App Check JE फ़ोन (canary) पर देखें — लॉग `csp-block` |
 | #282 | v9.242 — JE मेनू: झोपड़ी-लाइनमैन वाला स्केच "आज की वसूली" टाइल पर (📅 की जगह), "ग्राम-वार वसूली" पर नया गोल गांव-सर्वे चित्र (`icons/village-survey.webp`, ~8 KB, JE के Power BI चित्र से काटकर; sw.js CORE) — JE screenshot-Ok 19/10 | 19 अक्टू ✅ |
 | #281 | v9.241 — रिमार्क-पढ़ाई (`_mergeServerRemarks`) पूरे ऐप में एक साथ 6 (`_rmkSlot`), timeout की घड़ी पढ़ाई शुरू होने पर; "बाक़ी" पीछे से भेजते वक़्त सीमा 15s (`REMARK_FLUSH_TIMEOUT_MS`), सामने वाली सेव 5s — 19/10 10:56 JE के फ़ोन पर 6 HQ की 8 सूचियों में 61 उपभोक्ताओं के रिमार्क "timeout" पर रुके (एक साथ 80 तक पढ़ाई, घड़ी कतार में बीतती) | 19 अक्टू ✅ |
 | #280 | v9.240 — "बाक़ी" भेजने की समय-सीमा भेजे जा रहे आकार के हिसाब से (60s + हर 4 KB पर 1s, 3 मिनट तक; `_flushMs`) + timeout के बाद हर 20s वही भारी कोशिश नहीं: पहले 2 मिनट, फिर 5 मिनट रुकें (`_flushBackoffUntil`), "online" event या कोई सफल भेजना हो तो तुरंत — 19/10 मढ़ी (राजकुमार, v9.239) पर हर कुछ मिनट 3 सूचियों के `sync-patch-fail timeout` | 19 अक्टू ✅ |
