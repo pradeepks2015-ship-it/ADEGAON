@@ -166,7 +166,18 @@ function togglePw(){var i=document.getElementById("sup-pw");i.type=i.type==="pas
 var ACTIONS={
   role:function(el){ selectRole(el.dataset.arg||""); },
   togglePw:function(){ togglePw(); },
-  login:function(){ doLogin(); }
+  login:function(){ doLogin(); },
+  // चरण 2 (v9.251): सूची/उपभोक्ता card — data-i (सूची में जगह) + data-acc (Consumer No, escHtml से)
+  rmk:function(el){ openRmkModal(+(el.dataset.i||0),el.dataset.acc||""); },
+  paid:function(el){ markPaid(+(el.dataset.i||0),el.dataset.acc||""); },
+  unpaid:function(el){ markUnpaid(+(el.dataset.i||0),el.dataset.acc||""); },
+  acc:function(el){ openAccModal(el.dataset.acc||""); },
+  phone:function(el){ openPhModal(el.dataset.name||"",el.dataset.phone||"",el.dataset.acc||"",el.dataset.amt||"0"); },
+  share:function(el){ shareCard(+(el.dataset.i||0),el.dataset.acc||"",el); },
+  dueTap:function(el){ dueChipTap(el,+(el.dataset.i||0),el.dataset.acc||""); },
+  listMore:function(){ _renderLimit+=100; renderListWith(cGet(activeHQ,activeCat)); },
+  village:function(el){ setVillage(el.dataset.v||""); },
+  neverPaidOff:function(){ setNeverPaid(false); }
 };
 function _actDispatch(ev){
   var t=/** @type {HTMLElement|null} */(ev.target&&ev.target.closest?ev.target.closest("[data-act]"):null);
