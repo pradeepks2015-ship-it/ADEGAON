@@ -856,7 +856,7 @@ test.describe('lazy फ़ाइलें (v9.195)', () => {
       .toEqual(['function', false, 'function', false, 'function']);
     await page.route('**/js/upload.js*', (r) => r.abort());
     await page.evaluate(() => { cSet(activeHQ, activeCat, [{ acc: '1', name: 'क', amount: 100, status: 'pending' }]); activeFilter = 'all'; window.__opened = 0; window.open = function () { window.__opened++; return null; }; });
-    await page.click('button[onclick="downloadPDF()"]');
+    await page.click('button[data-act="pdf"]');
     await page.waitForFunction(() => window.__opened === 1);
     expect(got).not.toContain('js/upload.js');
     expect(await page.evaluate(() => getLogs().filter((l) => l.c === 'lazy-load-fail').length)).toBe(0);
