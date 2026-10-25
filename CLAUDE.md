@@ -81,6 +81,9 @@
 - **CSP + SRI (v9.230):** `index.html` के ऊपर `Content-Security-Policy` meta — कोई नया बाहरी पता (script/fetch/iframe)
   जोड़ें तो उसकी सूची में भी, वरना browser चुपचाप रोकेगा (लॉग `csp-block`)। Firebase version बदलें तो तीनों `integrity`
   hash भी (`scripts/check-sri.js` में तरीक़ा) — ग़लत hash = पूरे ऐप में Firebase बंद; CI lint job असली gstatic से मिलाता है
+  **v9.258 से inline कोड बंद** (script-src में `'unsafe-inline'` नहीं): HTML में `onclick=`/`oninput=` या बिना src का
+  `<script>` चुपचाप नहीं चलेगा — बटन `data-act` (या `data-change`/`data-input`…) + `js/ui-core.js` की `ACTIONS` सूची में;
+  print window (`document.write`) के बटन JS से जोड़ें (`_printBtnWire`)। टेस्ट (boot-ui "चरण 8/9") नया inline handler पकड़ते हैं
 - **अपने-आप alert (15/10):** `.github/workflows/alert.yml` हर 4 घंटे (6–22 IST) `scripts/check-alerts.js` चलाता है —
   सर्वर-लॉग में गंभीर गड़बड़ी पर "🚨 ऐप alert" GitHub issue (JE को Gmail/GitHub ऐप)। **नया `logErr("नाम")` जोड़ें तो उसे
   वहां CRITICAL/MULTI/IGNORE में से एक में डालें** (`npm run test:alerts` फेल होगा)। issue public — उसमें नाम/संदेश नहीं
