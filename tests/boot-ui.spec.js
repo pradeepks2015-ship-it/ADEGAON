@@ -860,7 +860,7 @@ test.describe('ऐप का अपना पुष्टि-डिब्बा 
 // ── Security (JE 25/10): inline onclick/onerror हटाकर CSP से 'unsafe-inline' हटाना — चरणों में ──
 // हर चरण में जिस स्क्रीन के बटन बदले, वहां कोई inline handler न रहे; और पूरे पन्ने की गिनती इस सीमा से ऊपर
 // न जाए (नया inline handler जोड़ने पर टेस्ट फेल — हर चरण के बाद सीमा घटाते जाएं, आख़िर में 0)
-const INLINE_HANDLER_MAX = 106; // चरण 4 के बाद (मोबाइल + Consumer No खिड़की के 14 हटे)
+const INLINE_HANDLER_MAX = 82; // चरण 5 के बाद (ऊपर की पट्टी + मेनू के 24 हटे)
 test.describe('inline handler हटाना (security, चरण 1: login स्क्रीन)', () => {
   test('login स्क्रीन में कोई inline on* handler नहीं; पूरे पन्ने में सीमा से ज़्यादा नहीं', async ({ page }) => {
     await openApp(page);
@@ -1036,5 +1036,41 @@ test.describe('inline handler हटाना (security, चरण 4: मोब�
     expect(r.accInl).toBe(0);
     expect(r).toMatchObject({ type1: 'disconnect', editOpen: true, label: 'नई सूचना', editClosed: true, phClosed: true, phClosed2: true, copied: '1134000001', accClosed: true, accClosed2: true });
     expect(r.sms).toContain('मेरा संदेश');
+  });
+});
+
+test.describe('inline handler हटाना (security, चरण 5: ऊपर की पट्टी और मेनू)', () => {
+  test('ऊपर की पट्टी/मेनू में कोई inline on* नहीं; नाम-बटन से मेनू खुले/बंद, JE सेटिंग खोलने पर मेनू खुला रहे, मेनू के बटन चलें', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      const pill = document.querySelector('.user-pill');
+      const area = [document.getElementById('back-btn'), document.getElementById('sc-hdr-btn').parentElement, pill];
+      const inl = area.reduce((n, root) => n + Array.from(root.querySelectorAll('*')).concat([root]).reduce((m, el) => m + Array.from(el.attributes).filter((a) => /^on/i.test(a.name)).length, 0), 0);
+      const menu = document.getElementById('logout-menu');
+      const out = { inl };
+      pill.click(); out.open1 = menu.classList.contains('open');
+      pill.click(); out.closed1 = !menu.classList.contains('open');
+      pill.click();
+      const sum = menu.querySelector('.mn-sum'); sum.click(); out.stillOpen = menu.classList.contains('open');
+      const calls = [];
+      const keep = {};
+      ['openVillageModal', 'openScorecard', 'downloadPDF', 'downloadExcel', 'goBack', 'doLogout', 'openLogModal'].forEach((f) => { keep[f] = window[f]; window[f] = function () { calls.push([f].concat(Array.from(arguments))); }; });
+      document.getElementById('village-menu-item').click(); out.closedAfterItem = !menu.classList.contains('open');
+      document.getElementById('sc-hdr-btn').click();
+      document.querySelector('.hbtn[data-act="pdf"]') ? document.querySelector('.hbtn[data-act="pdf"]').click() : null;
+      document.querySelector('.hbtn[data-act="excel"]') ? document.querySelector('.hbtn[data-act="excel"]').click() : null;
+      document.getElementById('back-btn').click();
+      document.getElementById('log-menu-item').click();
+      Array.from(menu.querySelectorAll('.logout-item')).find((b) => /लॉगआउट/.test(b.textContent)).click();
+      Object.keys(keep).forEach((f) => { window[f] = keep[f]; });
+      out.calls = calls.map((c) => c[0]);
+      out.logoutArg = (calls.find((c) => c[0] === 'doLogout') || [])[1];
+      const before = listSort; document.getElementById('sort-menu-item').click(); out.sorted = listSort !== before;
+      return out;
+    });
+    expect(r.inl).toBe(0);
+    expect(r).toMatchObject({ open1: true, closed1: true, stillOpen: true, closedAfterItem: true, sorted: true, logoutArg: true });
+    expect(r.calls).toEqual(['openVillageModal', 'openScorecard', 'downloadPDF', 'downloadExcel', 'goBack', 'openLogModal', 'doLogout']);
   });
 });
