@@ -99,7 +99,11 @@ function toggleUserMenu(e){
   var m=document.getElementById("logout-menu");
   m.classList.toggle("open");
 }
-document.addEventListener("click",function(){
+document.addEventListener("click",function(ev){
+  // v9.254: नाम-बटन (मेनू के बाहर वाला हिस्सा) और JE सेटिंग (summary) पर बंद नहीं — उनका काम ACTIONS करता है
+  // (पहले inline onclick में event.stopPropagation() से)
+  var tg=/** @type {any} */(ev&&ev.target);
+  if(tg&&tg.closest&&(tg.closest(".mn-sum")||(tg.closest(".user-pill")&&!tg.closest("#logout-menu")))) return;
   var m=document.getElementById("logout-menu");
   if(m) m.classList.remove("open");
 });
@@ -197,7 +201,36 @@ var ACTIONS={
   accOutside:function(el,ev){ closeAccOutside(ev); },
   accCopy:function(){ copyAccNo(); },
   accBill:function(){ copyAndOpenBill(); },
-  accClose:function(){ closeAccModal(); }
+  accClose:function(){ closeAccModal(); },
+  // चरण 5 (v9.254): ऊपर की पट्टी और नाम वाला मेनू
+  userMenu:function(el,ev){
+    var tg=/** @type {any} */(ev.target);
+    if(tg&&tg.closest&&tg.closest("#logout-menu")) return; // मेनू के अंदर खाली जगह — बंद ही होने दो (नीचे वाला listener)
+    document.getElementById("logout-menu").classList.toggle("open");
+  },
+  stop:function(){}, // JE सेटिंग (summary) — मेनू खुला रहे (नीचे वाला listener इसे छोड़ता है)
+  back:function(){ goBack(); },
+  scorecard:function(){ openScorecard(); },
+  pdf:function(){ downloadPDF(); },
+  excel:function(){ downloadExcel(); },
+  todaySc:function(){ openTodayScorecard(); },
+  village2:function(){ openVillageModal(); },
+  voiceSc:function(){ openVoiceScorecard(); },
+  waSc:function(){ openWaScorecard(); },
+  hsc:function(){ openHscModal(); },
+  cash:function(){ openCashModal(); },
+  listSort:function(el,ev){ toggleListSort(ev); },
+  oldPaySort:function(el,ev){ toggleOldPaySort(ev); },
+  neverPaid:function(el,ev){ toggleNeverPaid(ev); },
+  vgBar:function(el,ev){ toggleVillageBar(ev); },
+  dv:function(){ openDvModal(); },
+  log:function(){ openLogModal(); },
+  usage:function(){ openUsageModal(); },
+  pin:function(){ openPinModal(); },
+  pause:function(){ openPauseModal(); },
+  backup:function(){ downloadFullBackup(); },
+  mig:function(){ openMigModal(); },
+  logout:function(){ doLogout(true); }
 };
 function _actDispatch(ev){
   var t=/** @type {HTMLElement|null} */(ev.target&&ev.target.closest?ev.target.closest("[data-act]"):null);
