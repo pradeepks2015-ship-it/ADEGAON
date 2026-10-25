@@ -123,6 +123,20 @@ test("CAT_NAMES / PH_CUSTOM_MSG / PAUSE / MIGRATED — सब पढ़ सक�
   }
 });
 
+// v9.250 (JE 25/10, security): LOGS/USAGE में अनाम खाता भी लिख सकता है (login से पहले की errors ज़रूरी) — इसलिए
+// बिल बढ़ाने वाला दुरुपयोग रोकें: सिर्फ़ ऐप वाले fields, दिन की key yyyy-mm-dd, USAGE की b सीमित
+test("LOGS/USAGE — अनजान field, ग़लत दिन-key, बेहद बड़ी b मना; ऐप वाली entry (अनाम से भी) जाए", async () => {
+  const day = "2026-10-25";
+  const full = { t: new Date().toISOString(), v: "9.250", u: "(login से पहले)", d: "dev1", c: "promise", m: "x", x: "", i: "abc", r: new Date().toISOString() };
+  assert.ok(await canPush("LOGS/" + day, ANON, full), "ऐप वाली पूरी entry (अनाम) नहीं गई");
+  assert.ok(!(await canPush("LOGS/" + day, ANON, Object.assign({}, full, { zz: "भारी" }))), "अनजान field वाली entry चली गई");
+  assert.ok(!(await canPush("LOGS/kachra-" + day, ANON, full)), "ग़लत दिन-key (LOGS) चली गई");
+  const use = { d: "dev1", n: "", b: 1234, t: Date.now() };
+  assert.ok(await canPush("USAGE/" + day, ANON, use), "USAGE ऐप वाली entry नहीं गई");
+  assert.ok(!(await canPush("USAGE/kachra", ANON, use)), "ग़लत दिन-key (USAGE) चली गई");
+  assert.ok(!(await canPush("USAGE/" + day, ANON, Object.assign({}, use, { b: 5e9 }))), "बेहद बड़ी b चली गई");
+});
+
 test("LOGS — लाइनमैन नई error जोड़ सके (हर field string ≤400), पर न पढ़े, न पुरानी बदले", async () => {
   const me = lineman(HQS[2]);
   const day = "2026-10-13";
