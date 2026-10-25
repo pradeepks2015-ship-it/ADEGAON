@@ -399,7 +399,7 @@ try{
 </div>
 
 <!-- REMARK MODAL -->
-<div class="moverlay" id="rmk-overlay" onclick="closeRmkOutside(event)">
+<div class="moverlay" id="rmk-overlay" data-act="rmkOutside">
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">&#9999; रिमार्क अपडेट</div>
@@ -417,8 +417,8 @@ try{
     </div>
     <div class="fg"><label>स्थिति</label>
       <div class="stoggle">
-        <button class="topt sel-pending" id="rs-pending" onclick="setRmkStatus('pending')">&#9203; बाकी है</button>
-        <button class="topt" id="rs-paid" onclick="setRmkStatus('paid')">&#10004; वसूल हुआ</button>
+        <button class="topt sel-pending" id="rs-pending" data-act="rmkStatus" data-arg="pending">&#9203; बाकी है</button>
+        <button class="topt" id="rs-paid" data-act="rmkStatus" data-arg="paid">&#10004; वसूल हुआ</button>
       </div>
     </div>
     <div class="fg" id="rmk-paydate-grp" style="display:none;">
@@ -433,17 +433,17 @@ try{
          बटन छिपे #rmk-due में तारीख़ भरते हैं — saveRmk पहले की तरह उसी से पढ़ता है; "तारीख़…" पर ही वह खाना दिखता है -->
     <div class="fg" id="rmk-due-grp">
       <div class="due-row"><span class="due-lbl">&#129309; वादा:</span>
-        <button type="button" class="due-chip" data-d="1" onclick="pickDue(this)">कल</button>
-        <button type="button" class="due-chip" data-d="2" onclick="pickDue(this)">2 दिन में</button>
-        <button type="button" class="due-chip" data-d="7" onclick="pickDue(this)">हफ़्ते में</button>
-        <button type="button" class="due-chip" data-d="pick" onclick="pickDue(this)">तारीख़…</button>
+        <button type="button" class="due-chip" data-d="1" data-act="pickDue">कल</button>
+        <button type="button" class="due-chip" data-d="2" data-act="pickDue">2 दिन में</button>
+        <button type="button" class="due-chip" data-d="7" data-act="pickDue">हफ़्ते में</button>
+        <button type="button" class="due-chip" data-d="pick" data-act="pickDue">तारीख़…</button>
       </div>
-      <input type="date" class="fi" id="rmk-due" style="display:none;margin-top:6px;" onchange="_dueSync()">
+      <input type="date" class="fi" id="rmk-due" style="display:none;margin-top:6px;" data-change="dueSync">
       <div class="due-note" id="rmk-due-note"></div>
     </div>
     <div class="mfooter">
-      <button class="btn-cancel" onclick="closeRmkModal()">रद्द करें</button>
-      <button class="btn-save" onclick="saveRmk()">&#128190; सेव करें</button>
+      <button class="btn-cancel" data-act="rmkClose">रद्द करें</button>
+      <button class="btn-save" data-act="rmkSave">&#128190; सेव करें</button>
     </div>
   </div>
 </div>

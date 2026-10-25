@@ -4,7 +4,7 @@
 > `docs/STATUS-history.md` में — **पूरा न पढ़ें**, ज़रूरत हो तो `grep -n`। हर बदलाव की पूरी कहानी commit/PR में।
 > काम पूरा होने पर यहां सिर्फ़ ज़रूरी बातें अपडेट करें (नीचे की तालिका + खुले काम), लंबा ब्योरा commit/PR में।
 
-**आख़िरी अपडेट:** 25 अक्टूबर 2026 · **लाइव version:** 9.249 · **CACHE_NAME:** adegaon-dc-v266 · **खुला PR:** कोई नहीं
+**आख़िरी अपडेट:** 25 अक्टूबर 2026 · **लाइव version:** 9.251 · **CACHE_NAME:** adegaon-dc-v268 · **खुला PR:** कोई नहीं
 
 ---
 
@@ -24,6 +24,7 @@
 | #289 | v9.249 — IndexedDB 4s में न खुले तो सूचियां memory में (`_cacheSlow`, localStorage में नहीं — JE फ़ोन 24/10 storage-full; जगह JE के दूसरे ऐप के साथ बंटी), देर से खुलते ही `_cacheAdopt`; save न हुई सूची का ETag नहीं (`_cacheUnsaved`); `navigator.storage.persist()` | 24 अक्टू ✅ |
 | #290 | Security (JE 25/10, TDD): `LOGS/$day/$id` सिर्फ़ ऐप वाले fields t v u d c m x i r (≤400), बाक़ी मना; LOGS/USAGE दिन-key yyyy-mm-dd; USAGE b ≤ 1e9 (अनाम लिखाई से बिल-दुरुपयोग रोकना)। CLAUDE.md नियम 0: TDD + unit/integration + security। ऐप version वही; Deploy Firebase Rules हरा। अगले security काम: actions को SHA से pin, धीरे-धीरे `unsafe-inline` हटाना | 25 अक्टू ✅ |
 | #291 | Security: GitHub Actions के सारे बाहरी actions (26) पक्के commit SHA से (`# v7` टिप्पणी), `npm run check-actions` (CI lint) — tag खिसकाकर secrets चोरी का रास्ता बंद। नया action: `git ls-remote` से SHA | 25 अक्टू ✅ |
+| #292 | v9.250/9.251 — security: CSP से `unsafe-inline` हटाने की ओर, चरण 1 (login) + 2 (सूची/उपभोक्ता card): inline onclick की जगह `data-act` + `ACTIONS` सूची (ui-core.js, सिर्फ़ सूची वाले काम), उपभोक्ता डेटा सिर्फ़ escHtml वाले `data-*` में। boot-ui में ratchet `INLINE_HANDLER_MAX` (130, हर चरण घटे)। **बाक़ी चरण:** रिमार्क खिड़की, JE मेनू/सेटिंग, अपलोड, रिपोर्ट/स्कोरकार्ड, बाक़ी index.html, 2 inline script → आख़िर में CSP से `'unsafe-inline'` हटाना | 25 अक्टू ✅ |
 | #282 | v9.242 — JE मेनू: झोपड़ी-लाइनमैन वाला स्केच "आज की वसूली" टाइल पर (📅 की जगह), "ग्राम-वार वसूली" पर नया गोल गांव-सर्वे चित्र (`icons/village-survey.webp`, ~8 KB, JE के Power BI चित्र से काटकर; sw.js CORE) — JE screenshot-Ok 19/10 | 19 अक्टू ✅ |
 | #281 | v9.241 — रिमार्क-पढ़ाई (`_mergeServerRemarks`) पूरे ऐप में एक साथ 6 (`_rmkSlot`), timeout की घड़ी पढ़ाई शुरू होने पर; "बाक़ी" पीछे से भेजते वक़्त सीमा 15s (`REMARK_FLUSH_TIMEOUT_MS`), सामने वाली सेव 5s — 19/10 10:56 JE के फ़ोन पर 6 HQ की 8 सूचियों में 61 उपभोक्ताओं के रिमार्क "timeout" पर रुके (एक साथ 80 तक पढ़ाई, घड़ी कतार में बीतती) | 19 अक्टू ✅ |
 | #280 | v9.240 — "बाक़ी" भेजने की समय-सीमा भेजे जा रहे आकार के हिसाब से (60s + हर 4 KB पर 1s, 3 मिनट तक; `_flushMs`) + timeout के बाद हर 20s वही भारी कोशिश नहीं: पहले 2 मिनट, फिर 5 मिनट रुकें (`_flushBackoffUntil`), "online" event या कोई सफल भेजना हो तो तुरंत — 19/10 मढ़ी (राजकुमार, v9.239) पर हर कुछ मिनट 3 सूचियों के `sync-patch-fail timeout` | 19 अक्टू ✅ |
