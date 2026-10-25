@@ -1,6 +1,6 @@
 // @ts-check
 // वसूली ट्रैकर — टेस्ट: boot-ui (साझा helpers: tests/helpers.js)
-const { test, expect, openApp, loginLineman, reloadAndWaitForApp, loginJE } = require('./helpers');
+const { test, expect, openApp, loginLineman, reloadAndWaitForApp, loginJE, fs, path } = require('./helpers');
 
 test.describe('बूट और login', () => {
   test('app बिना नेट के भी खुलती है और version दिखाती है', async ({ page }) => {
@@ -1137,5 +1137,41 @@ test.describe('inline handler हटाना (security, चरण 7: बाक�
     expect(r.all).toBe(0);
     expect(r).toMatchObject({ upOpen: true, mode: 'merge', upClosed: true, logOpen: true, logClosed: true, cashOpen: true, cashStill: true, cashClosed: true });
     expect(r.drag).toMatch(/drag|over|hl/i);
+  });
+});
+
+test.describe('inline handler हटाना (security, चरण 8: JS से बनी HTML + inline script)', () => {
+  test('किसी js फ़ाइल में HTML string के अंदर on* handler नहीं; index.html में कोई inline <script> नहीं', () => {
+    const dir = path.join(__dirname, '..', 'js');
+    const bad = [];
+    fs.readdirSync(dir).filter((f) => f.endsWith('.js')).forEach((f) => {
+      fs.readFileSync(path.join(dir, f), 'utf8').split('\n').forEach((line, i) => {
+        if (/^\s*\/\//.test(line)) return; // टिप्पणी
+        if (/["'][^"']*<[a-z][^>]*\son(click|input|change|error|load|submit|key\w+|mouse\w+)\s*=/i.test(line)) bad.push(f + ':' + (i + 1));
+      });
+    });
+    expect(bad).toEqual([]);
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+    expect(html.match(/<script(?![^>]*\ssrc=)[^>]*>/gi) || []).toEqual([]);
+  });
+
+  test('स्कोरकार्ड: दिनांक-पंक्ति दबाने पर उस दिन की सूची; कॉपी बटन, Consumer No chip (पंक्ति न खोले) — बिना inline handler', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    const r = await page.evaluate(() => {
+      SC_DAY_DATES = ['1/10/2026']; SC_DAY_HQ = 'आदेगांव';
+      SC_DAY_MAP = { '1/10/2026': { count: 1, amount: 100, names: ['क'], items: [{ n: "x');alert(1);//", a: "AC'1" }] } };
+      openScDayModal(0);
+      const ov = document.getElementById('scday-overlay');
+      const inl = Array.from(ov.querySelectorAll('*')).reduce((n, el) => n + Array.from(el.attributes).filter((a) => /^on/i.test(a.name)).length, 0);
+      const calls = []; const keep = { openAccModal: window.openAccModal, copyScDayAccs: window.copyScDayAccs };
+      window.openAccModal = (a) => calls.push(['acc', a]); window.copyScDayAccs = (i) => calls.push(['copy', i]);
+      ov.querySelector('.chip-acc').click();
+      ov.querySelector('.btn-save').click();
+      Object.assign(window, keep);
+      return { inl, calls };
+    });
+    expect(r.inl).toBe(0);
+    expect(r.calls).toEqual([['acc', "AC'1"], ['copy', 0]]);
   });
 });

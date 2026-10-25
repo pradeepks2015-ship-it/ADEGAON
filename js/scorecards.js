@@ -188,7 +188,7 @@ function renderScDateTable(data){
     // पूरी पंक्ति दबाने लायक — index भेजते हैं, तारीख़ का text नहीं: normPayDate() कोई अनजान
     // format पहचान न पाए तो वह उपभोक्ता का टाइप किया हुआ text ज्यों का त्यों लौटा देता है, जो
     // onclick में डालने लायक नहीं (index हमेशा संख्या है)
-    return "<tr class='sc-day-row' onclick='openScDayModal("+di+")'>"+
+    return "<tr class='sc-day-row' data-act='scDay' data-i='"+di+"'>"+
       "<td style='font-weight:600;'>"+escHtml(dt)+"</td>"+
       "<td style='text-align:center;color:var(--green);font-weight:700;'>"+d.count+"</td>"+
       "<td style='text-align:right;color:var(--gold);font-weight:700;'>₹"+d.amount.toLocaleString("hi-IN")+"</td>"+
@@ -234,19 +234,19 @@ function openScDayModal(i){
   var accs=d.items.filter(function(x){return x.a;}).map(function(x){return x.a;});
   var h="";
   if(accs.length){
-    h+="<button class='btn-save' style='width:100%;margin-bottom:10px;' onclick='copyScDayAccs("+i+")'>📋 सारे Consumer No कॉपी करें ("+accs.length+")</button>";
+    h+="<button class='btn-save' style='width:100%;margin-bottom:10px;' data-act='scDayCopy' data-i='"+i+"'>📋 सारे Consumer No कॉपी करें ("+accs.length+")</button>";
   }
   h+="<table class='wasc-table'><thead><tr><th style='width:34px;'>क्र.</th><th class='wasc-th-left'>उपभोक्ता</th><th>Consumer No</th></tr></thead><tbody>"+
     d.items.map(function(x,n){
       // नंबर पर टैप → वही पुराना बिल-वाला popup (कॉपी / MPEZ साइट)
       var accCell=x.a
-        ? "<span class='chip chip-acc' onclick=\"event.stopPropagation();openAccModal('"+escJsAttr(x.a)+"')\">📄 "+escHtml(x.a)+"</span>"
+        ? "<span class='chip chip-acc' data-act='acc' data-acc='"+escHtml(x.a)+"'>📄 "+escHtml(x.a)+"</span>"
         : "<span style='color:var(--muted);'>—</span>";
       return "<tr><td style='color:var(--muted);'>"+(n+1)+"</td><td class='wasc-hq'>"+escHtml(x.n||"(नाम नहीं)")+"</td><td>"+accCell+"</td></tr>";
     }).join("")+
     "</tbody></table>";
   // audit-verified: सिर्फ़ hardcoded markup + संख्याएं; उपभोक्ता का नाम escHtml() से और
-  // onclick में गया acc escJsAttr() से गुज़रा है (वही तरीक़ा जो list.js की acc-chip में है)
+  // acc सिर्फ़ escHtml वाले data-acc में (data-act='acc', ACTIONS — v9.257)
   // eslint-disable-next-line no-unsanitized/property
   document.getElementById("scday-content").innerHTML=h;
   document.getElementById("scday-overlay").classList.add("open");
@@ -320,13 +320,13 @@ function downloadScPDF(){
     "@media print{.np{display:none}}</style></head><body>"+
     "<h2>&#127942; DC स्कोरकार्ड — दिनांक-वार वसूली</h2>"+
     "<p>दिनांक: <b>"+new Date().toLocaleDateString("hi-IN")+"</b> | चालू चक्र: <b>"+escHtml(cw.label)+"</b> | "+escHtml(CU.name)+"</p>"+
-    "<button class='np' onclick='window.print()' style='margin-bottom:8px;padding:6px 14px;background:#4a148c;color:#fff;border:none;border-radius:5px;cursor:pointer;'>Print / PDF Save</button>"+
+    "<button class='np' style='margin-bottom:8px;padding:6px 14px;background:#4a148c;color:#fff;border:none;border-radius:5px;cursor:pointer;'>Print / PDF Save</button>"+
     rows+"</body></html>";
   var w=window.open("","_blank");
   // audit-verified: html के अंदर hq/CU.name escHtml() से गुज़रे, rows भी .map().join() से escHtml()
   // सहित बना (ऊपर देखें)
   // eslint-disable-next-line no-unsanitized/method
-  if(w){w.document.write(html);w.document.close();setTimeout(function(){w.print();},600);}
+  if(w){w.document.write(html);w.document.close();_printBtnWire(w);setTimeout(function(){w.print();},600);}
   else toast("Popup block है, allow करें","inf");
 }
 

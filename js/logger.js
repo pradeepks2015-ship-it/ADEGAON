@@ -383,13 +383,13 @@ function _dvPaint(){
 function _dvControls(hidden){
   var btn=function(d,lbl){
     var on=_DV_WINDOW===d;
-    return "<button onclick=\"_dvSetWindow("+d+")\" style='border:1px solid "+(on?"var(--gold2)":"var(--border)")+";background:"+(on?"rgba(240,165,0,.12)":"var(--card)")+";color:"+(on?"var(--gold2)":"var(--muted)")+";border-radius:8px;padding:5px 12px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;'>"+lbl+"</button>";
+    return "<button data-act='dvWin' data-arg='"+d+"' style='border:1px solid "+(on?"var(--gold2)":"var(--border)")+";background:"+(on?"rgba(240,165,0,.12)":"var(--card)")+";color:"+(on?"var(--gold2)":"var(--muted)")+";border-radius:8px;padding:5px 12px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;'>"+lbl+"</button>";
   };
   var h="<div style='display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;'>"+
     btn(1,"आज")+btn(7,"7 दिन")+btn(30,"30 दिन")+btn(0,"सभी");
   // "आज" चुना हो तो "पुरानी हटाएं" न दिखाएं — वहां "पुरानी" का मतलब "कल और उससे पहले की सब"
   // होता, यानी एक क्लिक में लगभग पूरी सूची मिट जाती। हटाना 7/30 दिन वाली सोची-समझी सफ़ाई ही रहे
-  if(hidden>0&&_DV_WINDOW&&_DV_WINDOW!==1) h+="<button onclick='_dvClearOld()' style='margin-left:auto;border:1px solid rgba(240,80,80,.3);background:rgba(240,80,80,.08);color:var(--red);border-radius:8px;padding:5px 12px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;'>🗑️ पुरानी "+hidden+" हटाएं</button>";
+  if(hidden>0&&_DV_WINDOW&&_DV_WINDOW!==1) h+="<button data-act='dvClearOld' style='margin-left:auto;border:1px solid rgba(240,80,80,.3);background:rgba(240,80,80,.08);color:var(--red);border-radius:8px;padding:5px 12px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;'>🗑️ पुरानी "+hidden+" हटाएं</button>";
   h+="</div>";
   return h;
 }
