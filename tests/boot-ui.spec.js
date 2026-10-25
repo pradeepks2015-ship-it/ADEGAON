@@ -774,8 +774,10 @@ test.describe("CSP: inline कोड बंद (security, चरण 9)", () => {
     await openApp(page);
     await loginJE(page);
     await page.waitForTimeout(500);
-    // बटन JS से चलें — नीचे की पट्टी, मेनू
-    await page.evaluate(() => { try { showHome(); } catch (e) { /* ठीक */ } });
+    // बटन data-act से चलें (inline नहीं) — नीचे की पट्टी का Profile खुले
+    await page.evaluate(() => document.getElementById('update-banner')?.remove());
+    await page.click('.bnav-item[data-act="profile"]');
+    await expect(page.locator('#profile-name')).toHaveText('टेस्ट जेई');
     await page.waitForTimeout(300);
     expect(await page.evaluate(() => window.__csp || [])).toEqual([]);
   });
