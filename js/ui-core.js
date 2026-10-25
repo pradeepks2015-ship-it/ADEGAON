@@ -230,7 +230,23 @@ var ACTIONS={
   pause:function(){ openPauseModal(); },
   backup:function(){ downloadFullBackup(); },
   mig:function(){ openMigModal(); },
-  logout:function(){ doLogout(true); }
+  logout:function(){ doLogout(true); },
+  // चरण 6 (v9.255): खोज, फ़िल्टर, नीचे की पट्टी, Profile/Support
+  search:function(){ debounceSearch(); },
+  filter:function(el){ setFilter(el); },
+  bnavHome:function(){ _bnavHome(); },
+  profile:function(){ openProfileModal(); },
+  support:function(){ openSupportModal(); },
+  profileOutside:function(el,ev){ if(ev.target===el) closeProfileModal(); },
+  supportOutside:function(el,ev){ if(ev.target===el) closeSupportModal(); },
+  photoPick:function(){ var i=document.getElementById("profile-photo-inp"); if(i) i.click(); },
+  photoRemove:function(){ removeProfilePhoto(); },
+  photoSelected:function(el){ onPhotoSelected(el); },
+  theme:function(){ toggleTheme(); },
+  bigText:function(){ toggleBigText(); },
+  celebSound:function(){ toggleCelebSound(); },
+  profileClose:function(){ closeProfileModal(); },
+  supportClose:function(){ closeSupportModal(); }
 };
 function _actDispatch(ev){
   var t=/** @type {HTMLElement|null} */(ev.target&&ev.target.closest?ev.target.closest("[data-act]"):null);

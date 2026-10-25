@@ -860,7 +860,7 @@ test.describe('ऐप का अपना पुष्टि-डिब्बा 
 // ── Security (JE 25/10): inline onclick/onerror हटाकर CSP से 'unsafe-inline' हटाना — चरणों में ──
 // हर चरण में जिस स्क्रीन के बटन बदले, वहां कोई inline handler न रहे; और पूरे पन्ने की गिनती इस सीमा से ऊपर
 // न जाए (नया inline handler जोड़ने पर टेस्ट फेल — हर चरण के बाद सीमा घटाते जाएं, आख़िर में 0)
-const INLINE_HANDLER_MAX = 82; // चरण 5 के बाद (ऊपर की पट्टी + मेनू के 24 हटे)
+const INLINE_HANDLER_MAX = 62; // चरण 6 के बाद (खोज, फ़िल्टर, नीचे की पट्टी, Profile/Support के 20 हटे)
 test.describe('inline handler हटाना (security, चरण 1: login स्क्रीन)', () => {
   test('login स्क्रीन में कोई inline on* handler नहीं; पूरे पन्ने में सीमा से ज़्यादा नहीं', async ({ page }) => {
     await openApp(page);
@@ -1072,5 +1072,40 @@ test.describe('inline handler हटाना (security, चरण 5: ऊपर 
     expect(r.inl).toBe(0);
     expect(r).toMatchObject({ open1: true, closed1: true, stillOpen: true, closedAfterItem: true, sorted: true, logoutArg: true });
     expect(r.calls).toEqual(['openVillageModal', 'openScorecard', 'downloadPDF', 'downloadExcel', 'goBack', 'openLogModal', 'doLogout']);
+  });
+});
+
+test.describe('inline handler हटाना (security, चरण 6: खोज, फ़िल्टर, नीचे की पट्टी, Profile/Support)', () => {
+  test('इन हिस्सों में कोई inline on* नहीं; खोज, फ़िल्टर, नीचे के बटन, Profile के switch, बाहर टैप — सब चलें', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(async () => {
+      const ids = ['search-inp', 'je-auth-strip', 'profile-overlay', 'support-overlay'];
+      const roots = ids.map((i) => document.getElementById(i)).concat(Array.from(document.querySelectorAll('.filter-btn, .bnav-item')));
+      const inl = roots.reduce((n, root) => n + Array.from(root.querySelectorAll('*')).concat([root]).reduce((m, el) => m + Array.from(el.attributes).filter((a) => /^on/i.test(a.name)).length, 0), 0);
+      const out = { inl };
+      activeCat = 'कुल उपभोक्ता';
+      cSet(activeHQ, activeCat, [{ acc: '1', name: 'रामलाल', amount: 5, status: 'pending' }, { acc: '2', name: 'श्यामलाल', amount: 5, status: 'paid' }]);
+      renderListWith(cGet(activeHQ, activeCat));
+      document.querySelector('.filter-btn[data-f="paid"]').click(); out.filter = activeFilter;
+      document.querySelector('.filter-btn[data-f="all"]').click();
+      const si = document.getElementById('search-inp'); si.value = 'श्याम'; si.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((res) => setTimeout(res, 700));
+      out.search = document.querySelectorAll('.con-card').length;
+      si.value = ''; si.dispatchEvent(new Event('input', { bubbles: true }));
+      const items = document.querySelectorAll('.bnav-item');
+      const pf = Array.from(items).find((b) => /Profile|प्रोफ़ाइल|प्रोफाइल/.test(b.textContent)) || items[2];
+      pf.click(); const po = document.getElementById('profile-overlay'); out.pOpen = po.classList.contains('open');
+      const th0 = document.documentElement.getAttribute('data-theme');
+      document.getElementById('theme-switch-btn').click(); out.theme = document.documentElement.getAttribute('data-theme') !== th0;
+      document.getElementById('theme-switch-btn').click();
+      po.firstElementChild.dispatchEvent(new MouseEvent('click', { bubbles: true })); out.pStill = po.classList.contains('open');
+      po.dispatchEvent(new MouseEvent('click', { bubbles: true })); out.pClosed = !po.classList.contains('open');
+      const sp = items[3]; sp.click(); const so = document.getElementById('support-overlay'); out.sOpen = so.classList.contains('open');
+      so.dispatchEvent(new MouseEvent('click', { bubbles: true })); out.sClosed = !so.classList.contains('open');
+      return out;
+    });
+    expect(r.inl).toBe(0);
+    expect(r).toMatchObject({ filter: 'paid', search: 1, pOpen: true, theme: true, pStill: true, pClosed: true, sOpen: true, sClosed: true });
   });
 });

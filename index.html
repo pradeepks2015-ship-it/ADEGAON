@@ -234,51 +234,51 @@ try{
     <div class="search-wrap">
       <div class="si-wrap">
         <span class="si-icon">&#128269;</span>
-        <input type="text" class="si" id="search-inp" placeholder="नाम, No., Mobile, पता, Tariff खोजें..." oninput="debounceSearch()">
+        <input type="text" class="si" id="search-inp" placeholder="नाम, No., Mobile, पता, Tariff खोजें..." data-input="search">
       </div>
     </div>
     <!-- v9.203: गांव की पट्टी — टैप करते ही उसी गांव की सूची (JE: अंग्रेज़ी नाम, सबसे ज़्यादा बाकी पहले) -->
     <div class="vg-wrap" id="vg-wrap" style="display:none;"></div>
     <div class="filter-wrap">
-      <button class="filter-btn active-all" data-f="all" onclick="setFilter(this)">सभी</button>
-      <button class="filter-btn" data-f="pending" onclick="setFilter(this)">&#9203; बाकी</button>
-      <button class="filter-btn" data-f="paid" onclick="setFilter(this)">&#10004; वसूल</button>
+      <button class="filter-btn active-all" data-f="all" data-act="filter">सभी</button>
+      <button class="filter-btn" data-f="pending" data-act="filter">&#9203; बाकी</button>
+      <button class="filter-btn" data-f="paid" data-act="filter">&#10004; वसूल</button>
       <!-- v9.202: आज/बीते दिन के वादे वाले बाकी उपभोक्ता (रिमार्क में डाली वादा-तारीख़ से) -->
-      <button class="filter-btn" data-f="promise" id="fb-promise" onclick="setFilter(this)">इस सप्ताह जमा का वादा</button>
+      <button class="filter-btn" data-f="promise" id="fb-promise" data-act="filter">इस सप्ताह जमा का वादा</button>
     </div>
-    <div class="np-strip je-auth-strip" id="je-auth-strip" style="display:none;"><span>🔐 JE खाता सर्वर से नहीं जुड़ा — ताज़ा डेटा नहीं आएगा। लॉगआउट करके पासवर्ड से दोबारा login करें</span><button type="button" class="np-off" onclick="doLogout(true)">लॉगआउट</button></div>
+    <div class="np-strip je-auth-strip" id="je-auth-strip" style="display:none;"><span>🔐 JE खाता सर्वर से नहीं जुड़ा — ताज़ा डेटा नहीं आएगा। लॉगआउट करके पासवर्ड से दोबारा login करें</span><button type="button" class="np-off" data-act="logout">लॉगआउट</button></div>
     <div class="np-strip" id="np-strip" style="display:none;"></div>
     <div class="con-list" id="con-list"></div>
   </div>
   <div class="bottom-nav">
-    <button class="bnav-item active" onclick="_bnavHome()">
+    <button class="bnav-item active" data-act="bnavHome">
       <span class="bnav-ico">&#127968;</span><span class="bnav-lbl">Home</span>
     </button>
-    <button class="bnav-item" id="sc-bnav-btn" onclick="openScorecard()">
+    <button class="bnav-item" id="sc-bnav-btn" data-act="scorecard">
       <img class="bnav-ico-img" src="icons/scorecard-icon.svg" alt="">
       <span class="bnav-lbl">स्कोरकार्ड</span>
     </button>
-    <button class="bnav-item" onclick="openProfileModal()">
+    <button class="bnav-item" data-act="profile">
       <span class="bnav-ico">&#128100;</span><span class="bnav-lbl">Profile</span>
     </button>
-    <button class="bnav-item" onclick="openSupportModal()">
+    <button class="bnav-item" data-act="support">
       <span class="bnav-ico">&#10067;</span><span class="bnav-lbl">Support</span>
     </button>
   </div>
 </div>
 
 <!-- PROFILE (फ़ोटो अपलोड सहित) -->
-<div class="moverlay" id="profile-overlay" onclick="if(event.target===this)closeProfileModal()">
+<div class="moverlay" id="profile-overlay" data-act="profileOutside">
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">&#128100; प्रोफ़ाइल</div>
     <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:16px;">
       <div id="profile-avatar-wrap" style="width:88px;height:88px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#fff;margin-bottom:10px;box-shadow:var(--shadow-md);"></div>
       <div style="display:flex;gap:8px;">
-        <button class="btn-cancel" style="width:auto;padding:8px 16px;" onclick="document.getElementById('profile-photo-inp').click()">&#128247; फ़ोटो बदलें</button>
-        <button class="btn-cancel" id="profile-photo-remove-btn" style="width:auto;padding:8px 16px;display:none;" onclick="removeProfilePhoto()">&#128465; फ़ोटो हटाएं</button>
+        <button class="btn-cancel" style="width:auto;padding:8px 16px;" data-act="photoPick">&#128247; फ़ोटो बदलें</button>
+        <button class="btn-cancel" id="profile-photo-remove-btn" style="width:auto;padding:8px 16px;display:none;" data-act="photoRemove">&#128465; फ़ोटो हटाएं</button>
       </div>
-      <input type="file" id="profile-photo-inp" accept="image/*" style="display:none;" onchange="onPhotoSelected(this)">
+      <input type="file" id="profile-photo-inp" accept="image/*" style="display:none;" data-change="photoSelected">
     </div>
     <div class="rmk-info">
       <div class="rmk-name" id="profile-name">-</div>
@@ -286,25 +286,25 @@ try{
     </div>
     <div class="theme-row">
       <span>&#127769; डार्क मोड <span style="font-weight:400;color:var(--muted);">(कम रोशनी में आँखों को आराम)</span></span>
-      <button class="theme-switch" id="theme-switch-btn" onclick="toggleTheme()" aria-label="डार्क मोड टॉगल करें"><span class="theme-switch-knob"></span></button>
+      <button class="theme-switch" id="theme-switch-btn" data-act="theme" aria-label="डार्क मोड टॉगल करें"><span class="theme-switch-knob"></span></button>
     </div>
     <!-- v9.205: बड़े अक्षर — JE: "जहां से डार्क मोड करते हैं वहीं से" (धूप में / 45+ उम्र वालों के लिए; डिफ़ॉल्ट बंद) -->
     <div class="theme-row">
       <span>&#128288; बड़े अक्षर <span style="font-weight:400;color:var(--muted);">(सूची के नंबर, पता, बटन — पढ़ने में आसान)</span></span>
-      <button class="theme-switch" id="bigtext-switch-btn" onclick="toggleBigText()" aria-label="बड़े अक्षर चालू/बंद करें"><span class="theme-switch-knob"></span></button>
+      <button class="theme-switch" id="bigtext-switch-btn" data-act="bigText" aria-label="बड़े अक्षर चालू/बंद करें"><span class="theme-switch-knob"></span></button>
     </div>
     <div class="theme-row">
       <span>&#128227; वसूली पर आवाज़ <span style="font-weight:400;color:var(--muted);">(ताली और घंटी — फ़ोन में ही बनती है)</span></span>
-      <button class="theme-switch" id="sound-switch-btn" onclick="toggleCelebSound()" aria-label="वसूली पर आवाज़ चालू/बंद करें"><span class="theme-switch-knob"></span></button>
+      <button class="theme-switch" id="sound-switch-btn" data-act="celebSound" aria-label="वसूली पर आवाज़ चालू/बंद करें"><span class="theme-switch-knob"></span></button>
     </div>
     <div class="mfooter">
-      <button class="btn-save" onclick="closeProfileModal()">बंद करें</button>
+      <button class="btn-save" data-act="profileClose">बंद करें</button>
     </div>
   </div>
 </div>
 
 <!-- SUPPORT -->
-<div class="moverlay" id="support-overlay" onclick="if(event.target===this)closeSupportModal()">
+<div class="moverlay" id="support-overlay" data-act="supportOutside">
   <div class="msheet">
     <div class="mhandle"></div>
     <div class="mtitle">&#10067; सहायता</div>
@@ -313,7 +313,7 @@ try{
       <div style="font-size:13px;margin-top:10px;" id="support-je-email">-</div>
     </div>
     <div class="mfooter">
-      <button class="btn-save" onclick="closeSupportModal()">बंद करें</button>
+      <button class="btn-save" data-act="supportClose">बंद करें</button>
     </div>
   </div>
 </div>

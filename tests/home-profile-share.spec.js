@@ -14,7 +14,7 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
     await openApp(page);
     await loginLineman(page, 'राधा शर्मा');
     await page.evaluate(() => document.getElementById('update-banner')?.remove());
-    await page.click('button[onclick="openProfileModal()"]');
+    await page.click('.bnav-item[data-act="profile"]');
     await expect(page.locator('#profile-name')).toHaveText('राधा शर्मा');
     expect(await page.locator('#profile-meta').textContent()).toContain('लाइनमैन');
     // कोई फ़ोटो नहीं है (server offline) — शुरुआती अक्षर दिखना चाहिए
@@ -26,7 +26,7 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
     await openApp(page);
     await loginLineman(page);
     await page.evaluate(() => document.getElementById('update-banner')?.remove());
-    await page.click('button[onclick="openSupportModal()"]');
+    await page.click('.bnav-item[data-act="support"]');
     expect(await page.locator('#support-je-email').textContent()).toContain('@');
   });
 
@@ -41,7 +41,7 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
       await route.fulfill({ status: 200, body: '{}' });
     });
 
-    await page.click('button[onclick="openProfileModal()"]');
+    await page.click('.bnav-item[data-act="profile"]');
     // 100x100 का लाल वर्ग वाली छोटी JPEG बनाकर अपलोड करें
     const jpegBuffer = Buffer.from(
       '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCABkAGQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDk6KKK8I/VgooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigD//Z',
@@ -63,7 +63,7 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
     await openApp(page);
     await loginLineman(page);
     await page.evaluate(() => document.getElementById('update-banner')?.remove());
-    await page.click('button[onclick="openProfileModal()"]');
+    await page.click('.bnav-item[data-act="profile"]');
     // पहली बार कोई फ़ोटो नहीं — बटन छुपा हो
     expect(await page.locator('#profile-photo-remove-btn').isVisible()).toBe(false);
 
