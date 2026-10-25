@@ -9,6 +9,7 @@
     "check-xss": "node scripts/check-xss-onclick-escaping.js",
     "check-globals": "node scripts/check-duplicate-globals.js",
     "check-sri": "node scripts/check-sri.js",
+    "check-actions": "node scripts/check-actions-pinned.js",
     "typecheck": "tsc -p .",
     "test:rules": "npx -y firebase-tools@15.33.0 emulators:exec --only database --project demo-adegaon-rules \"node --test tests/rules/rules-check.js\"",
     "test:backup": "node --test tests/backup/encrypt-check.js",

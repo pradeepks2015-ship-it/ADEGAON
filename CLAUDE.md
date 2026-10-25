@@ -125,6 +125,7 @@
    npm run test:restore   # बैकअप से रिमार्क वापसी: सिर्फ़ जोड़े, आज का न मिटे
    npm run test:alerts    # alert script: क्या alert बने/न बने, हर logErr नाम वर्गीकृत
    npm run check-sri      # Firebase की 3 बाहरी script पर integrity hash (CI में `-- --online` असली gstatic से मिलाता है)
+   npm run check-actions  # workflows के बाहरी actions पक्के commit SHA से (नया action: git ls-remote से SHA, "@<sha> # <tag>")
    ```
    CI में इनके अलावा `rules` (`npm run test:rules`), `backup-lock` (`npm run test:backup`) और `e2e-firebase`
    (`npm run test:e2e`) jobs भी चलते हैं — sandbox में Java/emulator हो तो इन्हें भी चला लें
