@@ -18,7 +18,8 @@ var LAZY_ENTRY = {
     "_upKeepToggle","_upKeepPreview","onCatChange","setUpMode","dOver","dLeave","dDrop","handleFile",
     "confirmUpload"],
   "js/cat-admin.js": ["openEditCat"],
-  "js/migration-tool.js": ["openMigModal","closeMigModal","_migRunDryRun","downloadMigReport"],
+  "js/migration-tool.js": ["openMigModal","closeMigModal","_migRunDryRun","downloadMigReport",
+    "confirmAndRunMigration"],
   "js/usage-view.js": ["openUsageModal","closeUsageModal","closeUsageOutside"]
 };
 var LAZY_TIMEOUT_MS = 20000; // बहुत धीमे नेट पर भी इतनी देर बाद साफ़ बता दें कि नहीं खुला
