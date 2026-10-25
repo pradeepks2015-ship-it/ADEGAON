@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
       - name: Install backup dependencies
@@ -29,7 +29,7 @@ jobs:
       # repo public है — artifact कोई भी logged-in GitHub user उतार सकता है। इसलिए Excel पर
       # पासवर्ड (AES-256) लगाकर ही रखें; secret न हो तो job फेल, बिना ताले की फ़ाइल कभी नहीं
       # (12/10/2026 — उससे पहले के सादे बैकअप मिटा दिए गए)। देखें scripts/encrypt-backup.py
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.12'
       - name: Lock backup with password
@@ -41,7 +41,7 @@ jobs:
       # Firebase/Google Cloud storage में कुछ भी सेव नहीं होता — फ़ाइल सिर्फ़ यहीं (GitHub
       # Actions artifact) बनती है, और तय दिनों बाद अपने-आप मिट जाती है — storage कभी नहीं बढ़ता
       - name: Upload backup artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: adegaon-backup-${{ github.run_id }}
           path: backup-output/*.xlsx
