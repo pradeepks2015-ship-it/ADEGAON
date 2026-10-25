@@ -856,3 +856,108 @@ test.describe('ऐप का अपना पुष्टि-डिब्बा 
   });
 });
 
+
+// ── Security (JE 25/10): inline onclick/onerror हटाकर CSP से 'unsafe-inline' हटाना — चरणों में ──
+// हर चरण में जिस स्क्रीन के बटन बदले, वहां कोई inline handler न रहे; और पूरे पन्ने की गिनती इस सीमा से ऊपर
+// न जाए (नया inline handler जोड़ने पर टेस्ट फेल — हर चरण के बाद सीमा घटाते जाएं, आख़िर में 0)
+const INLINE_HANDLER_MAX = 130; // चरण 1 के बाद (login के 5 हटे)
+test.describe('inline handler हटाना (security, चरण 1: login स्क्रीन)', () => {
+  test('login स्क्रीन में कोई inline on* handler नहीं; पूरे पन्ने में सीमा से ज़्यादा नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const cnt = (root) => Array.from(root.querySelectorAll('*')).reduce((n, el) => n + Array.from(el.attributes).filter((a) => /^on/i.test(a.name)).length, 0);
+      return { login: cnt(document.getElementById('login-screen')), all: cnt(document) };
+    });
+    expect(r.login).toBe(0);
+    expect(r.all).toBeLessThanOrEqual(INLINE_HANDLER_MAX);
+  });
+
+  test('login के बटन data-act से चलें: भूमिका चुनना, पासवर्ड आंख, प्रवेश', async ({ page }) => {
+    await openApp(page);
+    await page.click('#rc-sup', { force: true });
+    expect(await page.evaluate(() => selectedRole)).toBe('supervisor');
+    const t1 = await page.evaluate(() => document.getElementById('sup-pw').type);
+    await page.click('.pw-eye');
+    const t2 = await page.evaluate(() => document.getElementById('sup-pw').type);
+    expect(t1).toBe('password');
+    expect(t2).toBe('text');
+    await page.click('#rc-lin', { force: true });
+    expect(await page.evaluate(() => selectedRole)).toBe('lineman');
+  });
+
+  test('logo की फ़ाइल न मिले तो पहले icon-192, वह भी न मिले तो ⚡ (onerror के बिना)', async ({ page }) => {
+    await page.route('**/icons/login-logo.webp', (r) => r.abort());
+    await page.route('**/icons/icon-192.png', (r) => r.abort());
+    await openApp(page);
+    await expect.poll(() => page.evaluate(() => {
+      const w = document.querySelector('#login-screen .logo-wrap');
+      return !w.querySelector('img.login-logo') && w.textContent.indexOf('⚡') > -1;
+    }), { timeout: 5000 }).toBe(true);
+  });
+});
+
+test.describe('inline handler हटाना (security, चरण 2: सूची/उपभोक्ता card)', () => {
+  test('card में कोई inline on* नहीं (उपभोक्ता का नाम/Consumer No जैसे भी हों); बटन सही उपभोक्ता के लिए चलें', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      const bad = "x');alert(1);//\"<b>";
+      const yesterday = new Date(Date.now() - 864e5); const iso = yesterday.getFullYear() + '-' + String(yesterday.getMonth() + 1).padStart(2, '0') + '-' + String(yesterday.getDate()).padStart(2, '0');
+      const list = [
+        { acc: "AC'1", name: bad, father: bad, phone: '9876543210', addr: 'गांव', amount: 500, status: 'pending', remarksArr: [{ text: 'वादा', by: 'X', at: '1/10/2026, 10:00:00 am', due: iso }] },
+        { acc: 'AC2', name: 'दूसरा', amount: 100, status: 'paid' },
+      ];
+      for (let i = 0; i < 120; i++) list.push({ acc: 'M' + i, name: 'भरा ' + i, amount: 10, status: 'pending' });
+      activeCat = 'कुल उपभोक्ता'; cSet(activeHQ, activeCat, list);
+      _renderLimit = 100; renderListWith(cGet(activeHQ, activeCat));
+      const box = document.getElementById('list-container') || document.body;
+      const inl = Array.from(document.querySelectorAll('.con-card *, .con-card')).reduce((n, el) => n + Array.from(el.attributes).filter((a) => /^on/i.test(a.name)).length, 0);
+      const calls = [];
+      const keep = {};
+      ['openRmkModal', 'markPaid', 'markUnpaid', 'openAccModal', 'openPhModal', 'shareCard', 'dueChipTap'].forEach((f) => { keep[f] = window[f]; window[f] = function () { calls.push([f].concat(Array.from(arguments).map((a) => (a && a.nodeType ? 'EL' : a)))); }; });
+      const card0 = document.querySelectorAll('.con-card')[0];
+      card0.querySelector('.abtn-rmk').click();
+      card0.querySelector('.abtn-pay').click();
+      card0.querySelector('.chip-acc').click();
+      card0.querySelector('.chip-ph').click();
+      card0.querySelector('.cc-share').click();
+      card0.querySelector('.chip-due').click();
+      document.querySelectorAll('.con-card')[1].querySelector('.abtn:not(.abtn-rmk)').click();
+      Object.keys(keep).forEach((f) => { window[f] = keep[f]; });
+      const nCards = document.querySelectorAll('.con-card').length;
+      const more = Array.from(box.querySelectorAll('button')).find((b) => /और दिखाएं/.test(b.textContent));
+      if (more) more.click();
+      return { inl, calls, nCards, after: document.querySelectorAll('.con-card').length, alerted: !!window.__alerted };
+    });
+    expect(r.inl).toBe(0);
+    expect(r.calls).toEqual([
+      ['openRmkModal', 0, "AC'1"], ['markPaid', 0, "AC'1"], ['openAccModal', "AC'1"],
+      ['openPhModal', "x');alert(1);//\"<b>", '9876543210', "AC'1", '500'], ['shareCard', 0, "AC'1", 'EL'],
+      ['dueChipTap', 'EL', 0, "AC'1"], ['markUnpaid', 1, 'AC2'],
+    ]);
+    expect(r.nCards).toBe(100);
+    expect(r.after).toBe(122); // "और दिखाएं"
+  });
+
+  test('गांव-chip और "कभी भुगतान नहीं" पट्टी के बटन बिना inline handler चलें', async ({ page }) => {
+    await openApp(page);
+    await loginLineman(page);
+    const r = await page.evaluate(() => {
+      activeCat = 'कुल उपभोक्ता';
+      cSet(activeHQ, activeCat, [{ acc: '1', name: 'क', addr: 'गांवअ', amount: 5, status: 'pending' }, { acc: '2', name: 'ख', addr: 'गांवब', amount: 5, status: 'pending' }]);
+      setNeverPaid(true); renderListWith(cGet(activeHQ, activeCat));
+      const strip = document.getElementById('np-strip');
+      const inl = (root) => root ? Array.from(root.querySelectorAll('*')).reduce((n, el) => n + Array.from(el.attributes).filter((a) => /^on/i.test(a.name)).length, 0) : 0;
+      const out = { stripInl: inl(strip) };
+      strip.querySelector('.np-off').click(); out.np = neverPaidOnly;
+      const chip = Array.from(document.querySelectorAll('.vg-chip')).find((b) => b.dataset.v && b.dataset.v !== '');
+      out.vgInl = inl(chip ? chip.parentElement : null);
+      if (chip) { chip.click(); out.village = activeVillage; out.want = chip.dataset.v; }
+      return out;
+    });
+    expect(r.stripInl).toBe(0);
+    expect(r.np).toBe(false);
+    expect(r.vgInl).toBe(0);
+    expect(r.village).toBe(r.want);
+  });
+});

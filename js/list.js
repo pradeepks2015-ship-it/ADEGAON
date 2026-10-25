@@ -106,7 +106,7 @@ function _renderNeverPaidStrip(data){
   // audit-verified: n एक गिनती (number) है, बाक़ी सब hardcoded — कोई उपभोक्ता/बाहरी text नहीं
   // eslint-disable-next-line no-unsanitized/property
   el.innerHTML="<span>🚫 सिर्फ़ कभी भुगतान न करने वाले — <b>"+n+"</b> उपभोक्ता</span>"+
-    "<button type='button' class='np-off' onclick='setNeverPaid(false)'>✕ हटाएं</button>";
+    "<button type='button' class='np-off' data-act='neverPaidOff'>✕ हटाएं</button>";
 }
 // ── v9.215: ⏳ पुराने बकायादार पहले (JE, 13/10; v9.216 में नाम "🕰️ पुराना भुगतान पहले" से बदला) ──
 // "जिसने लंबे समय से भुगतान नहीं किया वह सूची में कहीं नीचे खो जाता है" — लेजर का "पिछला भुगतान तिथि"
@@ -315,12 +315,12 @@ function _renderVillageBar(data){
   if(activeVillage&&!m[activeVillage]) activeVillage=""; // यह गांव अब सूची में नहीं
   if(rows.length<2){ w.style.display="none"; w.innerHTML=""; return; } // एक ही गांव — पट्टी बेकार
   rows.sort(function(a,b){ return (b.pend-a.pend)||(a.k<b.k?-1:a.k>b.k?1:0); });
-  // audit-verified: गांव का नाम escHtml() से; onclick में कोई field नहीं (this.dataset.v)
+  // audit-verified: गांव का नाम escHtml() से; काम data-act='village' (ACTIONS, ui-core.js) dataset.v से
   // eslint-disable-next-line no-unsanitized/property
   w.innerHTML="<span class='vg-lbl'>📍 गांव:</span>"+
-    "<button type='button' class='vg-chip"+(activeVillage?"":" on")+"' data-v='' onclick='setVillage(this.dataset.v)'>सभी</button>"+
+    "<button type='button' class='vg-chip"+(activeVillage?"":" on")+"' data-v='' data-act='village'>सभी</button>"+
     rows.map(function(r){
-      return "<button type='button' class='vg-chip"+(activeVillage===r.k?" on":"")+"' data-v='"+escHtml(r.k)+"' onclick='setVillage(this.dataset.v)'>"+
+      return "<button type='button' class='vg-chip"+(activeVillage===r.k?" on":"")+"' data-v='"+escHtml(r.k)+"' data-act='village'>"+
         escHtml(r.k||"(पता नहीं)")+"<b>"+r.pend+"</b></button>";
     }).join("");
   w.style.display="flex";
@@ -404,6 +404,8 @@ function renderListWith(data){
   // eslint-disable-next-line no-unsanitized/property
   c.innerHTML=toRender.map(function(x){
     var oi=data.indexOf(x),isPaid=x.status==="paid";
+    // security (v9.251): बटन का काम data-act से (ACTIONS, ui-core.js) — उपभोक्ता का डेटा सिर्फ़ escHtml वाले data-* में, कभी JS कोड में नहीं
+    var ca=" data-i='"+oi+"' data-acc='"+escHtml(x.acc||"")+"'";
     var remarksArr=remarksAll(x,activeHQ);
     var rmkHtml="";
     if(remarksArr.length){
@@ -427,14 +429,14 @@ function renderListWith(data){
     var pdue=promiseDue(x), dueChip="";
     // v9.235: बीते वादे पर दो बार टैप = "💔 वादा टूटा" (टूटने का animation, फिर सामान्य सूची में)
     if(pdue) dueChip="<span class='chip chip-due"+(pdue<today?" over":pdue===today?" today":"")+"'"+
-      (pdue<today?" onclick=\"dueChipTap(this,"+oi+",'"+escJsAttr(x.acc||"")+"')\"":"")+">🤝 वादा: "+escHtml(_fmtDue(pdue))+
+      (pdue<today?" data-act='dueTap'"+ca:"")+">🤝 वादा: "+escHtml(_fmtDue(pdue))+
       (pdue<today?" (बीत गया)":pdue===today?" (आज)":"")+"</span>";
     return "<div class='con-card "+(isPaid?"paid":"pending")+"'>"+
-      "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+(x.father?" / "+escHtml(x.father):"")+"</div><button class='cc-share' title='शेयर' aria-label='शेयर' onclick=\"shareCard("+oi+",'"+escJsAttr(x.acc||"")+"',this)\">"+CC_SHARE_ICON+"</button><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
+      "<div class='cc-top'><div class='cc-name'>"+escHtml(x.name)+(x.father?" / "+escHtml(x.father):"")+"</div><button class='cc-share' title='शेयर' aria-label='शेयर' data-act='share'"+ca+">"+CC_SHARE_ICON+"</button><div class='cc-rank'>#"+(oi+1)+"</div></div>"+
       "<div class='cc-amt'>₹"+Number(x.amount).toLocaleString("hi-IN")+" <span>बकाया</span></div>"+
       "<div class='cc-chips'>"+dueChip+(listSort==="oldpay"&&!isPaid?_oldPayChip(x):"")+
-        (x.acc?"<span class='chip chip-acc' onclick=\"openAccModal('"+escJsAttr(x.acc)+"')\">📄 "+escHtml(x.acc)+"</span>":"")+
-                (x.phone?"<span class='chip chip-ph' style='cursor:pointer;' onclick=\"openPhModal('"+escJsAttr(x.name)+"','"+escJsAttr(x.phone)+"','"+escJsAttr(x.acc||"")+"','"+(Number(x.amount)||0)+"')\">📞 "+escHtml(x.phone)+"</span>":"")+
+        (x.acc?"<span class='chip chip-acc' data-act='acc'"+ca+">📄 "+escHtml(x.acc)+"</span>":"")+
+                (x.phone?"<span class='chip chip-ph' style='cursor:pointer;' data-act='phone'"+ca+" data-name='"+escHtml(x.name)+"' data-phone='"+escHtml(x.phone)+"' data-amt='"+(Number(x.amount)||0)+"'>📞 "+escHtml(x.phone)+"</span>":"")+
         (x.addr?"<span class='chip chip-addr'>📍 "+escHtml(x.addr)+"</span>":"")+
       "</div>"+
       "<div class='cc-extra'>"+
@@ -444,14 +446,14 @@ function renderListWith(data){
       "</div>"+
       "<div class='cc-bot'><span class='sbadge "+(isPaid?"sb-paid":"sb-pending")+"'>"+(isPaid?"✅ वसूल":"⏳ बाकी")+"</span>"+
       "<div class='act-btns'>"+
-        "<button class='abtn abtn-rmk' onclick=\"openRmkModal("+oi+",'"+escJsAttr(x.acc||"")+"')\">✏️ रिमार्क</button>"+
-        (!isPaid?"<button class='abtn abtn-pay' onclick=\"markPaid("+oi+",'"+escJsAttr(x.acc||"")+"')\">✓ वसूल</button>":
-                 "<button class='abtn' style='background:rgba(255,77,109,.12);color:var(--red);border:1px solid rgba(255,77,109,.2);' onclick=\"markUnpaid("+oi+",'"+escJsAttr(x.acc||"")+"')\">↩ वापस बाकी</button>")+
+        "<button class='abtn abtn-rmk' data-act='rmk'"+ca+">✏️ रिमार्क</button>"+
+        (!isPaid?"<button class='abtn abtn-pay' data-act='paid'"+ca+">✓ वसूल</button>":
+                 "<button class='abtn' style='background:rgba(255,77,109,.12);color:var(--red);border:1px solid rgba(255,77,109,.2);' data-act='unpaid'"+ca+">↩ वापस बाकी</button>")+
       "</div></div>"+
       "<div class='cc-info'>"+prevPayInfo+payDateInfo+uploadInfo+"</div>"+
       rmkHtml+"</div>";
   }).join("")+
-  (hasMore?"<div style='text-align:center;padding:14px 0 60px;'><button onclick='_renderLimit+=100;renderListWith(cGet(activeHQ,activeCat));' style='border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:10px;padding:10px 22px;font-family:\"Noto Sans Devanagari\",sans-serif;font-size:12px;cursor:pointer;'>⬇ और दिखाएं ("+toRender.length+"/"+filtered.length+")</button></div>":"");
+  (hasMore?"<div style='text-align:center;padding:14px 0 60px;'><button data-act='listMore' style='border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:10px;padding:10px 22px;font-family:\"Noto Sans Devanagari\",sans-serif;font-size:12px;cursor:pointer;'>⬇ और दिखाएं ("+toRender.length+"/"+filtered.length+")</button></div>":"");
   requestAnimationFrame(_updateBnavVisibility); // अगले paint frame तक टालें — DOM लिखने के तुरंत बाद scrollHeight पढ़ने से जबरन (महंगा) layout reflow होता है, बड़ी list पर धीमापन
 }
 

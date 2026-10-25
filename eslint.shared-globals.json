@@ -1,4 +1,5 @@
 [
+  "ACTIONS",
   "AC_FAIL_KEY",
   "AC_FALLBACK_MS",
   "AC_READY",
@@ -151,6 +152,7 @@
   "_acRetryT",
   "_acStale",
   "_acWaiters",
+  "_actDispatch",
   "_afterAuthReady",
   "_appStarted",
   "_applauseBed",
@@ -338,6 +340,7 @@
   "_logPost",
   "_logPush",
   "_logSeenTs",
+  "_logoFallback",
   "_lsFullLogged",
   "_mergeServerRemarks",
   "_mergedPatch",
