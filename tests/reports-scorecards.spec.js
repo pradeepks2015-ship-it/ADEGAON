@@ -382,24 +382,24 @@ test.describe('XSS सुरक्षा — PDF/print export और दिन�
     expect(html).toContain('&lt;script&gt;alert(5)&lt;/script&gt;'); // चालू चक्र में गिना गया और escape होकर दिखा (vacuous pass न हो)
   });
 
-  test('renderListWith — con-card के onclick="...(\'...\')" में escHtml काफ़ी नहीं (सिंगल-कोट को browser वापस decode कर देता है), escJsAttr चाहिए', async ({ page }) => {
+  test('renderListWith — con-card में उपभोक्ता का डेटा कभी JS कोड (onclick) में नहीं, सिर्फ़ escHtml वाले data-* में (v9.251)', async ({ page }) => {
     await openApp(page);
-    const html = await page.evaluate(() => {
+    const r = await page.evaluate(() => {
       activeHQ = 'आदेगांव'; activeCat = 'कुल उपभोक्ता';
       var rec = { acc: "x');alert(7);//", name: "O'Brien", phone: "9'999999999", status: 'pending', amount: 100 };
       cSet('आदेगांव', 'कुल उपभोक्ता', [rec]);
       renderListWith([rec]);
-      return document.getElementById('con-list').innerHTML;
+      const box = document.getElementById('con-list');
+      const acc = box.querySelector('.chip-acc'), ph = box.querySelector('.chip-ph');
+      return { html: box.innerHTML, acc: acc.dataset.acc, act: acc.dataset.act, name: ph.dataset.name, phone: ph.dataset.phone };
     });
-    // असली breakout होता तो onclick="openAccModal('x');alert(7);//')" जैसा टूटा हुआ attribute बनता —
-    // escJsAttr सिंगल-कोट को \' में बदलकर JS string को समय से पहले बंद होने से रोकता है
-    expect(html).not.toContain("openAccModal('x');alert(7);//');");
-    expect(html).not.toContain("openPhModal('O'Brien'");
-    expect(html).toContain("openAccModal('x\\');alert(7);//')");
-    expect(html).toContain("openPhModal('O\\'Brien','9\\'999999999'");
-    // प्लेन टेक्स्ट (display) कॉपी में escHtml अब ' को &#39; कर देता है — पर browser उसे parse करके
-    // वापस साधारण ' के तौर पर दिखाता है (round-trip में कुछ नहीं टूटता, इंसान को कोई फ़र्क़ नहीं दिखता)
-    expect(html).toContain('<div class="cc-name">O\'Brien</div>');
+    // पहले onclick="openAccModal('...')" में escJsAttr पर भरोसा था — अब कोई inline कोड ही नहीं (CSP 'unsafe-inline' हटाने की ओर)
+    expect(r.html).not.toMatch(/\son[a-z]+=/i);
+    expect(r.act).toBe('acc');
+    expect(r.acc).toBe("x');alert(7);//"); // data-* से वापस वही असली मान — कोड नहीं बनता
+    expect(r.name).toBe("O'Brien");
+    expect(r.phone).toBe("9'999999999");
+    expect(r.html).toContain('<div class="cc-name">O\'Brien</div>');
   });
 
   test('renderSummaryWith — श्रेणी का नाम (JE बदल सकते हैं) innerHTML में escape होकर जाए (bug: eslint-plugin-no-unsanitized ऑडिट में मिला — नाम validation सिर्फ़ Firebase-असुरक्षित चिह्न रोकती है, HTML-special चिह्न नहीं)', async ({ page }) => {
