@@ -1577,3 +1577,52 @@ test.describe('offline मानी गई request में भी तैया
     expect(r.ac).toBe('ac-2');
   });
 });
+
+// v9.259 (Bhupendra का लॉग, 26/10): कमज़ोर नेट पर Firebase login पूरा होने से पहले live-sync जुड़ गया —
+// "sse-never-opened … login token: नहीं था • खाता: कोई नहीं • HTTP 401"। token आने तक रुकें, आते ही जुड़ें
+test.describe('live-sync login token का इंतज़ार करे', () => {
+  const setup = (page) => page.evaluate(() => {
+    window.__opened = [];
+    _liveSourceFor = function (hq, cat) { window.__opened.push(hq + '/' + cat); return null; };
+    CU = { role: 'lineman', hq: 'पाटन', name: 'टेस्ट' }; activeHQ = 'पाटन'; activeCat = 'कुल';
+    Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+  });
+
+  test('Firebase login चालू पर token नहीं — अभी न जुड़े, token आते ही एक बार जुड़े', async ({ page }) => {
+    await openApp(page);
+    await setup(page);
+    const r = await page.evaluate(() => {
+      AUTH_LISTENING = true; ID_TOKEN = null;
+      _openLive('पाटन', 'कुल');
+      const before = window.__opened.length;
+      ID_TOKEN = 'tok'; _tokenWaiters.splice(0).forEach((f) => f());
+      return { before, after: window.__opened.slice() };
+    });
+    expect(r.before).toBe(0);
+    expect(r.after).toEqual(['पाटन/कुल']);
+  });
+
+  test('इंतज़ार के बीच tab बदला (stopListen) — token आने पर पुरानी सूची से न जुड़े', async ({ page }) => {
+    await openApp(page);
+    await setup(page);
+    const opened = await page.evaluate(() => {
+      AUTH_LISTENING = true; ID_TOKEN = null;
+      _openLive('पाटन', 'कुल');
+      stopListen(); activeCat = 'दूसरी';
+      ID_TOKEN = 'tok'; _tokenWaiters.splice(0).forEach((f) => f());
+      return window.__opened.slice();
+    });
+    expect(opened).toEqual([]);
+  });
+
+  test('Firebase library ही नहीं चली (AUTH_LISTENING false) — पहले जैसा तुरंत जुड़े', async ({ page }) => {
+    await openApp(page);
+    await setup(page);
+    const opened = await page.evaluate(() => {
+      AUTH_LISTENING = false; ID_TOKEN = null;
+      _openLive('पाटन', 'कुल');
+      return window.__opened.slice();
+    });
+    expect(opened).toEqual(['पाटन/कुल']);
+  });
+});

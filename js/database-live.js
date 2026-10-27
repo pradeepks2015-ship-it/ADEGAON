@@ -183,7 +183,9 @@ function _liveSourceFor(hq,cat){
   return null;
 }
 
+var _liveWaitKey=null; // v9.259: login token के इंतज़ार में कौन-सी सूची (hq/cat) — stopListen इसे रद्द करता है
 function stopListen(){
+  _liveWaitKey=null;
   if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
   if(liveSource){liveSource.close();liveSource=null;}
   if(_esRetryT){clearTimeout(_esRetryT);_esRetryT=null;}
@@ -278,6 +280,20 @@ function _openLive(hq,cat){
   // 🛑 डेटा बचाओ मोड — live sync ही सबसे बड़ा download खर्च है, इसलिए जुड़ें ही नहीं।
   // स्विच हटते ही _applyPause खुद दोबारा जोड़ देता है, और जुड़ते ही पूरा ताज़ा data आ जाता है
   if(isDataPaused()) return;
+  // v9.259: कमज़ोर नेट पर Firebase login देर से पूरा होता है — बिना login token जुड़ने पर सर्वर 401 देता है
+  // (लॉग sse-never-opened "login token: नहीं था • खाता: कोई नहीं", 26/10) और बेकार कोशिशें + polling चलती हैं।
+  // Firebase login चालू हो (AUTH_LISTENING) पर token अभी न हो तो रुको, token आते ही जुड़ो — बशर्ते तब तक यही
+  // सूची खुली हो (stopListen/tab बदलना इंतज़ार रद्द करता है)। Firebase library ही न चली हो तो पहले जैसा
+  if(!ID_TOKEN&&AUTH_LISTENING&&navigator.onLine){
+    var want=hq+"/"+cat;
+    _liveWaitKey=want;
+    _tokenWaiters.push(function(){
+      if(_liveWaitKey!==want) return;
+      _liveWaitKey=null;
+      if(CU&&activeHQ===hq&&activeCat===cat&&!isDataPaused()) _openLive(hq,cat);
+    });
+    return;
+  }
 
   function applyIncoming(d){
     trackUsageOf(d); // SSE का सबसे भारी हिस्सा — जुड़ते ही पूरी list आती है; पहले यह बिल्कुल नहीं गिनी जाती थी
