@@ -1761,3 +1761,84 @@ test.describe('अनाम खाते पर "बाक़ी" न भेज�
     expect(r.flushStarted).toBe(true);
   });
 });
+
+// v9.260 (Suneel, बीबी, 27/10): डेढ़ घंटे हर ~20s "sync-patch-fail HTTP 401 … login token: नहीं था … Invalid appcheck token"।
+// (1) login token न हो तो "बाक़ी" भेजना बेकार (rules HQ खाता मांगते हैं) — token आते ही भेजें
+// (2) सर्वर "Invalid appcheck token" कहे तो पर्ची ज़बरदस्ती नई (मिनट में एक बार से ज़्यादा नहीं) और एक बार दोबारा
+test.describe('login token / ख़राब App Check पर्ची (v9.260)', () => {
+  const mkJwt = () => {
+    window.mkJwt = (expInSec, tag) => {
+      const b64 = (o) => btoa(JSON.stringify(o)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+      return b64({ alg: 'none' }) + '.' + b64({ exp: Math.floor(Date.now() / 1000) + expInSec, t: tag }) + '.sig';
+    };
+  };
+
+  test('login token नहीं (Firebase login चालू) — "बाक़ी" भेजना शुरू न हो; token आते ही शुरू हो', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      localStorage.removeItem('dc_acfail');
+      AUTH_LISTENING = true; AUTH_READY = false; ID_TOKEN = null; AC_READY = true; AC_TOKEN = 'ac';
+      const hq = 'टेस्ट HQ60', cat = 'कुल उपभोक्ता';
+      localStorage.setItem('dc_pending3', JSON.stringify({ [cKey(hq, cat)]: { hq, cat, type: 'put', since: Date.now(), patch: { 5: { acc: '5', status: 'paid', o: 0 } } } }));
+      _flushing = false; _flushBackoffUntil = 0;
+      const w0 = _tokenWaiters.length;
+      flushPending();
+      const before = _flushing;
+      flushPending(); // दोबारा बुलाने पर भी एक ही इंतज़ार
+      const waiters = _tokenWaiters.length - w0;
+      ID_TOKEN = 'id'; _tokenWaiters.splice(0).forEach((f) => f());
+      return { before, waiters, after: _flushing };
+    });
+    expect(r).toEqual({ before: false, waiters: 1, after: true });
+  });
+
+  test('login token के बिना भेजी request पर "Invalid appcheck token" — नई पर्ची लेकर एक बार दोबारा; मिनट में दोबारा नहीं मांगे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      localStorage.removeItem('dc_acfail');
+      let asks = 0; const sent = [];
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = () => ({ getToken: () => { asks++; return Promise.resolve({ token: 'ac-new' }); } });
+      let serverOk = true;
+      _rawFetch = (u, o) => {
+        const ac = o && o.headers && o.headers['X-Firebase-AppCheck'];
+        if (String(u).indexOf('/z') < 0) return Promise.resolve(new Response('{}', { status: 200 })); // ऐप की बाक़ी पृष्ठभूमि requests
+        sent.push(ac);
+        const ok = serverOk && ac === 'ac-new';
+        return Promise.resolve(new Response(ok ? '{}' : '{ "error" : "Invalid appcheck token" }', { status: ok ? 200 : 401 }));
+      };
+      ID_TOKEN = null; AC_READY = true; AC_TOKEN = 'ac-old';
+      fetch(FB + '/z.json').then((res) => {
+        const out = { status: res.status, asks: asks, sent: sent.slice() };
+        serverOk = false; // सर्वर फिर भी मना करे — इस बार पर्ची दोबारा नहीं मांगनी
+        return fetch(FB + '/z2.json').then((res2) => { out.status2 = res2.status; out.asks2 = asks; resolve(out); });
+      });
+    }));
+    expect(r).toEqual({ status: 200, asks: 1, sent: ['ac-old', 'ac-new'], status2: 401, asks2: 1 });
+  });
+
+  test('login token के साथ भी: पर्ची client की घड़ी से "ताज़ा" पर सर्वर "Invalid" कहे — नई पर्ची लेकर दोबारा', async ({ page }) => {
+    await openApp(page);
+    await page.evaluate(mkJwt);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      localStorage.removeItem('dc_acfail');
+      let asks = 0; const sent = [];
+      const fresh = window.mkJwt(3600, 'new');
+      window.firebase = window.firebase || {};
+      window.firebase.appCheck = () => ({ getToken: () => { asks++; return Promise.resolve({ token: fresh }); } });
+      window.firebase.auth = () => ({ currentUser: { getIdToken: () => Promise.resolve(ID_TOKEN) } });
+      _rawFetch = (u, o) => {
+        const ac = o.headers['X-Firebase-AppCheck'];
+        if (String(u).indexOf('/w.json') < 0) return Promise.resolve(new Response('{}', { status: 200 }));
+        sent.push(ac === fresh ? 'new' : 'old');
+        return Promise.resolve(new Response(ac === fresh ? '{}' : '{ "error" : "Invalid appcheck token" }', { status: ac === fresh ? 200 : 401 }));
+      };
+      AC_READY = true; ID_TOKEN = window.mkJwt(3600, 'id'); AC_TOKEN = window.mkJwt(3600, 'old'); // client को ताज़ा दिखती
+      fetch(FB + '/w.json').then((res) => resolve({ status: res.status, asks, sent }));
+    }));
+    expect(r).toEqual({ status: 200, asks: 1, sent: ['old', 'new'] });
+  });
+});

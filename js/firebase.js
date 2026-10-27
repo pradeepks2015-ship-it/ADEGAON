@@ -224,21 +224,28 @@ function _acForceRefresh(){
       .catch(function(e){ _acNoteFail(e,"401/403 के बाद"); });
   }catch(e){return Promise.resolve();}
 }
+// v9.260 (Suneel, बीबी, 27/10 — डेढ़ घंटे हर ~20s "Invalid appcheck token"): पर्ची फ़ोन की घड़ी से "ताज़ा" दिखे
+// (या login token न होने से ज़बरदस्ती-ताज़ा वाला रास्ता चले ही नहीं) पर सर्वर उसे ख़राब कहे — तो नई पर्ची
+// ज़बरदस्ती लो। reCAPTCHA पर बोझ न बने, इसलिए मिनट में एक बार से ज़्यादा नहीं
+var AC_INVALID_GAP_MS=60000, _acInvalidAt=0;
+function _acInvalidRefresh(r){
+  if(!r||r.status!==401||typeof r.clone!=="function") return Promise.resolve(false);
+  return r.clone().text().then(function(t){
+    if(!/invalid app ?check token/i.test(t||"")) return false;
+    if(Date.now()-_acInvalidAt<AC_INVALID_GAP_MS) return false;
+    _acInvalidAt=Date.now();
+    var old=AC_TOKEN;
+    return _acForceRefresh().then(function(){ return !!AC_TOKEN&&AC_TOKEN!==old; });
+  },function(){ return false; });
+}
 function _fbFetchWithAuth(url,opts){
   return _fbFetchOnce(url,opts).then(function(r){
     if(r.status===401){
       var u=firebase.auth().currentUser;
       if(!u) return r;
-      // 401 सिर्फ़ login token expire से नहीं आता — "Missing appcheck token" पर भी सर्वर 401 देता है
-      // (असली production लॉग, v9.165: "AppCheck token: था" फिर भी सर्वर मना — race थी, fetch जाते
-      // वक़्त AC_TOKEN अभी null था)। इसलिए AC_TOKEN missing हो तो उसे भी ताज़ा करके login token के
-      // साथ एक बार दोबारा कोशिश करो
-      var acJob=(AC_TOKEN&&!_acStale())?Promise.resolve():_acForceRefresh();
-      return acJob.then(function(){
-        return u.getIdToken(true).then(function(t){
-          _setIdToken(t);
-          return _fbFetchOnce(url,opts);
-        }).catch(function(){return r;});
+      return _acInvalidRefresh(r).then(function(acNew){
+        if(acNew) return _fbFetchOnce(url,opts);
+        return _fbRetry401(url,opts,u,r);
       });
     }
     if(r.status===403){
@@ -247,6 +254,20 @@ function _fbFetchWithAuth(url,opts){
       });
     }
     return r;
+  });
+}
+// 401 पर पुराना रास्ता: पर्ची न हो/पुरानी हो तो नई, login token ज़बरदस्ती नया, फिर एक बार दोबारा
+function _fbRetry401(url,opts,u,r){
+  // 401 सिर्फ़ login token expire से नहीं आता — "Missing appcheck token" पर भी सर्वर 401 देता है
+  // (असली production लॉग, v9.165: "AppCheck token: था" फिर भी सर्वर मना — race थी, fetch जाते
+  // वक़्त AC_TOKEN अभी null था)। इसलिए AC_TOKEN missing हो तो उसे भी ताज़ा करके login token के
+  // साथ एक बार दोबारा कोशिश करो
+  var acJob=(AC_TOKEN&&!_acStale())?Promise.resolve():_acForceRefresh();
+  return acJob.then(function(){
+    return u.getIdToken(true).then(function(t){
+      _setIdToken(t);
+      return _fbFetchOnce(url,opts);
+    }).catch(function(){return r;});
   });
 }
 // ── v9.243 (JE 20/10: Firebase App Check "Verified" 97% → 94%) ──
@@ -289,7 +310,9 @@ window.fetch = function(url, opts){
         // यहां से बिल्कुल raw (बिना App Check header के भी) fetch चला जाता था, भले ही उसी बीच
         // App Check token बन चुका हो। सिर्फ़ ID_TOKEN की देर की वजह से App Check header मत छोड़ो —
         // "Missing appcheck token" यहीं से भी आ रहा था
-        resolve(_rawFetch(url,_fbOpts(opts)));
+        resolve(_rawFetch(url,_fbOpts(opts)).then(function(r){
+          return _acInvalidRefresh(r).then(function(acNew){ return acNew?_rawFetch(url,_fbOpts(opts)):r; });
+        }));
       },4000);
       function check(){
         if(done||!ID_TOKEN||!AC_READY)return;

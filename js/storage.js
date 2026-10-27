@@ -645,6 +645,7 @@ function _mergedPatch(server,merged){
 }
 
 var _flushing=false;
+var _flushWaitTok=false; // v9.260: login token के इंतज़ार में एक ही flush कतार में
 function flushPending(){
   if(_flushing||!navigator.onLine||Date.now()<_flushBackoffUntil) return;
   // v9.243: App Check पर्ची नाकाम है — भेजना Firebase को बेकार (unverified) requests ही देगा; पर्ची बनते ही
@@ -654,6 +655,12 @@ function flushPending(){
   if(typeof _fbAcctNone==="function"&&AUTH_READY&&_fbAcctNone()){
     // लाइनमैन अंदर है पर खाता अनाम — सही HQ खाते से sign-in की कोशिश (पहले यह पहले 401 पर होती थी; अपना guard है)
     if(CU&&CU.role==="lineman"&&typeof _ensureCorrectHqAuth==="function"&&pendingCount()>0){ try{ _ensureCorrectHqAuth(); }catch(e){} }
+    return;
+  }
+  // v9.260 (Suneel, बीबी, 27/10): login token अभी नहीं (कमज़ोर नेट पर Firebase login देर से) — HQ सूचियां बिना
+  // login खाते के लिखी ही नहीं जा सकतीं, हर 20s 401 मिलता रहा। token आते ही (_tokenWaiters) एक बार भेजो
+  if(typeof ID_TOKEN!=="undefined"&&!ID_TOKEN&&typeof AUTH_LISTENING!=="undefined"&&AUTH_LISTENING){
+    if(!_flushWaitTok){ _flushWaitTok=true; _tokenWaiters.push(function(){ _flushWaitTok=false; flushPending(); }); }
     return;
   }
   var p=getPending();
