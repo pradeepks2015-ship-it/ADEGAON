@@ -799,6 +799,23 @@ test.describe('canary निशान', () => {
   });
 });
 
+// v9.261 (JE 28/10, विकल्प B): header स्केच बाएं कोने से हटकर नीचे-दाईं ओर — नाम वाले बटन और खंभे के बीच, बटनों के पीछे न दबे
+test('header स्केच नीचे-दाईं ओर (← और ⚡ के पीछे नहीं)', async ({ page }) => {
+  await page.setViewportSize({ width: 400, height: 800 });
+  await openApp(page);
+  await loginJE(page);
+  await page.evaluate(() => hideLoader());
+  const r = await page.evaluate(() => {
+    const h = document.querySelector('.app-header').getBoundingClientRect();
+    const s = document.querySelector('.app-header .hdr-sketch').getBoundingClientRect();
+    return { leftPart: (s.left - h.left) / h.width, rightGap: h.right - s.right, bottomGap: h.bottom - s.bottom, hPart: s.height / h.height };
+  });
+  expect(r.leftPart).toBeGreaterThan(0.35);   // बाएं कोने (← / ⚡) से दूर
+  expect(r.rightGap).toBeGreaterThan(30);     // खंभे वाले सजावटी चित्र पर न चढ़े
+  expect(r.bottomGap).toBeLessThan(20);       // नीचे की ओर
+  expect(r.hPart).toBeLessThan(0.8);          // पूरी ऊंचाई नहीं — छोटा
+});
+
 // v9.232 (JE, 16/10): स्केच — टाइल और header। छोटे रहें (मुफ़्त/तेज़) और बिना नेट भी दिखें (sw.js OPTIONAL)
 test('स्केच तस्वीरें छोटी, बिना-नेट सूची में, और पन्ने पर लगीं', async ({ page }) => {
   const fs = require('fs');
