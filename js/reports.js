@@ -309,9 +309,21 @@ function _showComingBanner(ver,reg){
 // v9.214: पन्ना खुलते वक़्त कोई SW क़ब्ज़े में नहीं था (पहली बार ऐप खुला, या Chrome डेटा साफ़ हुआ) — तब
 // पहला controllerchange सिर्फ़ नए SW का क़ब्ज़ा लेना (clients.claim) है, नया version नहीं। पहले उस पर भी
 // "नया version आ गया" पट्टी आ जाती थी (या पीछे हो तो बेवजह reload)। असली SW वाले टेस्ट (tests/sw-real.spec.js) ने पकड़ा
+// v9.263 (JE 28/10): कई लाइनमैन दिनों ऐप नहीं खोलते, तो फ़ोन पुराने version पर रहता है। Home screen पर install
+// किए ऐप पर Chrome (Periodic Background Sync) ऐप खोले बिना दिन में ~1 बार sw.js जांच सकता है (sw.js "periodicsync")
+// — कब, यह Chrome तय करता है (गारंटी नहीं)। ख़र्च: GitHub Pages की एक छोटी फ़ाइल, Firebase कुछ नहीं
+var PERIODIC_SYNC_MS=12*60*60*1000;
+function _swPeriodicSync(reg){
+  try{
+    if(!reg||!reg.periodicSync||!navigator.permissions||!navigator.permissions.query) return Promise.resolve();
+    return navigator.permissions.query(/** @type {any} */({name:"periodic-background-sync"})).then(function(st){
+      if(st&&st.state==="granted") return reg.periodicSync.register("dc-update",{minInterval:PERIODIC_SYNC_MS});
+    }).catch(function(){});
+  }catch(e){ return Promise.resolve(); }
+}
 var _swHadController=!!("serviceWorker" in navigator&&navigator.serviceWorker.controller);
 if("serviceWorker" in navigator && location.protocol.indexOf("http")===0){
-  navigator.serviceWorker.register("sw.js").then(_swSetupAutoUpdate).catch(function(){});
+  navigator.serviceWorker.register("sw.js").then(function(reg){ _swSetupAutoUpdate(reg); _swPeriodicSync(reg); }).catch(function(){});
   navigator.serviceWorker.addEventListener("controllerchange",function(){
     if(!_swHadController){ _swHadController=true; return; }
     // page hidden हो (user दूसरे app में) तो silently reload — कोई interrupt नहीं, पर पुराना bandwidth-भारी

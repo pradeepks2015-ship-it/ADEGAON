@@ -931,3 +931,33 @@ test.describe('Google Search से छिपाव (v9.196)', () => {
     await expect(page.locator('meta[property="og:title"]')).toHaveCount(1);
   });
 });
+
+// v9.263 (JE 28/10, "2 क"): ऐप खोले बिना भी नया version — Chrome की Periodic Background Sync (install किए ऐप पर,
+// Chrome तय करे कब; मुफ़्त: दिन में ~1 बार sw.js की छोटी जांच, Firebase नहीं)
+test.describe('Periodic Background Sync से update', () => {
+  test('इजाज़त हो तो "dc-update" ≥12 घंटे पर दर्ज; न हो या API न हो तो कुछ नहीं, कोई गड़बड़ी नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(async () => {
+      const calls = [];
+      const mkReg = () => ({ periodicSync: { register: (tag, o) => { calls.push([tag, o && o.minInterval]); return Promise.resolve(); } } });
+      const q = navigator.permissions && navigator.permissions.query;
+      navigator.permissions.query = () => Promise.resolve({ state: 'granted' });
+      await _swPeriodicSync(mkReg());
+      navigator.permissions.query = () => Promise.resolve({ state: 'denied' });
+      await _swPeriodicSync(mkReg());
+      await _swPeriodicSync({}); // API ही नहीं
+      await _swPeriodicSync(null);
+      navigator.permissions.query = q;
+      return calls;
+    });
+    expect(r.length).toBe(1);
+    expect(r[0][0]).toBe('dc-update');
+    expect(r[0][1]).toBeGreaterThanOrEqual(12 * 3600 * 1000);
+  });
+
+  test('sw.js "periodicsync" (dc-update) पर अपना update जांचता है', () => {
+    const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+    expect(sw).toMatch(/addEventListener\(\s*["']periodicsync["']/);
+    expect(sw).toMatch(/dc-update[\s\S]{0,200}registration\.update\(\)/);
+  });
+});
