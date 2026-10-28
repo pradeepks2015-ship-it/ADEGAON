@@ -1003,3 +1003,36 @@ test.describe('माइग्रेशन पलटने से पक्क�
     expect(r.body['5']).toBeTruthy();  // per-record रूप में ही सेव हुआ, बदलाव भी बचा
   });
 });
+
+// v9.262 (JE 28/10): Satendra (बीबी) और annad (आदेगांव) के फ़ोन से "5 record बिना Consumer No" हर सेव पर —
+// सर्वर पर Missing acc 0 (चरण 3 जांच)। ये फ़ोन की copy की ख़ाली entries हैं (न नाम, न Consumer No) — असली उपभोक्ता नहीं
+test.describe('फ़ोन की copy की ख़ाली entries (न नाम, न Consumer No) — v9.262', () => {
+  test('mergeArrays ख़ाली entries हटा दे, पर नाम वाली (Consumer No छूटा) रखे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const local = [{ acc: '1', name: 'अ', ts: 1 }, { status: 'unpaid', ts: 5 }, 7, { name: 'ब', ts: 1 }, { acc: ' ', name: '' }];
+      const out = mergeArrays(local, [{ acc: '1', name: 'अ', ts: 2 }]);
+      const only = mergeArrays(local, []);
+      return { out: out.map((x) => x.acc || x.name), only: only.map((x) => x.acc || x.name) };
+    });
+    expect(r.out).toEqual(['1', 'ब']);
+    expect(r.only).toEqual(['1', 'ब']);
+  });
+
+  test('ख़ाली entries "बिना Consumer No" में न गिनें; असली (नाम वाली) का लॉग दिन में एक बार', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      const labels = _noAccLabels([{ status: 'unpaid' }, null, 3, { name: 'ब', addr: 'गांव' }, { acc: '9', name: 'स' }]);
+      try { localStorage.removeItem('dc_noacclog1'); } catch (e) { /* ठीक */ }
+      const before = getLogs().filter((l) => l.c === 'mig-noacc-skip').length;
+      _noAccLog('बीबी', 'कुल उपभोक्ता', labels);
+      _noAccLog('बीबी', 'कुल उपभोक्ता', labels);
+      _noAccLog('बीबी', 'दूसरी', labels);
+      _noAccLog('बीबी', 'कुल उपभोक्ता', []);
+      const after = getLogs().filter((l) => l.c === 'mig-noacc-skip').length;
+      return { labels, logged: after - before };
+    });
+    expect(r.labels).toEqual(['ब — गांव']);
+    expect(r.logged).toBe(2); // दो अलग सूची, हर एक एक बार
+  });
+});
