@@ -43,7 +43,7 @@ function fbSet(hq,cat,arr,prevArr,cb){
 function _asPerRecord(hq,cat,arr){
   var obj={},skip=0;
   (arr||[]).forEach(function(x,i){
-    if(!x||x.acc==null||String(x.acc).trim()===""){skip++;return;}
+    if(!x||x.acc==null||String(x.acc).trim()===""){ if(!_isGhostRec(x)) skip++; return; }
     var rec=JSON.parse(JSON.stringify(x));
     if(rec.o==null) rec.o=i;
     obj[String(x.acc).trim()]=rec;
@@ -178,7 +178,7 @@ function _diffToPatch(prev,arr){
 // acc-रहित records की पहचान — नाम/पता/मोबाइल से, ताकि JE उन्हें ढूंढकर Consumer No भर सके
 // (acc खुद ही गायब है, इसलिए पहचानने का और कोई ज़रिया नहीं — _migRender की probRows जैसा ही तरीक़ा)
 function _noAccLabels(arr){
-  return (arr||[]).filter(function(x){ return x&&(x.acc==null||String(x.acc).trim()===""); })
+  return (arr||[]).filter(function(x){ return !_isGhostRec(x)&&(x.acc==null||String(x.acc).trim()===""); })
     .map(function(x){ return (x.name||"(नाम नहीं)")+(x.addr?" — "+x.addr:"")+(x.phone?" — "+x.phone:""); });
 }
 
@@ -287,13 +287,22 @@ function _mergeServerRemarks(hq,cat,patch,max,timeoutMs){
   });
 }
 
+// v9.262: यह लॉग हर सेव पर जाता था (Satendra, 3 मिनट में 12 बार) — एक सूची का फ़ोन से दिन में एक ही बार
+var NOACC_LOG_KEY="dc_noacclog1";
+function _noAccLog(hq,cat,noAcc){
+  if(!noAcc||!noAcc.length) return;
+  var day=new Date().toISOString().slice(0,10), seen;
+  try{ seen=JSON.parse(localStorage.getItem(NOACC_LOG_KEY)||"{}")||{}; }catch(e){ seen={}; }
+  var k=hq+"/"+cat;
+  if(seen[k]===day) return;
+  seen[k]=day;
+  try{ localStorage.setItem(NOACC_LOG_KEY,JSON.stringify(seen)); }catch(e){}
+  logErr("mig-noacc-skip",noAcc.length+" उपभोक्ता का Consumer No खाली है (नाम है), इसलिए उनके बदलाव सेव नहीं हो पा रहे (बाक़ी सब सेव हो गए)। ठीक करने के लिए: सूची में Consumer No भरकर दोबारा अपलोड करें। "+noAcc.slice(0,2).join(" | "),hq+"/"+cat);
+}
 function _fbPutPerRecord(hq,cat,prev,arr,cb){
   // acc-रहित record किसी भी तरीक़े से per-record सेव नहीं हो सकता (acc ही उसकी key है) — बाक़ी
   // सबका patch भेज दें, और JE को साफ़ बताएं कि किस उपभोक्ता का Consumer No भरना है
-  var noAcc=_noAccLabels(arr);
-  if(noAcc.length){
-    logErr("mig-noacc-skip",noAcc.length+" record बिना Consumer No के हैं, इसलिए वो सेव नहीं हो पा रहे (बाक़ी सब सेव हो गए)। ठीक करने के लिए: चरण 3 जांच → दोबारा जांचें → \"समस्या वाले records\"। "+noAcc.slice(0,2).join(" | "),hq+"/"+cat);
-  }
+  _noAccLog(hq,cat,_noAccLabels(arr));
   var patch=_diffToPatch(prev,arr);
   if(!Object.keys(patch).length){ if(cb) cb(true); return; } // कुछ बदला ही नहीं — network call भी नहीं
   _mergeServerRemarks(hq,cat,patch).then(function(res){ _fbSendPatch(hq,cat,patch,cb,res); });

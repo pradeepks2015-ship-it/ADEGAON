@@ -573,9 +573,14 @@ function mergeRecord(l,st){
 // कहीं acc में आगे-पीछे space रह जाए तो एक ही उपभोक्ता "अलग" मान लिया जाता और सूची में दूसरा card
 // जुड़ जाता (Firebase की per-record key हमेशा trimmed acc होती है, इसलिए दोनों तरफ़ ऐसा ही मिलान चाहिए)
 function accKeyOf(x){ return (x&&x.acc!=null)?String(x.acc).trim():""; }
+// v9.262 (JE 28/10): फ़ोन की copy की ख़ाली entry — न Consumer No, न नाम (या object ही नहीं)। असली उपभोक्ता नहीं
+// (सर्वर पर "Missing acc" 0 था), पुराने array-दौर का बचा कचरा — सर्वर से मिलाते वक़्त हटती थी नहीं (बिना acc वाली
+// local entry हमेशा रखी जाती थी), इसलिए Satendra/annad के फ़ोन पर हर सेव "5 record बिना Consumer No"
+function _isGhostRec(x){ return !x||typeof x!=="object"||(!accKeyOf(x)&&!String(x.name==null?"":x.name).trim()); }
 function mergeArrays(local,server){
-  if(!server||!server.length) return local||[];
-  if(!local||!local.length) return server;
+  local=(local||[]).filter(function(l){ return !_isGhostRec(l); });
+  if(!server||!server.length) return local;
+  if(!local.length) return server;
   var sMap={};
   server.forEach(function(x){var k=accKeyOf(x);if(k)sMap[k]=x;});
   var usedAcc={};
