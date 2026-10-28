@@ -557,3 +557,38 @@ test.describe('कर्मचारी सक्रियता — ताज�
     expect(r).toEqual([null, null]);
   });
 });
+
+// v9.263 (JE 28/10, "2 ख"): पुराने version वाली पंक्ति पर "याद दिलाएं" — WhatsApp में तैयार संदेश (नाम + दोनों version + ऐप का पता)
+test.describe('डिवाइस तालिका: पुराने version पर "याद दिलाएं"', () => {
+  test('सिर्फ़ पुराने version वाली पंक्ति पर बटन; दबाने पर wa.me संदेश', async ({ page }) => {
+    await openApp(page);
+    await loginJE(page);
+    await page.evaluate(() => openMigModal());
+    await page.evaluate(() => {
+      window.fetch = function (url) {
+        if (String(url).indexOf('/DEVICE_VERSIONS.json') > -1) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({
+            d1: { v: APP_VER, hq: 'आदेगांव', role: 'supervisor', name: 'JE', t: Date.now() },
+            d2: { v: '9.0', hq: 'पिंडरई', role: 'lineman', name: 'पुराना <b>लाइनमैन</b>', t: Date.now() - 1000 },
+          }) });
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(null) });
+      };
+      window.__opened = [];
+      window.open = (u) => { window.__opened.push(String(u)); return null; };
+      _dvRender();
+    });
+    await page.waitForFunction(() => document.getElementById('mig-devices').textContent.indexOf('पुराना') > -1);
+    const btns = page.locator('#mig-devices [data-act="dvRemind"]');
+    await expect(btns).toHaveCount(1);
+    expect(await page.locator('#mig-devices b:text("लाइनमैन")').count()).toBe(0); // नाम HTML नहीं बनता (XSS)
+    await btns.first().evaluate((b) => b.click()); // modal पीछे छिपा हो सकता है — event delegation (data-act) ही जांचनी है
+    const u = await page.evaluate(() => window.__opened[0] || '');
+    expect(u.indexOf('https://wa.me/?text=')).toBe(0);
+    const msg = decodeURIComponent(u.split('text=')[1]);
+    expect(msg).toContain('पुराना <b>लाइनमैन</b>');
+    expect(msg).toContain('9.0');
+    expect(msg).toContain(await page.evaluate(() => APP_VER));
+    expect(msg).toContain(await page.evaluate(() => location.origin + location.pathname));
+  });
+});

@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v279";
+var CACHE_NAME="adegaon-dc-v280";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -117,6 +117,11 @@ self.addEventListener("install",function(e){
         });
     }).then(function(){return self.skipWaiting();})
   );
+});
+// v9.263: ऐप खोले बिना नया version — Chrome Periodic Background Sync (js/reports.js _swPeriodicSync)। नया sw.js मिला
+// तो install होकर इंतज़ार करता है (canary वही — install में _canaryGate); अगली बार ऐप खुलते ही चालू
+self.addEventListener("periodicsync",function(e){
+  if(e.tag==="dc-update") e.waitUntil(self.registration.update().catch(function(){}));
 });
 self.addEventListener("activate",function(e){
   e.waitUntil(

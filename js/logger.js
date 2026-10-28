@@ -272,6 +272,14 @@ function openDvModal(){
 }
 function closeDvModal(){document.getElementById("dv-overlay").classList.remove("open");}
 
+// v9.263 (JE 28/10): पुराने version वाले लाइनमैन को WhatsApp पर याद दिलाना — संदेश तैयार, नंबर JE WhatsApp में चुनें
+// (DEVICE_VERSIONS में मोबाइल नंबर नहीं रखा जाता)। सब कुछ फ़ोन पर, कोई Firebase पढ़ाई/लिखाई नहीं
+function _dvRemind(name,v){
+  var url=location.origin+location.pathname;
+  var msg="नमस्ते "+(name||"")+" जी, आपके फ़ोन पर वसूली ट्रैकर ऐप पुराने version (v"+(v||"?")+") पर है। "+
+    "कृपया नेट चालू रखकर ऐप एक बार पूरा बंद करें और दो बार खोलें — नया version (v"+APP_VER+") उतर जाएगा। "+url;
+  window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
+}
 function _dvRender(){
   var el=document.getElementById("mig-devices");
   if(!el)return;
@@ -371,7 +379,9 @@ function _dvPaint(){
       (r.extra
         ?("<td><span style='color:var(--gold2);'>हाज़िरी नहीं</span><br><small style='color:var(--muted);'>"+(r.cash?"कैश लिस्ट से":"पर काम दिखा")+"</small></td><td>—</td></tr>")
         :("<td>"+escHtml(_dvAgo(r.t))+"<br><small style='color:var(--muted);'>"+escHtml(r.t?new Date(r.t).toLocaleDateString("hi-IN"):"?")+"</small></td>"+
-          "<td>"+(old?"⚠️ v":"✅ v")+escHtml(r.v)+"</td></tr>"));
+          "<td>"+(old?"⚠️ v":"✅ v")+escHtml(r.v)+
+          (old?"<br><button class='dv-remind' data-act='dvRemind' data-arg='"+escHtml(_dvTitle(r.name))+"' data-v='"+escHtml(r.v)+"'>📲 याद दिलाएं</button>":"")+
+          "</td></tr>"));
   });
   html+="</tbody></table>";
   // audit-verified: name/hq/v/_dvAgo/तारीख़/noData सभी escHtml() से गुज़रते हैं; workHtml/old/devs
