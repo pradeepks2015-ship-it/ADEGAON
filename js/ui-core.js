@@ -317,7 +317,6 @@ var ACTIONS={
   noMatch:function(){ downloadNoMatch(); },
   dvWin:function(el){ _dvSetWindow(+(el.dataset.arg||0)); },
   dvClearOld:function(){ _dvClearOld(); },
-  dvRemind:function(el){ _dvRemind(el.dataset.arg||"",el.dataset.v||""); },
   pauseToggle:function(){ _pauseToggle(); },
   migRun:function(){ confirmAndRunMigration(); },
   scDay:function(el){ openScDayModal(+(el.dataset.i||0)); },

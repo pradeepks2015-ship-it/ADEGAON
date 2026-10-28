@@ -561,7 +561,6 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .wasc-hdr-s{font-size:10px;color:var(--muted);margin-top:2px;}
 .wasc-table{width:100%;border-collapse:collapse;font-size:11px;}
 .wasc-table th{background:var(--card);color:var(--muted);font-size:9px;font-weight:700;padding:6px 4px;border-bottom:1px solid var(--border);text-align:center;line-height:1.4;}
-.dv-remind{margin-top:4px;padding:4px 8px;border:none;border-radius:12px;background:#25d366;color:#fff;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;}
 .wasc-table td{padding:7px 4px;text-align:center;border-bottom:1px solid var(--border);color:var(--text);line-height:1.4;}
 .wasc-hq{font-weight:700;text-align:left !important;color:var(--gold2);padding-left:6px !important;}
 .wasc-th-left{text-align:left !important;padding-left:6px !important;}
