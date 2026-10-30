@@ -246,11 +246,11 @@ function _selApply(){
   if(!bar){
     bar=document.createElement("div"); bar.id="sel-bar"; bar.className="sel-bar";
     var t=document.createElement("span"); t.className="sel-txt"; bar.appendChild(t);
-    var x=document.createElement("button"); x.className="sel-x"; x.setAttribute("data-act","selCancel"); x.setAttribute("aria-label","चुनना रद्द करें"); x.textContent="✕ रद्द";
+    var x=document.createElement("button"); x.className="sel-x"; x.setAttribute("data-act","selCancel"); x.setAttribute("aria-label","चुनना रद्द करें"); x.textContent="✕";
     bar.appendChild(x);
     document.body.appendChild(bar);
   }
-  bar.querySelector(".sel-txt").textContent="✓ "+_selCount()+" चुने • किसी चुने card का ↱ दबाएं — WhatsApp";
+  bar.querySelector(".sel-txt").textContent="✓ "+_selCount()+" चुने"; // JE 30/10: छोटी पट्टी (विकल्प क)
   bar.style.display="";
 }
 function _selToggle(card){
