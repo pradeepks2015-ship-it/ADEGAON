@@ -672,7 +672,10 @@ html.big-text .ask-title{font-size:20px;} html.big-text .ask-msg,html.big-text .
 /* v9.266: कई cards चुनकर WhatsApp — चुने card पर हरी बॉर्डर + ✓; नीचे पट्टी */
 .con-card{-webkit-touch-callout:none;}
 .con-card.cc-sel{outline:3px solid #22c55e;outline-offset:-2px;position:relative;}
-.con-card.cc-sel::after{content:"✓";position:absolute;top:-8px;left:-8px;width:24px;height:24px;border-radius:50%;background:#22c55e;color:#fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.25);}
+.con-card.cc-sel::after{content:"✓";position:absolute;top:-8px;left:-8px;width:30px;height:30px;border-radius:50%;background:#22c55e;color:#fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.25);}
 .sel-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));z-index:900;display:flex;align-items:center;gap:10px;background:#14532d;color:#fff;border-radius:22px;padding:6px 8px 6px 16px;font-size:14px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.35);white-space:nowrap;}
 .sel-bar .sel-txt{flex:1;line-height:1.35;}
-.sel-bar .sel-x{border:none;border-radius:50%;width:32px;height:32px;background:rgba(255,255,255,.18);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;}
+.sel-bar .sel-btn{border:none;border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:800;cursor:pointer;font-family:inherit;padding:0;}
+.sel-bar .sel-share{background:#25d366;}
+.sel-bar .sel-share svg{width:24px;height:24px;}
+.sel-bar .sel-x{background:rgba(255,255,255,.2);}

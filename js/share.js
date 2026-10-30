@@ -246,11 +246,16 @@ function _selApply(){
   if(!bar){
     bar=document.createElement("div"); bar.id="sel-bar"; bar.className="sel-bar";
     var t=document.createElement("span"); t.className="sel-txt"; bar.appendChild(t);
-    var x=document.createElement("button"); x.className="sel-x"; x.setAttribute("data-act","selCancel"); x.setAttribute("aria-label","चुनना रद्द करें"); x.textContent="✕";
-    bar.appendChild(x);
+    // JE 30/10: ✕ के बगल में उसी तरह का ↱ (एक साथ WhatsApp) — दोनों बड़े गोल बटन, दबाने में आसान
+    var sh=document.createElement("button"); sh.className="sel-btn sel-share"; sh.setAttribute("data-act","selShare"); sh.setAttribute("aria-label","चुने cards एक साथ WhatsApp पर भेजें"); sh.setAttribute("title","एक साथ WhatsApp");
+    // audit-verified: CC_SHARE_ICON (list.js) एक तय SVG स्थिरांक है, उसमें कोई डेटा/उपयोगकर्ता का पाठ नहीं
+    // eslint-disable-next-line no-unsanitized/property
+    sh.innerHTML=CC_SHARE_ICON;
+    var x=document.createElement("button"); x.className="sel-btn sel-x"; x.setAttribute("data-act","selCancel"); x.setAttribute("aria-label","चुनना रद्द करें"); x.setAttribute("title","रद्द"); x.textContent="✕";
+    bar.appendChild(sh); bar.appendChild(x);
     document.body.appendChild(bar);
   }
-  bar.querySelector(".sel-txt").textContent="✓ "+_selCount()+" चुने"; // JE 30/10: छोटी पट्टी (विकल्प क)
+  bar.querySelector(".sel-txt").textContent="✓ "+_selCount()+" card चुने गए"; // JE 30/10: छोटी पट्टी (विकल्प क)
   bar.style.display="";
 }
 function _selToggle(card){

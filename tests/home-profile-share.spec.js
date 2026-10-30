@@ -882,7 +882,7 @@ test.describe('📤 कई cards चुनकर WhatsApp (v9.266)', () => {
     await page.locator('.con-card').nth(2).locator('.cc-name').click();
     await page.locator('.con-card').nth(3).locator('.cc-name').click();
     await expect(page.locator('.con-card.cc-sel')).toHaveCount(3);
-    await expect(page.locator('#sel-bar')).toContainText('3');
+    await expect(page.locator('#sel-bar')).toContainText('3 card चुने गए');
     await page.locator('.con-card').nth(3).locator('.cc-name').click(); // दोबारा छूने पर हटे
     await expect(page.locator('.con-card.cc-sel')).toHaveCount(2);
     // चुनने के मोड में "वसूल" जैसे बटन से वसूली नहीं होनी चाहिए — सिर्फ़ चुनना
@@ -915,6 +915,31 @@ test.describe('📤 कई cards चुनकर WhatsApp (v9.266)', () => {
     expect(r.types).toEqual(['image/png', 'image/png', 'image/png']);
     expect(r.text).toBe(false);
     await expect(page.locator('.con-card.cc-sel')).toHaveCount(0);
+  });
+
+  test('JE 30/10: card के ऊपर-बाएं ✓ पर टैप = हटे, पट्टी की संख्या घटे; पट्टी के ↱ बटन से सब एक साथ', async ({ page }) => {
+    await seed(page);
+    await longPress(page, 0);
+    await page.locator('.con-card').nth(1).locator('.cc-name').click();
+    await page.locator('.con-card').nth(2).locator('.cc-name').click();
+    await expect(page.locator('#sel-bar')).toContainText('3 card चुने गए');
+    // दूसरे card का ✓ (ऊपर-बाएं कोना, card के बाहर तक निकला हुआ)
+    const b = await page.locator('.con-card').nth(1).boundingBox();
+    await page.mouse.click(b.x + 4, b.y + 4);
+    await expect(page.locator('.con-card.cc-sel')).toHaveCount(2);
+    await expect(page.locator('#sel-bar')).toContainText('2 card चुने गए');
+    // पट्टी में ↱ (शेयर) और ✕ — दोनों बड़े, दबाने में आसान
+    const share = page.locator('#sel-bar [data-act="selShare"]');
+    const cancel = page.locator('#sel-bar [data-act="selCancel"]');
+    await expect(share).toBeVisible();
+    for (const bt of [share, cancel]) { const bb = await bt.boundingBox(); expect(bb.width).toBeGreaterThanOrEqual(40); expect(bb.height).toBeGreaterThanOrEqual(40); }
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+      Object.defineProperty(navigator, 'share', { configurable: true, value: (d) => { resolve(d.files.map((f) => f.name).sort()); return Promise.resolve(); } });
+      document.querySelector('#sel-bar [data-act="selShare"]').click();
+      setTimeout(() => resolve('timeout'), 15000);
+    }));
+    expect(r).toEqual(['card-A1.png', 'card-A3.png']);
   });
 
   test('अधिकतम 10 — 11वां नहीं चुना जाए', async ({ page }) => {

@@ -179,6 +179,7 @@ var ACTIONS={
   phone:function(el){ openPhModal(el.dataset.name||"",el.dataset.phone||"",el.dataset.acc||"",el.dataset.amt||"0"); },
   share:function(el){ shareCard(+(el.dataset.i||0),el.dataset.acc||"",el); },
   selCancel:function(){ _selClear(); },
+  selShare:function(){ shareSelected(); },
   dueTap:function(el){ dueChipTap(el,+(el.dataset.i||0),el.dataset.acc||""); },
   listMore:function(){ _renderLimit+=100; renderListWith(cGet(activeHQ,activeCat)); },
   village:function(el){ setVillage(el.dataset.v||""); },
