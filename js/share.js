@@ -200,6 +200,16 @@ function _shareTextOnly(text){
   window.open("https://wa.me/?text="+encodeURIComponent(text),"_blank");
 }
 
+// v9.267 (JE 30/10): WhatsApp फ़ोटो JPEG में — PNG से 3–4 गुना छोटी (10 cards ≈ 1 MB → ~300 KB), कमज़ोर नेट पर जल्दी चढ़े,
+// लिखावट फिर भी साफ़ (गुणवत्ता 0.85)। JPEG में पारदर्शिता नहीं — इसलिए पहले सफ़ेद पृष्ठभूमि पर उतारते हैं
+var SHARE_JPEG_Q=0.85;
+function _shareJpeg(cv,cb){
+  try{
+    var c=document.createElement("canvas"); c.width=cv.width; c.height=cv.height;
+    var ctx=c.getContext("2d"); ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,c.width,c.height); ctx.drawImage(cv,0,0);
+    c.toBlob(function(b){ cb(b); },"image/jpeg",SHARE_JPEG_Q);
+  }catch(e){ cb(null); }
+}
 function shareCard(idx,acc,btn){
   var d=cGet(activeHQ,activeCat);
   idx=_findRecordIdx(d,idx,acc);
@@ -207,18 +217,18 @@ function shareCard(idx,acc,btn){
   var x=d[idx];
   var text=_shareText(x);
   var canFiles=false;
-  try{ canFiles=!!(navigator.share&&navigator.canShare&&window.File&&navigator.canShare({files:[new File([""],"t.png",{type:"image/png"})]})); }catch(e){}
+  try{ canFiles=!!(navigator.share&&navigator.canShare&&window.File&&navigator.canShare({files:[new File([""],"t.jpg",{type:"image/jpeg"})]})); }catch(e){}
   if(!canFiles){ _shareTextOnly(text); return; }
   function send(cv){
     if(!cv){ try{ cv=_shareCanvas(x); }catch(e){ _shareTextOnly(text); return; } }
-    cv.toBlob(function(blob){
+    _shareJpeg(cv,function(blob){
       if(!blob){ _shareTextOnly(text); return; }
-      var file=new File([blob],"card-"+(x.acc||"upbhokta")+".png",{type:"image/png"});
+      var file=new File([blob],"card-"+(x.acc||"upbhokta")+".jpg",{type:"image/jpeg"});
       navigator.share({files:[file]}).catch(function(e){ // JE का फ़ैसला: सिर्फ़ card की फ़ोटो, नीचे टेक्स्ट नहीं
         if(e&&e.name==="AbortError") return; // लाइनमैन ने खुद रद्द किया — कुछ न करें
         _shareTextOnly(text);
       });
-    },"image/png");
+    });
   }
   var card=btn&&btn.closest?btn.closest(".con-card"):null;
   if(card) _shareCardImage(card,send); else send(null);
@@ -280,7 +290,7 @@ function shareSelected(){
   if(!recs.length){ _selClear(); return; }
   var allText=recs.map(_shareText).join("\n\n");
   var canFiles=false;
-  try{ canFiles=!!(navigator.share&&navigator.canShare&&window.File&&navigator.canShare({files:[new File([""],"t.png",{type:"image/png"})]})); }catch(e){}
+  try{ canFiles=!!(navigator.share&&navigator.canShare&&window.File&&navigator.canShare({files:[new File([""],"t.jpg",{type:"image/jpeg"})]})); }catch(e){}
   if(!canFiles){ _shareTextOnly(allText); _selClear(); return; }
   _selBusy=true;
   toast("📷 "+recs.length+" फ़ोटो बन रही हैं…","inf");
@@ -296,10 +306,10 @@ function shareSelected(){
     var push=function(cv){
       if(!cv){ try{ cv=_shareCanvas(x); }catch(e){ cv=null; } }
       if(!cv){ next(); return; }
-      cv.toBlob(function(blob){
-        if(blob) files.push(new File([blob],"card-"+(x.acc||"upbhokta")+".png",{type:"image/png"}));
+      _shareJpeg(cv,function(blob){
+        if(blob) files.push(new File([blob],"card-"+(x.acc||"upbhokta")+".jpg",{type:"image/jpeg"}));
         next();
-      },"image/png");
+      });
     };
     if(el) _shareCardImage(el,push); else push(null);
   }
