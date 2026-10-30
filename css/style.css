@@ -668,3 +668,15 @@ html.big-text .si{font-size:15px;}
 .ask-danger{background:#d32f2f;color:#fff;}
 .ask-cancel{background:rgba(127,140,160,.14);color:var(--text);border:1.5px solid var(--border);}
 html.big-text .ask-title{font-size:20px;} html.big-text .ask-msg,html.big-text .ask-list{font-size:17px;} html.big-text .ask-btn{font-size:18px;}
+
+/* v9.266: कई cards चुनकर WhatsApp — JE 30/10 डिज़ाइन C: चुना card सुनहरी बॉर्डर + हल्की सुनहरी आभा + सुनहरा ✓ (ऊपर-बाएं,
+   टैप करने पर card हटे); पट्टी गहरा navy, सुनहरी गिनती; ↱ WhatsApp-हरा, ✕ हल्का — दोनों बड़े गोल बटन */
+.con-card{-webkit-touch-callout:none;}
+.con-card.cc-sel{position:relative;border:2px solid #f0a500;border-left:4px solid #f0a500;background:linear-gradient(0deg,rgba(240,165,0,.07),rgba(240,165,0,.07)),var(--card);box-shadow:0 0 0 4px rgba(240,165,0,.16),var(--shadow-card);}
+.con-card.cc-sel::after{content:"✓";position:absolute;top:-8px;left:-8px;width:30px;height:30px;border-radius:50%;background:#f0a500;color:#1a1a1a;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.25);}
+.sel-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));z-index:900;display:flex;align-items:center;gap:10px;background:#0c2a44;color:#fff;border-radius:26px;padding:6px 8px 6px 18px;font-size:14px;font-weight:700;box-shadow:0 12px 30px -8px rgba(0,0,0,.5);white-space:nowrap;}
+.sel-bar .sel-txt{color:#ffd166;line-height:1.35;}
+.sel-bar .sel-btn{border:none;border-radius:50%;width:44px;height:44px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:800;cursor:pointer;font-family:inherit;padding:0;}
+.sel-bar .sel-share{background:#25d366;}
+.sel-bar .sel-share svg{width:24px;height:24px;}
+.sel-bar .sel-x{background:rgba(255,255,255,.2);}

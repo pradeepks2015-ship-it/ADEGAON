@@ -851,3 +851,134 @@ test.describe('फोन-नंबर मॉडल — SMS छोटा, WhatsAp
     expect(await page.evaluate(() => [_smsParts('test'), _smsParts('a'.repeat(161)), _smsParts('क'.repeat(70)), _smsParts('क'.repeat(71)), _smsParts('')])).toEqual([1, 2, 1, 2, 0]);
   });
 });
+
+// v9.266 (JE 30/10): कई cards चुनकर एक साथ WhatsApp — थोड़ी देर दबाने (long-press) से चुनना शुरू, चुने card पर
+// हरी बॉर्डर + ✓, चुने हुए किसी भी card का शेयर-तीर (↱) दबाने पर सबकी फ़ोटो एक साथ; अधिकतम 10
+test.describe('📤 कई cards चुनकर WhatsApp (v9.266)', () => {
+  const seed = async (page) => {
+    await openApp(page);
+    await page.evaluate(() => {
+      const arr = [];
+      for (let i = 1; i <= 12; i++) arr.push({ acc: 'A' + i, name: 'उपभोक्ता ' + i, amount: 100 * i, status: 'pending', addr: 'गांव' });
+      cSet(HQS[0], 'कुल उपभोक्ता', arr);
+    });
+    await loginLineman(page);
+    await page.waitForFunction(() => document.querySelectorAll('.con-card').length >= 12, null, { timeout: 15000 });
+    await page.evaluate(() => document.getElementById('update-banner')?.remove());
+  };
+  const longPress = async (page, nth) => {
+    const box = await page.locator('.con-card').nth(nth).locator('.cc-name').boundingBox();
+    await page.mouse.move(box.x + 10, box.y + 5);
+    await page.mouse.down();
+    await page.waitForTimeout(800);
+    await page.mouse.up();
+  };
+
+  test('long-press से चुनना शुरू, फिर छूकर जोड़ना/हटाना; चुने card पर निशान; पट्टी में गिनती; ✕ से सब हटे', async ({ page }) => {
+    await seed(page);
+    await longPress(page, 0);
+    await expect(page.locator('.con-card.cc-sel')).toHaveCount(1);
+    await expect(page.locator('#sel-bar')).toBeVisible();
+    await page.locator('.con-card').nth(2).locator('.cc-name').click();
+    await page.locator('.con-card').nth(3).locator('.cc-name').click();
+    await expect(page.locator('.con-card.cc-sel')).toHaveCount(3);
+    await expect(page.locator('#sel-bar')).toContainText('3 card चुने गए');
+    await page.locator('.con-card').nth(3).locator('.cc-name').click(); // दोबारा छूने पर हटे
+    await expect(page.locator('.con-card.cc-sel')).toHaveCount(2);
+    // चुनने के मोड में "वसूल" जैसे बटन से वसूली नहीं होनी चाहिए — सिर्फ़ चुनना
+    const before = await page.evaluate(() => cGet(activeHQ, activeCat)[5].status);
+    await page.locator('.con-card').nth(5).locator('[data-act="paid"], .btn-paid, button:has-text("वसूल")').first().click();
+    expect(await page.evaluate(() => cGet(activeHQ, activeCat)[5].status)).toBe(before);
+    await expect(page.locator('.con-card.cc-sel')).toHaveCount(3);
+    await page.locator('#sel-bar [data-act="selCancel"]').click();
+    await expect(page.locator('.con-card.cc-sel')).toHaveCount(0);
+    await expect(page.locator('#sel-bar')).toBeHidden();
+  });
+
+  test('चुने किसी भी card का तीर — सबकी PNG फ़ोटो एक साथ share; फिर चुनना ख़त्म', async ({ page }) => {
+    await seed(page);
+    await longPress(page, 0);
+    await page.locator('.con-card').nth(1).locator('.cc-name').click();
+    await page.locator('.con-card').nth(4).locator('.cc-name').click();
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+      Object.defineProperty(navigator, 'share', { configurable: true, value: (d) => {
+        resolve({ n: d.files.length, names: d.files.map((f) => f.name), types: d.files.map((f) => f.type), text: !!d.text });
+        return Promise.resolve();
+      } });
+      document.querySelectorAll('.con-card')[4].querySelector('.cc-share').click();
+      setTimeout(() => resolve({ timeout: true }), 15000);
+    }));
+    expect(r.timeout).toBeUndefined();
+    expect(r.n).toBe(3);
+    expect(r.names.sort()).toEqual(['card-A1.png', 'card-A2.png', 'card-A5.png']);
+    expect(r.types).toEqual(['image/png', 'image/png', 'image/png']);
+    expect(r.text).toBe(false);
+    await expect(page.locator('.con-card.cc-sel')).toHaveCount(0);
+  });
+
+  test('JE 30/10: card के ऊपर-बाएं ✓ पर टैप = हटे, पट्टी की संख्या घटे; पट्टी के ↱ बटन से सब एक साथ', async ({ page }) => {
+    await seed(page);
+    await longPress(page, 0);
+    await page.locator('.con-card').nth(1).locator('.cc-name').click();
+    await page.locator('.con-card').nth(2).locator('.cc-name').click();
+    await expect(page.locator('#sel-bar')).toContainText('3 card चुने गए');
+    // दूसरे card का ✓ (ऊपर-बाएं कोना, card के बाहर तक निकला हुआ)
+    const b = await page.locator('.con-card').nth(1).boundingBox();
+    await page.mouse.click(b.x + 4, b.y + 4);
+    await expect(page.locator('.con-card.cc-sel')).toHaveCount(2);
+    await expect(page.locator('#sel-bar')).toContainText('2 card चुने गए');
+    // पट्टी में ↱ (शेयर) और ✕ — दोनों बड़े, दबाने में आसान
+    const share = page.locator('#sel-bar [data-act="selShare"]');
+    const cancel = page.locator('#sel-bar [data-act="selCancel"]');
+    await expect(share).toBeVisible();
+    for (const bt of [share, cancel]) { const bb = await bt.boundingBox(); expect(bb.width).toBeGreaterThanOrEqual(40); expect(bb.height).toBeGreaterThanOrEqual(40); }
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true });
+      Object.defineProperty(navigator, 'share', { configurable: true, value: (d) => { resolve(d.files.map((f) => f.name).sort()); return Promise.resolve(); } });
+      document.querySelector('#sel-bar [data-act="selShare"]').click();
+      setTimeout(() => resolve('timeout'), 15000);
+    }));
+    expect(r).toEqual(['card-A1.png', 'card-A3.png']);
+  });
+
+  test('WhatsApp वाली फ़ोटो में card पहले जैसा — सुनहरी बॉर्डर/✓ (cc-sel) नहीं', async ({ page }) => {
+    await seed(page);
+    await longPress(page, 0);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const seen = [];
+      const orig = XMLSerializer.prototype.serializeToString;
+      XMLSerializer.prototype.serializeToString = function (n) { const t = orig.call(this, n); seen.push(t); return t; };
+      _shareCardImage(document.querySelector('.con-card.cc-sel'), () => {
+        XMLSerializer.prototype.serializeToString = orig;
+        resolve({ n: seen.length, sel: seen.some((t) => t.indexOf('cc-sel') > -1), stillSel: !!document.querySelector('.con-card.cc-sel') });
+      });
+    }));
+    expect(r.n).toBeGreaterThan(0);
+    expect(r.sel).toBe(false);      // फ़ोटो में निशान नहीं
+    expect(r.stillSel).toBe(true);  // स्क्रीन पर चुना हुआ बना रहे
+  });
+
+  test('अधिकतम 10 — 11वां नहीं चुना जाए', async ({ page }) => {
+    await seed(page);
+    await longPress(page, 0);
+    for (let i = 1; i <= 10; i++) await page.locator('.con-card').nth(i).locator('.cc-name').click();
+    await expect(page.locator('.con-card.cc-sel')).toHaveCount(10);
+  });
+
+  test('फ़ोटो-शेयर न चले वाले फ़ोन पर — सबका छोटा टेक्स्ट एक साथ wa.me से', async ({ page }) => {
+    await seed(page);
+    await longPress(page, 0);
+    await page.locator('.con-card').nth(1).locator('.cc-name').click();
+    const u = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true });
+      window.open = (x) => { resolve(String(x)); return null; };
+      document.querySelectorAll('.con-card')[1].querySelector('.cc-share').click();
+      setTimeout(() => resolve(''), 5000);
+    }));
+    expect(u.indexOf('https://wa.me/?text=')).toBe(0);
+    const t = decodeURIComponent(u.split('text=')[1]);
+    expect(t).toContain('A1');
+    expect(t).toContain('A2');
+  });
+});

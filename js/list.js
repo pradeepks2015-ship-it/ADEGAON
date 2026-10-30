@@ -393,7 +393,8 @@ function renderListWith(data){
     c.innerHTML="<div class='empty'><div class='empty-ico'>"+emptyIco+"</div>"+
       "<div class='empty-t'>"+emptyMsg+"</div>"+
       "<div class='empty-s'>"+emptySub+"</div></div>";
-    requestAnimationFrame(_updateBnavVisibility); // अगले paint frame तक टालें — DOM लिखने के तुरंत बाद scrollHeight पढ़ने से जबरन (महंगा) layout reflow होता है, बड़ी list पर धीमापन
+    if(typeof _selApply==="function") _selApply(); // v9.266: सूची दोबारा बनी (live-sync) — चुने cards का निशान वापस
+  requestAnimationFrame(_updateBnavVisibility); // अगले paint frame तक टालें — DOM लिखने के तुरंत बाद scrollHeight पढ़ने से जबरन (महंगा) layout reflow होता है, बड़ी list पर धीमापन
     return;
   }
   var toRender=filtered.slice(0,_renderLimit);

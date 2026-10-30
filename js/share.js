@@ -157,6 +157,7 @@ function _shareCardImage(el,cb){
   try{
     var W=Math.ceil(el.getBoundingClientRect().width), S=2;
     var clone=el.cloneNode(true);
+    clone.classList.remove("cc-sel"); // v9.266: फ़ोटो में card पहले जैसा — चुनने का सुनहरा निशान नहीं
     var btns=clone.querySelectorAll(".act-btns,.cc-share"); // तस्वीर में न बटन, न शेयर का तीर
     for(var i=0;i<btns.length;i++) btns[i].parentNode.removeChild(btns[i]);
     clone.style.margin="0"; clone.style.animation="none"; clone.style.transform="none";
@@ -222,3 +223,121 @@ function shareCard(idx,acc,btn){
   var card=btn&&btn.closest?btn.closest(".con-card"):null;
   if(card) _shareCardImage(card,send); else send(null);
 }
+
+// ── v9.266 (JE 30/10): कई cards चुनकर एक साथ WhatsApp ──
+// card को थोड़ी देर दबाकर रखें (long-press) → चुनने का मोड; फिर छूकर जोड़ें/हटाएं (हरी बॉर्डर + ✓)। चुने हुए किसी भी
+// card का शेयर-तीर (↱) → सबकी फ़ोटो एक साथ (JE का फ़ैसला: फ़ोटो)। फ़ोटो-शेयर न चले वाले फ़ोन पर सबका छोटा टेक्स्ट wa.me से।
+// अधिकतम 10 (सस्ते फ़ोन पर फ़ोटो बनाना भारी)। सब फ़ोन पर — Firebase कुछ नहीं
+var SEL_MAX=10, SEL_PRESS_MS=550, SEL_MOVE_PX=10;
+var _sel=null;            // {hq,cat,accs:{acc:1}} — चुनने का मोड चालू हो तब
+var _selPressT=0, _selPressAt=null, _selSwallow=false, _selBusy=false;
+function _selCardAcc(card){ var b=card&&card.querySelector("[data-acc]"); return b?String(b.getAttribute("data-acc")||"").trim():""; }
+function _selCount(){ return _sel?Object.keys(_sel.accs).length:0; }
+function _selValid(){ if(_sel&&(_sel.hq!==activeHQ||_sel.cat!==activeCat)) _selClear(); return !!_sel; }
+function _selClear(){ _sel=null; _selApply(); }
+function _selApply(){
+  if(_sel&&(_sel.hq!==activeHQ||_sel.cat!==activeCat)) _sel=null;
+  var cards=document.querySelectorAll("#con-list .con-card");
+  for(var i=0;i<cards.length;i++){
+    var on=!!(_sel&&_sel.accs[_selCardAcc(cards[i])]);
+    cards[i].classList.toggle("cc-sel",on);
+  }
+  var bar=document.getElementById("sel-bar");
+  if(!_sel){ if(bar) bar.style.display="none"; return; }
+  if(!bar){
+    bar=document.createElement("div"); bar.id="sel-bar"; bar.className="sel-bar";
+    var t=document.createElement("span"); t.className="sel-txt"; bar.appendChild(t);
+    // JE 30/10: ✕ के बगल में उसी तरह का ↱ (एक साथ WhatsApp) — दोनों बड़े गोल बटन, दबाने में आसान
+    var sh=document.createElement("button"); sh.className="sel-btn sel-share"; sh.setAttribute("data-act","selShare"); sh.setAttribute("aria-label","चुने cards एक साथ WhatsApp पर भेजें"); sh.setAttribute("title","एक साथ WhatsApp");
+    // audit-verified: CC_SHARE_ICON (list.js) एक तय SVG स्थिरांक है, उसमें कोई डेटा/उपयोगकर्ता का पाठ नहीं
+    // eslint-disable-next-line no-unsanitized/property
+    sh.innerHTML=CC_SHARE_ICON;
+    var x=document.createElement("button"); x.className="sel-btn sel-x"; x.setAttribute("data-act","selCancel"); x.setAttribute("aria-label","चुनना रद्द करें"); x.setAttribute("title","रद्द"); x.textContent="✕";
+    bar.appendChild(sh); bar.appendChild(x);
+    document.body.appendChild(bar);
+  }
+  bar.querySelector(".sel-txt").textContent="✓ "+_selCount()+" card चुने गए"; // JE 30/10: छोटी पट्टी (विकल्प क)
+  bar.style.display="";
+}
+function _selToggle(card){
+  var acc=_selCardAcc(card); if(!acc||!_sel) return;
+  if(_sel.accs[acc]) delete _sel.accs[acc];
+  else if(_selCount()>=SEL_MAX){ toast("एक साथ अधिकतम "+SEL_MAX+" card","inf"); return; }
+  else _sel.accs[acc]=1;
+  if(!_selCount()) _sel=null;
+  _selApply();
+}
+function _selStart(card){
+  var acc=_selCardAcc(card); if(!acc) return;
+  _sel={hq:activeHQ,cat:activeCat,accs:{}}; _sel.accs[acc]=1;
+  _selApply();
+  try{ if(navigator.vibrate) navigator.vibrate(30); }catch(e){}
+}
+function shareSelected(){
+  if(!_selValid()||_selBusy) return;
+  var d=cGet(activeHQ,activeCat)||[], accs=Object.keys(_sel.accs);
+  var recs=accs.map(function(a){ for(var i=0;i<d.length;i++){ if(accKeyOf(d[i])===a) return d[i]; } return null; }).filter(Boolean);
+  if(!recs.length){ _selClear(); return; }
+  var allText=recs.map(_shareText).join("\n\n");
+  var canFiles=false;
+  try{ canFiles=!!(navigator.share&&navigator.canShare&&window.File&&navigator.canShare({files:[new File([""],"t.png",{type:"image/png"})]})); }catch(e){}
+  if(!canFiles){ _shareTextOnly(allText); _selClear(); return; }
+  _selBusy=true;
+  toast("📷 "+recs.length+" फ़ोटो बन रही हैं…","inf");
+  var files=[], i=0;
+  function cardFor(acc){
+    var cards=document.querySelectorAll("#con-list .con-card");
+    for(var k=0;k<cards.length;k++){ if(_selCardAcc(cards[k])===acc) return cards[k]; }
+    return null;
+  }
+  function next(){
+    if(i>=recs.length){ done(); return; }
+    var x=recs[i++], el=cardFor(accKeyOf(x));
+    var push=function(cv){
+      if(!cv){ try{ cv=_shareCanvas(x); }catch(e){ cv=null; } }
+      if(!cv){ next(); return; }
+      cv.toBlob(function(blob){
+        if(blob) files.push(new File([blob],"card-"+(x.acc||"upbhokta")+".png",{type:"image/png"}));
+        next();
+      },"image/png");
+    };
+    if(el) _shareCardImage(el,push); else push(null);
+  }
+  function done(){
+    _selBusy=false;
+    if(!files.length){ _shareTextOnly(allText); _selClear(); return; }
+    navigator.share({files:files}).then(function(){ _selClear(); },function(e){
+      if(e&&e.name==="AbortError") return; // लाइनमैन ने ख़ुद रद्द किया — चुने cards बने रहें
+      _shareTextOnly(allText); _selClear();
+    });
+  }
+  next();
+}
+// long-press पहचानना — card पर उंगली टिकी रहे (हिले नहीं) तो चुनने का मोड
+document.addEventListener("pointerdown",function(ev){
+  var tg=/** @type {any} */(ev.target);
+  var card=tg&&tg.closest?tg.closest("#con-list .con-card"):null;
+  if(!card||_sel) return;
+  _selPressAt={x:ev.clientX,y:ev.clientY};
+  clearTimeout(_selPressT);
+  _selPressT=setTimeout(function(){ _selPressT=0; _selSwallow=true; _selStart(card); },SEL_PRESS_MS);
+});
+document.addEventListener("pointermove",function(ev){
+  if(!_selPressT||!_selPressAt) return;
+  if(Math.abs(ev.clientX-_selPressAt.x)>SEL_MOVE_PX||Math.abs(ev.clientY-_selPressAt.y)>SEL_MOVE_PX){ clearTimeout(_selPressT); _selPressT=0; }
+});
+["pointerup","pointercancel"].forEach(function(n){ document.addEventListener(n,function(){ if(_selPressT){ clearTimeout(_selPressT); _selPressT=0; } }); });
+document.addEventListener("contextmenu",function(ev){ // long-press पर फ़ोन का अपना मेनू न खुले
+  var tg=/** @type {any} */(ev.target);
+  if(tg&&tg.closest&&tg.closest("#con-list .con-card")) ev.preventDefault();
+});
+// चुनने के मोड में card पर छूना = चुनना/हटाना (वसूल/रिमार्क जैसे बटन नहीं चलते); तीर = सब भेजो
+document.addEventListener("click",function(ev){
+  var tg=/** @type {any} */(ev.target);
+  var card=tg&&tg.closest?tg.closest("#con-list .con-card"):null;
+  if(_selSwallow){ _selSwallow=false; if(card){ ev.preventDefault(); ev.stopPropagation(); return; } }
+  if(!card||!_selValid()) return;
+  ev.preventDefault(); ev.stopPropagation();
+  if(tg.closest(".cc-share")){ shareSelected(); return; }
+  _selToggle(card);
+},true);
