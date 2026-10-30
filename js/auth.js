@@ -392,7 +392,12 @@ function _ensureCorrectHqAuth(cb){
       // auth/invalid-credential) का मतलब है यह PIN अब काम का नहीं — !pin वाले रास्ते जैसा ही
       // साफ़ logout करके दोबारा सही PIN मांगना ही एकमात्र पक्का रास्ता है
       var code=(e&&e.code)||"";
-      if(code==="auth/network-request-failed") return cb();
+      // v9.264 (JE 30/10, Rajkumar): कमज़ोर नेट पर फ़ोन ख़ुद को online ही मानता रहता है, "online" event आता ही नहीं —
+      // फ़ोन ऐप बंद-खोलने तक दूसरे HQ के खाते पर अटका रहता (हर सेव Permission denied)। अब थोड़ी देर बाद ख़ुद फिर कोशिश
+      if(code==="auth/network-request-failed"){
+        if(!_authRetryT) _authRetryT=setTimeout(function(){ _authRetryT=null; _ensureCorrectHqAuth(); },REAUTH_RETRY_MS);
+        return cb();
+      }
       // v9.212: logout सिर्फ़ तब, जब Firebase साफ़ कहे कि PIN (पासवर्ड) ग़लत है या खाता बंद है।
       // पहले नेट के अलावा हर नाकामी पर logout होता था — जबकि App Check/reCAPTCHA का token न
       // मिलना (धीमे नेट पर आम, 8–9/10 को Google वाली दिक़्क़त में भी), "बहुत ज़्यादा कोशिशें"
@@ -478,6 +483,8 @@ function _finishLogin(name,silent){
   // हमेशा के लिए anonymous रह जाता — हर save 401। "online" event यहां मदद नहीं करता क्योंकि वो
   // सिर्फ़ offline→online बदलने पर चलता है, पहले से online रहते हुए ऐप खोलने पर कभी नहीं।
   activeHQ=CU.hq; activeFilter="all";
+  // v9.264: दूसरे HQ के बदलाव इस फ़ोन में रुके हों तो बताएं — वे उसी HQ के खाते से ही जा सकते हैं
+  if(CU.role==="lineman"){ var _oh=_otherHqHeldMsg(); if(_oh) setTimeout(function(){ toast(_oh,"inf"); },1500); }
   rebuildCatsForHQ(activeHQ);
   activeCat=CATS[0];
   document.getElementById("login-screen").classList.remove("active");
@@ -515,7 +522,11 @@ function _finishLogin(name,silent){
 function doLogout(askConfirm){
   if(askConfirm===undefined) askConfirm=true;
   // v9.236: ब्राउज़र के confirm() की जगह ऐप का अपना डिब्बा (appAsk)
-  if(askConfirm){ appAsk({icon:"🚪",title:"लॉगआउट करना चाहते हैं?",buttons:[{label:"हां, लॉगआउट",kind:"ok",value:true},{label:"नहीं",kind:"cancel",value:false}]},function(v){ if(v) doLogout(false); }); return; }
+  // v9.264: कोई भी लाइनमैन किसी भी HQ में login कर सकता है (JE 30/10) — HQ बदलने के लिए लॉगआउट करे और इस HQ के
+  // बदलाव अभी फ़ोन में रुके हों, तो साफ़ बताएं: ये इसी HQ के खाते से जाते हैं, लॉगआउट के बाद दोबारा इसी HQ में आने पर
+  var held=(askConfirm&&CU&&CU.role==="lineman")?_heldCountFor(CU.hq):0;
+  var heldMsg=held?("⚠️ "+CU.hq+" के "+held+" बदलाव फ़ोन में रुके हैं — अभी सर्वर पर नहीं गए। लॉगआउट के बाद ये तभी जाएंगे जब इस फ़ोन पर दोबारा "+CU.hq+" में login हो। नेट हो तो पहले \"नहीं\" दबाकर थोड़ा रुकें।"):"";
+  if(askConfirm){ appAsk({icon:"🚪",title:"लॉगआउट करना चाहते हैं?",msg:heldMsg||undefined,kind:held?"danger":undefined,buttons:[{label:"हां, लॉगआउट",kind:"ok",value:true},{label:"नहीं",kind:"cancel",value:false}]},function(v){ if(v) doLogout(false); }); return; }
   // JE था तो Firebase session भी हटाएं — अपने आप anonymous पर लौट जाएगा (firebase.js का onIdTokenChanged)
   try{
     var u=firebase.auth().currentUser;

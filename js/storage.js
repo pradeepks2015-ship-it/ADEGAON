@@ -649,6 +649,25 @@ function _mergedPatch(server,merged){
   return patch;
 }
 
+// v9.264 (JE 30/10): कोई भी लाइनमैन किसी भी HQ में login कर सकता है। हर HQ की सूची सिर्फ़ उसी HQ के Firebase खाते से
+// लिखी जा सकती है (Security Rules) — इसलिए लाइनमैन के फ़ोन में दूसरे HQ के रुके बदलाव भेजने की कोशिश बेकार 401 थी और
+// तीन बार में "अटकी" गिनी जाती थी। अब वे चुपचाप फ़ोन में रुके रहते हैं, उस HQ में login होते ही (या JE login पर) जाते हैं
+function _heldForOtherHq(it){ return !!(CU&&CU.role==="lineman"&&it&&it.hq&&it.hq!==CU.hq); }
+function _heldCountOf(it){ return (it&&it.patch&&typeof it.patch==="object")?(Object.keys(it.patch).length||1):1; }
+function _heldCountFor(hq){
+  var p=getPending(),n=0;
+  Object.keys(p).forEach(function(k){ if(p[k]&&p[k].hq===hq) n+=_heldCountOf(p[k]); });
+  return n;
+}
+// "📲 पाटन के 3 बदलाव फ़ोन में रुके हैं — …" (लाइनमैन के login वाले HQ के अलावा); कुछ न हो तो ""
+function _otherHqHeldMsg(){
+  if(!CU||CU.role!=="lineman") return "";
+  var p=getPending(),by={};
+  Object.keys(p).forEach(function(k){ var it=p[k]; if(_heldForOtherHq(it)) by[it.hq]=(by[it.hq]||0)+_heldCountOf(it); });
+  var hqs=Object.keys(by);
+  if(!hqs.length) return "";
+  return "📲 "+hqs.map(function(h){ return h+" के "+by[h]; }).join(", ")+" बदलाव फ़ोन में रुके हैं — उस HQ में (नेट के साथ) login करने पर अपने-आप जाएंगे";
+}
 var _flushing=false;
 var _flushWaitTok=false; // v9.260: login token के इंतज़ार में एक ही flush कतार में
 function flushPending(){
@@ -669,7 +688,7 @@ function flushPending(){
     return;
   }
   var p=getPending();
-  var keys=Object.keys(p);
+  var keys=Object.keys(p).filter(function(k){ return !_heldForOtherHq(p[k]); }); // v9.264: दूसरे HQ के — उसी HQ के खाते से
   var needCat=false;
   try{needCat=localStorage.getItem("dc_catpending3")==="1";}catch(e){}
   if(!keys.length&&!needCat) return;
