@@ -942,6 +942,23 @@ test.describe('📤 कई cards चुनकर WhatsApp (v9.266)', () => {
     expect(r).toEqual(['card-A1.png', 'card-A3.png']);
   });
 
+  test('WhatsApp वाली फ़ोटो में card पहले जैसा — सुनहरी बॉर्डर/✓ (cc-sel) नहीं', async ({ page }) => {
+    await seed(page);
+    await longPress(page, 0);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const seen = [];
+      const orig = XMLSerializer.prototype.serializeToString;
+      XMLSerializer.prototype.serializeToString = function (n) { const t = orig.call(this, n); seen.push(t); return t; };
+      _shareCardImage(document.querySelector('.con-card.cc-sel'), () => {
+        XMLSerializer.prototype.serializeToString = orig;
+        resolve({ n: seen.length, sel: seen.some((t) => t.indexOf('cc-sel') > -1), stillSel: !!document.querySelector('.con-card.cc-sel') });
+      });
+    }));
+    expect(r.n).toBeGreaterThan(0);
+    expect(r.sel).toBe(false);      // फ़ोटो में निशान नहीं
+    expect(r.stillSel).toBe(true);  // स्क्रीन पर चुना हुआ बना रहे
+  });
+
   test('अधिकतम 10 — 11वां नहीं चुना जाए', async ({ page }) => {
     await seed(page);
     await longPress(page, 0);

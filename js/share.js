@@ -157,6 +157,7 @@ function _shareCardImage(el,cb){
   try{
     var W=Math.ceil(el.getBoundingClientRect().width), S=2;
     var clone=el.cloneNode(true);
+    clone.classList.remove("cc-sel"); // v9.266: फ़ोटो में card पहले जैसा — चुनने का सुनहरा निशान नहीं
     var btns=clone.querySelectorAll(".act-btns,.cc-share"); // तस्वीर में न बटन, न शेयर का तीर
     for(var i=0;i<btns.length;i++) btns[i].parentNode.removeChild(btns[i]);
     clone.style.margin="0"; clone.style.animation="none"; clone.style.transform="none";
