@@ -270,7 +270,12 @@ function _verNewer(a,b){ // a, b से नया है?
 function _isJeDevice(){ return !!(typeof CU!=="undefined"&&CU&&CU.role==="supervisor"); }
 function _verCheck(reg){
   if(!navigator.onLine||_pendingUpdate) return Promise.resolve();
-  return fetch("rollout.json",{cache:"no-store"}).then(function(r){ return r.ok?r.json():null; }).then(function(cfg){
+  var relAt=0; // v9.265: version कब लाइव हुआ — rollout.json का Last-Modified (हर version पर बदलता है)
+  return fetch("rollout.json",{cache:"no-store"}).then(function(r){
+    if(!r.ok) return null;
+    try{ relAt=Date.parse((r.headers&&r.headers.get("Last-Modified"))||"")||0; }catch(e){ relAt=0; }
+    return r.json();
+  }).then(function(cfg){
     if(!cfg||!cfg.ver||!_verNewer(cfg.ver,APP_VER)) return;
     var je=_isJeDevice();
     if(cfg.hold===true&&!je) return;
@@ -282,7 +287,10 @@ function _verCheck(reg){
     }
     var wait=je?0:Number(cfg.waitMin);
     if(!(wait>=0)) wait=10;
-    if(now-seen.t<wait*60000+VER_GRACE_MS) return;
+    // v9.265 (JE 30/10): इंतज़ार version लाइव होने से — हर फ़ोन की "पहली बार दिखा" घड़ी से नहीं (थोड़ी देर ऐप खोलने
+    // वाले लाइनमैन को बैनर कभी दिखता ही नहीं था)। लाइव-समय न मिले/फ़ोन की घड़ी पीछे हो तो पहले जैसा
+    var base=(relAt>0&&relAt<=now)?relAt:seen.t;
+    if(now-base<wait*60000+VER_GRACE_MS) return;
     _showComingBanner(cfg.ver,reg);
   }).catch(function(){});
 }

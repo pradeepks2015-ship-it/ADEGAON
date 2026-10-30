@@ -1,4 +1,4 @@
-var CACHE_NAME="adegaon-dc-v281";
+var CACHE_NAME="adegaon-dc-v282";
 // ध्यान दें: ./vendor/papaparse.min.js (20KB) और ./vendor/xlsx.full.min.js (862KB) जान-बूझकर
 // यहां शामिल नहीं हैं — ये सिर्फ़ Excel/CSV वाले features (backup/upload) इस्तेमाल होने पर
 // js/storage.js की ensureLibs() से lazy-load होती हैं। पहले हर version-update पर हर device
@@ -83,6 +83,15 @@ function _fresh(u){ return new Request(u,{cache:"no-cache"}); }
 // तो पहले ही नया है, रोकने से बस बिना-नेट वाली copy देर से बनती।
 var ROLE_CACHE="dc-role";        // activate में मिटती नहीं — JE-फ़ोन का निशान और "पहली बार कब दिखा"
 var CANARY_WAIT_MIN=10;          // rollout.json में waitMin न हो तो
+// v9.265: यह version (CACHE_NAME) GitHub Pages पर कब चढ़ा — उसी sw.js का Last-Modified; फ़ाइल में यही CACHE_NAME न हो
+// (CDN पर पुरानी copy) या header न मिले तो 0
+function _releaseAt(){
+  return fetch(new Request("./sw.js",{cache:"no-store"})).then(function(r){
+    if(!r.ok) return 0;
+    var lm=Date.parse(r.headers.get("Last-Modified")||"");
+    return r.text().then(function(t){ return (lm>0&&t.indexOf('"'+CACHE_NAME+'"')>-1)?lm:0; });
+  }).catch(function(){ return 0; });
+}
 function _canaryGate(){
   if(!self.registration||!self.registration.active) return Promise.resolve(); // पहली बार
   return caches.open(ROLE_CACHE).then(function(rc){
@@ -97,12 +106,18 @@ function _canaryGate(){
           var wait=Number(cfg.waitMin);
           if(!(wait>=0)) wait=CANARY_WAIT_MIN;
           var key="seen-"+CACHE_NAME, now=Date.now();
-          return rc.match(key).then(function(m){ return m?m.text():null; }).then(function(t){
+          // v9.265 (JE 30/10): 10 मिनट version लाइव होने से गिनो (यही sw.js GitHub Pages पर कब चढ़ा — Last-Modified),
+          // हर फ़ोन के "पहली बार दिखा" से नहीं — थोड़ी देर ऐप खोलने वाले लाइनमैन को नया version दूसरी-तीसरी बार मिलता था।
+          // यह समय न मिले (header नहीं, या फ़ोन की घड़ी पीछे) तो पहले जैसा "पहली बार दिखा"
+          return _releaseAt().then(function(rel){
+            if(rel&&rel<=now){ if(now-rel<wait*60000) throw new Error("canary-wait"); return; }
+            return rc.match(key).then(function(m){ return m?m.text():null; }).then(function(t){
             var seen=Number(t);
             if(!t||!(seen>0)){
               return rc.put(key,new Response(String(now))).then(function(){ if(wait>0) throw new Error("canary-wait"); });
             }
             if(seen<=now&&now-seen<wait*60000) throw new Error("canary-wait"); // घड़ी पीछे गई (seen>now) तो रोकें नहीं
+          });
           });
         });
     });
