@@ -512,8 +512,9 @@ test.describe('📤 उपभोक्ता card शेयर', () => {
     }));
     expect(r.timeout).toBeUndefined();
     expect(r.n).toBe(1);
-    expect(r.type).toBe('image/png');
-    expect(r.name).toBe('card-1134019486.png');
+    expect(r.type).toBe('image/jpeg'); // v9.267 (JE 30/10): JPEG — PNG से 3–4 गुना छोटी, WhatsApp पर कम डेटा
+    expect(r.name).toBe('card-1134019486.jpg');
+    expect(r.size).toBeLessThan(120000);
     expect(r.size).toBeGreaterThan(1000);
     expect(r.hasText).toBe(false); // सिर्फ़ फ़ोटो — WhatsApp में नीचे टेक्स्ट न आए
     expect(r.fbCalls).toBe(0);
@@ -911,8 +912,8 @@ test.describe('📤 कई cards चुनकर WhatsApp (v9.266)', () => {
     }));
     expect(r.timeout).toBeUndefined();
     expect(r.n).toBe(3);
-    expect(r.names.sort()).toEqual(['card-A1.png', 'card-A2.png', 'card-A5.png']);
-    expect(r.types).toEqual(['image/png', 'image/png', 'image/png']);
+    expect(r.names.sort()).toEqual(['card-A1.jpg', 'card-A2.jpg', 'card-A5.jpg']);
+    expect(r.types).toEqual(['image/jpeg', 'image/jpeg', 'image/jpeg']);
     expect(r.text).toBe(false);
     await expect(page.locator('.con-card.cc-sel')).toHaveCount(0);
   });
@@ -939,7 +940,7 @@ test.describe('📤 कई cards चुनकर WhatsApp (v9.266)', () => {
       document.querySelector('#sel-bar [data-act="selShare"]').click();
       setTimeout(() => resolve('timeout'), 15000);
     }));
-    expect(r).toEqual(['card-A1.png', 'card-A3.png']);
+    expect(r).toEqual(['card-A1.jpg', 'card-A3.jpg']);
   });
 
   test('WhatsApp वाली फ़ोटो में card पहले जैसा — सुनहरी बॉर्डर/✓ (cc-sel) नहीं', async ({ page }) => {
