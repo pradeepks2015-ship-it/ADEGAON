@@ -59,7 +59,7 @@ function startServer(state) {
     const srv = http.createServer((q, r) => {
       let f = decodeURIComponent(q.url.split('?')[0]);
       if (f.endsWith('/')) f += 'index.html';
-      if (f === '/sw.js') { r.writeHead(200, { 'Content-Type': 'application/javascript', 'Cache-Control': 'no-cache' }); r.end(state.sw); return; }
+      if (f === '/sw.js') { r.writeHead(200, Object.assign({ 'Content-Type': 'application/javascript', 'Cache-Control': 'no-cache' }, state.swLm ? { 'Last-Modified': new Date(state.swLm).toUTCString() } : {})); r.end(state.sw); return; }
       if (f === '/rollout.json' && state.rollout !== undefined) { if (state.rollout === null) { r.writeHead(404); r.end(); } else { r.writeHead(200, { 'Content-Type': 'application/json' }); r.end(JSON.stringify(state.rollout)); } return; }
       const fp = path.join(ROOT, f);
       if (!fp.startsWith(ROOT)) { r.writeHead(403); r.end(); return; }
@@ -191,4 +191,33 @@ test('असली SW: rollout.json हमेशा सर्वर से (cach
   } finally {
     srv.close();
   }
+});
+
+// v9.265 (JE 30/10): 10 मिनट version लाइव होने (GitHub Pages का Last-Modified) से गिने जाएं, हर फ़ोन की पहली बार से नहीं —
+// लाइनमैन 3–5 मिनट ऐप खोलकर बंद कर दे तो नया version दूसरी-तीसरी बार में उतरता था
+test('canary: version 1 घंटा पहले लाइव (sw.js Last-Modified) — लाइनमैन फ़ोन पर पहली ही बार उतरे', async ({ page, context }) => {
+  const src = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  const state = { sw: src, rollout: { waitMin: 10 } };
+  const srv = await canaryOpen(page, context, state);
+  try {
+    state.sw = nextSw(src); state.swLm = Date.now() - 60 * 60000;
+    await tryUpdate(page);
+    await expect(page.locator('#update-banner')).toBeVisible({ timeout: 20000 });
+    expect(await hasNext(page)).toBe(true);
+  } finally { srv.close(); }
+});
+
+test('canary: version अभी 2 मिनट पहले लाइव — लाइनमैन फ़ोन पर अभी नहीं (पहले JE)', async ({ page, context }) => {
+  const src = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  const state = { sw: src, rollout: { waitMin: 10 } };
+  const srv = await canaryOpen(page, context, state);
+  try {
+    state.sw = nextSw(src); state.swLm = Date.now() - 2 * 60000;
+    // पहले से "पहली बार दिखा" पुराना नोट हो तब भी — लाइव होने का समय ही माने
+    await page.evaluate(() => caches.open('dc-role').then((c) => c.put('seen-x', new Response(String(Date.now() - 60 * 60000)))));
+    await tryUpdate(page);
+    await page.waitForTimeout(2500);
+    expect(await hasNext(page)).toBe(false);
+    await expect(page.locator('#update-banner')).toHaveCount(0);
+  } finally { srv.close(); }
 });

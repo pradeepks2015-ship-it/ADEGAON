@@ -11,6 +11,29 @@ test.describe('अपडेट बैनर — नया version आने प�
     expect(ro.ver).toBe(v);
   });
 
+  test('v9.265: बैनर का इंतज़ार version लाइव होने (rollout.json Last-Modified) से — 1 घंटा पहले लाइव तो पहली बार में; 2 मिनट पहले तो नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(async () => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      const cfg = { ver: '99.1', waitMin: 10, hold: false };
+      let lm = Date.now() - 60 * 60000;
+      const orig = window.fetch;
+      window.fetch = (u, o) => String(u).indexOf('rollout.json') > -1
+        ? Promise.resolve(new Response(JSON.stringify(cfg), { status: 200, headers: { 'Last-Modified': new Date(lm).toUTCString() } })) : orig(u, o);
+      const reg = { update: () => Promise.resolve() };
+      const has = () => !!document.getElementById('update-banner');
+      const out = {};
+      CU = null; localStorage.removeItem(VER_SEEN_KEY);
+      await _verCheck(reg); out.hourAgo = has();
+      document.getElementById('update-banner')?.remove();
+      lm = Date.now() - 2 * 60000; localStorage.removeItem(VER_SEEN_KEY);
+      await _verCheck(reg); out.twoMin = has();
+      window.fetch = orig;
+      return out;
+    });
+    expect(r).toEqual({ hourAgo: true, twoMin: false });
+  });
+
   test('पुराने version पर अटका: लाइनमैन waitMin+3 मिनट बाद, JE 3 मिनट बाद "उतर रहा है" बैनर; hold पर लाइनमैन को नहीं; उतरते ही "रीलोड करें"', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(async () => {
