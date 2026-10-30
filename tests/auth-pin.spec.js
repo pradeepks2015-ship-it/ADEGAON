@@ -1842,3 +1842,83 @@ test.describe('login token / ख़राब App Check पर्ची (v9.260)'
     expect(r).toEqual({ status: 200, asks: 1, sent: ['old', 'new'] });
   });
 });
+
+// v9.264 (JE 30/10): "कोई भी लाइनमैन किसी भी HQ में login कर सकता है — इसे सामान्य बनाना है"।
+// Rajkumar (आदेगांव) का फ़ोन पाटन वाले खाते पर था; दोबारा जुड़ते वक़्त नेट टूटा (auth/network-request-failed) —
+// फ़ोन ख़ुद को online मानता रहा, "online" event कभी नहीं आया, 10 मिनट बाद भी ग़लत खाता (Permission denied)
+test.describe('HQ बदलना सामान्य (v9.264)', () => {
+  test('दोबारा जुड़ते वक़्त नेट टूटे — logout नहीं, और थोड़ी देर बाद अपने-आप फिर कोशिश', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      CU = { role: 'lineman', name: 'टेस्ट', hq: 'आदेगांव', pin: '1234' };
+      saveSession();
+      if (_authRetryT) { clearTimeout(_authRetryT); _authRetryT = null; }
+      window.firebase = window.firebase || {};
+      window.firebase.auth = function () {
+        return { currentUser: { email: 'hq-patan@x' }, signInWithEmailAndPassword: function () { return Promise.reject({ code: 'auth/network-request-failed' }); } };
+      };
+      _ensureCorrectHqAuth(function () { setTimeout(() => resolve({ hq: CU && CU.hq, retry: !!_authRetryT }), 50); });
+    }));
+    expect(r).toEqual({ hq: 'आदेगांव', retry: true });
+  });
+
+  test('लाइनमैन के login वाले HQ के ही "सर्वर में जाना शेष बदलाव" भेजे जाएं — दूसरे HQ वाले चुपचाप रुके रहें (401/अटकी गिनती नहीं)', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+      localStorage.removeItem('dc_acfail');
+      AUTH_LISTENING = false; ID_TOKEN = 'id'; AC_READY = true; AC_TOKEN = 'ac';
+      CU = { role: 'lineman', name: 'टेस्ट', hq: 'आदेगांव', pin: '1' };
+      const p = {};
+      p[cKey('आदेगांव', 'कुल उपभोक्ता')] = { hq: 'आदेगांव', cat: 'कुल उपभोक्ता', type: 'put', since: Date.now(), patch: { 5: { acc: '5', status: 'paid', o: 0 } } };
+      p[cKey('पाटन', 'कुल उपभोक्ता')] = { hq: 'पाटन', cat: 'कुल उपभोक्ता', type: 'put', since: Date.now(), patch: { 7: { acc: '7', status: 'paid', o: 0 } } };
+      localStorage.setItem('dc_pending3', JSON.stringify(p));
+      const urls = [];
+      _rawFetch = (u) => { urls.push(decodeURIComponent(String(u))); return Promise.resolve(new Response('null', { status: 200 })); };
+      _flushing = false; _flushBackoffUntil = 0;
+      flushPending();
+      setTimeout(() => {
+        const pp = getPending();
+        resolve({ adegaon: urls.some((u) => u.indexOf('आदेगांव') > -1), patan: urls.some((u) => u.indexOf('पाटन') > -1), patanLeft: !!pp[cKey('पाटन', 'कुल उपभोक्ता')], patanFails: (pp[cKey('पाटन', 'कुल उपभोक्ता')] || {}).authFailCount || 0 });
+      }, 1500);
+    }));
+    expect(r).toEqual({ adegaon: true, patan: false, patanLeft: true, patanFails: 0 });
+  });
+
+  test('दूसरे HQ के "सर्वर में जाना शेष बदलाव" का संदेश; अपने HQ या कुछ न हो तो कुछ नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'टेस्ट', hq: 'आदेगांव' };
+      const p = {};
+      p[cKey('पाटन', 'कुल उपभोक्ता')] = { hq: 'पाटन', cat: 'कुल उपभोक्ता', type: 'put', patch: { 1: {}, 2: {} } };
+      p[cKey('पाटन', 'अमित')] = { hq: 'पाटन', cat: 'अमित', type: 'put', patch: { 3: {} } };
+      p[cKey('आदेगांव', 'कुल उपभोक्ता')] = { hq: 'आदेगांव', cat: 'कुल उपभोक्ता', type: 'put', patch: { 4: {} } };
+      localStorage.setItem('dc_pending3', JSON.stringify(p));
+      const other = _otherHqHeldMsg();
+      localStorage.setItem('dc_pending3', JSON.stringify({ [cKey('आदेगांव', 'x')]: p[cKey('आदेगांव', 'कुल उपभोक्ता')] }));
+      const none = _otherHqHeldMsg();
+      return { other, none, label: (setSyncStatus(false), document.getElementById('sdot').getAttribute('title')) };
+    });
+    expect(r.other).toContain('पाटन');
+    expect(r.other).toContain('सर्वर में जाना शेष');
+    expect(r.none).toBe('');
+    expect(r.label).toContain('1 बदलाव सर्वर में जाना शेष है');
+  });
+
+  test('लॉगआउट (HQ बदलने) के पुष्टि-डिब्बे में अपने HQ के "सर्वर में जाना शेष बदलाव" की चेतावनी', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      CU = { role: 'lineman', name: 'टेस्ट', hq: 'आदेगांव' };
+      localStorage.setItem('dc_pending3', JSON.stringify({ [cKey('आदेगांव', 'कुल उपभोक्ता')]: { hq: 'आदेगांव', cat: 'कुल उपभोक्ता', type: 'put', patch: { 1: {}, 2: {}, 3: {} } } }));
+      let seen = null;
+      const orig = appAsk;
+      appAsk = function (o, cb) { seen = o; cb(false); };
+      doLogout(true);
+      appAsk = orig;
+      return { text: [seen && seen.title, seen && seen.msg, seen && seen.warn].join(' '), still: !!CU };
+    });
+    expect(r.text).toContain('3 बदलाव सर्वर में जाना शेष है');
+    expect(r.still).toBe(true); // "नहीं" दबाया — लॉगआउट नहीं हुआ
+  });
+});
