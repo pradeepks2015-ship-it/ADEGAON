@@ -659,14 +659,14 @@ function _heldCountFor(hq){
   Object.keys(p).forEach(function(k){ if(p[k]&&p[k].hq===hq) n+=_heldCountOf(p[k]); });
   return n;
 }
-// "📲 पाटन के 3 बदलाव फ़ोन में रुके हैं — …" (लाइनमैन के login वाले HQ के अलावा); कुछ न हो तो ""
+// "📲 पाटन के 3 बदलाव सर्वर में जाना शेष है — …" (लाइनमैन के login वाले HQ के अलावा); कुछ न हो तो ""
 function _otherHqHeldMsg(){
   if(!CU||CU.role!=="lineman") return "";
   var p=getPending(),by={};
   Object.keys(p).forEach(function(k){ var it=p[k]; if(_heldForOtherHq(it)) by[it.hq]=(by[it.hq]||0)+_heldCountOf(it); });
   var hqs=Object.keys(by);
   if(!hqs.length) return "";
-  return "📲 "+hqs.map(function(h){ return h+" के "+by[h]; }).join(", ")+" बदलाव फ़ोन में रुके हैं — उस HQ में (नेट के साथ) login करने पर अपने-आप जाएंगे";
+  return "📲 "+hqs.map(function(h){ return h+" के "+by[h]; }).join(", ")+" बदलाव सर्वर में जाना शेष है — उस HQ में (नेट के साथ) login करने पर अपने-आप जाएंगे";
 }
 var _flushing=false;
 var _flushWaitTok=false; // v9.260: login token के इंतज़ार में एक ही flush कतार में

@@ -525,7 +525,7 @@ function doLogout(askConfirm){
   // v9.264: कोई भी लाइनमैन किसी भी HQ में login कर सकता है (JE 30/10) — HQ बदलने के लिए लॉगआउट करे और इस HQ के
   // बदलाव अभी फ़ोन में रुके हों, तो साफ़ बताएं: ये इसी HQ के खाते से जाते हैं, लॉगआउट के बाद दोबारा इसी HQ में आने पर
   var held=(askConfirm&&CU&&CU.role==="lineman")?_heldCountFor(CU.hq):0;
-  var heldMsg=held?("⚠️ "+CU.hq+" के "+held+" बदलाव फ़ोन में रुके हैं — अभी सर्वर पर नहीं गए। लॉगआउट के बाद ये तभी जाएंगे जब इस फ़ोन पर दोबारा "+CU.hq+" में login हो। नेट हो तो पहले \"नहीं\" दबाकर थोड़ा रुकें।"):"";
+  var heldMsg=held?("⚠️ "+CU.hq+" के "+held+" बदलाव सर्वर में जाना शेष है। लॉगआउट के बाद ये तभी जाएंगे जब इस फ़ोन पर दोबारा "+CU.hq+" में login हो। नेट हो तो पहले \"नहीं\" दबाकर थोड़ा रुकें।"):"";
   if(askConfirm){ appAsk({icon:"🚪",title:"लॉगआउट करना चाहते हैं?",msg:heldMsg||undefined,kind:held?"danger":undefined,buttons:[{label:"हां, लॉगआउट",kind:"ok",value:true},{label:"नहीं",kind:"cancel",value:false}]},function(v){ if(v) doLogout(false); }); return; }
   // JE था तो Firebase session भी हटाएं — अपने आप anonymous पर लौट जाएगा (firebase.js का onIdTokenChanged)
   try{

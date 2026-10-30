@@ -19,7 +19,7 @@ function setSyncStatus(ok){
   var n=pendingCount();
   d.className=ok?"sdot":"sdot off";
   var lbl=ok?"ऑनलाइन":"ऑफलाइन — डेटा device पर सुरक्षित है";
-  if(n) lbl+=" • 📲 "+n+" बदलाव फ़ोन में रुके — नेट आते ही जाएंगे"; // v9.264 (JE 30/10): "बाकी" (बिल जमा नहीं) से उलझन न हो
+  if(n) lbl+=" • 📲 "+n+" बदलाव सर्वर में जाना शेष है — नेट आते ही जाएंगे"; // v9.264 (JE 30/10): "बाकी" (बिल जमा नहीं) से उलझन न हो — JE का शब्द
   d.setAttribute("title",lbl);
   d.setAttribute("aria-label",lbl);
   if(t) t.textContent=""; // जान-बूझकर खाली — पट्टी में सिर्फ़ बत्ती रहे

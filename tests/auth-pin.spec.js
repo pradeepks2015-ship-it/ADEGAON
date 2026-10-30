@@ -1863,7 +1863,7 @@ test.describe('HQ बदलना सामान्य (v9.264)', () => {
     expect(r).toEqual({ hq: 'आदेगांव', retry: true });
   });
 
-  test('लाइनमैन के login वाले HQ के ही "फ़ोन में रुके बदलाव" भेजे जाएं — दूसरे HQ वाले चुपचाप रुके रहें (401/अटकी गिनती नहीं)', async ({ page }) => {
+  test('लाइनमैन के login वाले HQ के ही "सर्वर में जाना शेष बदलाव" भेजे जाएं — दूसरे HQ वाले चुपचाप रुके रहें (401/अटकी गिनती नहीं)', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => new Promise((resolve) => {
       Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
@@ -1886,7 +1886,7 @@ test.describe('HQ बदलना सामान्य (v9.264)', () => {
     expect(r).toEqual({ adegaon: true, patan: false, patanLeft: true, patanFails: 0 });
   });
 
-  test('दूसरे HQ के "फ़ोन में रुके बदलाव" का संदेश; अपने HQ या कुछ न हो तो कुछ नहीं', async ({ page }) => {
+  test('दूसरे HQ के "सर्वर में जाना शेष बदलाव" का संदेश; अपने HQ या कुछ न हो तो कुछ नहीं', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => {
       CU = { role: 'lineman', name: 'टेस्ट', hq: 'आदेगांव' };
@@ -1901,12 +1901,12 @@ test.describe('HQ बदलना सामान्य (v9.264)', () => {
       return { other, none, label: (setSyncStatus(false), document.getElementById('sdot').getAttribute('title')) };
     });
     expect(r.other).toContain('पाटन');
-    expect(r.other).toContain('फ़ोन में रुके');
+    expect(r.other).toContain('सर्वर में जाना शेष');
     expect(r.none).toBe('');
-    expect(r.label).toContain('1 बदलाव फ़ोन में रुके');
+    expect(r.label).toContain('1 बदलाव सर्वर में जाना शेष है');
   });
 
-  test('लॉगआउट (HQ बदलने) के पुष्टि-डिब्बे में अपने HQ के "फ़ोन में रुके बदलाव" की चेतावनी', async ({ page }) => {
+  test('लॉगआउट (HQ बदलने) के पुष्टि-डिब्बे में अपने HQ के "सर्वर में जाना शेष बदलाव" की चेतावनी', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => {
       CU = { role: 'lineman', name: 'टेस्ट', hq: 'आदेगांव' };
@@ -1918,7 +1918,7 @@ test.describe('HQ बदलना सामान्य (v9.264)', () => {
       appAsk = orig;
       return { text: [seen && seen.title, seen && seen.msg, seen && seen.warn].join(' '), still: !!CU };
     });
-    expect(r.text).toContain('3 बदलाव फ़ोन में रुके');
+    expect(r.text).toContain('3 बदलाव सर्वर में जाना शेष है');
     expect(r.still).toBe(true); // "नहीं" दबाया — लॉगआउट नहीं हुआ
   });
 });
