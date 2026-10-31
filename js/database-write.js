@@ -193,7 +193,7 @@ function _noAccLabels(arr){
 // पढ़ाई नाकाम (offline) हो तो patch जैसा है वैसा — PATCH भी fail होकर pending बनेगा, और
 // flushPending भेजने से पहले यही मिलान दोबारा करेगा
 var REMARK_MERGE_MAX=10;
-var REMARK_MERGE_TIMEOUT_MS=5000;
+var REMARK_MERGE_TIMEOUT_MS=20000; // v9.268 (JE 31/10): 5s → 20s — आनंद जैसे बहुत कमज़ोर नेट पर बार-बार timeout; सेव फ़ोन में तुरंत, यह पीछे चलता है
 // v9.234 (JE 16/10): offline में जमा patch (दिन भर का काम) नेट आने पर भेजते वक़्त 10 से ज़्यादा records
 // हों तब भी मिलान — 10-10 करके। पहले >10 पर मिलान होता ही नहीं था और फ़ोन की पुरानी copy सर्वर के रिमार्क दबा देती
 var REMARK_FLUSH_MAX=500;
@@ -204,7 +204,7 @@ var _rmkHoldLogged={};
 // 5 सेकंड की घड़ी कतार में ही बीत जाती। अब पूरे ऐप में एक साथ ज़्यादा से ज़्यादा REMARK_READ_PARALLEL पढ़ाई,
 // और घड़ी तभी चलती है जब पढ़ाई सचमुच शुरू हो
 var REMARK_READ_PARALLEL=6;
-var REMARK_FLUSH_TIMEOUT_MS=15000; // "बाक़ी" पीछे से भेजते वक़्त (कोई इंतज़ार नहीं कर रहा) — सामने वाली सेव में 5s ही
+var REMARK_FLUSH_TIMEOUT_MS=20000; // "बाक़ी" पीछे से भेजते वक़्त (कोई इंतज़ार नहीं कर रहा) — v9.268 से सामने वाली सेव जितना ही (20s)
 var _rmkActive=0,_rmkQueue=[];
 function _rmkSlot(run){
   return new Promise(function(resolve,reject){

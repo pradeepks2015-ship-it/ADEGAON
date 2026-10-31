@@ -1711,10 +1711,11 @@ test.describe('रिमार्क-पढ़ाई की कतार (v9.241
     expect(r).toEqual({ reads: 30, maxInFlight: 6, holds: 0 });
   });
 
-  test('"बाक़ी" पीछे से भेजते वक़्त रिमार्क-पढ़ाई की सीमा 15 सेकंड (सामने वाली सेव 5 सेकंड)', async ({ page }) => {
+  // v9.268 (JE 31/10, आनंद — कमज़ोर नेट पर बार-बार timeout): दोनों रास्तों पर 20 सेकंड
+  test('रिमार्क-पढ़ाई की सीमा 20 सेकंड — सामने वाली सेव और पीछे से भेजना दोनों', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => ({ live: REMARK_MERGE_TIMEOUT_MS, flush: REMARK_FLUSH_TIMEOUT_MS, par: REMARK_READ_PARALLEL,
       wired: /REMARK_FLUSH_MAX,REMARK_FLUSH_TIMEOUT_MS/.test(flushPending.toString()) }));
-    expect(r).toEqual({ live: 5000, flush: 15000, par: 6, wired: true });
+    expect(r).toEqual({ live: 20000, flush: 20000, par: 6, wired: true });
   });
 });
