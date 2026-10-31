@@ -294,14 +294,15 @@ function downloadScPDF(){
         var accKey=x.acc||("__noAcc__"+x.name);
         if(seenAccPDF[accKey]) return;
         seenAccPDF[accKey]=true;
-        var dt=x.paydate.trim();
+        var dt=normPayDate(x.paydate.trim()); // "01/10/2026" और "1/10/2026" एक ही पंक्ति में
         if(!byDate[dt]) byDate[dt]={count:0,amount:0,names:[],accs:[]};
         byDate[dt].count++; byDate[dt].amount+=Math.max(0,Number(x.amount)||0);
         byDate[dt].names.push(x.name||'');
         if(x.acc) byDate[dt].accs.push(x.acc);
       }
     });
-    var dates=Object.keys(byDate).sort(function(a,b){return b.localeCompare(a);});
+    // चक्र की शुरुआत से अंत तक (JE 31/10) — असली तारीख़ से; पहले अक्षर-क्रम था ("9/10" के बाद "31/10", "3/10")
+    var dates=Object.keys(byDate).sort(function(a,b){return payDateVal(a)-payDateVal(b);});
     if(!dates.length) return;
     var totC=0,totA=0;
     var hqRows=dates.map(function(dt){

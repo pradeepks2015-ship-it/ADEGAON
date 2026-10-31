@@ -607,6 +607,26 @@ test.describe('स्कोरकार्ड "दिनांक-वार व�
     expect(html).not.toContain('पुराना');
     expect(html).not.toContain('📍 आदेगांव');
   });
+
+  test('downloadScPDF — तारीख़ें चक्र की शुरुआत से अंत तक क्रम में (bug 31/10: "9/10, 8/10…31/10, 3/10" — अक्षर-क्रम sort; "01/10" और "1/10" अलग पंक्ति)', async ({ page }) => {
+    await page.clock.setFixedTime(new Date(2026, 9, 31, 12, 0, 0));
+    await openApp(page);
+    await page.evaluate(() => {
+      var ds = ['9/10/2026', '31/10/2026', '3/10/2026', '27/9/2026', '10/10/2026', '01/10/2026', '2026-10-02', '30/9/2026'];
+      var m = ds.map(function (d, i) { return { acc: String(100 + i), name: 'N' + i, status: 'paid', amount: 10, paydate: d }; });
+      m.push({ acc: '200', name: 'N-एक', status: 'paid', amount: 10, paydate: '1/10/2026' });
+      cSet('आदेगांव', 'कुल उपभोक्ता', m);
+    });
+    await loginJE(page);
+    const html = await page.evaluate(() => new Promise((resolve) => {
+      window.open = function () {
+        return { document: { write: function (h) { resolve(h); }, close: function () {} }, print: function () {} };
+      };
+      downloadScPDF();
+    }));
+    const order = [...html.matchAll(/<tr><td>([^<]+)<\/td>/g)].map((x) => x[1]);
+    expect(order).toEqual(['27/9/2026', '30/9/2026', '1/10/2026', '2/10/2026', '3/10/2026', '9/10/2026', '10/10/2026', '31/10/2026']);
+  });
 });
 
 // ── छोटे फ़ोन (360px) पर कोई स्क्रीन दाएं-बाएं न खिसके ──
