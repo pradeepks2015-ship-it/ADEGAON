@@ -14,7 +14,7 @@ var HQ_AUTH_EMAIL = {
   "बीबी":"hq-bibi@adegaondc.internal",
   "मढ़ी":"hq-madhi@adegaondc.internal"
 };
-var APP_VER = "9.269"; // हर अपडेट पर यह नंबर बढ़ाएं
+var APP_VER = "9.270"; // हर अपडेट पर यह नंबर बढ़ाएं
 document.getElementById("ver-badge").textContent="Version "+APP_VER+" • Offline + Auto Sync";
 var MAX_RECORDS = 1000;
 // Per-category limits: "कुल उपभोक्ता"=3500, others=1000
@@ -76,7 +76,12 @@ function applyFBCatNames(d){
 // status जांचते हैं; असफल हो तो वही रास्ता चलता है जो genuine network-failure के लिए पहले
 // से बना है (हर fetch chain का catch handler)।
 function _fbJson(r){
-  if(!r.ok) throw new Error("HTTP "+r.status);
+  if(!r.ok){
+    var e=/** @type {Error & {body?:string}} */(new Error("HTTP "+r.status));
+    // v9.270: फ़ोन पर ही रोकी गई (_noTokenResp/_acBlockedResp) — _fbLocalRefusal पहचान सके
+    try{ if(r.headers&&r.headers.get&&r.headers.get("X-DC-Local")) e.body="ऐप ने नहीं भेजा"; }catch(x){}
+    throw e;
+  }
   return r.json();
 }
 
@@ -92,6 +97,12 @@ function _fbHttpErr(r){
   return Promise.resolve().then(function(){ return r.text(); })
     .then(function(t){ e.body=String(t||"").replace(/\s+/g," ").trim().slice(0,60); throw e; },
           function(){ throw e; });
+}
+// v9.270: request फ़ोन पर ही रोकी गई (login token या App Check पर्ची नहीं — firebase.js का _noTokenResp/
+// _acBlockedResp), सर्वर तक गई ही नहीं। इसका save-fail लॉग शोर है — वजह अलग लॉग (appcheck-fail, auth
+// network error) में पहले से आती है, और घंटों अटके तो "pending-old" alert
+function _fbLocalRefusal(e){
+  return !!(e&&e.body&&String(e.body).indexOf("ऐप ने नहीं भेजा")>=0);
 }
 // लॉग के "x" हिस्से में जोड़ने लायक़ जांच-जानकारी — सिर्फ़ 401/403 पर (बाक़ी नाकामी नेट की होती है,
 // उनमें यह शोर ही होगा)

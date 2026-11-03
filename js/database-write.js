@@ -26,7 +26,7 @@ function fbSet(hq,cat,arr,prevArr,cb){
         else _fbPutNow(hq,cat,arr,cb);
       })
       .catch(function(e){
-        if(navigator.onLine) logErr("save-shape-probe-fail",e,hq+"/"+cat);
+        if(navigator.onLine&&!_fbLocalRefusal(e)) logErr("save-shape-probe-fail",e,hq+"/"+cat);
         markPending(hq,cat,"put",null,e);
         setSyncStatus(false);
         _saveFailToast(e);
@@ -78,7 +78,7 @@ function _fbPut(hq,cat,arr,cb){
         _fbPutNow(hq,cat,arr,cb);
       })
       .catch(function(e){
-        if(navigator.onLine) logErr("save-shape-probe-fail",e,hq+"/"+cat);
+        if(navigator.onLine&&!_fbLocalRefusal(e)) logErr("save-shape-probe-fail",e,hq+"/"+cat);
         markPending(hq,cat,"put",null,e);
         setSyncStatus(false);
         _saveFailToast(e);
@@ -126,7 +126,7 @@ function _fbPutNow(hq,cat,arr,cb){
     updTime(); setSyncStatus(true);
     if(cb) cb(true);
   }).catch(function(e){
-    if(navigator.onLine) logErr("save-fail",e,hq+"/"+cat+_authDiag(e)); // ऑनलाइन होते हुए save fail — असली गड़बड़
+    if(navigator.onLine&&!_fbLocalRefusal(e)) logErr("save-fail",e,hq+"/"+cat+_authDiag(e)); // ऑनलाइन होते हुए save fail — असली गड़बड़
     markPending(hq,cat,"put",null,e);
     setSyncStatus(false);
     _saveFailToast(e);
@@ -139,7 +139,8 @@ function _fbPutNow(hq,cat,arr,cb){
 // "ऑफलाइन" न दिखाकर साफ़ बताएं कि दोबारा login चाहिए, ताकि यूज़र को असली समस्या पता चले
 function _saveFailToast(e){
   var msg=(e&&e.message)||"";
-  if(/HTTP (401|403)/.test(msg)){
+  // v9.270: फ़ोन पर ही रोकी गई (login/पर्ची कमज़ोर नेट से अभी नहीं बनी) — "दोबारा login करें" कहना ग़लत; token आते ही अपने-आप जाएगा
+  if(/HTTP (401|403)/.test(msg)&&!_fbLocalRefusal(e)){
     toast("🔐 सेव नहीं हुआ — login session खत्म हो गया लगता है। Logout करके दोबारा login करें","err");
   } else {
     toast("📴 ऑफलाइन — बदलाव device पर save है, नेट आते ही अपने आप sync होगा","inf");
@@ -322,7 +323,7 @@ function _fbSendPatch(hq,cat,patch,cb,res){
     updTime(); setSyncStatus(!isPending(hq,cat));
     if(cb) cb(true);
   }).catch(function(e){
-    if(navigator.onLine) logErr("save-fail",e,hq+"/"+cat+_authDiag(e));
+    if(navigator.onLine&&!_fbLocalRefusal(e)) logErr("save-fail",e,hq+"/"+cat+_authDiag(e));
     markPending(hq,cat,"put",patch,e);
     setSyncStatus(false);
     _saveFailToast(e);

@@ -289,8 +289,12 @@ function _acGate(){
     .then(function(){ _acGateJob=null; return !!AC_TOKEN; },function(){ _acGateJob=null; return false; });
   return _acGateJob;
 }
+// "ऐप ने नहीं भेजा" — _fbLocalRefusal (config.js) इसी से पहचानता है कि request फ़ोन पर ही रोकी गई
+function _noTokenResp(){
+  return new Response('{ "error" : "Permission denied (ऐप ने नहीं भेजा — login token अभी नहीं)" }',{status:401,headers:{"Content-Type":"application/json","X-DC-Local":"1"}});
+}
 function _acBlockedResp(){
-  return new Response('{ "error" : "Missing appcheck token (ऐप ने नहीं भेजा — पर्ची बनने का इंतज़ार)" }',{status:401,headers:{"Content-Type":"application/json"}});
+  return new Response('{ "error" : "Missing appcheck token (ऐप ने नहीं भेजा — पर्ची बनने का इंतज़ार)" }',{status:401,headers:{"Content-Type":"application/json","X-DC-Local":"1"}});
 }
 window.fetch = function(url, opts){
   if(typeof url==="string" && url.indexOf(FB)===0){
@@ -306,13 +310,10 @@ window.fetch = function(url, opts){
       var tm=setTimeout(function(){
         if(done)return; done=true;
         if(ID_TOKEN){ resolve(_fbFetchWithAuth(url,opts)); return; }
-        // login token 4 सेकंड में भी नहीं बना (असली bug, v9.165 लॉग "login token: नहीं था") — पहले
-        // यहां से बिल्कुल raw (बिना App Check header के भी) fetch चला जाता था, भले ही उसी बीच
-        // App Check token बन चुका हो। सिर्फ़ ID_TOKEN की देर की वजह से App Check header मत छोड़ो —
-        // "Missing appcheck token" यहीं से भी आ रहा था
-        resolve(_rawFetch(url,_fbOpts(opts)).then(function(r){
-          return _acInvalidRefresh(r).then(function(acNew){ return acNew?_rawFetch(url,_fbOpts(opts)):r; });
-        }));
+        // v9.270 (JE 3/11): login token अब भी नहीं — rules में हर path auth != null मांगता है, तो यह request
+        // सर्वर से हमेशा 401 ही पाती (Kishan/आनंद/Satendra के लॉग)। नेट पर भेजे बिना वही 401 यहीं लौटाओ —
+        // बुलाने वाले पहले जैसे संभालते हैं (डेटा "बाक़ी" में); token आते ही flushPending (_tokenWaiters) भेज देता है
+        resolve(_noTokenResp()); return;
       },4000);
       function check(){
         if(done||!ID_TOKEN||!AC_READY)return;
