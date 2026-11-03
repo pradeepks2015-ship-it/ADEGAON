@@ -33,7 +33,8 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
   test('फ़ोटो चुनने पर compress होकर PROFILE_PHOTOS पर PUT होती है (आकार छोटा हो)', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
-    await page.evaluate(() => document.getElementById('update-banner')?.remove());
+    // v9.270: बिना login token Firebase request नेट पर जाती ही नहीं — टेस्ट में (offline, Firebase SDK नहीं) token हों
+    await page.evaluate(() => { document.getElementById('update-banner')?.remove(); ID_TOKEN = 'tok'; AC_TOKEN = 'ac'; AC_READY = true; });
 
     let captured = null;
     await page.route('**/PROFILE_PHOTOS/**', async (route) => {
@@ -49,8 +50,6 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
     );
     await page.setInputFiles('#profile-photo-inp', { name: 'test.jpg', mimeType: 'image/jpeg', buffer: jpegBuffer });
     await page.waitForFunction(() => !!captured, null, { timeout: 8000 }).catch(() => {});
-    // Firebase SDK offline में तुरंत उपलब्ध नहीं होता — fetch wrapper 4s बाद raw fetch पर गिरता है
-    await page.waitForTimeout(5000);
 
     expect(captured).toBeTruthy();
     const body = JSON.parse(captured);
@@ -62,7 +61,7 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
   test('फ़ोटो हटाने का बटन — फ़ोटो न हो तो छुपा रहे, फ़ोटो हो तो दिखे और DELETE भेजकर avatar वापस initial पर लौटे', async ({ page }) => {
     await openApp(page);
     await loginLineman(page);
-    await page.evaluate(() => document.getElementById('update-banner')?.remove());
+    await page.evaluate(() => { document.getElementById('update-banner')?.remove(); ID_TOKEN = 'tok'; AC_TOKEN = 'ac'; AC_READY = true; });
     await page.click('.bnav-item[data-act="profile"]');
     // पहली बार कोई फ़ोटो नहीं — बटन छुपा हो
     expect(await page.locator('#profile-photo-remove-btn').isVisible()).toBe(false);

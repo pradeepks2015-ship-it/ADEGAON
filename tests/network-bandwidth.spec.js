@@ -1626,3 +1626,55 @@ test.describe('live-sync login token का इंतज़ार करे', ()
     expect(opened).toEqual(['पाटन/कुल']);
   });
 });
+
+// v9.270 (JE 3/11: Kishan "remark-merge-hold HTTP 401", आनंद/Satendra "save-fail 401 • login token: नहीं था"):
+// कमज़ोर नेट पर Firebase login (ID_TOKEN) 4 सेकंड में न बने तो पहले request बिना login के सर्वर चली जाती थी —
+// पर rules में हर path पर auth != null है, यानी वह हमेशा 401 पाती (बेकार Firebase request + लॉग का शोर)।
+// अब नेट पर भेजे बिना वही 401 फ़ोन पर ही लौटे; बुलाने वाले उसे पहले जैसे संभालें (डेटा "बाक़ी" में)
+test.describe('login token नहीं तो Firebase को request ही न जाए', () => {
+  test('rules: हर ऊपरी path पर पढ़ना-लिखना login (auth) मांगता है — इसीलिए बिना token भेजना बेकार', async () => {
+    const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+    for (const k of Object.keys(rules)) {
+      for (const op of ['.read', '.write']) {
+        const v = rules[k][op];
+        if (v === undefined) continue;
+        expect(v === false || /auth/.test(String(v)), k + op).toBeTruthy();
+      }
+    }
+  });
+
+  test('4 सेकंड में login token न बने — नेट पर न जाए, फ़ोन पर ही 401 लौटे', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      ID_TOKEN = null; AC_TOKEN = 'ac-1'; AC_READY = true;
+      var sent = 0;
+      _rawFetch = function () { sent++; return Promise.resolve(new Response('{}', { status: 401 })); };
+      fetch(FB + '/आदेगांव/x.json', { method: 'PATCH', body: '{}' }).then(function (res) {
+        return res.text().then(function (t) { resolve({ sent: sent, status: res.status, body: t }); });
+      });
+    }));
+    expect(r.sent).toBe(0);
+    expect(r.status).toBe(401);
+    expect(r.body).toContain('ऐप ने नहीं भेजा');
+  });
+
+  test('फ़ोन पर ही रोकी गई request — save-fail लॉग न बने, पर बदलाव "बाक़ी" में रुके', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      ID_TOKEN = null; AC_TOKEN = 'ac-1'; AC_READY = true;
+      _rawFetch = function () { return Promise.reject(new Error('नेट पर गया')); };
+      var logs = [];
+      var orig = logErr;
+      logErr = function (n) { logs.push(n); };
+      _fbSendPatch('आदेगांव', 'कुल उपभोक्ता', { '111': { acc: '111', status: 'paid' } }, function (ok) {
+        logErr = orig;
+        resolve({ ok: ok, logs: logs, pending: isPending('आदेगांव', 'कुल उपभोक्ता'), toast: document.getElementById('toast').textContent });
+      }, null);
+    }));
+    expect(r.ok).toBe(false);
+    expect(r.logs).not.toContain('save-fail');
+    expect(r.pending).toBe(true);
+    expect(r.toast).toContain('ऑफलाइन'); // "दोबारा login करें" नहीं — login अपने-आप पूरा होगा
+    expect(r.toast).not.toContain('login');
+  });
+});

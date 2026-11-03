@@ -718,7 +718,7 @@ function flushPending(){
     if(it.type==="del"){
       _fetchT(FB+"/"+fbPath(it.hq,it.cat)+".json",{method:"DELETE"},FLUSH_FETCH_MS)
         .then(function(r){if(!r.ok)return _fbHttpErr(r);clearPendingKey(k);setSyncStatus(true);fin(true);})
-        .catch(function(e){if(navigator.onLine)logErr("sync-del-fail",e,it.hq+"/"+it.cat+_authDiag(e));_flushNoteErr(e);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
+        .catch(function(e){if(navigator.onLine&&!_fbLocalRefusal(e))logErr("sync-del-fail",e,it.hq+"/"+it.cat+_authDiag(e));_flushNoteErr(e);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
       return;
     }
     if(it.patch){
@@ -745,7 +745,7 @@ function flushPending(){
         updTime();setSyncStatus(!isPending(it.hq,it.cat));
         if(CU&&it.hq===activeHQ&&it.cat===activeCat){var d=cGet(it.hq,it.cat);renderSummaryWith(d);renderListWith(d);}
         fin(true);
-      }).catch(function(e){if(navigator.onLine)logErr("sync-patch-fail",e,it.hq+"/"+it.cat+_authDiag(e));_flushNoteErr(e);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
+      }).catch(function(e){if(navigator.onLine&&!_fbLocalRefusal(e))logErr("sync-patch-fail",e,it.hq+"/"+it.cat+_authDiag(e));_flushNoteErr(e);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
       return;
     }
     // put (पुराना array फॉर्मेट) — पहले server data लो, merge करो, फिर save — दोनों के बदलाव बचें
@@ -789,7 +789,7 @@ function flushPending(){
           fin(!!ok);
         });
       })
-      .catch(function(e){if(navigator.onLine)logErr("sync-put-fail",e,it.hq+"/"+it.cat+_authDiag(e));_flushNoteErr(e);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
+      .catch(function(e){if(navigator.onLine&&!_fbLocalRefusal(e))logErr("sync-put-fail",e,it.hq+"/"+it.cat+_authDiag(e));_flushNoteErr(e);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});
   });
   if(needCat){
     var reqs=Object.keys(CAT_NAMES).map(function(hq){

@@ -755,21 +755,18 @@ test.describe('Firebase auth token — 401 पर force-refresh', () => {
     expect(r.retryScheduled).toBe(false);
   });
 
-  // असली bug: login token 4 सेकंड में भी न बने तो पहले यहां से बिल्कुल raw fetch चला जाता — App
-  // Check token उसी बीच तैयार हो चुका हो तब भी उसका header नहीं लगता था
-  test('window.fetch — 4 सेकंड में login token न बने तो भी, जो App Check token तैयार हो चुका हो वह लगे', async ({ page }) => {
+  // पहले (v9.165) यहां जांचते थे कि 4s बाद बिना login token वाली raw request पर कम से कम App Check header लगे।
+  // v9.270 से ऐसी request नेट पर जाती ही नहीं (rules में हर path auth मांगता है — सर्वर से हमेशा 401 ही मिलता)
+  test('window.fetch — 4 सेकंड में login token न बने तो request नेट पर न जाए (फ़ोन पर ही 401)', async ({ page }) => {
     await openApp(page);
     test.setTimeout(15000);
     const r = await page.evaluate(() => new Promise((resolve) => {
       ID_TOKEN = null; AC_TOKEN = 'ac-ready'; AC_READY = true;
-      var seenHeader = null;
-      _rawFetch = function (url, opts) {
-        seenHeader = opts && opts.headers && opts.headers['X-Firebase-AppCheck'];
-        return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({ ok: true }) });
-      };
-      fetch(FB + '/test.json').then(() => resolve({ header: seenHeader })); // असली 4-sec wait पूरा होने का इंतज़ार
+      var sent = 0;
+      _rawFetch = function () { sent++; return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({ ok: true }) }); };
+      fetch(FB + '/test.json').then((res) => resolve({ sent: sent, status: res.status })); // असली 4-sec wait पूरा होने का इंतज़ार
     }));
-    expect(r.header).toBe('ac-ready');
+    expect(r).toEqual({ sent: 0, status: 401 });
   });
 });
 
@@ -1793,32 +1790,8 @@ test.describe('login token / ख़राब App Check पर्ची (v9.260)'
     expect(r).toEqual({ before: false, waiters: 1, after: true });
   });
 
-  test('login token के बिना भेजी request पर "Invalid appcheck token" — नई पर्ची लेकर एक बार दोबारा; मिनट में दोबारा नहीं मांगे', async ({ page }) => {
-    await openApp(page);
-    const r = await page.evaluate(() => new Promise((resolve) => {
-      Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
-      localStorage.removeItem('dc_acfail');
-      let asks = 0; const sent = [];
-      window.firebase = window.firebase || {};
-      window.firebase.appCheck = () => ({ getToken: () => { asks++; return Promise.resolve({ token: 'ac-new' }); } });
-      let serverOk = true;
-      _rawFetch = (u, o) => {
-        const ac = o && o.headers && o.headers['X-Firebase-AppCheck'];
-        if (String(u).indexOf('/z') < 0) return Promise.resolve(new Response('{}', { status: 200 })); // ऐप की बाक़ी पृष्ठभूमि requests
-        sent.push(ac);
-        const ok = serverOk && ac === 'ac-new';
-        return Promise.resolve(new Response(ok ? '{}' : '{ "error" : "Invalid appcheck token" }', { status: ok ? 200 : 401 }));
-      };
-      ID_TOKEN = null; AC_READY = true; AC_TOKEN = 'ac-old';
-      fetch(FB + '/z.json').then((res) => {
-        const out = { status: res.status, asks: asks, sent: sent.slice() };
-        serverOk = false; // सर्वर फिर भी मना करे — इस बार पर्ची दोबारा नहीं मांगनी
-        return fetch(FB + '/z2.json').then((res2) => { out.status2 = res2.status; out.asks2 = asks; resolve(out); });
-      });
-    }));
-    expect(r).toEqual({ status: 200, asks: 1, sent: ['ac-old', 'ac-new'], status2: 401, asks2: 1 });
-  });
-
+  // "login token के बिना भेजी request पर Invalid appcheck token" वाला टेस्ट v9.270 में हटा — बिना login token
+  // request अब नेट पर जाती ही नहीं (ऊपर "4 सेकंड में login token न बने" टेस्ट)। पर्ची-ताज़ा वाला रास्ता नीचे वाला टेस्ट जांचता है
   test('login token के साथ भी: पर्ची client की घड़ी से "ताज़ा" पर सर्वर "Invalid" कहे — नई पर्ची लेकर दोबारा', async ({ page }) => {
     await openApp(page);
     await page.evaluate(mkJwt);
