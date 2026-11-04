@@ -214,6 +214,13 @@ function savePins(){
     .catch(function(e){logErr("pin-save-fail",e);toast("⚠️ सेव नहीं हुआ — दोबारा कोशिश करें","err");});
 }
 
+// v9.271 (JE 4/11): Firebase इस browser में एक ही खाता रखता है — सारे टैब/होम-स्क्रीन ऐप में साझा। फ़ोन पर JE खाता
+// (किसी दूसरे टैब में JE अंदर) हो और यहां लाइनमैन login हो, तो JE खाता चुपचाप हट जाता ("je-auth-missing", ताज़ा
+// डेटा बंद)। अब पहले पूछो; "हां" पर यही doLogin दोबारा, इस बार बिना पूछे
+var _jeKickOk=false;
+function _fbHasJE(){
+  try{ var u=firebase.auth().currentUser; return !!(u&&u.email&&u.email===JE_EMAIL); }catch(e){ return false; }
+}
 function doLogin(){
   var role=selectedRole,name=document.getElementById("uname-inp").value.trim();
   if(!role){toast("भूमिका चुनें","err");return;}
@@ -228,6 +235,13 @@ function doLogin(){
   }
   var hq=document.getElementById("hq-sel").value;
   if(!hq){toast("HQ चुनें","err");return;}
+  if(!_jeKickOk&&_fbHasJE()){
+    appAsk({icon:"⚠️",title:"इस फ़ोन पर JE खाता चालू है",
+      msg:"लाइनमैन login करने से JE खाता सर्वर से हट जाएगा (दूसरे टैब/ऐप में भी) — JE को बाद में पासवर्ड से दोबारा login करना होगा। लाइनमैन वाला view देखना हो तो Chrome का Incognito टैब बेहतर है।",
+      buttons:[{label:"रुको",kind:"cancel",value:false},{label:"हां, लाइनमैन login",kind:"danger",value:true}]},
+      function(v){ if(v){ _jeKickOk=true; try{ doLogin(); }finally{ _jeKickOk=false; } } });
+    return;
+  }
   var typedPin=document.getElementById("lin-pin").value.trim();
   // PIN अब यहां client-side पहले से जांची नहीं जाती (v9.146 सुरक्षा-फिक्स): पहले HQ_PIN कोई भी
   // login-किया (anonymous भी) device पढ़ सकता था — यानी बिना PIN जाने भी कोई सीधे /HQ_PIN.json

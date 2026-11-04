@@ -1895,3 +1895,49 @@ test.describe('HQ बदलना सामान्य (v9.264)', () => {
     expect(r.still).toBe(true); // "नहीं" दबाया — लॉगआउट नहीं हुआ
   });
 });
+
+// v9.271 (JE 4/11: "je-auth-missing" रोज़ दोपहर — JE उसी फ़ोन पर लाइनमैन PIN से login करके देखते हैं): Firebase
+// browser में एक ही खाता रखता है (सारे टैब/होम-स्क्रीन ऐप में साझा) — लाइनमैन login होते ही JE खाता हट जाता था,
+// बिना बताए। अब फ़ोन पर JE खाता हो तो पहले चेतावनी; "रुको" पर कुछ न बदले
+test.describe('JE खाते वाले फ़ोन पर लाइनमैन login — पहले चेतावनी', () => {
+  const setup = (page, jeUser, answer) => page.evaluate(([jeUser, answer]) => new Promise((resolve) => {
+    var asked = [], signIns = [];
+    window.confirm = function (t) { asked.push(t); return answer; };
+    window.firebase = window.firebase || {};
+    window.firebase.auth = function () {
+      return {
+        currentUser: jeUser ? { email: JE_EMAIL, isAnonymous: false } : { isAnonymous: true },
+        signInWithEmailAndPassword: function (email) { signIns.push(email); return Promise.resolve({}); },
+        signOut: function () { return Promise.resolve(); },
+      };
+    };
+    selectRole('lineman');
+    document.getElementById('uname-inp').value = 'टेस्ट लाइनमैन';
+    document.getElementById('hq-sel').value = 'आदेगांव';
+    document.getElementById('lin-pin').value = '4321';
+    doLogin();
+    setTimeout(function () { resolve({ asked: asked, signIns: signIns }); }, 300);
+  }), [jeUser, answer]);
+
+  test('JE खाता है, "रुको" — लाइनमैन login न हो, JE खाता न छुए', async ({ page }) => {
+    await openApp(page);
+    const r = await setup(page, true, false);
+    expect(r.asked.length).toBe(1);
+    expect(r.asked[0]).toContain('JE खाता');
+    expect(r.signIns).toEqual([]);
+  });
+
+  test('JE खाता है, "हां" — लाइनमैन login आगे बढ़े', async ({ page }) => {
+    await openApp(page);
+    const r = await setup(page, true, true);
+    expect(r.asked.length).toBe(1);
+    expect(r.signIns).toEqual(['hq-adegaon@adegaondc.internal']);
+  });
+
+  test('फ़ोन पर JE खाता नहीं (anonymous) — कोई सवाल नहीं, सीधे login', async ({ page }) => {
+    await openApp(page);
+    const r = await setup(page, false, false);
+    expect(r.asked).toEqual([]);
+    expect(r.signIns).toEqual(['hq-adegaon@adegaondc.internal']);
+  });
+});
