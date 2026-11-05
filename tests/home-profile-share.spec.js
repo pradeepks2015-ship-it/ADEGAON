@@ -49,7 +49,9 @@ test.describe('प्रोफ़ाइल — बॉटम नेव, एवत
       'base64'
     );
     await page.setInputFiles('#profile-photo-inp', { name: 'test.jpg', mimeType: 'image/jpeg', buffer: jpegBuffer });
-    await page.waitForFunction(() => !!captured, null, { timeout: 8000 }).catch(() => {});
+    // captured Node की variable है (page की नहीं) — page.waitForFunction उसे देख ही नहीं सकता था (ReferenceError,
+    // .catch में दबा); असली इंतज़ार हटाया गया 5s timeout था। अब Node की तरफ़ से ही poll (धीमे CI runner पर भी)
+    await expect.poll(() => captured, { timeout: 15000 }).toBeTruthy();
 
     expect(captured).toBeTruthy();
     const body = JSON.parse(captured);
