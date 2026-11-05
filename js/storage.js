@@ -396,6 +396,9 @@ function _bumpAuthFail(k,err){
   // reCAPTCHA ने 27 घंटे token नहीं दिया (Google की काली सूची के दौरान); तीन 401 पर वसूली "अटकी"
   // मानकर अपने-आप भेजना बंद हो जाता, और token लौटने पर भी ऐप बंद-खोलने तक अटकी रहती
   var acMissing=(typeof AC_TOKEN!=="undefined"&&!AC_TOKEN)||/app ?check/i.test((err&&err.body)||"");
+  // v9.272 (Devendra, जोबा, 5/11): फ़ोन पर ही रोकी गई (login token कमज़ोर नेट से अभी नहीं — _noTokenResp) — सर्वर
+  // तक गई ही नहीं, खाते की गड़बड़ी नहीं। token आते ही _authAcctReady "बाक़ी" भेज देता है
+  if(typeof _fbLocalRefusal==="function"&&_fbLocalRefusal(err)) acMissing=true;
   if(/HTTP (401|403)/.test(msg)&&acMissing){
     p[k]=entry; setPendingObj(p); // गिनती जैसी है वैसी — token लौटते ही _acNoteOk भेज देगा
     return;
