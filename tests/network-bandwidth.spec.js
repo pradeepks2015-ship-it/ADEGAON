@@ -1678,3 +1678,24 @@ test.describe('login token नहीं तो Firebase को request ही �
     expect(r.toast).not.toContain('login');
   });
 });
+
+// v9.272 (Devendra, जोबा, 5/11, v9.271): फ़ोन पर HQ खाता था (currentUser) पर कमज़ोर नेट से login token ताज़ा नहीं
+// हुआ — हर सेव फ़ोन पर ही 401 (v9.270, _noTokenResp), तीसरी बार "pending-stuck-auth": भेजना रुका, लाइनमैन को
+// "login/account समस्या — JE को बताएं"। यह खाते की गड़बड़ी नहीं — गिनती न बढ़े; token आते ही अपने-आप जाए
+test.describe('फ़ोन पर ही रोकी गई request "अटकी" न गिनी जाए', () => {
+  test('3 बार _noTokenResp वाला 401 — authFailCount न बढ़े, pending-stuck-auth न बने', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      AC_TOKEN = 'ac'; // App Check पर्ची है — पुराना acMissing रास्ता नहीं
+      window.firebase = window.firebase || {};
+      window.firebase.auth = () => ({ currentUser: { email: 'hq-joba@adegaondc.internal', isAnonymous: false } });
+      var logs = []; var orig = logErr; logErr = function (n) { logs.push(n); };
+      var e = new Error('HTTP 401'); e.body = '{ "error" : "Permission denied (ऐप ने नहीं भेजा — login token';
+      for (var i = 0; i < 3; i++) markPending('जोबा', 'कुल उपभोक्ता', 'put', { '1': { acc: '1' } }, e);
+      logErr = orig;
+      return { count: getPending()[cKey('जोबा', 'कुल उपभोक्ता')].authFailCount || 0, logs: logs };
+    });
+    expect(r.count).toBe(0);
+    expect(r.logs).not.toContain('pending-stuck-auth');
+  });
+});
