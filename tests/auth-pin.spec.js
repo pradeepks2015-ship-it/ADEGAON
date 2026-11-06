@@ -1859,6 +1859,36 @@ test.describe('HQ बदलना सामान्य (v9.264)', () => {
     expect(r).toEqual({ adegaon: true, patan: false, patanLeft: true, patanFails: 0 });
   });
 
+  // v9.273 (Rajkumar, 6/11, v9.272): login पाटन, खाता पाटन — फिर भी आदेगांव के बदलाव भेजे गए, सर्वर "Permission denied"
+  // (sync-patch-fail ×4, pending-old 89 घंटे)। HQ बदलते वक़्त (logout→login, या login के बाद कमज़ोर नेट पर नया खाता
+  // जुड़ने तक) CU और Firebase खाता पल भर अलग होते हैं। असली कसौटी खाता है: वही HQ या JE — वरना रुको
+  for (const [label, cu] of [['CU आदेगांव पर खाता अभी पाटन का', { role: 'lineman', name: 'टेस्ट', hq: 'आदेगांव', pin: '1' }], ['CU अभी नहीं (login के बीच) खाता पाटन का', null]]) {
+    test('Firebase खाता जिस HQ का है, उसी के बदलाव जाएं — ' + label, async ({ page }) => {
+      await openApp(page);
+      const r = await page.evaluate((cu) => new Promise((resolve) => {
+        Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+        localStorage.removeItem('dc_acfail');
+        AUTH_LISTENING = false; ID_TOKEN = 'id'; AC_READY = true; AC_TOKEN = 'ac';
+        CU = cu;
+        window.firebase = window.firebase || {};
+        window.firebase.auth = function () { return { currentUser: { email: HQ_AUTH_EMAIL['पाटन'], isAnonymous: false } }; };
+        const p = {};
+        p[cKey('आदेगांव', 'कुल उपभोक्ता')] = { hq: 'आदेगांव', cat: 'कुल उपभोक्ता', type: 'put', since: Date.now(), patch: { 5: { acc: '5', status: 'paid', o: 0 } } };
+        p[cKey('पाटन', 'कुल उपभोक्ता')] = { hq: 'पाटन', cat: 'कुल उपभोक्ता', type: 'put', since: Date.now(), patch: { 7: { acc: '7', status: 'paid', o: 0 } } };
+        localStorage.setItem('dc_pending3', JSON.stringify(p));
+        const urls = [];
+        _rawFetch = (u) => { urls.push(decodeURIComponent(String(u))); return Promise.resolve(new Response('null', { status: 200 })); };
+        _flushing = false; _flushBackoffUntil = 0;
+        flushPending();
+        setTimeout(() => {
+          const pp = getPending();
+          resolve({ adegaon: urls.some((u) => u.indexOf('आदेगांव') > -1), adegaonLeft: !!pp[cKey('आदेगांव', 'कुल उपभोक्ता')], adegaonFails: (pp[cKey('आदेगांव', 'कुल उपभोक्ता')] || {}).authFailCount || 0 });
+        }, 1500);
+      }), cu);
+      expect(r).toEqual({ adegaon: false, adegaonLeft: true, adegaonFails: 0 });
+    });
+  }
+
   test('दूसरे HQ के "सर्वर में जाना शेष बदलाव" का संदेश; अपने HQ या कुछ न हो तो कुछ नहीं', async ({ page }) => {
     await openApp(page);
     const r = await page.evaluate(() => {

@@ -655,6 +655,18 @@ function _mergedPatch(server,merged){
 // v9.264 (JE 30/10): कोई भी लाइनमैन किसी भी HQ में login कर सकता है। हर HQ की सूची सिर्फ़ उसी HQ के Firebase खाते से
 // लिखी जा सकती है (Security Rules) — इसलिए लाइनमैन के फ़ोन में दूसरे HQ के रुके बदलाव भेजने की कोशिश बेकार 401 थी और
 // तीन बार में "अटकी" गिनी जाती थी। अब वे चुपचाप फ़ोन में रुके रहते हैं, उस HQ में login होते ही (या JE login पर) जाते हैं
+// v9.273 (Rajkumar, 6/11): HQ बदलते वक़्त (logout→login, या login के बाद कमज़ोर नेट पर नया खाता जुड़ने तक) CU और
+// Firebase खाता पल भर अलग — तब CU देखकर दूसरे HQ के बदलाव ग़लत खाते से चले गए (Permission denied, 89 घंटे अटके)।
+// असली कसौटी खाता: JE या उसी HQ का खाता हो तभी भेजो; वरना रुको — सही खाता बनते ही _authAcctReady भेज देता है।
+// Firebase ही न हो (टेस्ट/पहली बार offline) तो रोक नहीं — पुराना CU वाला नियम लागू रहता है
+function _acctCanWrite(hq){
+  var u;
+  try{ u=firebase.auth().currentUser; }catch(e){ return true; }
+  if(!u||u.isAnonymous||!u.email) return true; // अनाम/कोई नहीं — flushPending का _fbAcctNone वाला रास्ता संभालता है
+  if(u.email===JE_EMAIL) return true;
+  if(!hq||!HQ_AUTH_EMAIL[hq]) return true;
+  return HQ_AUTH_EMAIL[hq]===u.email;
+}
 function _heldForOtherHq(it){ return !!(CU&&CU.role==="lineman"&&it&&it.hq&&it.hq!==CU.hq); }
 function _heldCountOf(it){ return (it&&it.patch&&typeof it.patch==="object")?(Object.keys(it.patch).length||1):1; }
 function _heldCountFor(hq){
@@ -691,7 +703,7 @@ function flushPending(){
     return;
   }
   var p=getPending();
-  var keys=Object.keys(p).filter(function(k){ return !_heldForOtherHq(p[k]); }); // v9.264: दूसरे HQ के — उसी HQ के खाते से
+  var keys=Object.keys(p).filter(function(k){ return !_heldForOtherHq(p[k])&&_acctCanWrite(p[k]&&p[k].hq); }); // v9.264: दूसरे HQ के — उसी HQ के खाते से
   var needCat=false;
   try{needCat=localStorage.getItem("dc_catpending3")==="1";}catch(e){}
   if(!keys.length&&!needCat) return;
