@@ -38,7 +38,9 @@ jobs:
     runs-on: ubuntu-latest
     # 15 मिनट था — suite (~500 टेस्ट) अकेले ~14-15 मिनट लेता है, 10/10 को v9.195 के 8 नए टेस्ट
     # के बाद सीमा पर कटने लगा (टेस्ट फेल नहीं, "cancelled")। अटका टेस्ट फिर भी 60 सेकंड में ख़ुद फेल होता है
-    timeout-minutes: 25
+    # 25 → 40 (6/11, PR #315): suite अब 690 टेस्ट ~20 मिनट, और उस दिन "playwright install --with-deps" ने
+    # ही 8 मिनट ले लिए — टेस्ट चलते-चलते 25 पर कट गया। public repo में Actions मुफ़्त, ज़्यादा सीमा का कोई ख़र्च नहीं
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
