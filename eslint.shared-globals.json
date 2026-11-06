@@ -161,6 +161,7 @@
   "_acRetryT",
   "_acStale",
   "_acWaiters",
+  "_acctCanWrite",
   "_actDispatch",
   "_actOn",
   "_afterAuthReady",
