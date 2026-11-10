@@ -657,16 +657,7 @@ function _mergedPatch(server,merged){
 // तीन बार में "अटकी" गिनी जाती थी। अब वे चुपचाप फ़ोन में रुके रहते हैं, उस HQ में login होते ही (या JE login पर) जाते हैं
 // v9.273 (Rajkumar, 6/11): HQ बदलते वक़्त (logout→login, या login के बाद कमज़ोर नेट पर नया खाता जुड़ने तक) CU और
 // Firebase खाता पल भर अलग — तब CU देखकर दूसरे HQ के बदलाव ग़लत खाते से चले गए (Permission denied, 89 घंटे अटके)।
-// असली कसौटी खाता: JE या उसी HQ का खाता हो तभी भेजो; वरना रुको — सही खाता बनते ही _authAcctReady भेज देता है।
-// Firebase ही न हो (टेस्ट/पहली बार offline) तो रोक नहीं — पुराना CU वाला नियम लागू रहता है
-function _acctCanWrite(hq){
-  var u;
-  try{ u=firebase.auth().currentUser; }catch(e){ return true; }
-  if(!u||u.isAnonymous||!u.email) return true; // अनाम/कोई नहीं — flushPending का _fbAcctNone वाला रास्ता संभालता है
-  if(u.email===JE_EMAIL) return true;
-  if(!hq||!HQ_AUTH_EMAIL[hq]) return true;
-  return HQ_AUTH_EMAIL[hq]===u.email;
-}
+// असली कसौटी खाता है — v9.274 से _sendGate(hq) का "wrong-acct" (firebase.js)
 function _heldForOtherHq(it){ return !!(CU&&CU.role==="lineman"&&it&&it.hq&&it.hq!==CU.hq); }
 function _heldCountOf(it){ return (it&&it.patch&&typeof it.patch==="object")?(Object.keys(it.patch).length||1):1; }
 function _heldCountFor(hq){
@@ -687,23 +678,24 @@ var _flushing=false;
 var _flushWaitTok=false; // v9.260: login token के इंतज़ार में एक ही flush कतार में
 function flushPending(){
   if(_flushing||!navigator.onLine||Date.now()<_flushBackoffUntil) return;
-  // v9.243: App Check पर्ची नाकाम है — भेजना Firebase को बेकार (unverified) requests ही देगा; पर्ची बनते ही
-  // _acNoteOk (firebase.js) यही function फिर बुलाता है
-  if(typeof _acBlocked==="function"&&_acBlocked()) return;
-  // v9.248: login से पहले/अनाम खाते पर नहीं — असली खाता बनते ही _authAcctReady (firebase.js) फिर बुलाता है
-  if(typeof _fbAcctNone==="function"&&AUTH_READY&&_fbAcctNone()){
+  // v9.274: आम हालत का फ़ैसला _sendGate (firebase.js) से — पहले यही तीन जांचें यहां अलग लिखी थीं
+  var g=_sendGate();
+  // "ac" (v9.243): पर्ची नाकाम — भेजना Firebase को बेकार (unverified) requests ही देगा; बनते ही _acNoteOk फिर बुलाता है
+  if(g==="ac") return;
+  // "no-acct" (v9.248): login से पहले/अनाम खाते पर नहीं — असली खाता बनते ही _authAcctReady (firebase.js) फिर बुलाता है
+  if(g==="no-acct"){
     // लाइनमैन अंदर है पर खाता अनाम — सही HQ खाते से sign-in की कोशिश (पहले यह पहले 401 पर होती थी; अपना guard है)
     if(CU&&CU.role==="lineman"&&typeof _ensureCorrectHqAuth==="function"&&pendingCount()>0){ try{ _ensureCorrectHqAuth(); }catch(e){} }
     return;
   }
-  // v9.260 (Suneel, बीबी, 27/10): login token अभी नहीं (कमज़ोर नेट पर Firebase login देर से) — HQ सूचियां बिना
-  // login खाते के लिखी ही नहीं जा सकतीं, हर 20s 401 मिलता रहा। token आते ही (_tokenWaiters) एक बार भेजो
-  if(typeof ID_TOKEN!=="undefined"&&!ID_TOKEN&&typeof AUTH_LISTENING!=="undefined"&&AUTH_LISTENING){
+  // "no-token" (v9.260, Suneel, बीबी, 27/10): login token अभी नहीं (कमज़ोर नेट पर Firebase login देर से) — HQ सूचियां
+  // बिना login खाते के लिखी ही नहीं जा सकतीं, हर 20s 401 मिलता रहा। token आते ही (_tokenWaiters) एक बार भेजो
+  if(g==="no-token"){
     if(!_flushWaitTok){ _flushWaitTok=true; _tokenWaiters.push(function(){ _flushWaitTok=false; flushPending(); }); }
     return;
   }
   var p=getPending();
-  var keys=Object.keys(p).filter(function(k){ return !_heldForOtherHq(p[k])&&_acctCanWrite(p[k]&&p[k].hq); }); // v9.264: दूसरे HQ के — उसी HQ के खाते से
+  var keys=Object.keys(p).filter(function(k){ return !_heldForOtherHq(p[k])&&_sendGate(p[k]&&p[k].hq)!=="wrong-acct"; }); // v9.264/273: दूसरे HQ के — उसी HQ के खाते से
   var needCat=false;
   try{needCat=localStorage.getItem("dc_catpending3")==="1";}catch(e){}
   if(!keys.length&&!needCat) return;

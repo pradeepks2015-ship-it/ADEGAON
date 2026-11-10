@@ -193,6 +193,30 @@ function _authAcctReady(u){
 function _fbAcctNone(){
   try{ var u=firebase.auth().currentUser; return !u||!!u.isAnonymous||!u.email; }catch(e){ return false; } // firebase ही नहीं (टेस्ट) — रोक नहीं
 }
+// ── v9.274 (JE 10/11): "अभी भेजूं या रुकूं?" का एक ही फ़ैसला-घर ──
+// v9.270/272/273 तीनों इसी जड़ के थे — token / App Check पर्ची / खाता किस HQ का, यह जांच सेव, "शेष बदलाव" और
+// रिमार्क-पढ़ाई में अलग-अलग लिखी थी; एक जगह ठीक करने पर दूसरी में छेद निकलता। अब सब यही पूछें। जवाब:
+//   "ok"         भेजो
+//   "offline"    नेट नहीं
+//   "ac"         App Check पर्ची नाकाम है और अभी नहीं — बनते ही _acNoteOk "शेष" भेजता है
+//   "no-acct"    Firebase खाता नहीं/अनाम — rules में हर path login मांगता है
+//   "wrong-acct" खाता किसी दूसरे HQ का (HQ बदलते वक़्त पल भर) — उसी HQ या JE का खाता ही लिख सकता है
+//   "no-token"   खाता है पर login token अभी नहीं (कमज़ोर नेट) — आते ही _tokenWaiters / _authAcctReady
+// hq न दें तो सिर्फ़ आम हालत (खाता किस HQ का — नहीं देखा जाता)। Firebase library ही न हो (पहली बार offline/टेस्ट)
+// तो खाते वाली जांचें नहीं — पहले जैसा
+function _sendGate(hq){
+  if(!navigator.onLine) return "offline";
+  if(_acBlocked()) return "ac";
+  var u=null,hasFb=true;
+  try{ u=firebase.auth().currentUser; }catch(e){ hasFb=false; }
+  if(hasFb){
+    var none=!u||!!u.isAnonymous||!u.email;
+    if(none&&AUTH_READY) return "no-acct";
+    if(!none&&u.email!==JE_EMAIL&&hq&&HQ_AUTH_EMAIL[hq]&&HQ_AUTH_EMAIL[hq]!==u.email) return "wrong-acct";
+  }
+  if(!ID_TOKEN&&AUTH_LISTENING) return "no-token";
+  return "ok";
+}
 // FB (Realtime Database) की हर fetch call में auth token अपने आप जुड़ जाए — कहीं और कोड बदलने की ज़रूरत नहीं
 // token अभी न बना हो तो 4 sec तक इंतज़ार — वरना app खुलते ही निकली save बिना token के 401 खा जाती है
 var _rawFetch = window.fetch.bind(window);

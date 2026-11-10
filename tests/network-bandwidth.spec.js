@@ -1699,3 +1699,81 @@ test.describe('फ़ोन पर ही रोकी गई request "अटक
     expect(r.logs).not.toContain('pending-stuck-auth');
   });
 });
+
+// v9.274 (JE 10/11, सुधार 4): "अभी भेजूं या रुकूं?" का एक ही फ़ैसला-घर — _sendGate(hq)। v9.270/272/273 तीनों इसी
+// जड़ के थे: token / App Check पर्ची / खाता किस HQ का — यह जांच 4-5 जगह अलग-अलग लिखी थी, एक जगह ठीक करने पर
+// दूसरी में छेद। अब सेव और "शेष बदलाव" दोनों यही पूछते हैं; हर हालत की तालिका यहां
+test.describe('_sendGate — भेजने का एक ही फ़ैसला', () => {
+  const HQ = 'आदेगांव';
+  // [नाम, हालत, उम्मीद]
+  const rows = [
+    ['नेट नहीं', { online: false }, 'offline'],
+    ['App Check पर्ची नाकाम और अभी नहीं', { acFail: true, ac: null }, 'ac'],
+    ['पर्ची नाकाम दर्ज पर अब है', { acFail: true, ac: 'ac' }, 'ok'],
+    ['खाता कोई नहीं (auth तैयार)', { user: null, authReady: true }, 'no-acct'],
+    ['खाता अनाम', { user: { isAnonymous: true }, authReady: true }, 'no-acct'],
+    ['auth अभी तैयार नहीं, खाता नहीं दिखता', { user: null, authReady: false, listening: true, id: null }, 'no-token'],
+    ['उसी HQ का खाता, token है', { user: 'hq', id: 'tok' }, 'ok'],
+    ['उसी HQ का खाता, token अभी नहीं', { user: 'hq', id: null, listening: true }, 'no-token'],
+    ['दूसरे HQ का खाता', { user: 'other', id: 'tok' }, 'wrong-acct'],
+    ['दूसरे HQ का खाता, token भी नहीं', { user: 'other', id: null, listening: true }, 'wrong-acct'],
+    ['JE का खाता — हर HQ', { user: 'je', id: 'tok' }, 'ok'],
+    ['Firebase library ही नहीं (पहली बार offline/टेस्ट)', { noFb: true, id: null, listening: false }, 'ok'],
+  ];
+  for (const [name, st, want] of rows) {
+    test(name + ' → ' + want, async ({ page }) => {
+      await openApp(page);
+      const got = await page.evaluate(([st, HQ]) => {
+        Object.defineProperty(navigator, 'onLine', { get: () => st.online !== false, configurable: true });
+        if (st.acFail) localStorage.setItem('dc_acfail', '1'); else localStorage.removeItem('dc_acfail');
+        AC_READY = true; AC_TOKEN = st.ac === undefined ? 'ac' : st.ac;
+        AUTH_READY = st.authReady !== false; AUTH_LISTENING = !!st.listening; ID_TOKEN = st.id === undefined ? 'tok' : st.id;
+        var other = Object.keys(HQ_AUTH_EMAIL).filter(function (h) { return h !== HQ; })[0];
+        var u = st.user === 'hq' ? { email: HQ_AUTH_EMAIL[HQ] } : st.user === 'other' ? { email: HQ_AUTH_EMAIL[other] } : st.user === 'je' ? { email: JE_EMAIL } : st.user;
+        if (st.noFb) window.firebase = undefined;
+        else { window.firebase = window.firebase || {}; window.firebase.auth = function () { return { currentUser: u === undefined ? { email: HQ_AUTH_EMAIL[HQ] } : u }; }; }
+        return _sendGate(HQ);
+      }, [st, HQ]);
+      expect(got).toBe(want);
+    });
+  }
+
+  // सेव का रास्ता: रुकने वाली हालत में नेट पर कुछ न जाए (रिमार्क-पढ़ाई भी नहीं), बदलाव "शेष" में, गिनती/लॉग नहीं
+  for (const [name, st] of [['login token अभी नहीं', { user: 'hq', id: null, listening: true }], ['दूसरे HQ का खाता', { user: 'other', id: 'tok', listening: true }]]) {
+    test('fbSet — ' + name + ': नेट पर कुछ नहीं, बदलाव "शेष" में, अटकी-गिनती/लॉग नहीं', async ({ page }) => {
+      await openApp(page);
+      const r = await page.evaluate(([st, HQ]) => new Promise((resolve) => {
+        Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+        localStorage.removeItem('dc_acfail');
+        CU = { role: 'lineman', name: 'टेस्ट', hq: HQ, pin: '1' };
+        AC_READY = true; AC_TOKEN = 'ac'; AUTH_READY = true; AUTH_LISTENING = !!st.listening; ID_TOKEN = st.id;
+        var other = Object.keys(HQ_AUTH_EMAIL).filter(function (h) { return h !== HQ; })[0];
+        var reauth = 0;
+        _ensureCorrectHqAuth = function (cb) { reauth++; if (cb) cb(); };
+        window.firebase = window.firebase || {};
+        window.firebase.auth = function () { return { currentUser: { email: st.user === 'hq' ? HQ_AUTH_EMAIL[HQ] : HQ_AUTH_EMAIL[other] } }; };
+        var sent = 0, logs = [];
+        _rawFetch = function () { sent++; return Promise.resolve(new Response('null', { status: 200 })); };
+        var origLog = logErr; logErr = function (n) { logs.push(n); };
+        MIGRATED = {}; MIGRATED[hqKey(HQ)] = {}; MIGRATED[hqKey(HQ)][catKey('कुल उपभोक्ता')] = true;
+        var prev = [{ acc: '1', name: 'क', status: 'pending', o: 0 }];
+        var next = [{ acc: '1', name: 'क', status: 'paid', paydate: '1/11/2026', o: 0 }];
+        cSet(HQ, 'कुल उपभोक्ता', prev);
+        fbSet(HQ, 'कुल उपभोक्ता', next, prev, function (ok) {
+          setTimeout(function () {
+            logErr = origLog;
+            var e = getPending()[cKey(HQ, 'कुल उपभोक्ता')] || {};
+            resolve({ ok: ok, sent: sent, pending: !!e.patch && !!e.patch['1'], fails: e.authFailCount || 0, logs: logs.filter(function (n) { return /save-fail|stuck|remark-merge-hold/.test(n); }), reauth: reauth, toast: document.getElementById('toast').textContent });
+          }, 300);
+        });
+      }), [st, HQ]);
+      expect(r.ok).toBe(false);
+      expect(r.sent).toBe(0);
+      expect(r.pending).toBe(true);
+      expect(r.fails).toBe(0);
+      expect(r.logs).toEqual([]);
+      expect(r.toast).toContain('device पर save');
+      if (st.user === 'other') expect(r.reauth).toBeGreaterThan(0); // सही HQ खाते से जुड़ने की कोशिश शुरू
+    });
+  }
+});
