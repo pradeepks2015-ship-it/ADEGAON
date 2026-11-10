@@ -7,11 +7,36 @@
 // ही लौटाता — prev===arr बन जाता और _diffToPatch को कभी कोई फ़र्क़ नहीं दिखता (patch हमेशा खाली,
 // यानी मौजूदा record में कोई भी बदलाव — रिमार्क, वसूली वगैरह — Firebase पर कभी जाता ही नहीं था,
 // सिर्फ़ स्थानीय cache में दिखता रहता और अगली असली sync में ग़ायब हो जाता — असली bug यही था)
+// सच लौटे तो fbSet यहीं रुके। "offline" पुराने रास्ते पर ही (fetch नाकाम → "शेष" + वही toast) — उसमें बदलाव नहीं
+function _saveHeld(hq,cat,arr,prevArr,cb){
+  var g=_sendGate(hq);
+  if(g==="ok"||g==="offline") return false;
+  if(isMigrated(hq,cat)||lastShape(hq,cat)==="obj"){
+    _noAccLog(hq,cat,_noAccLabels(arr));
+    var patch=_diffToPatch(prevArr||[],arr);
+    if(!Object.keys(patch).length){ if(cb) cb(true); return true; }
+    markPending(hq,cat,"put",patch);
+  } else {
+    markPending(hq,cat,"put",null);
+  }
+  setSyncStatus(false);
+  toast("📴 ऑफलाइन — बदलाव device पर save है, नेट आते ही अपने आप sync होगा","inf");
+  // हर हालत का अपना "फिर कब": खाता नहीं/दूसरे HQ का → सही HQ खाते से जुड़ने की कोशिश (बनते ही _authAcctReady भेजता है);
+  // token नहीं → flushPending अपना _tokenWaiters लगाता है; पर्ची → _acNoteOk
+  if((g==="no-acct"||g==="wrong-acct")&&CU&&CU.role==="lineman"&&typeof _ensureCorrectHqAuth==="function"){ try{ _ensureCorrectHqAuth(); }catch(e){} }
+  else if(g==="no-acct"&&CU&&CU.role==="supervisor"&&typeof checkJEAuth==="function"){ try{ checkJEAuth(); }catch(e){} } // "🔐 JE खाता सर्वर से नहीं जुड़ा" पट्टी/दोबारा कोशिश
+  else { try{ flushPending(); }catch(e){} }
+  if(cb) cb(false);
+  return true;
+}
 function fbSet(hq,cat,arr,prevArr,cb){
   cSet(hq,cat,arr);
   if(arr.length>200){
     toast("⏳ "+arr.length+" records सेव हो रहे हैं...","inf");
   }
+  // v9.274: रुकने वाली हालत (login token/खाता/पर्ची नहीं, या खाता दूसरे HQ का) — नेट पर कुछ न भेजो (रिमार्क-पढ़ाई भी
+  // नहीं): बदलाव सीधे "शेष" में, बिना 401 की गिनती/लॉग। पहले यहां से request जाती और सर्वर (या v9.270 से फ़ोन) मना करता
+  if(_saveHeld(hq,cat,arr,prevArr,cb)) return;
   // v9.167: flag न भी हो, पर सर्वर पर list per-record दिखी हो (या अभी जांच में दिखे) तो भी सिर्फ़ बदले
   // records का PATCH — पूरी list लिखने से उसी पल किसी और लाइनमैन का बदलाव दब सकता था
   if(isMigrated(hq,cat)||lastShape(hq,cat)==="obj"){ _fbPutPerRecord(hq,cat,prevArr||[],arr,cb); return; }
