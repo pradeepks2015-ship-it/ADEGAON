@@ -984,3 +984,76 @@ test.describe('Periodic Background Sync से update', () => {
     expect(sw).toMatch(/dc-update[\s\S]{0,200}registration\.update\(\)/);
   });
 });
+
+// v9.275 (JE 10/11, सुधार 3): एरर लॉग में हर लॉग का मतलब ऐप ख़ुद बताए — 🟢 अपने-आप संभलेगा / 🟡 कुछ करवाना है /
+// 🔴 Claude को भेजें। पहले JE हर लॉग copy करके पूछते थे और जवाब लगभग हमेशा वही होता ("कमज़ोर नेट, डेटा सुरक्षित")
+test.describe('एरर लॉग — हर लॉग का मतलब और रंग', () => {
+  test('ऐप का हर logErr नाम LOG_INFO में हो (नया लॉग जोड़ें तो उसका मतलब भी)', async ({ page }) => {
+    const dir = path.join(__dirname, '..', 'js');
+    const names = new Set();
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js'))) {
+      for (const m of fs.readFileSync(path.join(dir, f), 'utf8').matchAll(/logErr\("([a-z0-9-]+)"/g)) names.add(m[1]);
+    }
+    await openApp(page);
+    const missing = await page.evaluate((ns) => ns.filter((n) => !LOG_INFO[n]), [...names]);
+    expect(missing).toEqual([]);
+  });
+
+  test('_logInfo — नेट की नाकामी हरी, सर्वर का मना करना लाल, करवाने वाला पीला, अनजाना लाल', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => ({
+      net: _logInfo({ c: 'save-fail', m: 'Failed to fetch', x: 'मढ़ी/मदन' }).l,
+      tmo: _logInfo({ c: 'sync-patch-fail', m: 'timeout' }).l,
+      auth: _logInfo({ c: 'promise', m: 'Firebase: A network AuthError (such as timeout…) (auth/network-request-failed).' }).l,
+      denied: _logInfo({ c: 'sync-patch-fail', m: 'HTTP 401', x: 'आदेगांव/अमित • जवाब: { "error" : "Permission denied" }' }).l,
+      hold: _logInfo({ c: 'remark-merge-hold', m: '1 उपभोक्ता…', x: 'वजह: HTTP 401' }).l,
+      old: _logInfo({ c: 'pending-old', m: '89 घंटे से…' }).l,
+      js: _logInfo({ c: 'js-error', m: 'x is not defined' }).l,
+      unknown: _logInfo({ c: 'कुछ-नया', m: '?' }).l,
+    }));
+    expect(r).toEqual({ net: 'g', tmo: 'g', auth: 'g', denied: 'r', hold: 'g', old: 'y', js: 'r', unknown: 'r' });
+  });
+
+  test('logRowsHtml — ऊपर गिनती, लाल/पीले पहले खुले, हरे एक बंद डिब्बे में; मतलब की लाइन; कुछ भी बिना escape नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => {
+      var box = document.createElement('div');
+      box.innerHTML = logRowsHtml([
+        { c: 'remark-merge-hold', m: '1 उपभोक्ता', x: 'वजह: timeout', t: '2026-11-07T07:31:01', u: 'lineman|मढ़ी|क', v: '9.273', d: 'a' },
+        { c: 'pending-old', m: '89 घंटे से <img src=x onerror=alert(1)>', t: '2026-11-06T11:02:53', u: 'lineman|पाटन|ख', v: '9.272', d: 'b' },
+        { c: 'save-fail', m: 'Failed to fetch', t: '2026-11-07T07:32:47', u: 'lineman|मढ़ी|क', v: '9.273', d: 'a' },
+        { c: 'js-error', m: 'boom', t: '2026-11-07T08:00:00', u: 'lineman|जोबा|ग', v: '9.273', d: 'c' },
+      ]);
+      var open = [].map.call(box.querySelectorAll(':scope > .log-row'), function (x) { return x.querySelector('.log-ctx').textContent; });
+      var det = box.querySelector('details.log-more');
+      return {
+        sum: box.querySelector('.log-sum').textContent,
+        open: open,
+        greenInDetails: det ? det.querySelectorAll('.log-row').length : -1,
+        detOpen: det ? det.open : null,
+        hints: box.querySelectorAll('.log-hint').length,
+        img: box.querySelectorAll('img').length,
+        rowClass: box.querySelector(':scope > .log-row').className,
+      };
+    });
+    expect(r.sum).toContain('🔴 1');
+    expect(r.sum).toContain('🟡 1');
+    expect(r.sum).toContain('🟢 2');
+    expect(r.open).toEqual(['js-error', 'pending-old']); // लाल पहले, फिर पीला
+    expect(r.greenInDetails).toBe(2);
+    expect(r.detOpen).toBe(false);
+    expect(r.hints).toBe(4);
+    expect(r.img).toBe(0);
+    expect(r.rowClass).toContain('log-r');
+  });
+
+  test('सिर्फ़ हरे हों तो भी डिब्बा बंद, और ऊपर "कुछ करने की ज़रूरत नहीं"', async ({ page }) => {
+    await openApp(page);
+    const t = await page.evaluate(() => {
+      var box = document.createElement('div');
+      box.innerHTML = logRowsHtml([{ c: 'save-fail', m: 'Failed to fetch', t: '2026-11-07T07:32:47', u: 'u', v: '1', d: 'a' }]);
+      return box.querySelector('.log-sum').textContent;
+    });
+    expect(t).toContain('कुछ करने की ज़रूरत नहीं');
+  });
+});

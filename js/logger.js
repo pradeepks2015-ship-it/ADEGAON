@@ -590,18 +590,112 @@ function openLogModal(){
 function closeLogModal(){document.getElementById("log-overlay").classList.remove("open");}
 function closeLogOutside(e){if(e.target===document.getElementById("log-overlay"))closeLogModal();}
 
+// ── v9.275 (JE 10/11): हर लॉग का मतलब और रंग — JE को लॉग copy करके पूछना न पड़े ──
+// [रंग, मतलब/क्या करें, नेट]: रंग g = 🟢 अपने-आप संभलेगा · y = 🟡 कुछ करवाना है · r = 🔴 Claude को भेजें।
+// तीसरा 1 हो तो वही लॉग नेट की नाकामी (Failed to fetch/timeout/network) पर 🟢 गिना जाए — बदलाव फ़ोन में सुरक्षित रहता है।
+// नया logErr("नाम") जोड़ें तो यहां भी (टेस्ट "हर logErr नाम LOG_INFO में" फेल होगा) और scripts/check-alerts.js में भी
+var LOG_NET_OK="कमज़ोर/टूटा नेट — बदलाव फ़ोन में सुरक्षित है, नेट आते ही अपने-आप जाएगा";
+var LOG_INFO={
+  "remark-merge-hold":["g","रिमार्क-पढ़ाई उस पल नहीं हो पाई — वसूली चली गई, रिमार्क बाद में अपने-आप मिलकर जाएगा"],
+  "appcheck-recovered":["g","Google की सुरक्षा-जांच (reCAPTCHA) देर से बनी, अब ठीक — बार-बार आए तो उस फ़ोन का Chrome अपडेट करवाएं"],
+  "appcheck-fail":["g","Google की सुरक्षा-जांच (reCAPTCHA) अभी नहीं बनी — ऐप ख़ुद दोबारा कोशिश करता है, बदलाव फ़ोन में सुरक्षित"],
+  "je-auth-recovered":["g","JE खाता सर्वर से दोबारा जुड़ गया"],
+  "reauth-needed":["g","फ़ोन का खाता HQ वाला नहीं था — ऐप ने ख़ुद सही खाते से जोड़ लिया"],
+  "cache-idb-late":["g","फ़ोन का डेटाबेस देर से खुला — काम चलता रहा"],
+  "cache-idb-slow":["g","फ़ोन का डेटाबेस धीमा — सस्ता/भरा फ़ोन; बार-बार आए तो फ़ोन में जगह ख़ाली करवाएं"],
+  "cache-reset":["g","फ़ोन की पुरानी copy की एक-बार सफ़ाई"],
+  "cache-prune":["g","30 दिन से अनछुई सूचियां फ़ोन से हटीं (सर्वर पर हैं)"],
+  "cut-clean":["g","लेजर कट-ऑफ़ से पुरानी वसूली अपने-आप हटी — यही होना था"],
+  "migration-revert-fixed":["g","सूची का रूप अपने-आप ठीक किया गया"],
+  "migration-revert-already":["g","सूची का रूप पहले से ठीक था"],
+  "migration-revert-empty":["g","जांच में कुछ ठीक करने को नहीं मिला"],
+  "migration-dup-merged":["g","दोहरे उपभोक्ता अपने-आप मिला दिए गए"],
+  "repeat-mark":["g","एक ही बटन दो बार दबा — दूसरा अनदेखा किया"],
+  "hsc-conflict":["g","डिस्प्ले बोर्ड किसी और फ़ोन से नया था — वही रखा गया"],
+  "cash-refresh-cb":["g","रिफ्रेश के बाद का छोटा काम नहीं चला — डेटा पर असर नहीं"],
+  "cache-init-cb":["g","खुलते वक़्त का छोटा काम नहीं चला — डेटा पर असर नहीं"],
+  "save-fail":["r","सर्वर ने सेव मना किया — Claude को भेजें",1],
+  "sync-put-fail":["r","सर्वर ने \"शेष बदलाव\" मना किए — Claude को भेजें",1],
+  "sync-patch-fail":["r","सर्वर ने \"शेष बदलाव\" मना किए — Claude को भेजें",1],
+  "sync-del-fail":["r","सर्वर ने हटाना मना किया — Claude को भेजें",1],
+  "delete-fail":["r","सूची हटाना नाकाम — Claude को भेजें",1],
+  "autopay-patch-fail":["r","अपने-आप वसूली दर्ज करना नाकाम — Claude को भेजें",1],
+  "save-shape-probe-fail":["r","सेव से पहले की जांच नाकाम — Claude को भेजें",1],
+  "sse-never-opened":["r","लाइव-sync नहीं जुड़ा (सर्वर ने मना किया) — Claude को भेजें",1],
+  "promise":["r","ऐप के अंदर की अनसंभली गड़बड़ी — Claude को भेजें",1],
+  "reauth-fail":["y","HQ खाते से दोबारा जुड़ना नाकाम — लाइनमैन लॉगआउट करके PIN से फिर login करे",1],
+  "je-auth-retry-fail":["y","JE खाता नहीं जुड़ा — लॉगआउट करके अच्छे नेट पर पासवर्ड से login करें",1],
+  "pause-save-fail":["y","\"डेटा बचाओ\" स्विच सर्वर पर नहीं गया — नेट पर दोबारा दबाएं",1],
+  "pin-save-fail":["y","PIN सेव नहीं हुआ — नेट पर दोबारा करें",1],
+  "ph-custom-save-fail":["y","संदेश का नमूना सेव नहीं हुआ — नेट पर दोबारा करें",1],
+  "catname-save":["y","श्रेणी का नाम सर्वर पर नहीं गया — नेट पर दोबारा करें",1],
+  "hsc-publish":["y","डिस्प्ले बोर्ड सर्वर पर नहीं गया — नेट पर दोबारा भेजें",1],
+  "homebg-upload":["y","होम की तस्वीर सर्वर पर नहीं गई — नेट पर दोबारा करें",1],
+  "pending-old":["y","इस फ़ोन में बदलाव घंटों से रुके हैं — उस लाइनमैन से अच्छे नेट पर उसी HQ में login करवाएं (लॉग में HQ का नाम है)"],
+  "pending-stuck-auth":["y","बदलाव इस खाते से नहीं जा रहे — लाइनमैन लॉगआउट करके उसी HQ में PIN से login करे; फिर भी आए तो Claude को भेजें"],
+  "cash-refresh-partial":["y","कुछ सूचियां ताज़ा नहीं हुईं — अच्छे नेट पर दोबारा रिफ्रेश करें"],
+  "je-auth-missing":["y","JE खाता सर्वर से नहीं जुड़ा — ऊपर की पट्टी से लॉगआउट करके पासवर्ड से login करें (इसी फ़ोन पर लाइनमैन login से होता है)"],
+  "je-auth-fail":["y","JE पासवर्ड Firebase ने नहीं माना — सही पासवर्ड से login करें"],
+  "auto-logout":["y","लाइनमैन से दोबारा PIN मांगा गया — PIN बदला हो तो नया बताएं"],
+  "session-unknown-hq":["y","फ़ोन में सहेजा HQ अब सूची में नहीं — लाइनमैन दोबारा login करे"],
+  "mig-noacc-skip":["y","कुछ उपभोक्ताओं का Consumer No ख़ाली है — सूची में भरकर दोबारा अपलोड करें"],
+  "excel-parse":["y","Excel/CSV फ़ाइल पढ़ी नहीं गई — फ़ाइल का रूप (कॉलम) जांचकर दोबारा चुनें"],
+  "upload-confirm":["y","लेजर अपलोड बीच में रुका — अच्छे नेट पर अपलोड दोबारा करें"],
+  "ledger-cut-save":["y","लेजर कट-ऑफ़ सर्वर पर सेव नहीं हुआ — नेट पर दोबारा सेव करें"],
+  "backup":["y","बैकअप नहीं बना — नेट पर दोबारा \"पूरा बैकअप\" लें"],
+  "lazy-load-fail":["y","स्क्रीन की फ़ाइल नहीं उतरी — नेट पर ऐप दोबारा खोलें"],
+  "catrename-partial":["y","श्रेणी का नाम कुछ जगह नहीं बदला — नेट पर दोबारा बदलें"],
+  "catrename-move":["y","श्रेणी का नाम बदलते वक़्त सूची नहीं खिसकी — नेट पर दोबारा करें"],
+  "js-error":["r","ऐप के कोड में गड़बड़ी — Claude को भेजें"],
+  "act-fail":["r","बटन का काम नहीं चला — Claude को भेजें"],
+  "ask-cb":["r","पुष्टि-डिब्बे के बाद का काम नहीं चला — Claude को भेजें"],
+  "csp-block":["r","ऐप का कोई बाहरी पता सुरक्षा-सूची (CSP) ने रोका — Claude को भेजें"],
+  "storage-full":["r","फ़ोन में जगह भर गई — बिना भेजी वसूली ख़तरे में; उस फ़ोन पर Chrome का डेटा न मिटाएं, Claude को भेजें"],
+  "cache-idb-fail":["r","फ़ोन का डेटाबेस काम नहीं कर रहा — Claude को भेजें"],
+  "cache-idb-open":["r","फ़ोन का डेटाबेस खुला नहीं — Claude को भेजें"],
+  "cache-idb-load":["r","फ़ोन के डेटाबेस से सूचियां नहीं उठीं — Claude को भेजें"],
+  "upload-lists-missing":["r","अपलोड से पहले सूचियां सर्वर से नहीं आईं — अपलोड रोकें, Claude को भेजें"],
+  "paid-backup-fail":["r","अपलोड में पुरानी वसूली सुरक्षित नहीं हो सकी — Claude को भेजें"],
+  "migration-reverted":["r","सूची का रूप पलट गया — Claude को भेजें"],
+  "migration-revert-unsafe":["r","सूची का रूप ठीक करना असुरक्षित पाया गया — Claude को भेजें"],
+  "migration-mixed":["r","सूची में पुराना और नया रूप मिला-जुला — Claude को भेजें"],
+  "array-put-blocked":["r","पुराने रूप में पूरी सूची लिखने की कोशिश रोकी गई — Claude को भेजें"],
+  "array-put-noflags":["r","बिना जांच पूरी सूची लिखी जा रही है — Claude को भेजें"],
+  "migrate-fail":["r","माइग्रेशन नाकाम — Claude को भेजें"]
+};
+var LOG_ICON={g:"🟢",y:"🟡",r:"🔴"};
+// एक लॉग का {l: रंग, t: मतलब}। अनजाना नाम = 🔴 (चुपचाप हरा मानना ख़तरनाक)
+function _logInfo(e){
+  var inf=LOG_INFO[e&&e.c];
+  if(!inf) return {l:"r",t:"नया/अनजाना लॉग — Claude को भेजें"};
+  if(inf[2]){
+    var txt=String((e&&e.m)||"")+" "+String((e&&e.x)||"");
+    if(/Failed to fetch|timeout|network|NetworkError|Load failed|abort/i.test(txt)&&!/HTTP (401|403)|Permission denied/i.test(txt)) return {l:"g",t:LOG_NET_OK};
+  }
+  return {l:inf[0],t:inf[1]};
+}
+function _logRowHtml(e,inf){
+  var when=(e.t||"").replace("T"," ").slice(0,19);
+  var tag=e.s?' <span class="log-x">⏳ अभी भेजी नहीं</span>':(e.r?' <span class="log-x">📶 देर से पहुंची</span>':'');
+  return '<div class="log-row log-'+inf.l+'"><div class="log-top"><span class="log-ctx">'+escHtml(e.c||"?")+'</span>'
+    +'<span class="log-when">'+escHtml(when)+' UTC'+tag+'</span></div>'
+    +'<div class="log-hint">'+LOG_ICON[inf.l]+' '+escHtml(inf.t)+'</div>'
+    +'<div class="log-msg">'+escHtml(e.m||"")+(e.x?' <span class="log-x">['+escHtml(e.x)+']</span>':'')+'</div>'
+    +'<div class="log-who">'+escHtml(e.u||"?")+' • v'+escHtml(e.v||"?")+' • '+escHtml(e.d||"")+'</div></div>';
+}
+// ऊपर गिनती; 🔴 फिर 🟡 खुले; 🟢 एक बंद डिब्बे में (दबाने पर खुले) — असली गड़बड़ी शोर में न छिपे
 function logRowsHtml(arr){
   if(!arr||!arr.length) return '<div class="log-empty">कोई error नहीं — सब ठीक है ✅</div>';
-  var h="";
+  var by={r:"",y:"",g:""},n={r:0,y:0,g:0};
   arr.slice(0,100).forEach(function(e){
     if(!e)return;
-    var when=(e.t||"").replace("T"," ").slice(0,19);
-    var tag=e.s?' <span class="log-x">⏳ अभी भेजी नहीं</span>':(e.r?' <span class="log-x">📶 देर से पहुंची</span>':'');
-    h+='<div class="log-row"><div class="log-top"><span class="log-ctx">'+escHtml(e.c||"?")+'</span>'
-      +'<span class="log-when">'+escHtml(when)+' UTC'+tag+'</span></div>'
-      +'<div class="log-msg">'+escHtml(e.m||"")+(e.x?' <span class="log-x">['+escHtml(e.x)+']</span>':'')+'</div>'
-      +'<div class="log-who">'+escHtml(e.u||"?")+' • v'+escHtml(e.v||"?")+' • '+escHtml(e.d||"")+'</div></div>';
+    var inf=_logInfo(e);
+    by[inf.l]+=_logRowHtml(e,inf); n[inf.l]++;
   });
+  var h='<div class="log-sum">'+LOG_ICON.r+' '+n.r+' Claude को भेजें · '+LOG_ICON.y+' '+n.y+' कुछ करवाना है · '+LOG_ICON.g+' '+n.g+' अपने-आप संभलेंगे'
+    +((n.r||n.y)?'':'<div class="log-sum-ok">✅ कुछ करने की ज़रूरत नहीं</div>')+'</div>';
+  h+=by.r+by.y;
+  if(n.g) h+='<details class="log-more"><summary>'+LOG_ICON.g+' '+n.g+' अपने-आप संभलने वाले — देखने के लिए दबाएं</summary>'+by.g+'</details>';
   return h;
 }
 
