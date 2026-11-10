@@ -556,6 +556,16 @@ body{font-family:"Noto Sans Devanagari",sans-serif;background:var(--bg);color:va
 .log-x{color:var(--muted);font-size:10px;}
 .log-who{font-size:9px;color:var(--muted);margin-top:3px;}
 .log-empty{text-align:center;color:var(--muted);font-size:12px;padding:14px;}
+/* v9.275: हर लॉग का मतलब और रंग — 🔴 Claude को भेजें · 🟡 कुछ करवाना है · 🟢 अपने-आप संभलेगा */
+.log-sum{font-size:11px;font-weight:700;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:7px 10px;line-height:1.6;}
+.log-sum-ok{color:var(--green);margin-top:2px;}
+.log-row.log-r{border-left:4px solid var(--red);}
+.log-row.log-y{border-left:4px solid var(--orange);}
+.log-row.log-g{border-left:4px solid var(--green);}
+.log-hint{font-size:11px;font-weight:700;color:var(--text);margin-bottom:3px;line-height:1.45;}
+.log-more{display:flex;flex-direction:column;}
+.log-more>summary{font-size:11px;font-weight:700;color:var(--muted);padding:6px 4px;cursor:pointer;}
+.log-more>.log-row{margin-bottom:6px;}
 .wasc-hdr{text-align:center;margin-bottom:10px;}
 .wasc-hdr-t{font-family:"Baloo 2",cursive;font-size:15px;font-weight:800;color:var(--gold2);}
 .wasc-hdr-s{font-size:10px;color:var(--muted);margin-top:2px;}

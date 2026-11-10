@@ -86,7 +86,8 @@
   print window (`document.write`) के बटन JS से जोड़ें (`_printBtnWire`)। टेस्ट (boot-ui "चरण 8/9") नया inline handler पकड़ते हैं
 - **अपने-आप alert (15/10):** `.github/workflows/alert.yml` हर 4 घंटे (6–22 IST) `scripts/check-alerts.js` चलाता है —
   सर्वर-लॉग में गंभीर गड़बड़ी पर "🚨 ऐप alert" GitHub issue (JE को Gmail/GitHub ऐप)। **नया `logErr("नाम")` जोड़ें तो उसे
-  वहां CRITICAL/MULTI/IGNORE में से एक में डालें** (`npm run test:alerts` फेल होगा)। issue public — उसमें नाम/संदेश नहीं
+  वहां CRITICAL/MULTI/IGNORE में से एक में डालें** (`npm run test:alerts` फेल होगा), और `js/logger.js` के `LOG_INFO` में उसका
+  मतलब + रंग (🟢/🟡/🔴 — JE के एरर लॉग में दिखता है, v9.275; टेस्ट "हर logErr नाम LOG_INFO में")। issue public — उसमें नाम/संदेश नहीं
 - **"पहले JE, फिर सब" (canary, v9.231):** नया `sw.js` JE-login वाले फ़ोन (Cache `dc-role`/`je-device`) पर तुरंत, बाक़ी फ़ोनों
   पर `rollout.json` के `waitMin` (10) मिनट बाद। JE "रोको" कहें तो `rollout.json` में `"hold": true` + बदलाव वापस; "सबको भेजो"
   पर `"hold": false`/`waitMin: 0`। सिर्फ़ ऐप-कोड पर — rules/workflows merge पर सब पर तुरंत। `sw.js` activate `dc-role` नहीं मिटाता
