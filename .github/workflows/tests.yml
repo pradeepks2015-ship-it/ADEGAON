@@ -34,8 +34,15 @@ jobs:
       - run: npm run typecheck
       - run: npm audit --audit-level=high
 
-  smoke:
+  # 10/11: suite (690 टेस्ट, ~20 मिनट) तीन मशीनों में बांटकर साथ-साथ — हर हिस्सा ~7 मिनट। public repo में Actions
+  # मुफ़्त। main की branch-protection "smoke" नाम की जांच मांगती है, इसलिए नीचे "smoke" job इन तीनों का नतीजा जोड़ती है
+  smoke-part:
+    name: smoke-part (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     # 15 मिनट था — suite (~500 टेस्ट) अकेले ~14-15 मिनट लेता है, 10/10 को v9.195 के 8 नए टेस्ट
     # के बाद सीमा पर कटने लगा (टेस्ट फेल नहीं, "cancelled")। अटका टेस्ट फिर भी 60 सेकंड में ख़ुद फेल होता है
     # 25 → 40 (6/11, PR #315): suite अब 690 टेस्ट ~20 मिनट, और उस दिन "playwright install --with-deps" ने
@@ -49,7 +56,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
+      - run: npx playwright test --shard=${{ matrix.shard }}/3
+
+  # ज़रूरी जांच का नाम यही रहे। if: always() जान-बूझकर — "skipped" job को GitHub ज़रूरी जांच में पास मान लेता है,
+  # इसलिए कोई हिस्सा फेल/cancel हो तो यह job चले और साफ़ फेल हो
+  smoke:
+    needs: smoke-part
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: test "${{ needs.smoke-part.result }}" = "success"
 
   # पूरा ऐप Firebase के नक़ली सर्वर (emulator) पर — असली login (Auth) + database + rules (13/10/2026)।
   # smoke में Firebase बंद रहता है; यहां "सही PIN → वसूली सर्वर पर", "ग़लत PIN पर मना", "JE अपलोड सर्वर पर"
