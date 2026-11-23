@@ -874,6 +874,37 @@ test.describe('बकाया ≤0 अपने-आप वसूल — migrati
   });
 });
 
+// v9.276 (JE 23/11, मढ़ी/"TC 2025-26", लॉग array-put-blocked): बाद में बनी सूची का MIGRATED flag होता ही नहीं (upload flag नहीं
+// लगाता) — सर्वर पर वह per-record है और रूप-स्मृति (lastShape) यही जानती है। बकाया≤0 / लेजर कट-ऑफ़ की अपने-आप सफ़ाई
+// सिर्फ़ flag देखती थी, तो पूरी सूची _fbPut से PUT होती (बचाव-guard ने रूप तो बचाया, पर पूरी सूची फ़ोन की copy से
+// लिखी गई — बीच में किसी और फ़ोन के बदलाव दब सकते थे) और हर बार "array-put-blocked" लॉग बनता। अब रूप भी देखें:
+// सर्वर पर per-record हो तो सिर्फ़ बदले records का PATCH
+test.describe('बिना flag की per-record सूची पर अपने-आप सफ़ाई — पूरी सूची PUT नहीं, सिर्फ़ बदले records PATCH', () => {
+  test('flag नहीं पर रूप per-record — PATCH, केवल बदला acc, और array-put-blocked लॉग नहीं', async ({ page }) => {
+    await openApp(page);
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      MIGRATED = {};
+      localStorage.removeItem(SHAPE_KEY);
+      _noteShape('टेस्ट HQ5', 'TC 2025-26', { '111': { acc: '111' } }); // सर्वर पर object देखी थी, flag कभी बना ही नहीं
+      cSet('टेस्ट HQ5', 'TC 2025-26', [{ acc: '5', status: 'pending', amount: 0 }, { acc: '6', status: 'pending', amount: 100 }]);
+      var logs = [], origLog = logErr; logErr = function (n) { logs.push(n); };
+      const real = window.fetch;
+      window.fetch = function (url, opts) {
+        if (String(url).indexOf('टेस्ट_HQ5') > -1 && opts && opts.method) {
+          window.fetch = real; logErr = origLog;
+          resolve({ method: opts.method, keys: Object.keys(JSON.parse(opts.body)), logs: logs });
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(true) });
+        }
+        return real(url, opts);
+      };
+      overlayOps('टेस्ट HQ5', 'TC 2025-26', [{ acc: '5', status: 'pending', amount: 0 }, { acc: '6', status: 'pending', amount: 100 }]);
+    }));
+    expect(r.method).toBe('PATCH');
+    expect(r.keys).toEqual(['5']);
+    expect(r.logs).not.toContain('array-put-blocked');
+  });
+});
+
 // असली production: मढ़ी/कुल उपभोक्ता एक ही दिन में दो बार array में पलटी (10:40 और 12:57), जबकि
 // सभी devices v9.117 पर थे — यानी संदेश की अपनी वजह ("बहुत पुराना version") ग़लत थी। जड़ यह कि
 // "array लिखूं या per-record" का फ़ैसला पूरी तरह MIGRATED flag पर टिका था, और उस flag की दो अलग
