@@ -674,6 +674,7 @@ function _otherHqHeldMsg(){
   if(!hqs.length) return "";
   return "📲 "+hqs.map(function(h){ return h+" के "+by[h]; }).join(", ")+" बदलाव सर्वर में जाना शेष है — उस HQ में (नेट के साथ) login करने पर अपने-आप जाएंगे";
 }
+var FLUSH_CHUNK=20; // v9.277: "शेष" PATCH एक बार में इतने उपभोक्ताओं का (नीचे flushPending)
 var _flushing=false;
 var _flushWaitTok=false; // v9.260: login token के इंतज़ार में एक ही flush कतार में
 function flushPending(){
@@ -734,22 +735,36 @@ function flushPending(){
       // offline में बने patch में भी भेजने से पहले सर्वर के रिमार्क मिलाओ — इस बीच किसी और ने
       // उसी उपभोक्ता पर रिमार्क डाला हो तो वो न दबे (देखें database.js: _mergeServerRemarks)
       // v9.234: 10 से ज़्यादा records हों तब भी मिलान (10-10 करके); जिनके सर्वर-रिमार्क न पढ़ पाए वो "बाक़ी" में ही रुकें
-      var hold=null, sentAs=JSON.parse(JSON.stringify(it.patch)); // मिलान से पहले का रूप — "बाक़ी" से मिलाने को
-      _mergeServerRemarks(it.hq,it.cat,it.patch,REMARK_FLUSH_MAX,REMARK_FLUSH_TIMEOUT_MS).then(function(res){
-        hold=res.hold;
-        var pb=JSON.stringify(res.send);
-        return _fetchT(FB+"/"+fbPath(it.hq,it.cat)+".json",{
-          method:"PATCH",headers:{"Content-Type":"application/json"},body:pb
-        },_flushMs(pb));
-      }).then(function(r){
-        if(!r.ok)return _fbHttpErr(r);
-        pendingDropRecs(it.hq,it.cat,sentAs,true);
-        if(hold){
-          // since वही रहे — रिमार्क-पढ़ाई बार-बार नाकाम हो तो "pending-old" alert समय पर बने
-          markPending(it.hq,it.cat,"put",hold);
-          var pp=getPending(); if(pp[k]&&it.since){ pp[k].since=it.since; setPendingObj(pp); }
-        }
-        updTime();setSyncStatus(!isPending(it.hq,it.cat));
+      // v9.277 (Ashok/जोबा, 23/11: "436 उपभोक्ता, 97 घंटे"): पहले सारे records की रिमार्क-पढ़ाई ख़त्म होने के बाद ही एक बड़ा
+      // PATCH जाता — कमज़ोर नेट पर ~15 मिनट, और ऐप बीच में बंद/minimize हो तो हर बार शुरू से, कुछ भी नहीं जाता। अब
+      // FLUSH_CHUNK-FLUSH_CHUNK के टुकड़ों में: हर टुकड़े की पढ़ाई → उसी का PATCH → अगला। जितना जा चुका वह गया; एक टुकड़े
+      // का PATCH नाकाम हो तो आगे नहीं बढ़ते (नेट पर बेकार हथौड़ा नहीं) और बाक़ी "शेष" में सुरक्षित। थोक (>REMARK_FLUSH_MAX)
+      // पहले जैसा एक ही बार, बिना मिलान (अपलोड जैसे बदलाव)
+      var allP=it.patch, pk=Object.keys(allP), csz=pk.length>REMARK_FLUSH_MAX?pk.length:FLUSH_CHUNK, ci=0;
+      var sendNext=function(){
+        if(ci>0&&ci>=pk.length) return Promise.resolve(); // ci>0: ख़ाली patch पर भी एक बार (पहले जैसा) — भेजकर entry साफ़ हो
+        var part={};
+        pk.slice(ci,ci+csz).forEach(function(kk){ part[kk]=allP[kk]; });
+        ci+=csz;
+        var sentAs=JSON.parse(JSON.stringify(part)); // मिलान से पहले का रूप — "बाक़ी" से मिलाने को
+        return _mergeServerRemarks(it.hq,it.cat,part,REMARK_FLUSH_MAX,REMARK_FLUSH_TIMEOUT_MS).then(function(res){
+          var pb=JSON.stringify(res.send);
+          return _fetchT(FB+"/"+fbPath(it.hq,it.cat)+".json",{
+            method:"PATCH",headers:{"Content-Type":"application/json"},body:pb
+          },_flushMs(pb)).then(function(r){
+            if(!r.ok)return _fbHttpErr(r);
+            pendingDropRecs(it.hq,it.cat,sentAs,true);
+            if(res.hold){
+              // since वही रहे — रिमार्क-पढ़ाई बार-बार नाकाम हो तो "pending-old" alert समय पर बने
+              markPending(it.hq,it.cat,"put",res.hold);
+              var pp=getPending(); if(pp[k]&&it.since){ pp[k].since=it.since; setPendingObj(pp); }
+            }
+            updTime();setSyncStatus(!isPending(it.hq,it.cat));
+            return sendNext();
+          });
+        });
+      };
+      sendNext().then(function(){
         if(CU&&it.hq===activeHQ&&it.cat===activeCat){var d=cGet(it.hq,it.cat);renderSummaryWith(d);renderListWith(d);}
         fin(true);
       }).catch(function(e){if(navigator.onLine&&!_fbLocalRefusal(e))logErr("sync-patch-fail",e,it.hq+"/"+it.cat+_authDiag(e));_flushNoteErr(e);_bumpAuthFail(k,e);setSyncStatus(false);fin(false);});

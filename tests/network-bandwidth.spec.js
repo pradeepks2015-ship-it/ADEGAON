@@ -1777,3 +1777,71 @@ test.describe('_sendGate — भेजने का एक ही फ़ैस�
     });
   }
 });
+
+// v9.277 (JE 23/11, Ashok/जोबा, लॉग pending-old "97 घंटे, 436 उपभोक्ता", कोई 401/नेट-बंद नहीं): "शेष बदलाव" भेजने से पहले
+// सभी 436 उपभोक्ताओं के सर्वर-रिमार्क 10-10 करके पढ़े जाते थे, और PATCH उसके बाद ही जाता — कमज़ोर नेट पर यह ~15 मिनट,
+// और लाइनमैन ऐप जल्दी बंद/minimize करे तो हर बार शुरू से: कुछ भी नहीं जाता। अब 20-20 के टुकड़ों में: हर टुकड़े की पढ़ाई,
+// फिर उसी का PATCH, फिर अगला। बीच में रुकने पर भी जितना जा चुका वह गया; एक टुकड़े की पढ़ाई अटके तो बाक़ियों को नहीं रोकती
+test.describe('बड़ी "शेष" कतार टुकड़ों में जाए — सारी रिमार्क-पढ़ाई ख़त्म होने का इंतज़ार नहीं', () => {
+  const HQ = 'जोबा', CAT = 'कुल उपभोक्ता';
+  const setup = (page, n, mode) => page.evaluate(([n, mode, HQ, CAT]) => new Promise((resolve) => {
+    Object.defineProperty(navigator, 'onLine', { get: () => true, configurable: true });
+    localStorage.removeItem('dc_acfail');
+    CU = { role: 'lineman', name: 'टेस्ट', hq: HQ, pin: '1' };
+    AC_READY = true; AC_TOKEN = 'ac'; AUTH_READY = true; AUTH_LISTENING = false; ID_TOKEN = 'id';
+    window.firebase = window.firebase || {};
+    window.firebase.auth = function () { return { currentUser: { email: HQ_AUTH_EMAIL[HQ] } }; };
+    REMARK_FLUSH_TIMEOUT_MS = 300;
+    var patch = {};
+    for (var i = 1; i <= n; i++) patch[String(1000 + i)] = { acc: String(1000 + i), name: 'क' + i, status: 'paid', paydate: '1/11/2026', remarksArr: [{ text: 'r' + i, at: 1 }] };
+    var p = {}; p[cKey(HQ, CAT)] = { hq: HQ, cat: CAT, type: 'put', since: Date.now(), patch: patch };
+    localStorage.setItem('dc_pending3', JSON.stringify(p));
+    var patches = []; var t0 = Date.now(); var patchFail = mode === 'patch-fail';
+    _rawFetch = function (u, o) {
+      var s = decodeURIComponent(String(u));
+      if (o && o.method === 'PATCH') {
+        patches.push({ at: Date.now() - t0, keys: Object.keys(JSON.parse(o.body)).length });
+        return Promise.resolve(patchFail ? new Response('{}', { status: 500 }) : new Response('{}', { status: 200 }));
+      }
+      if (s.indexOf('/remarksArr.json') > -1) return mode === 'hang' ? new Promise(function () {}) : Promise.resolve(new Response('null', { status: 200 }));
+      return Promise.resolve(new Response('null', { status: 200 }));
+    };
+    window.__t = { patches: patches };
+    _flushing = false; _flushBackoffUntil = 0;
+    flushPending();
+    resolve(true);
+  }), [n, mode, HQ, CAT]);
+  const read = (page) => page.evaluate(([HQ, CAT]) => {
+    var e = getPending()[cKey(HQ, CAT)];
+    return { patches: window.__t.patches, left: e && e.patch ? Object.keys(e.patch).length : 0 };
+  }, [HQ, CAT]);
+
+  test('रिमार्क-पढ़ाई सब अटकी हों — पहला PATCH 2.5s में जाए (पहले: 200 की सारी पढ़ाई ख़त्म होने के बाद ही, ~6s+)', async ({ page }) => {
+    await openApp(page);
+    await setup(page, 200, 'hang');
+    await page.waitForTimeout(2500);
+    const r = await read(page);
+    expect(r.patches.length).toBeGreaterThan(0);
+    expect(r.patches[0].at).toBeLessThan(2500);
+  });
+
+  test('सब ठीक चले — सारे 200 उपभोक्ता कई टुकड़ों में जाएं और कतार ख़ाली हो', async ({ page }) => {
+    await openApp(page);
+    await setup(page, 200, 'ok');
+    await page.waitForFunction(([HQ, CAT]) => !getPending()[cKey(HQ, CAT)], [HQ, CAT], { timeout: 15000 });
+    const r = await read(page);
+    expect(r.patches.length).toBeGreaterThan(1);                                   // टुकड़ों में
+    expect(r.patches.reduce((a, x) => a + x.keys, 0)).toBe(200);                   // सब गए, कोई दोहरा/छूटा नहीं
+    expect(Math.max(...r.patches.map((x) => x.keys))).toBeLessThanOrEqual(20);
+    expect(r.left).toBe(0);
+  });
+
+  test('पहले टुकड़े का PATCH नाकाम — बाक़ी टुकड़े न भेजें (नेट पर बेकार हथौड़ा नहीं), सब "शेष" में सुरक्षित', async ({ page }) => {
+    await openApp(page);
+    await setup(page, 200, 'patch-fail');
+    await page.waitForTimeout(2500);
+    const r = await read(page);
+    expect(r.patches.length).toBe(1);
+    expect(r.left).toBe(200);
+  });
+});
