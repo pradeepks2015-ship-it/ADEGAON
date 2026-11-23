@@ -905,6 +905,48 @@ test.describe('बिना flag की per-record सूची पर अपन
   });
 });
 
+// v9.278 (JE 23/11, मढ़ी "TC 2025-26"): यह सूची अक्टूबर–मार्च की अलग सूची है, उपभोक्ता मुख्य "कुल उपभोक्ता" सूची में नहीं (अपना IVRS)।
+// पर बकाया≤0 → "वसूल" और लेजर कट-ऑफ़ से पुरानी वसूली → "बाकी" — दोनों नियम हर सूची पर लगते थे: TC की पुरानी वसूली हर महीने
+// मिट सकती थी, और रक़म 0 वाला उपभोक्ता झूठा "वसूल" बन सकता था। अब ये दोनों नियम सिर्फ़ उन records पर जो HQ की मुख्य सूची में हैं
+test.describe('लेजर के नियम (बकाया≤0, कट-ऑफ़) सिर्फ़ मुख्य सूची के उपभोक्ताओं पर — अलग सूची (TC) अछूती', () => {
+  const run = (page, cat, master) => page.evaluate(([cat, master]) => {
+    var t = new Date();
+    var cd = new Date(t.getFullYear(), t.getMonth(), t.getDate() - 20);
+    var cutVal = cd.getFullYear() * 10000 + (cd.getMonth() + 1) * 100 + cd.getDate();
+    LEDGER_CUT = {}; LEDGER_CUT[hqKey('टेस्ट HQ6')] = cutVal;
+    var old = new Date(t.getFullYear(), t.getMonth(), t.getDate() - 40);
+    var oldS = old.getDate() + '/' + (old.getMonth() + 1) + '/' + old.getFullYear();
+    if (master) cSet('टेस्ट HQ6', CATS[0], master.map(function (a) { return { acc: a, name: 'म' + a, status: 'pending', amount: 100 }; }));
+    var data = [
+      { acc: 'A1', name: 'पुरानी वसूली', status: 'paid', paydate: oldS, amount: 500 },
+      { acc: 'A2', name: 'रक़म शून्य', status: 'pending', amount: 0 },
+      { acc: 'A3', name: 'सामान्य', status: 'pending', amount: 700 },
+    ];
+    overlayOps('टेस्ट HQ6', cat, data);
+    return data.map(function (x) { return x.acc + ':' + x.status; });
+  }, [cat, master]);
+
+  test('अलग सूची (उपभोक्ता मुख्य सूची में नहीं) — पुरानी वसूली न मिटे, रक़म 0 पर झूठा "वसूल" न बने', async ({ page }) => {
+    await openApp(page);
+    expect(await run(page, 'TC 2025-26', ['M1', 'M2'])).toEqual(['A1:paid', 'A2:pending', 'A3:pending']);
+  });
+
+  test('उपभोक्ता मुख्य सूची में भी हैं (जैसे "3 month nonpayee") — नियम पहले जैसे लगें', async ({ page }) => {
+    await openApp(page);
+    expect(await run(page, '3 month nonpayee', ['A1', 'A2', 'A3'])).toEqual(['A1:pending', 'A2:paid', 'A3:pending']);
+  });
+
+  test('मुख्य सूची ख़ुद ("कुल उपभोक्ता") — नियम पहले जैसे लगें', async ({ page }) => {
+    await openApp(page);
+    expect(await run(page, 'कुल उपभोक्ता', null)).toEqual(['A1:pending', 'A2:paid', 'A3:pending']);
+  });
+
+  test('मुख्य सूची फ़ोन में अभी है ही नहीं — अनजान हालत में पहले जैसा (सुरक्षा-नियम न छूटें)', async ({ page }) => {
+    await openApp(page);
+    expect(await run(page, 'TC 2025-26', null)).toEqual(['A1:pending', 'A2:paid', 'A3:pending']);
+  });
+});
+
 // असली production: मढ़ी/कुल उपभोक्ता एक ही दिन में दो बार array में पलटी (10:40 और 12:57), जबकि
 // सभी devices v9.117 पर थे — यानी संदेश की अपनी वजह ("बहुत पुराना version") ग़लत थी। जड़ यह कि
 // "array लिखूं या per-record" का फ़ैसला पूरी तरह MIGRATED flag पर टिका था, और उस flag की दो अलग

@@ -512,9 +512,20 @@ function overlayOps(hq,cat,data){
     }
   });
   var key=hq+"|"+cat;
+  // v9.278 (JE 23/11, मढ़ी "TC 2025-26"): नीचे के दोनों नियम (बकाया≤0 → वसूल, लेजर कट-ऑफ़ से पुरानी वसूली → बाकी) मासिक
+  // लेजर के हैं। अलग सूची (TC: अक्टूबर–मार्च, अपना IVRS, उपभोक्ता मुख्य सूची में नहीं) पर लगें तो उसकी पुरानी वसूली मिटती और
+  // रक़म 0 वाला झूठा "वसूल" बनता। इसलिए सिर्फ़ वही records जो HQ की मुख्य सूची में हैं। मुख्य सूची फ़ोन में न हो (या ख़ाली)
+  // तो पहले जैसा — सुरक्षा-नियम छूटें नहीं
+  var _ledgerOf=null;
+  if(cat!==CATS[0]){
+    var _mst=cGet(hq,CATS[0])||[];
+    if(_mst.length){ _ledgerOf={}; _mst.forEach(function(m){ if(m&&m.acc!=null) _ledgerOf[String(m.acc).trim()]=1; }); }
+  }
+  function inLedger(x){ return !_ledgerOf||!!_ledgerOf[String(x.acc).trim()]; }
   // बकाया 0 या minus (advance) वाले records अपने आप वसूल — पुराने records पर भी, हमेशा जांचा जाता है
   data.forEach(function(x){
     if(!x||x.status==="paid")return;
+    if(x.acc&&!inLedger(x))return;
     var amt=(x.amount===undefined||x.amount===null)?"":String(x.amount).trim();
     if(amt===""||isNaN(Number(amt)))return;
     if(Number(amt)<=0){
@@ -536,6 +547,7 @@ function overlayOps(hq,cat,data){
   var cut=ledgerCut(hq);
   if(cut) data.forEach(function(x){
     if(!x||x.status!=="paid"||!x.acc) return;
+    if(!inLedger(x)) return;
     var pv=latestPayVal(x);
     if(!pv||pv>=cut) return;
     x.status="pending"; x.paydate="";
