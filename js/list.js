@@ -551,7 +551,9 @@ function overlayOps(hq,cat,data){
       delete _autoFixPatch[key]; delete _autoFixUnsafe[key];
       // migrated HQ/श्रेणी हो और सभी बदले records का acc मिल गया हो — सिर्फ उन्हीं को PATCH करें
       // (पूरी array PUT करने से चरण 3 का migration यहीं से पलट सकता था — यही असली bug था)
-      if(isMigrated(hq,cat)&&!unsafe&&patch&&Object.keys(patch).length){
+      // v9.276: "migrated" का मतलब flag या सर्वर पर देखा गया per-record रूप (fbSet भी यही मानता है) — बाद में बनी
+      // सूची (जैसे मढ़ी/"TC 2025-26") का flag होता ही नहीं; flag-ही-flag देखने पर पूरी सूची फ़ोन की copy से PUT होती थी
+      if((isMigrated(hq,cat)||lastShape(hq,cat)==="obj")&&!unsafe&&patch&&Object.keys(patch).length){
         fetch(FB+"/"+fbPath(hq,cat)+".json",{
           method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(patch)
         }).catch(function(e){logErr("autopay-patch-fail",e,hq+"/"+cat);});
